@@ -14,14 +14,16 @@
 
 #include "slotinfo.h"
 
+#include <KIO/CommandLauncherJob>
 #include <KLocalizedString>
 
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
-#include <QProcess>
 #include <QUrl>
+
+#include <functional>
 
 using namespace Qt::StringLiterals;
 
@@ -55,6 +57,22 @@ QString describeError(SlotsClient::Request request, const QString &name, const Q
         return message;
     }
     return i18nc("@info %1 D-Bus error name", "The request was refused (%1).", name);
+}
+
+/* Started through KIO under the program's desktop name, so the launch
+ * carries an XDG activation token: KWin raises the window it opens, and a
+ * Discover already running is handed the token with its arguments and comes
+ * to the front instead of only flashing its taskbar entry. */
+void launch(QObject *owner, const QString &program, const QStringList &args, const QString &desktopName, const std::function<void()> &failed)
+{
+    auto *job = new KIO::CommandLauncherJob(program, args, owner);
+    job->setDesktopName(desktopName);
+    QObject::connect(job, &KJob::result, owner, [failed](KJob *j) {
+        if (j->error()) {
+            failed();
+        }
+    });
+    job->start();
 }
 
 bool hasSpaceOrControl(const QString &s)
@@ -296,8 +314,11 @@ QString SystemVersionsModule::composeChannel(const QString &kind, const QString 
             err = i18nc("@info", "Type the address the KDOS update files are published at.");
         } else if (hasSpaceOrControl(loc) || !url.isValid()) {
             err = i18nc("@info", "This is not an address an update can be read from.");
-        } else if (scheme != "https"_L1 && scheme != "http"_L1 && scheme != "file"_L1) {
-            err = i18nc("@info", "Updates are read from an https, http or file address.");
+        } else if (scheme != "https"_L1 && scheme != "file"_L1) {
+            /* kdos update fetches with curl --proto =https,file and
+             * kdos-sysupdated refuses any other scheme, so a plain http
+             * address would be saved and then fail every fetch. */
+            err = i18nc("@info", "Updates are read from an https or file address.");
         } else if (scheme != "file"_L1 && url.host().isEmpty()) {
             err = i18nc("@info", "The address names no server.");
         }
@@ -485,7 +506,10 @@ void SystemVersionsModule::save()
     const QString channel = composeChannel(m_channelKind, m_channelLocation, &err);
     if (!err.isEmpty()) {
         setMessage(err, Error);
-        setNeedsSave(true);
+        /* KCModuleQml::save clears needsSave once this returns, which would
+         * grey out Reset and drop the title's '*' over an edit that was not
+         * written: the state is raised again on the next turn of the loop. */
+        QMetaObject::invokeMethod(this, &SystemVersionsModule::updateSaveState, Qt::QueuedConnection);
         return;
     }
     if (m_installRoute != m_client->installRoute() || m_buildDeps != m_client->buildDeps()) {
@@ -543,16 +567,16 @@ void SystemVersionsModule::restartNow()
 
 void SystemVersionsModule::openUpdates()
 {
-    if (!QProcess::startDetached(u"plasma-discover"_s, {u"--mode"_s, u"update"_s})) {
+    launch(this, u"plasma-discover"_s, {u"--mode"_s, u"update"_s}, u"org.kde.discover"_s, [this] {
         setMessage(i18nc("@info", "Discover could not be started, so updates cannot be checked from here."), Error);
-    }
+    });
 }
 
 void SystemVersionsModule::openInstaller()
 {
-    if (!QProcess::startDetached(u"kdos-installer-gui"_s, {})) {
+    launch(this, u"kdos-installer-gui"_s, {}, u"kdos-installer"_s, [this] {
         setMessage(i18nc("@info", "The installer could not be started. Open Install KDOS from the desktop or the launcher."), Error);
-    }
+    });
 }
 
 void SystemVersionsModule::onRequestFinished(SlotsClient::Request request, const QString &errorName, const QString &errorMessage)

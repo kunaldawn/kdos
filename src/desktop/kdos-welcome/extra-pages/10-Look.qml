@@ -189,8 +189,11 @@ Welcome.ScrollablePage {
             onVisibleChanged: if (!visible) page.failure = ""
         }
 
+        // The form's own section headings, so the four groups read alike.
         Kirigami.Heading {
-            level: 2
+            Layout.alignment: Qt.AlignHCenter
+            level: 3
+            type: Kirigami.Heading.Type.Primary
             text: i18ndc("kdos-welcome", "@title:group", "Accent")
         }
 

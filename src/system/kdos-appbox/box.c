@@ -22,7 +22,8 @@
  * A profile is applied at CREATE time. Namespaces and volumes cannot be
  * re-flagged on a live container, so `kdos-box profile` says that a change
  * takes effect once the box is removed and created again, rather than
- * silently doing nothing.
+ * silently doing nothing, and its report carries a `!` line for as long as
+ * the profile is newer than the box's container.
  *
  * THE PROTOCOL HALF IS NOT THIS FILE'S. KWin denies the globals that reach
  * past a client's own windows — the window list, fake input, screencast,
@@ -55,12 +56,14 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 void profile_defaults(Profile *p, const char *box)
@@ -426,10 +429,10 @@ int profile_load(Profile *p, const char *box)
  * A box created with `--pid host` and no cgroup of its own — every store box,
  * and a pack box in a login with no delegated subtree — sits in the login's
  * own cgroup. podman stops a container that has no PID namespace of its own
- * by signalling every process in the container's cgroup, which holds none of
- * the box's, so `podman stop` sends its SIGTERM and SIGKILL to nothing and
- * leaves the box `stopping` until something kills its init directly. `podman
- * kill` signals the init alone and does reach it.
+ * through `crun kill --all`, and with no cgroup to list, that signals the
+ * box's init and the init's descendants (crun's kill-all-without-cgroup.patch)
+ * and leaves running every application the box's launches exec'd, so
+ * kdos-box stop signals those itself; `podman kill` reaches the init alone.
  *
  * THE APPLICATIONS ARE NOT THE INIT'S CHILDREN. Each launch is a `podman
  * exec`, which joins the box's mount namespace and outlives the init when the
@@ -437,9 +440,21 @@ int profile_load(Profile *p, const char *box)
  * holds exec sessions that `podman rm` refuses over. A process is the box's
  * when it is in the init's mount namespace, or — once the init is gone — when
  * it is in a mount namespace other than this program's and its environment
- * carries the box's KDOS_BOX, which podman puts in every exec. Only processes
- * this user may signal are reached: under keep-id the applications run as the
- * user.
+ * carries the box's KDOS_BOX, which podman puts in every exec.
+ *
+ * AND THE LAUNCHES STILL WAITING FOR THE BOX. A launch — `kdos-box run`, a
+ * generated launcher's `kdos-appbox -b <box> … run`, `kdos-box enter` — waits
+ * up to 30 s for the box to say it is ready before it becomes its `podman
+ * exec`, in this program's own mount namespace; left alone through a stop it
+ * would go on to launch into the box once something starts it again. While
+ * it waits it holds a mark, $XDG_RUNTIME_DIR/kdos/boxes/<box>.wait.<pid> with
+ * its start time, and a mark whose pid and start time still name a process is
+ * that process's: one that died without removing its mark is passed over and
+ * the mark removed. This process is never one of them. Only an explicit stop
+ * (`kdos-box stop`, a remove, a pack's removal) reaches the waiting launches;
+ * box_unstick, which a launch runs on its own way in, does not, or two
+ * launches into a stuck box would end each other. Only processes this user
+ * may signal are reached: under keep-id the applications run as the user.
  */
 static long box_init_pid(const char *box)
 {
@@ -486,16 +501,88 @@ static int environ_names_box(long pid, const char *box)
 	return hit;
 }
 
-int box_signal_all(const char *box, int sig)
+/* The start time of `pid` in clock ticks since boot, field 22 of its stat, or
+ * 0. A pid and its start time name one process: a pid reused since is
+ * another. */
+static unsigned long long proc_start(long pid)
+{
+	char path[64], buf[1024], *s;
+	unsigned long long t = 0;
+
+	snprintf(path, sizeof(path), "/proc/%ld/stat", pid);
+	if (kb_read_file(path, buf, sizeof(buf)) < 0)
+		return 0;
+	/* The command name may hold ')' and spaces; the fields after the
+	 * last ')' start at the state, field 3. */
+	s = strrchr(buf, ')');
+	if (!s || sscanf(s + 1, " %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u"
+				" %*u %*u %*d %*d %*d %*d %*d %*d %llu", &t) != 1)
+		return 0;
+	return t;
+}
+
+/* $XDG_RUNTIME_DIR/kdos/boxes/<box>.wait.<pid>, holding the waiting
+ * process's start time, for as long as box_wait_ready waits. */
+static int wait_mark_path(const char *box, long pid, char *out, size_t n)
+{
+	char dir[MAX_LINE];
+	int w;
+
+	if (box_state_dir(dir, sizeof(dir)) != 0)
+		return -1;
+	w = snprintf(out, n, "%s/%s.wait.%ld", dir, box, pid);
+	return w < 0 || (size_t)w >= n ? -1 : 0;
+}
+
+/* `sig` to every process with a wait mark for `box` whose start time is the
+ * one it recorded; a mark whose process is gone, or whose pid now names
+ * another process, is removed. */
+static int signal_waits(const char *box, int sig)
+{
+	char dir[MAX_LINE], path[MAX_LINE], rec[32];
+	size_t bl = strlen(box);
+	char **names;
+	int n = 0;
+
+	if (box_state_dir(dir, sizeof(dir)) != 0)
+		return 0;
+	names = kb_listdir(dir, NULL);
+	for (char **f = names; f && *f; f++) {
+		unsigned long long t;
+		char *end;
+		long pid;
+
+		if (strncmp(*f, box, bl) || strncmp(*f + bl, ".wait.", 6))
+			continue;
+		pid = strtol(*f + bl + 6, &end, 10);
+		if (*end || pid <= 1)
+			continue;
+		if (pid == (long)getpid() ||
+		    wait_mark_path(box, pid, path, sizeof(path)) != 0)
+			continue;
+		t = proc_start(pid);
+		if (!t || kb_read_file(path, rec, sizeof(rec)) < 0 ||
+		    strtoull(rec, NULL, 10) != t) {
+			unlink(path);
+			continue;
+		}
+		if (kill((pid_t)pid, sig) == 0)
+			n++;
+	}
+	kb_strv_free(names);
+	return n;
+}
+
+static int signal_all(const char *box, int sig, int waits)
 {
 	struct stat self, init, st;
 	long ipid = box_init_pid(box);
 	int have_init = ipid > 0 && ns_of(ipid, &init) == 0;
 	char **names;
-	int n = 0;
+	int n = waits ? signal_waits(box, sig) : 0;
 
 	if (ns_of(0, &self) != 0)
-		return 0;
+		return n;
 	if (have_init && init.st_ino == self.st_ino && init.st_dev == self.st_dev)
 		have_init = 0;
 	names = kb_listdir("/proc", NULL);
@@ -507,8 +594,9 @@ int box_signal_all(const char *box, int sig)
 		pid = strtol(*f, &end, 10);
 		if (*end || pid <= 1 || pid == ipid || pid == (long)getpid())
 			continue;
-		if (ns_of(pid, &st) != 0 ||
-		    (st.st_ino == self.st_ino && st.st_dev == self.st_dev))
+		if (ns_of(pid, &st) != 0)
+			continue;
+		if (st.st_ino == self.st_ino && st.st_dev == self.st_dev)
 			continue;
 		mine = have_init ? st.st_ino == init.st_ino &&
 				   st.st_dev == init.st_dev
@@ -518,6 +606,11 @@ int box_signal_all(const char *box, int sig)
 	}
 	kb_strv_free(names);
 	return n;
+}
+
+int box_signal_all(const char *box, int sig)
+{
+	return signal_all(box, sig, 1);
 }
 
 static int podman_kill(const char *box, const char *sig)
@@ -541,19 +634,22 @@ static int box_down(const char *state)
 }
 
 /*
- * SIGTERM TO THE APPLICATIONS AND THE INIT, `grace` seconds for every box to
- * leave `running` and `stopping`, then SIGKILL to whatever is left and three
+ * SIGTERM TO THE APPLICATIONS, THE WAITING LAUNCHES (when `waits`) AND THE
+ * INIT, `grace` seconds for every box to leave `running` and `stopping` and
+ * for all of them to be gone, then SIGKILL to whatever is left and three
  * seconds more. The applications are signalled whatever the init does, so a
  * box that is down holds no exec session that a later remove would refuse
- * over. Returns how many of the boxes are still up.
+ * over, and no waiting launch is left to go into it after the next start.
+ * Returns how many of the boxes are still up. box_stop_many is the explicit
+ * stop, with the waiting launches; box_unstick runs it without them.
  */
-int box_stop_many(const char *const *boxes, int n, int grace)
+static int stop_many(const char *const *boxes, int n, int grace, int waits)
 {
 	char state[64];
 	int up = 0;
 
 	for (int i = 0; i < n; i++) {
-		box_signal_all(boxes[i], SIGTERM);
+		signal_all(boxes[i], SIGTERM, waits);
 		box_state(boxes[i], state, sizeof(state));
 		if (!box_down(state))
 			podman_kill(boxes[i], "TERM");
@@ -566,7 +662,7 @@ int box_stop_many(const char *const *boxes, int n, int grace)
 			for (int i = 0; i < n; i++) {
 				box_state(boxes[i], state, sizeof(state));
 				up += !box_down(state) ||
-				      box_signal_all(boxes[i], 0) > 0;
+				      signal_all(boxes[i], 0, waits) > 0;
 			}
 			if (!up || t == ticks)
 				break;
@@ -575,7 +671,7 @@ int box_stop_many(const char *const *boxes, int n, int grace)
 		if (!up || pass)
 			break;
 		for (int i = 0; i < n; i++) {
-			box_signal_all(boxes[i], SIGKILL);
+			signal_all(boxes[i], SIGKILL, waits);
 			box_state(boxes[i], state, sizeof(state));
 			if (!box_down(state))
 				podman_kill(boxes[i], "KILL");
@@ -584,14 +680,20 @@ int box_stop_many(const char *const *boxes, int n, int grace)
 	return up;
 }
 
+int box_stop_many(const char *const *boxes, int n, int grace)
+{
+	return stop_many(boxes, n, grace, 1);
+}
+
 /*
  * A CONTAINER IN `stopping` IS NOT STARTABLE, AND PODMAN SAYS SO IN A WAY
  * THAT NAMES NOTHING USEFUL: "must be in Created or Stopped state to be
- * started: container state improper". A `podman stop` that signalled nothing
+ * started: container state improper". A `podman stop` that timed out
  * (box_signal_all says why) leaves a box there, and a hung app holding
  * D-state I/O can wedge one there for good.
  *
- * The stop sequence above runs, with a short grace. Only a PACK box is ever
+ * The stop sequence above runs, with a short grace and without the waiting
+ * launches, the caller's own siblings among them. Only a PACK box is ever
  * removed past that: it keeps nothing in its container — its packs are
  * mounted read-only and its writable upper lives outside it, on disk or on
  * tmpfs in a live session — so recreating the container over the same stack
@@ -610,7 +712,7 @@ int box_unstick(const char *box, char *state, size_t n)
 	if (strcmp(state, "stopping"))
 		return 0;
 
-	box_stop_many(&box, 1, 3);
+	stop_many(&box, 1, 3, 0);
 	box_state(box, state, n);
 	if (strcmp(state, "stopping"))
 		return 2;
@@ -639,13 +741,9 @@ int box_unstick(const char *box, char *state, size_t n)
 	return 3;
 }
 
-int profile_save(const Profile *p)
+static void profile_render(const Profile *p, char *buf, size_t cap)
 {
-	char *path = profile_path(p->name);
-	char buf[MAX_LINE];
-	int rc;
-
-	snprintf(buf, sizeof(buf),
+	snprintf(buf, cap,
 		 "# KDOS box profile — applied when the box is CREATED.\n"
 		 "# Namespaces and volumes cannot be re-flagged on a live\n"
 		 "# container, so a change here takes effect once the box\n"
@@ -690,11 +788,64 @@ int profile_save(const Profile *p)
 		 p->render[0] ? p->render : "auto",
 		 p->autoexport ? "auto" : "manual",
 		 p->memory, p->cpus, p->pids, p->autostop_s);
+}
+
+int profile_save(const Profile *p)
+{
+	char *path = profile_path(p->name);
+	char buf[MAX_LINE], was[MAX_LINE];
+	Profile old;
+	struct stat st;
+	int keep_mtime = 0;
+	int rc;
+
+	profile_render(p, buf, sizeof(buf));
+	/*
+	 * AN ACCENT-ONLY WRITE KEEPS THE FILE'S MTIME. The accent is a KWin
+	 * rule and applies at once; every other key is the container's and
+	 * applies at create time, and profile_print reads an mtime later than
+	 * the container's creation as "the box runs something else". The old
+	 * file is compared as the profile it parses to, with the new accent,
+	 * so a write that changes nothing the container was made from leaves
+	 * that report as it was.
+	 */
+	if (stat(path, &st) == 0 && profile_load(&old, p->name)) {
+		snprintf(old.accent, sizeof(old.accent), "%s", p->accent);
+		profile_render(&old, was, sizeof(was));
+		keep_mtime = !strcmp(was, buf);
+	}
 	/* ATOMIC: a profile that comes back empty has lost `base`, and a box
 	 * whose base is unknown cannot be composed or started again. */
 	rc = kb_write_file_atomic(path, buf);
+	if (rc == 0 && keep_mtime) {
+		struct timespec t[2] = { st.st_atim, st.st_mtim };
+
+		utimensat(AT_FDCWD, path, t, 0);
+	}
 	free(path);
 	return rc;
+}
+
+#define BOX_PROFILE_SLACK 60
+
+/* When podman created the box's container, in Unix seconds; 0 when it has
+ * none or podman could not say. */
+static long box_created_at(const char *box)
+{
+	KbArgv a = {0};
+	char buf[64] = "";
+
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "inspect");
+	kb_argv_add(&a, "--type");
+	kb_argv_add(&a, "container");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Created.Unix}}");
+	kb_argv_add(&a, box);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, sizeof(buf)) != 0)
+		return 0;
+	return strtol(buf, NULL, 10);
 }
 
 /*
@@ -712,6 +863,32 @@ void profile_print(const Profile *p)
 		printf("image       = %s\n", p->image);
 	else
 		printf("base        = (none yet — the first launch records the pack)\n");
+	/*
+	 * A PROFILE NEWER THAN ITS CONTAINER IS NOT WHAT THE BOX RUNS. Every
+	 * key but `accent` is applied when the container is created, so the
+	 * lines below are the file's, and a box created before the file was
+	 * last written may still run with what it said before. The comparison
+	 * is the profile's mtime against podman's creation time, an mtime
+	 * profile_save leaves alone when only the accent changed; a box with
+	 * no container prints nothing, because its next create reads the
+	 * file as it is now. A write within BOX_PROFILE_SLACK seconds of the
+	 * create counts as the create's own: a first launch records the
+	 * box's base in the profile only once `podman create` has returned,
+	 * and a tighter window would flag every pack box the launch made.
+	 */
+	{
+		char *pp = profile_path(p->name);
+		struct stat st;
+		long created = box_created_at(p->name);
+
+		if (created > 0 && stat(pp, &st) == 0 &&
+		    (long)st.st_mtime > created + BOX_PROFILE_SLACK)
+			printf("            ! the profile was written after this box"
+			       " was created — a change to anything but `accent`"
+			       " applies once `kdos-box remove %s` has run and the"
+			       " box is made again\n", p->name);
+		free(pp);
+	}
 	/*
 	 * THE TITLE BAR'S COLOUR IS A KWin RULE, written by rules.c for every
 	 * box the user has, and it is named here by the scheme it forces. No
@@ -784,10 +961,17 @@ void profile_print(const Profile *p)
 			       " them short of `kdos-box remove`\n",
 			       persist_name(p->persist));
 		/*
-		 * KEPT IS ONLY AS LONG AS THE FILESYSTEM UNDER THEM. On a live
-		 * session $HOME — podman's storage and the boxes' layer
-		 * directories with it — is an overlay whose upper is RAM, and
-		 * whatever a box keeps there ends with the session.
+		 * KEPT IS ONLY AS LONG AS THE FILESYSTEM UNDER THEM, and the
+		 * remedy differs by lane. A pack box's upper is kdos-packd's,
+		 * and kdos-packd puts it in the runtime directory's tmpfs
+		 * whenever $HOME is an overlay — the kernel stacks no upper on
+		 * overlayfs — so on a live session it ends with the session
+		 * whether or not a `kdos persist` store is in use, and only an
+		 * installed system keeps it; a $HOME on tmpfs holds it in
+		 * memory as well. A store or distrobox box writes
+		 * into podman's storage under $HOME, which ends with the
+		 * session when the overlay's upper is RAM and outlasts it when
+		 * the upper is a persistence store.
 		 */
 		if (!(lane == BOX_LANE_PACK && p->persist != PERSIST_PERSISTENT) &&
 		    !(lane == BOX_LANE_STORE && p->persist == PERSIST_EPHEMERAL)) {
@@ -798,28 +982,64 @@ void profile_print(const Profile *p)
 
 				kb_strlcpy(where, h, sizeof(where));
 				free(h);
+				if (fs_is_overlay(where) || fs_in_memory(where))
+					printf("            ! the writes are in this"
+					       " live session's memory and end with"
+					       " it — a pack box keeps them only on"
+					       " an installed system\n");
 			} else {
 				podman_storage_dir(where, sizeof(where));
+				if (fs_in_memory(where))
+					printf("            ! the writes are on this"
+					       " live session's memory overlay and"
+					       " end with it — a `kdos persist`"
+					       " store keeps them from its next"
+					       " boot\n");
 			}
-			if (fs_in_memory(where))
-				printf("            ! the writes are on this live"
-				       " session's memory overlay and end with it"
-				       " — a `kdos persist` store keeps them from"
-				       " its next boot\n");
 		}
 	}
-	printf("network     = %-11s %s\n",
-	       p->netnone ? "none" : p->netns ? "private" : "host",
-	       p->netnone ? "--network none" :
-	       p->netns   ? "--unshare-netns" : "--network host");
-	printf("ipc         = %-11s %s\n", p->ipc ? "private" : "shared",
-	       p->ipc ? "--unshare-ipc" : "--ipc host");
-	printf("devices     = %-11s %s\n", p->devsys ? "private" : "shared",
-	       p->devsys ? "--unshare-devsys" : "/dev and /sys bind-mounted");
-	printf("processes   = %-11s %s\n", p->process ? "private" : "shared",
-	       p->process ? "--unshare-process" : "--pid host");
-	printf("home        = %-11s %s\n", p->privhome ? "private" : "shared",
-	       p->privhome ? "--home" : "the user's own $HOME");
+	/*
+	 * THE NAMESPACES BY LANE, each named by what made it. distrobox is
+	 * told with its own `--unshare-*` and `--home` flags and shares the
+	 * host's namespaces otherwise. A pack or store box is a `podman
+	 * create` of this program's (pack_box_create), whose private states
+	 * are podman's rootless defaults — no flag at all — and whose shared
+	 * ones are `--network host`, `--ipc host`, `--pid host` and binds;
+	 * naming distrobox's flags for those would describe a command that
+	 * never ran.
+	 */
+	if (box_lane(p) == BOX_LANE_DISTROBOX) {
+		printf("network     = %-11s %s\n",
+		       p->netnone ? "none" : p->netns ? "private" : "host",
+		       p->netnone ? "--network none" :
+		       p->netns   ? "--unshare-netns" : "--network host");
+		printf("ipc         = %-11s %s\n", p->ipc ? "private" : "shared",
+		       p->ipc ? "--unshare-ipc" : "--ipc host");
+		printf("devices     = %-11s %s\n", p->devsys ? "private" : "shared",
+		       p->devsys ? "--unshare-devsys" : "/dev and /sys bind-mounted");
+		printf("processes   = %-11s %s\n", p->process ? "private" : "shared",
+		       p->process ? "--unshare-process" : "--pid host");
+		printf("home        = %-11s %s\n", p->privhome ? "private" : "shared",
+		       p->privhome ? "--home" : "the user's own $HOME");
+	} else {
+		printf("network     = %-11s %s\n",
+		       p->netnone ? "none" : p->netns ? "private" : "host",
+		       p->netnone ? "--network none" :
+		       p->netns   ? "a network namespace of its own (podman's rootless default)"
+				  : "--network host");
+		printf("ipc         = %-11s %s\n", p->ipc ? "private" : "shared",
+		       p->ipc ? "an IPC namespace of its own (podman's default)"
+			      : "--ipc host");
+		printf("devices     = %-11s %s\n", p->devsys ? "private" : "shared",
+		       p->devsys ? "podman's own /dev and /sys"
+				 : "/dev and /sys bind-mounted");
+		printf("processes   = %-11s %s\n", p->process ? "private" : "shared",
+		       p->process ? "a PID namespace of its own (podman's default)"
+				  : "--pid host");
+		printf("home        = %-11s %s\n", p->privhome ? "private" : "shared",
+		       p->privhome ? "its layer directory's home, bound at $HOME"
+				   : "the user's own $HOME, bound in");
+	}
 	/*
 	 * A SHARED HOME IS A WAY OUT, and the profile says so wherever it is
 	 * shared: a program that can write ~/.config/autostart or a shell's
@@ -1108,6 +1328,129 @@ static void add_flag(char *buf, size_t n, const char *flag, const char *val)
 	snprintf(buf + l, n - l, "%s%s %s", l ? " " : "", flag, val);
 }
 
+/*
+ * DISTROBOX'S CLOSING INSTRUCTION IS DROPPED, AND NOTHING ELSE. A successful
+ * `distrobox create` ends with "Distrobox '<n>' successfully created.", "To
+ * enter, run:" and a blank line on its stderr and `distrobox enter <n>` on its
+ * stdout, and the command that enters a KDOS box is `kdos-box enter`, which
+ * cmd_box_create prints. Its stdout goes to /dev/null, as every kb_run
+ * child's does: it carries that command and a pull's image id. Its stderr is
+ * read here with the terminal's colour sequences taken out (the reset that
+ * closes distrobox's green `[ OK ]` opens the dropped line), and every other
+ * line, an error above all, reaches stderr. "Creating '<n>' using image <i>"
+ * ends in a tab and no newline until the container exists, so a partial line
+ * that opens with "Creating '" is written as it arrives: held back, the
+ * create would show nothing while it runs.
+ */
+static void strip_csi(char *s)
+{
+	char *w = s;
+
+	for (char *r = s; *r; r++) {
+		if (r[0] == '\033' && r[1] == '[') {
+			r += 2;
+			while (*r && (*r < 0x40 || *r > 0x7e))
+				r++;
+			if (!*r)
+				break;
+			continue;
+		}
+		*w++ = *r;
+	}
+	*w = '\0';
+}
+
+static int distrobox_tail(const char *line, const char *name, int *tail)
+{
+	char want[160];
+
+	snprintf(want, sizeof(want), "Distrobox '%s' successfully created.",
+		 name);
+	if (!strcmp(line, want) || !strcmp(line, "To enter, run:")) {
+		*tail = 1;
+		return 1;
+	}
+	if (*tail && !*line)
+		return 1;
+	*tail = 0;
+	return 0;
+}
+
+static int run_distrobox_create(const KbArgv *a, const char *name)
+{
+	char buf[4096];
+	size_t len = 0;
+	int fd[2], st, tail = 0, open_line = 0;
+	pid_t pid;
+
+	if (!kb_proc_verbose || pipe(fd) != 0)
+		return kb_run(a);
+	pid = fork();
+	if (pid < 0) {
+		close(fd[0]);
+		close(fd[1]);
+		return kb_run(a);
+	}
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDWR);
+
+		if (null >= 0) {
+			dup2(null, STDIN_FILENO);
+			dup2(null, STDOUT_FILENO);
+			close(null);
+		}
+		dup2(fd[1], STDERR_FILENO);
+		close(fd[0]);
+		close(fd[1]);
+		kb_child_reset_signals();
+		execvp(a->v[0], (char *const *)a->v);
+		_exit(127);
+	}
+	close(fd[1]);
+	for (;;) {
+		ssize_t n = read(fd[0], buf + len, sizeof(buf) - 1 - len);
+		char *nl;
+
+		if (n < 0 && errno == EINTR)
+			continue;
+		if (n > 0)
+			len += (size_t)n;
+		buf[len] = '\0';
+		while ((nl = memchr(buf, '\n', len))) {
+			size_t used = (size_t)(nl - buf) + 1;
+
+			*nl = '\0';
+			strip_csi(buf);
+			if (open_line || !distrobox_tail(buf, name, &tail))
+				fprintf(stderr, "%s\n", buf);
+			open_line = 0;
+			len -= used;
+			memmove(buf, buf + used, len);
+			buf[len] = '\0';
+		}
+		/* A partial line: the end of the stream, a line too long for
+		 * the buffer, or the "Creating" line that waits on the
+		 * container. None of them is a tail line. */
+		if (len && (n <= 0 || len == sizeof(buf) - 1 || open_line ||
+			    !strncmp(buf, "Creating '", 10))) {
+			strip_csi(buf);
+			fputs(buf, stderr);
+			fflush(stderr);
+			open_line = 1;
+			len = 0;
+		}
+		if (n <= 0)
+			break;
+	}
+	if (open_line)
+		fputc('\n', stderr);
+	close(fd[0]);
+	while (waitpid(pid, &st, 0) < 0)
+		if (errno != EINTR)
+			return -1;
+	return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
+}
+
 int box_create(const Profile *p)
 {
 	KbArgv a = {0};
@@ -1125,6 +1468,10 @@ int box_create(const Profile *p)
 	kb_argv_add(&a, "--image");
 	kb_argv_add(&a, p->image);
 	kb_argv_add(&a, "--yes");
+	/* No menu entry of distrobox's: `kdos-box remove` is a `podman rm`,
+	 * which leaves the entry distrobox would write naming a box that is
+	 * gone, and a box's launchers are `kdos-box export`'s. */
+	kb_argv_add(&a, "--no-entry");
 	if (p->netns)
 		kb_argv_add(&a, "--unshare-netns");
 	if (p->ipc)
@@ -1204,7 +1551,7 @@ int box_create(const Profile *p)
 		kb_argv_add(&a, flags);
 	}
 	kb_argv_end(&a);
-	return kb_run(&a);
+	return run_distrobox_create(&a, p->name);
 }
 
 /*
@@ -1230,15 +1577,29 @@ int box_setup_done(const char *box)
 	return done;
 }
 
+/* Up to `seconds` for container_setup_done, holding this process's wait mark
+ * (`<box>.wait.<pid>`) the whole time, so an explicit stop of the box ends the
+ * wait (EVERY PROCESS OF A BOX). 0 when the box is ready, -1 otherwise. */
 int box_wait_ready(const char *box, int seconds)
 {
-	int i;
-	for (i = 0; i < seconds * 5; i++) {
-		if (box_setup_done(box))
-			return 0;
+	char mark[MAX_LINE], rec[32];
+	int have, rc = -1;
+
+	have = wait_mark_path(box, (long)getpid(), mark, sizeof(mark)) == 0;
+	if (have) {
+		snprintf(rec, sizeof(rec), "%llu\n", proc_start((long)getpid()));
+		have = kb_write_file(mark, rec) == 0;
+	}
+	for (int i = 0; i < seconds * 5; i++) {
+		if (box_setup_done(box)) {
+			rc = 0;
+			break;
+		}
 		usleep(200000);
 	}
-	return -1;
+	if (have)
+		unlink(mark);
+	return rc;
 }
 
 int box_list(void)

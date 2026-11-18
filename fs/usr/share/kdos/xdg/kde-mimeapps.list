@@ -25,7 +25,10 @@
 # so a row here is what makes the choice. An id counts only while its entry is
 # installed; a row whose application is removed falls through in silence,
 # which is why mimecheck.py also fails on an id the built image does not
-# carry. /etc/xdg/mimeapps.list holds the few handlers that are not a desktop
+# carry. A row may name several, best first: the first one installed opens
+# the file, which lets a type whose choice is installed from the binhost
+# name an application on the installation medium behind it.
+# /etc/xdg/mimeapps.list holds the few handlers that are not a desktop
 # application's, and names no type this file names. A person's own choice
 # lands in ~/.config/mimeapps.list and outranks both.
 #
@@ -175,29 +178,32 @@ image/wmf=org.inkscape.Inkscape.desktop
 # claim it too, and only preview it.
 image/x-xcf=gimp.desktop
 
-# Video: Haruna. Dragon is installed and claims the same types, and the
-# three that close the list besides.
-video/mp4=org.kde.haruna.desktop
-video/matroska=org.kde.haruna.desktop
-video/webm=org.kde.haruna.desktop
-video/mpeg=org.kde.haruna.desktop
-video/quicktime=org.kde.haruna.desktop
-video/ogg=org.kde.haruna.desktop
-video/vnd.avi=org.kde.haruna.desktop
-video/mp2t=org.kde.haruna.desktop
-video/x-ms-wmv=org.kde.haruna.desktop
-video/x-theora+ogg=org.kde.haruna.desktop
-video/x-ogm+ogg=org.kde.haruna.desktop
-video/x-flv=org.kde.haruna.desktop
-video/3gpp=org.kde.haruna.desktop
-application/vnd.ms-asf=org.kde.haruna.desktop
-video/vnd.rn-realvideo=org.kde.haruna.desktop
-video/x-flic=org.kde.haruna.desktop
+# Video: Haruna, then VLC. Haruna is installed from the binhost and the
+# installation medium does not carry it; VLC is on the medium for Elisa,
+# which plays through libvlc. vlc.desktop declares no type, so its place
+# behind Haruna on each row is the only thing that offers it. Dragon claims
+# the same types, and the three that close the list besides.
+video/mp4=org.kde.haruna.desktop;vlc.desktop;
+video/matroska=org.kde.haruna.desktop;vlc.desktop;
+video/webm=org.kde.haruna.desktop;vlc.desktop;
+video/mpeg=org.kde.haruna.desktop;vlc.desktop;
+video/quicktime=org.kde.haruna.desktop;vlc.desktop;
+video/ogg=org.kde.haruna.desktop;vlc.desktop;
+video/vnd.avi=org.kde.haruna.desktop;vlc.desktop;
+video/mp2t=org.kde.haruna.desktop;vlc.desktop;
+video/x-ms-wmv=org.kde.haruna.desktop;vlc.desktop;
+video/x-theora+ogg=org.kde.haruna.desktop;vlc.desktop;
+video/x-ogm+ogg=org.kde.haruna.desktop;vlc.desktop;
+video/x-flv=org.kde.haruna.desktop;vlc.desktop;
+video/3gpp=org.kde.haruna.desktop;vlc.desktop;
+application/vnd.ms-asf=org.kde.haruna.desktop;vlc.desktop;
+video/vnd.rn-realvideo=org.kde.haruna.desktop;vlc.desktop;
+video/x-flic=org.kde.haruna.desktop;vlc.desktop;
 
 # Sound that comes in a video container or a film's audio track, WebM audio
-# and AC-3, goes to Haruna with the video; mpv claims both too.
-audio/webm=org.kde.haruna.desktop
-audio/ac3=org.kde.haruna.desktop
+# and AC-3, goes to Haruna or VLC with the video; mpv claims both too.
+audio/webm=org.kde.haruna.desktop;vlc.desktop;
+audio/ac3=org.kde.haruna.desktop;vlc.desktop;
 
 # Music: Elisa. Strawberry is installed and claims every type here.
 # *.ogg and *.opus are globbed by several Ogg subtypes of equal weight, and

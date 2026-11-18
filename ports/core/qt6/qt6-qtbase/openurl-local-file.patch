@@ -1,0 +1,41 @@
+Subject: Open a local file URL without the OpenURI portal
+
+QDesktopServices::openUrl() sends a local file that has a fragment or a
+query, such as file:///usr/share/doc/HTML/en/kdos/04-programs/kdos-settings.html#kdos-look,
+to the platform's openUrl() rather than openDocument(), so that the
+fragment is kept, and openUrl() hands every URL to the desktop portal's
+OpenURI while a portal is running. OpenURI refuses a file: URI, and its
+answer comes on the request object after the call has returned success,
+so Qt never falls back and nothing opens: not a Help button that names a
+section of a local HTML handbook, and not Qt.openUrlExternally() on a
+local page at an anchor.
+
+With this change a local file outside a sandbox goes to the launcher,
+xdg-open, with its fragment; in a Plasma session that runs kde-open,
+which opens the page in the default browser at the section. Inside a
+Flatpak or Snap sandbox, where no launcher reaches the host, it goes to
+the portal's OpenFile, which takes the file without its fragment.
+
+To be offered upstream against qt/qtbase.
+
+--- a/src/gui/platform/unix/qdesktopunixservices.cpp
++++ b/src/gui/platform/unix/qdesktopunixservices.cpp
+@@ -568,6 +568,18 @@
+ 
+ bool QDesktopUnixServices::openUrl(const QUrl &url)
+ {
++    // The portal's OpenURI refuses a file: URI and answers asynchronously, after the call has
++    // returned success, so a local file never goes there. In a sandbox it is opened through
++    // OpenFile, which takes the file without its fragment or query; outside one the launcher
++    // is given the whole URL, fragment included.
++    if (url.isLocalFile()) {
++#  if QT_CONFIG(dbus)
++        if (!m_hasNoPortal && checkNeedPortalSupport())
++            return runWithXdgActivationToken(&QDesktopUnixServices::openDocumentWithPortal, url);
++#  endif
++        return runWithXdgActivationToken(&QDesktopUnixServices::openUrlWithoutPortal, url);
++    }
++
+     if (!m_hasNoPortal)
+         return runWithXdgActivationToken(&QDesktopUnixServices::openUrlWithPortal, url);
+ 

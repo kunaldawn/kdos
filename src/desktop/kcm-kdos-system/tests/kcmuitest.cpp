@@ -25,11 +25,14 @@
 #include <KQuickConfigModuleLoader>
 
 #include <QAccessible>
+#include <QColor>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QProcess>
+#include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -146,6 +149,81 @@ bool showsText(QQuickItem *item, const QString &text)
     }
     return false;
 }
+/* How many visible items under `item` have a text property containing
+ * `text`. */
+int countShown(QQuickItem *item, const QString &text)
+{
+    if (!item->isVisible()) {
+        return 0;
+    }
+    int n = item->property("text").toString().contains(text) ? 1 : 0;
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        n += countShown(child, text);
+    }
+    return n;
+}
+
+/* Whether a visible item under `item` has exactly `name` as its accessible
+ * name, of any role. */
+bool namesExactly(QQuickItem *item, const QString &name)
+{
+    if (!item->isVisible()) {
+        return false;
+    }
+    if (QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(item)) {
+        if (!iface->state().invisible && iface->text(QAccessible::Name) == name) {
+            return true;
+        }
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        if (namesExactly(child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The item named `name` in the visual tree under `item`, or null. A
+ * popup's dim is a child of the window's overlay, not of the popup. */
+QQuickItem *itemNamed(QQuickItem *item, const QString &name)
+{
+    if (item->objectName() == name) {
+        return item;
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        if (QQuickItem *found = itemNamed(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+/* Whether a visible item under `item` has an accessible name starting with
+ * `prefix`, of any role. */
+bool namesStartingWith(QQuickItem *item, const QString &prefix)
+{
+    if (!item->isVisible()) {
+        return false;
+    }
+    if (QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(item)) {
+        if (!iface->state().invisible && iface->text(QAccessible::Name).startsWith(prefix)) {
+            return true;
+        }
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        if (namesStartingWith(child, prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const QString RollbackHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart; if it does not start properly, the computer goes back by itself."_s;
+const QString OneSlotHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. On this computer it is installed from a terminal: “sudo kdos update fetch” downloads it and “sudo kdos update apply” installs it. It is written over the running system and takes effect after a restart, and there is no previous version to go back to if it does not start properly."_s;
 }
 
 class KcmUiTest : public QObject
@@ -246,6 +324,196 @@ private Q_SLOTS:
          * the armed trial replaces the prepared update's banner. */
         QVERIFY2(controls >= 4, qPrintable(u"only %1 controls found"_s.arg(controls)));
         QVERIFY2(missing.isEmpty(), qPrintable(u"controls without an accessible name: "_s + missing.join(u", "_s)));
+    }
+
+    /* A slot an update stopped writing shows its state and no start button.
+     * Runs after the test above, on the same fixture directory, from the
+     * fixture's boot state with no trial armed. */
+    void incompleteSlotHasNoStartButton()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        QFile::remove(m_dir.path() + u"/bootstate"_s);
+        QVERIFY(QFile::copy(QStringLiteral(FIXTURES_DIR) + u"/ab/bootstate"_s, m_dir.path() + u"/bootstate"_s));
+        QFile unfilled(m_dir.path() + u"/unfilled"_s);
+        QVERIFY(unfilled.open(QIODevice::WriteOnly));
+        unfilled.write("b\n");
+        unfilled.close();
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+        QTRY_VERIFY(kcm->property("configured").toBool());
+        const auto slotList = kcm->property("slotList").value<QList<QObject *>>();
+        QTRY_COMPARE(slotList.at(1)->property("state").toString(), u"incomplete"_s);
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QQuickWindow window;
+        window.resize(1100, 1400);
+        ui->setParentItem(window.contentItem());
+        ui->setSize(window.size());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(200);
+
+        QTRY_VERIFY(showsText(ui, u"Incomplete"_s));
+        /* The state says what the slot is, and the one sentence below it
+         * says why: the reason is not repeated in the state. */
+        QVERIFY(namesExactly(ui, u"Slot B state: Incomplete"_s));
+        QCOMPARE(countShown(ui, u"Incomplete"_s), 1);
+        QCOMPARE(countShown(ui, u"An update stopped while writing"_s), 1);
+        QVERIFY(showsText(ui, u"An update stopped while writing this slot. The next update writes it again."_s));
+        /* No Version row: the record's version is the system the update
+         * began overwriting. Slot A's row stays. */
+        QVERIFY(!namesStartingWith(ui, u"Slot B version:"_s));
+        QVERIFY(namesStartingWith(ui, slotList.at(0)->property("title").toString() + u" version:"_s));
+        QVERIFY(showsText(ui, RollbackHelp));
+        QVERIFY(!showsText(ui, OneSlotHelp));
+        QStringList names;
+        controlNames(window.contentItem(), &names);
+        for (const QString &n : std::as_const(names)) {
+            QVERIFY2(!n.startsWith(u"Start "_s), qPrintable(names.join(u", "_s)));
+        }
+        QFile::remove(m_dir.path() + u"/unfilled"_s);
+    }
+
+    /* The Start prompt holds its width with the subtitle wrapped, however
+     * long the sentence: Kirigami's Dialog takes preferredWidth as a floor
+     * under the unwrapped subtitle, so only maximumWidth bounds it. Runs
+     * after the test above, from the fixture's boot state. */
+    void startPromptIsNarrow()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        QFile::remove(m_dir.path() + u"/unfilled"_s);
+        QFile::remove(m_dir.path() + u"/bootstate"_s);
+        QVERIFY(QFile::copy(QStringLiteral(FIXTURES_DIR) + u"/ab/bootstate"_s, m_dir.path() + u"/bootstate"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+        QTRY_VERIFY(kcm->property("configured").toBool());
+        const auto slotList = kcm->property("slotList").value<QList<QObject *>>();
+        QTRY_VERIFY(slotList.at(1)->property("bootable").toBool());
+
+        QQmlComponent units(engine.get());
+        units.setData("import QtQml\nimport org.kde.kirigami as Kirigami\nQtObject { readonly property real g: Kirigami.Units.gridUnit }\n", QUrl());
+        std::unique_ptr<QObject> u(units.create());
+        QVERIFY2(u, qPrintable(units.errorString()));
+        const qreal bound = u->property("g").toReal() * 24;
+        QVERIFY(bound > 0);
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QQuickWindow window;
+        window.resize(1900, 1000);
+        ui->setParentItem(window.contentItem());
+        ui->setSize(window.size());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(200);
+
+        auto *dialog = ui->findChild<QObject *>(u"startDialog"_s);
+        QVERIFY(dialog);
+        dialog->setProperty("slotInfo", QVariant::fromValue(slotList.at(1)));
+        QVERIFY(QMetaObject::invokeMethod(dialog, "open"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QVERIFY(dialog->property("subtitle").toString().size() > 150);
+        const qreal width = dialog->property("width").toReal();
+        QVERIFY2(width > 0 && width <= bound, qPrintable(u"prompt %1 wide, bound %2"_s.arg(width).arg(bound)));
+
+        /* The prompt is a modal window of its own over the KCM's window,
+         * so input to the rest of System Settings, which is outside the
+         * KCM's scene, waits until it is answered. */
+        QCOMPARE(dialog->property("popupType").toInt(), 1 /* QQuickPopup::Window */);
+        QWindow *prompt = QGuiApplication::modalWindow();
+        QVERIFY2(prompt, "the prompt does not block the program's other windows");
+        QVERIFY(prompt != &window);
+        QCOMPARE(prompt->transientParent(), &window);
+        QCOMPARE(prompt->modality(), Qt::ApplicationModal);
+        auto *card = dialog->property("contentItem").value<QQuickItem *>();
+        QVERIFY(card);
+        QCOMPARE(card->window(), prompt);
+
+        /* The page behind is dimmed by a wash of the background that
+         * shows on a dark scheme, and the prompt has an edge of its own.
+         * Whether that edge can be seen on a given scheme is a matter for
+         * a screenshot; this holds only that it is drawn and is not the
+         * fill's colour. */
+        QVERIFY(dialog->property("modal").toBool());
+        QQuickItem *dim = itemNamed(window.contentItem(), u"startDialogDim"_s);
+        QVERIFY2(dim, "the prompt has no dim of its own");
+        QTRY_VERIFY(dim->isVisible() && dim->opacity() > 0.99);
+        QVERIFY(dim->property("color").value<QColor>().alphaF() >= 0.5);
+        auto *frame = dialog->property("background").value<QQuickItem *>();
+        QVERIFY(frame);
+        QCOMPARE(frame->objectName(), u"startDialogFrame"_s);
+        const auto *pen = frame->property("border").value<QObject *>();
+        QVERIFY(pen);
+        QVERIFY(pen->property("width").toReal() >= 1);
+        const QColor ground = frame->property("color").value<QColor>();
+        const QColor edge = pen->property("color").value<QColor>();
+        QVERIFY2(edge.rgb() != ground.rgb(), qPrintable(u"edge %1 on ground %2"_s.arg(edge.name(), ground.name())));
+        /* In a window of its own the frame is square: a rounded one would
+         * show the window's fill at its corners. */
+        QCOMPARE(frame->window(), prompt);
+        QCOMPARE(frame->property("radius").toReal(), 0.0);
+        QMetaObject::invokeMethod(dialog, "close");
+    }
+
+    /* Installed with one system slot: the one-version message, the running
+     * slot's form beside it, and no form for the slot that does not exist.
+     * Runs on the same fixture directory, before the live medium removes
+     * the boot state. */
+    void oneSlotInstallShowsOneForm()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        QFile::remove(m_dir.path() + u"/bootstate"_s);
+        QFile boot(m_dir.path() + u"/bootstate"_s);
+        QVERIFY(boot.open(QIODevice::WriteOnly));
+        boot.write("slot_a   = 5f0c8a1e-2b44-4c1d-9a51-0d7e3b9c1a01\n"
+                   "slot_b   = \n"
+                   "active   = a\n");
+        boot.close();
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+        QTRY_VERIFY(kcm->property("configured").toBool());
+        const auto slotList = kcm->property("slotList").value<QList<QObject *>>();
+        QTRY_VERIFY(slotList.at(0)->property("present").toBool());
+        QVERIFY(!slotList.at(1)->property("present").toBool());
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QQuickWindow window;
+        window.resize(1100, 1400);
+        ui->setParentItem(window.contentItem());
+        ui->setSize(window.size());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(200);
+
+        QTRY_VERIFY(showsText(ui, u"This computer has one version of KDOS"_s));
+        QVERIFY(showsText(ui, slotList.at(0)->property("title").toString()));
+        QVERIFY(!showsText(ui, u"Nothing installed"_s));
+        QVERIFY(!showsText(ui, u"Slot B"_s));
+        /* Nothing on the page promises a rollback the machine cannot do. */
+        QVERIFY(showsText(ui, OneSlotHelp));
+        QVERIFY(!showsText(ui, RollbackHelp));
+        /* Discover cannot install a system update with no second slot, so
+         * the page offers no button to it. */
+        QQuickItem *discover = itemNamed(ui, u"openUpdatesButton"_s);
+        QVERIFY(discover);
+        QVERIFY(!discover->isVisible());
     }
 
     /* The live medium: the page names the live session, offers the

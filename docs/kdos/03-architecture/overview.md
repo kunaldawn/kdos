@@ -453,7 +453,7 @@ See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 | `/var/lib/kdos/packs/mnt` | Mount points for packs | `kdos-packd` |
 | `/var/lib/kdos/packs/pack-manifest` | Every graft made (a pack's files placed where a consumer looks for them), so removal is exact; in the store, so both slots read one record | `kdos-packd` |
 | `/var/lib/kdos/fs-manifest` | Every path the build's `fs/` tree provided | The build |
-| `/var/lib/kdos/apps-pending` | Applications chosen at install time and not yet built | `kinstall`; read by `kdos app install --pending` |
+| `/var/lib/kdos/apps-pending` | Software (applications or groups) chosen at install time and not yet built | `kinstall`; read by `kdos app install --pending` |
 | `/var/lib/kdos/update.json` | The result of the last update check: what is offered, by which lane | The `update-check` timer and `kdos-sysupdated`, through `kdos update check` |
 | `/var/lib/kdos/update.state` | The outcome of the last update fetch and apply | `kdos update` |
 | `/var/lib/kdos/binhost`, `/var/lib/kdos/image` | The verified binary-host index and the packages downloaded for an update; the slot-image manifest on offer, and the record of the image this root was written from | `kdos update` |

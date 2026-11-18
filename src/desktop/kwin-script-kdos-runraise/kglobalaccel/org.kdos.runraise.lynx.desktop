@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Lynx in a New Window
-Comment=Open Lynx in a new terminal window. The KDOS Raise key brings back the one already open.
+Name=lynx in a New Window
+Comment=Open lynx in a new terminal window. The KDOS Raise key brings back the one already open.
 Exec=konsole --hold -p tabtitle=lynx -e lynx
 Icon=utilities-terminal

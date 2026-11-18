@@ -124,7 +124,7 @@ about what it produces:
 | `KDOS_PKG_STORE=1` | Turns on the package store, default `0`: a port whose recipe, environment and dependencies' exact bytes match a package built before is installed from `build/pkgstore` instead of being built, and every package built is stored. `check` builds every hit anyway and logs any difference to `build/logs/pkgstore-check.log`. Use `0` or `check` for a release. See [The package store](../03-architecture/packaging.md#the-package-store) |
 | `KDOS_PKG_STORE_MAX=SIZE` | The size `70_image` evicts the store down to, least recently used first, default `60G` |
 
-Eight variables change what the build produces. Each is passed by the `Makefile` and
+Nine variables change what the build produces. Each is passed by the `Makefile` and
 forwarded into the chroot by `script/chroot/exec.sh`:
 
 | Variable | Effect |
@@ -137,6 +137,7 @@ forwarded into the chroot by `script/chroot/exec.sh`:
 | `KDOS_ISO_GATE=0` | Lets a base ISO larger than `KDOS_ISO_MAX` through, as a developer image; the default `1` fails `110_iso.sh` on it and prints the [image ledger](build-system.md#the-image-ledger-and-the-size-gate)'s top twenty. A `KDOS_IMAGE=full` ISO is never gated. Any value but `0` or `1` stops `make build` |
 | `KDOS_ISO_MAX=BYTES` | The release limit the gate enforces, default `1992294400` (1,900 MiB, one GitHub release asset). Anything but a positive number stops `make build` |
 | `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kpkg binhost` and `kdos update install` install from. It is the release's package repository: every package the base ISO leaves out is installed from it. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
+| `KDOS_GIT_TAG=<tag>` | The release the image names, empty by default. Empty takes the one release tag on `HEAD`, a tag named `v<digit>…` (`git tag --points-at HEAD --list 'v[0-9]*'`), lightweight or annotated; an archive tag (`sources-N`, `src-*`, `packs-*`) never names a release, a `HEAD` with several release tags needs this to pick one, and `none` builds a tagged commit as an unreleased one. On a clean checkout, untracked files included, `70_image/105_ports.sh` writes it into `/ports/TREE` as `version <tag>`, which is how a machine installed from the image finds the release's binhost. `make build` stops before the container starts when `HEAD` has several release tags and none is picked, when the tag is not a release tag on `HEAD`, or when it is outside the names `ports/publish --release` accepts; the messages are in [The release tag](build-system.md#the-release-tag) |
 
 For example, `make build KDOS_ISO_SOURCES=1`.
 
@@ -188,7 +189,7 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `release` | Create or update `TAG`'s system release as a draft: the ISO, `SHA256SUMS`, its signature and `sources.sha256` | Network, the archive token, a finished build |
 | `release-publish` | Make `TAG`'s release public and Latest | Network, the archive token |
 | `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler when your compiler did not build it | A C compiler |
-| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 192 GB by default: above the install `kinstall` checks the disk against and the roughly 21 GiB the two A/B slots need at the least, so an install to it gets both, with room in each slot for native groups) | QEMU, OVMF |
+| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 192 GB by default: above the install `kinstall` checks the disk against and the least the two A/B slots need, about 24.5 GiB with the default 4 GiB swap and 20.5 GiB with none, so an install to it gets both, with room in each slot for native groups) | QEMU, OVMF |
 | `rundisk` | Boot `build/kdos.qcow2` instead of the ISO | QEMU, OVMF, an existing disk image |
 | `run-hw` | Boot the ISO with hardware-accelerated graphics | Docker, the NVIDIA Container Toolkit |
 | `rundisk-hw` | The same, from the disk image | Docker, the NVIDIA Container Toolkit |
@@ -685,7 +686,12 @@ step is named, as in the installer row above.
 writes one manual page for every `kdos-*` command in [the command index](../06-reference/command-index.md),
 and for the commands of ours named without the prefix (`kpkg`, `kpkgadd`, `kpkgdel`, `kpkgbuild`,
 `kpkgdepends`, `ksvc`, `service`, `kinstall`, `xdg-terminal-exec`, listed in `mkbook.py`), whose
-DESCRIPTION is the book section that command's row links to. Its directory holds two
+DESCRIPTION is the book section that command's row links to. Its NAME line, which `whatis` and
+`apropos` print, is that row's description cell as plain ASCII text: lowdown renders every manual
+page with smart typography off (`--out-no-smarty`), the markdown specials in the cell are escaped,
+and typographic dashes, quotes and ellipses become their ASCII forms, so `--json` and
+`$XDG_RUNTIME_DIR` read as typed, and each description cell has to make sense read alone, with no
+neighbouring row. Its directory holds two
 symbolic links, `kdos` to `docs/kdos` and `screenshots` to `docs/screenshots`, and the recipe hash
 follows them, so an edit anywhere in the book or its pictures changes `kdos-doc`'s hash and the
 next `41_system` run rebuilds it with no `--rebuild`. An edit elsewhere under `docs/` does not.
@@ -697,7 +703,8 @@ directory holding `kdos/` and `screenshots/`; the published site is made that wa
 
 *KDOS from Scratch* is a port the same way. `src/system/kdos-kfs`, also in `41_system`, renders
 `docs/kfs` with pandoc and typst and installs the HTML under `/usr/share/doc/kfs` with `kfs.pdf`
-beside it. Its directory holds `docs`, a link to `docs/kfs`, and `book`, a link to `script/book`,
+beside it. `ports/base` names `kdos-doc` and not `kdos-kfs`, so the image carries the KDOS book
+alone, and a machine adds the second with `sudo kdos update install kdos-kfs`. Its directory holds `docs`, a link to `docs/kfs`, and `book`, a link to `script/book`,
 so an edit to either book's pages rebuilds only its own port, and an edit to the renderer rebuilds
 `kdos-kfs`. A package page is generated from its recipe, its `kfs.md` and the phase lists, which no
 link reaches, and Parts I to IV show lines of the step scripts, the `Makefile` and the
@@ -870,16 +877,34 @@ with no key takes no tree.
 
 ```sh
 kpkg keygen build/keys/kdos-release          # once; build/keys survives both cleans
-git tag <tag> && git push origin <tag>
+$EDITOR ports/RELEASE && git add ports/RELEASE && git commit -m "RELEASE: <tag>"   # this version's notes, at most 16 KiB
+git tag <tag> && git push origin <tag>        # exactly one release tag (v<digit>…) on the commit
 git switch --detach <tag>                     # build from the tag, not the working tree
+git status --porcelain                        # must print nothing: untracked files count
 make fetch && make build KDOS_MAKE_BINHOST=1   # the base ISO, and the binhost in build/binhost with its index;
                                                # fails when the ISO passes 1,900 MiB
+grep 'names release' build/logs/70_image/*_ports.sh.log    # /ports/TREE names release <tag>
 script/release-image.sh --root build/fs --upper build/image-upper --out build/release/<tag>/image \
     --key build/keys/kdos-release.key --version <tag> --prev <an earlier image directory>   # as root
-make release TAG=<tag> PUBLISH_ARGS=--dry-run   # the plan: no network, no token
+make release TAG=<tag> PUBLISH_ARGS=--dry-run   # the plan and build/release/<tag>/notes.md: no network, no token
 make release TAG=<tag>                          # a DRAFT release with every asset
 make release-publish TAG=<tag>                  # make it public and Latest
 ```
+
+Five conditions make the build a release:
+
+1. `ports/RELEASE` holds the notes of the version being built, in Markdown with no top-level
+   title, at most 16 KiB, committed in the tagged commit. `105_ports.sh` copies it to
+   `/ports/RELEASE`, where `kdos update notes` and What's New read it, and stops the build with
+   `FATAL: /ports/RELEASE is missing` without it or `FATAL: ports/RELEASE is over 16 KiB; kdos
+   update notes shows only the first 16 KiB` when it is larger, since nothing reads past 16 KiB.
+2. The commit carries exactly one release tag (`v<digit>…`), or `KDOS_GIT_TAG=<tag>` names the one
+   that is the release.
+3. The checkout is clean, untracked files included: only then does the image's `/ports/TREE` name
+   the release, as `version <tag>`, and a machine find the release's binhost with no `binhost =`
+   (see [The release tag](build-system.md#the-release-tag)).
+4. The `70_image` log says `/ports/TREE names release <tag>`.
+5. `ports/publish --release` is given the same tag; it refuses an ISO that does not name it.
 
 The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`. A
 tag that is also a branch name on `origin` is refused: GitHub creates its draft untagged, so a rerun
@@ -912,16 +937,25 @@ above. Under `KDOS_IMAGE=full` that root is `build/fs`.
    `kdos-<tag>.iso`. An ISO larger than `$KDOS_PART_SIZE` bytes (1,900 MiB) is cut into
    `kdos-<tag>.iso.part01`, `.part02`, … under `build/release/<tag>/`, since GitHub refuses an
    asset of 2 GiB. The parts are deleted when the run ends and cut again on the next.
-4. Makes `build/release/<tag>/kdos-ports.tar.xz`, the tag's recipe tree as an image's `/ports`
+4. Checks the ISO and the tag against each other before anything is hashed or sent. It reads the
+   ISO's `/ports/TREE` and `/ports/RELEASE` from `system.sfs` in place, with `xorriso` and
+   `unsquashfs`, and needs those two and `xxd`. It refuses an ISO whose `TREE` names another
+   commit, names no release or names another one, since a machine installed from it would never
+   find this release's prebuilt packages; an ISO with no `/ports/RELEASE`; and a tag with no
+   `ports/RELEASE`, or one over 16 KiB. It also works out the disk two slots need for the notes
+   (step 9). Each refusal is a `FAILED` line, and the real run then stops with `ports/publish:
+   <iso> is not a release image of <tag>; build the ISO from a clean checkout of the tag, then run
+   again`; `--dry-run` prints them, goes on, and exits 1.
+5. Makes `build/release/<tag>/kdos-ports.tar.xz`, the tag's recipe tree as an image's `/ports`
    holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`,
-   `ports/groups`, `src/`,
+   `ports/groups`, `ports/RELEASE`, `src/`,
    `docs/` and `script/book`, placed at `script/book` so that `kdos-kfs`'s `book` link resolves, and
    a `TREE` stamp naming the commit, its time and `version <tag>`, as a reproducible tar compressed
    with `xz -9 -T1`. It signs the tree with the release key as `kdos-ports.tar.xz.sig` and checks
-   that signature against the public key. A tag outside letters, digits and `. _ + ~ -`, or longer
-   than 40 characters, is refused before anything else: it names the update releases and is read
+   that signature against the public key. A tag outside letters, digits and `. _ + ~ -`, one that
+   starts with `.` or `-`, or one longer than 40 characters is refused before anything else: it names the update releases and is read
    back from a machine's `/ports/TREE`.
-5. Publishes the updates, when their directories carry a `kdos-update.idx`: the binhost from
+6. Publishes the updates, when their directories carry a `kdos-update.idx`: the binhost from
    `--binhost <dir>` (default `build/binhost`) into public pre-releases `binhost-<tag>-01`,
    `binhost-<tag>-02`, … of at most 1,000 assets each, its files sorted by path, and the slot image
    from `--image <dir>` (default `build/release/<tag>/image`, which must be version `<tag>`) into the
@@ -932,28 +966,39 @@ above. Under `KDOS_IMAGE=full` that root is `build/fs`.
    `build/binhost-key/kdos-binhost.key` is there, the binhost key as well. `kdos update` finds every
    update file through it; see
    [Publishing a release](../03-architecture/packaging.md#publishing-a-release).
-6. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
+7. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
    only its parts are uploaded, each part, `sources.sha256`, the tree, its signature, the release
    index and its signature, and `kdos-release.pub`.
-7. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
+8. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
    `$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`, and its public half is the `.pub` beside
    it, uploaded as `kdos-release.pub`. The signature is checked against that public key before
    anything is uploaded. A missing key stops the run; `--unsigned` releases without the signatures
    and the key, and no machine then takes its tree.
-8. Finds the release among all of the repository's releases, drafts included, and creates it as a
+9. Finds the release among all of the repository's releases, drafts included, and creates it as a
    **draft** named `KDOS <tag>` when there is none. While it is a draft its notes are rewritten on
-   every run: the download, the joining of the parts, the check and the signature check.
-9. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
+   every run, the same text `--dry-run` writes to `build/release/<tag>/notes.md`, in this order:
+   About this release, the tag's `ports/RELEASE` with each of its headings one level down; the live
+   ISO `kdos-<tag>.iso`, which starts logged in as `kdos` (password `kdos`, also root's), and the
+   joining of its parts when there are several; what a machine needs: x86-64, UEFI or BIOS, 4 GB
+   of memory and Secure Boot off, a sentence left out when `ports/RELEASE` has a `What it needs`
+   section of its own, whose place the medium and disk lines then take under Download; the disk two slots
+   need, worked out from the ISO's `system.sfs` and the tag's `src/system/kinstall-core` (the
+   limits and `KI_DISK_MARGIN` of `kinstall-core.h`, and `KI_VOLUME_META_MB` and the default
+   `cfg.swap_mb` of `conf.c`), for the current base about 24.5 GiB with the default 4 GiB swap,
+   20.5 GiB with none and 5.5 GiB for one root, and left out, with a `FAILED` line, when a figure
+   cannot be read; links to the tag's Getting started and Installation guides; the check; and the
+   signature check with OpenSSL 3, below.
+10. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
    `kdos-update.idx` and its `.sig`, `SHA256SUMS`, `SHA256SUMS.sig` and `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
    with the same bytes is kept, so an interrupted run is resumed by running it again. One with
    other bytes stops the run with exit 2; delete it by hand, and only while the release is still a
    draft.
-10. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
+11. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
    release is the latest, and exits 1 with a warning unless the answer is `<tag>`.
 
 The draft is visible only to the repository's writers, so the assets go out together when you
 publish it. Once it is Latest, an installed machine takes its tree the next time someone asks for
-updates: Discover's *Check for updates*, or `kdos update fetch` at a shell. The nightly update
+updates: *Refresh* on Discover's Updates page, or `kdos update fetch` at a shell. The nightly update
 check reads only what is already on the machine and fetches nothing. The archive's `sources-<N>`
 volumes are pre-releases created with `make_latest` false, so none of them ever takes Latest from a
 system release.
@@ -978,16 +1023,40 @@ of them; with `--prev-root` a changed file travels as a zstd patch against the e
 without it whole. `--version <tag>` makes the image the release's, which `ports/publish --release`
 requires. It compiles the image code from this checkout's `src/system/kdos-tools`, the code every
 machine runs to read the image, and verifies the result against the key's public half before it
-ends. `ports/publish --release` publishes the directory as `image-<tag>` (step 5), and the files at
+ends. `ports/publish --release` publishes the directory as `image-<tag>` (step 6), and the files at
 the top of `build/release/<tag>/` are cleared on each run while `image/` is kept, as the next
 release's `--prev`. What a machine does with them is in
 [Packaging](../03-architecture/packaging.md#slot-images).
 
-Someone who downloads the release checks it with:
+Someone who downloads the release checks it, in the directory holding the ISO and `SHA256SUMS`,
+with:
 
 ```sh
-cat kdos-<tag>.iso.part* > kdos-<tag>.iso     # only when the ISO is in parts
 sha256sum -c SHA256SUMS --ignore-missing
+```
+
+A release whose ISO is stored as `kdos-<tag>.iso.part01`, `.part02`, … is joined first, in a
+command of its own, and only then; on a single-file download the shell would empty the ISO before
+`cat` found no part:
+
+```sh
+cat kdos-<tag>.iso.part?? > kdos-<tag>.iso
+```
+
+The signature over `SHA256SUMS` is checked with OpenSSL 3 and `xxd`, on any system, before KDOS
+runs; `<keyid>` is the release's key id, which the notes name:
+
+```sh
+{ printf 302a300506032b6570032100; cut -d' ' -f2 kdos-release.pub; } | xxd -r -p > kdos-release.der
+awk '$2=="<keyid>"{print $3}' SHA256SUMS.sig | xxd -r -p > SHA256SUMS.sig.bin
+openssl pkeyutl -verify -pubin -keyform DER -inkey kdos-release.der -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig.bin
+```
+
+It prints `Signature Verified Successfully`. The key id is the first 16 hex digits of the public
+key's SHA-256, which `cut -d' ' -f2 kdos-release.pub | xxd -r -p | sha256sum | cut -c1-16` prints.
+On a running KDOS the same check is:
+
+```sh
 KPKG_KEYRING=<dir holding kdos-release.pub> kpkg verify-pkg SHA256SUMS
 ```
 

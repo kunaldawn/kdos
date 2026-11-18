@@ -30,7 +30,12 @@
  * BELOW THE PALETTE. Library rows are in the Low category, so a verb or an
  * application is never pushed down by an encyclopedia, and krunnerrc does not
  * name `kdos-library` among the favourites. The library alone is KRunner's
- * single-runner mode, which the palette's `lib <words>` opens.
+ * single-runner mode, which the palette's `lib <words>` opens. A query that
+ * is the whole title of a KDOS settings page (`KDOS Look`) is a request for
+ * that page, which the palette answers (match.c): every library row for it
+ * keeps its order but ranks at most 0.42, so the book's section about the
+ * page never reads as the best answer, and one titled with the page's name
+ * reads `KDOS Look in KDOS book`.
  * ---------------------------------
  */
 
@@ -496,14 +501,58 @@ static void match_places(const RnQuery *q, RnList *out)
 	rn_arg(m, url);
 }
 
+/* Rows `from` on, beside the KDOS settings pages. A row whose text is a
+ * page's Name, whatever was typed, is titled `<name> in <its source>` (the
+ * subtext up to its ` · `): System Settings' own runner lists that page under
+ * its bare Name for a part of it as for the whole, and two rows of one title
+ * read as one answer shown twice. When the query is a page's whole title the
+ * rows are also scaled under the palette's row for it; scaling, not
+ * clamping, keeps the order among them, and a heading's 0.7, the most a row
+ * of words reaches, becomes 0.42. The pages are read once per call, not
+ * once per row: a keystroke can bring dozens of rows. */
+static void below_settings(const RnQuery *q, RnList *out, int from)
+{
+	RnSetting pages[RN_SETTINGS_MAX];
+	int np, whole;
+
+	if (from >= out->n)
+		return;
+	np = rn_settings_load(pages, RN_SETTINGS_MAX);
+	whole = rn_settings_title(q, pages, np) != NULL;
+	for (int i = from; i < out->n; i++) {
+		RnMatch *m = &out->v[i];
+		const RnSetting *p = rn_settings_find(pages, np, m->text);
+
+		if (whole) {
+			m->catrel = RN_CAT_LOW;
+			m->rel *= 0.6;
+		}
+		if (p) {
+			const char *dot = strstr(m->subtext, " · ");
+			int sl = dot ? (int)(dot - m->subtext)
+				     : (int)strlen(m->subtext);
+
+			if (sl)
+				snprintf(m->text, sizeof(m->text), "%s in %.*s",
+					 p->name, sl, m->subtext);
+			else
+				snprintf(m->text, sizeof(m->text),
+					 "%s in the library", p->name);
+		}
+	}
+}
+
 void rn_library_match(const RnQuery *q, RnList *out)
 {
+	int from = out->n;
+
 	if (!q->nw)
 		return;
 	match_places(q, out);
 	match_books(q, out);
 	match_man(q, out);
 	rn_zeal_match(q, out);
+	below_settings(q, out, from);
 }
 
 /* ── the servers ───────────────────────────────────────────────────────── */
@@ -745,11 +794,13 @@ static void kolibri_rows(RnAsk *a, RnList *out)
 
 void rn_library_answer(RnAsk *a, const RnQuery *q, RnList *out)
 {
-	(void)q;
+	int from = out->n;
+
 	if (a->kind == RN_ASK_KIWIX)
 		kiwix_rows(a, out);
 	else
 		kolibri_rows(a, out);
+	below_settings(q, out, from);
 }
 
 void rn_library_reset(void)

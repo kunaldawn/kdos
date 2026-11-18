@@ -1,0 +1,31 @@
+Subject: sysupdate: give the Licenses field license objects
+
+ApplicationPage reads each entry of licenses() as an object with a name,
+a URL and whether the license is free, the shape AppStreamUtils::licenses()
+builds from a component. The sysupdate resource returns its project and
+metadata licenses as bare SPDX strings, which the page reads as nothing,
+so the Licenses field of a system update stays empty. Return
+AppStreamUtils::licenses() of the component instead.
+
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
+@@ -14,6 +14,8 @@
+ #include <libdiscover_systemdsysupdate_debug.h>
+ #include <sysupdate1.h>
+ 
++#include <appstream/AppStreamUtils.h>
++
+ #include <QNetworkAccessManager>
+ #include <QNetworkReply>
+ 
+@@ -151,7 +153,9 @@
+ 
+ QJsonArray SystemdSysupdateResource::licenses()
+ {
+-    return QJsonArray({m_component.projectLicense(), m_component.metadataLicense()});
++    // The page's Licenses field reads the license objects AppStreamUtils
++    // builds (name, url, whether it is free), not bare SPDX strings.
++    return AppStreamUtils::licenses(m_component);
+ }
+ 
+ QString SystemdSysupdateResource::installedVersion() const

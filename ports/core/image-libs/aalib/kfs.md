@@ -34,6 +34,10 @@ gst-plugins-good, gimp and gphoto2 link it. The package also installs aalib's ow
 - `m4-quote.patch` — quotes the macro name in `aalib.m4`'s `AC_DEFUN(AM_PATH_AALIB, ...)`, so `aclocal` in a project that uses the macro does not warn about an underquoted definition.
 - `ncurses-opaque-window.patch` — reads the curses screen size with `getmaxx(stdscr)` and `getmaxy(stdscr)` instead of `stdscr->_maxx` and `_maxy`: ncurses' `WINDOW` is opaque, so the fields do not compile.
 
+`curses-resize.patch` is to be offered upstream. It is what lets a program follow a terminal
+resize: [kdos-bb](#port-kdos-bb) calls `aa_resize()` at the start of each scene and takes the new
+size there.
+
 ## Notes
 
 After the install, `build.sh` reads the dynamic section of `libaa.so.1` and fails unless it names

@@ -33,10 +33,17 @@
 #                          needs were recorded has no record and is counted
 #                          as unmeasured, never failed; an edge nothing in
 #                          either tree provides is counted, not failed.
+#   binhost N: lines       under KDOS_MAKE_BINHOST=1, a current package
+#                          stanza of /kdos/build/binhost/PACKAGES (one with
+#                          an E: and no O:) that carries no `N:` line: its
+#                          package has no run-time needs record here, so
+#                          `kdos update install` would keep every build-only
+#                          dependency of it (010_binhost.sh). Fixed by
+#                          rebuilding that port.
 #
 # EVERY CHECK RUNS BEFORE THE STEP DECIDES, so one build prints every finding
 # instead of the first check's. A finding of linkcheck, entrycheck or the
-# base's needs, or an unowned file under those four directories, stops the
+# base's needs, a binhost stanza with no N:, or an unowned file under those four directories, stops the
 # build here: the ISO is not written from a tree that fails them. Each needs
 # only this phase to re-run once the recipe or ports/base is fixed.
 #
@@ -72,8 +79,26 @@ else
         --full /kdos/build/fs || rc=1
 fi
 
+if [ "${KDOS_MAKE_BINHOST:-0}" = 1 ] && [ -f /kdos/build/binhost/PACKAGES ]; then
+    echo "[gates] the binhost's measured run-time needs"
+    unmeasured=$(awk -v RS= -F'\n' '{
+        p = ""; e = ""; o = 0; n = 0
+        for (i = 1; i <= NF; i++) {
+            if ($i ~ /^P:/) p = substr($i, 3)
+            else if ($i ~ /^E:/) e = substr($i, 3)
+            else if ($i ~ /^O:/) o = 1
+            else if ($i ~ /^N:/) n = 1
+        }
+        if (p != "" && e != "" && !o && !n) print p
+    }' /kdos/build/binhost/PACKAGES)
+    if [ -n "$unmeasured" ]; then
+        echo "FAIL $(wc -w <<<"$unmeasured") binhost package(s) carry no N: line (no run-time needs record): $(head -c 600 <<<"${unmeasured//$'\n'/ }")"
+        rc=1
+    fi
+fi
+
 if [ "$rc" != 0 ]; then
-    echo "FATAL: the tree fails unowned, linkcheck, entrycheck or the base's run-time needs; see the FAIL and finding lines above." >&2
+    echo "FATAL: the tree fails unowned, linkcheck, entrycheck, the base's run-time needs or the binhost's N: lines; see the FAIL and finding lines above." >&2
     exit 1
 fi
 echo "[gates] clean"

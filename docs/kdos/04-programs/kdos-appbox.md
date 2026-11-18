@@ -318,7 +318,12 @@ the image, not the container, so a pack box whose application was never built he
 from it and is covered by the pack walk instead. With no catalogue, or no answer from podman, the
 regeneration is the pack walk alone. The exit status is the number of applications that failed.
 
-`uninstall` removes the box first. A box with a container is stopped with the
+`uninstall` of an id with no container and no `kdos/<id>` image prints `==> <id> is not
+installed` and counts no failure, so it exits 0, and a group's uninstalled members are skipped the
+same way. A profile does not make an id installed: the first uninstall keeps it, so a second
+uninstall of the same id says `not installed` and leaves that profile where it is. A
+`deb:<package>` uninstall follows the same rule over its box `deb.<package>` and its image
+`kdos/deb.<package>`, printing `==> deb:<package> is not installed`. Otherwise `uninstall` removes the box first. A box with a container is stopped with the
 [`kdos-box stop`](#kdos-box) sequence, since a box outlives its application's last window, and then
 removed with `kdos-box remove`; as after any `kdos-box remove`, its profile and
 `~/.local/share/kdos/boxes/<id>` stay. A box installed and never started has a profile and no
@@ -454,7 +459,7 @@ and counts it as a failure.
 | `list` | Every container, its image, its state, and `custom` or `default` depending on whether a profile file exists |
 | `apps` | Every row of both name-to-command tables: the name, `baked` (the system table) or `user`, then the command and, when the row has one, the pack it runs in |
 | `warmup` | Composes and starts the boxes your favourites file names, each with its keeper. See [Warmup and collection](#warmup-and-collection) |
-| `status` | What the pack daemon reports (or `packd : not answering`), then the state of the box named with `-b`, which defaults to the placeholder name `kdos-apps`, and the `state :` lines of the boundary its last launch recorded (see [Confinement](#confinement)) |
+| `status` | What the pack daemon reports, then the state of the box named with `-b`, which defaults to the placeholder name `kdos-apps`, and the `state :` lines of the boundary its last launch recorded (see [Confinement](#confinement)). When the daemon refuses, the first line is its reason, `packd : <reason>`: a user who is neither root nor in `wheel` sees `packd : not permitted`, and a refusal with no reason prints `packd : refused`. `packd : not answering` means only that no daemon answered on the socket, or its reply could not be read |
 
 ### store --selftest
 
@@ -472,7 +477,7 @@ tagline may contain one.
 | Row | Form | Meaning |
 |---|---|---|
 | Pack row | `<kind> <id> <parent> <apt packages …>` | `kind` is `base`, `runtime`, `app` or `data`. `parent` is the row this one is built on, `-` for a base. A package list of `-` means none |
-| `meta` | `meta <id> <name>\|<category>\|<bytes>\|<tagline>` | What Discover and `kdos app` show. Optional: a row with none presents as its own id, category `Other`, size 0 and no tagline. A category written as `A;B;` shows as `A` |
+| `meta` | `meta <id> <name>\|<category>\|<bytes>\|<tagline>` | What Discover and `kdos app` show. Optional: a row with none presents as its own id, category `Other`, size 0 and no tagline. A category written as `A;B;` shows as `A`. A category the catalogue writes is one main desktop-entry category, `AudioVideo`, `Development`, `Education`, `Game`, `Graphics`, `Network`, `Office`, `Science`, `Settings`, `System` or `Utility`, so Discover can show its icon for an application with none of its own; `testing/selftest.sh` refuses any other |
 | `group` | `group <id> <description>`, then `group <id> <member ids …>` | The first line for a group is its description; later lines list members, recognised by the `app.` or `data.` prefix |
 | `snapshot` | `snapshot = auto` \| `<date>` \| `off` | Which Debian archive the packages come from. See [The Debian snapshot](#the-debian-snapshot) |
 | `image` | `image <base-id> <ref>` | A base built `FROM` that image instead of `debian:trixie-slim`. `alpine` is `alpine:3.24.1` |
@@ -515,11 +520,12 @@ In order, because every launcher on the system and the login warmup depend on th
 4. **Say that a box is starting**, if it is not already running: a desktop notification, "Starting
    app", sent in the background so it can never hold up the launch.
 5. **Recover a stuck box.** A box left *stopping* is not startable: a `podman stop` from outside
-   KDOS signals nothing in a box that shares the host's PID namespace (see
-   [kdos-box stop](#kdos-box)), and asking the engine to start it then fails with
+   KDOS that times out on a box sharing the host's PID namespace (see
+   [kdos-box stop](#kdos-box)) leaves it there, and asking the engine to start it then fails with
    "container state improper", which names nothing a person can act on. An application hung in
    uninterruptible I/O can leave a box there for good. The recovery runs the stop sequence with a
-   three-second grace. A pack box still `stopping` after that is removed (with a
+   three-second grace, and reaches the box's applications and its init but not the other launches
+   waiting for the box, so two launches into a stuck box do not end each other. A pack box still `stopping` after that is removed (with a
    "Resetting app container" notification), and nothing is lost: its packs are read-only and its
    writable layer is on disk outside the container, so the next step creates the container again
    over the same stack. Any other box, a store box or one whose profile records no base, keeps its
@@ -553,7 +559,9 @@ In order, because every launcher on the system and the login warmup depend on th
 8. **Wait for readiness.** The box's init prints `container_setup_done` when the user account inside
    exists: `kdos-boxinit` in a pack box or a store box, distrobox's init in a development box. If
    that line is not yet in the container's log, the launch waits for it, for at most 30 seconds.
-   Running a program in a box before that point runs it with no user.
+   Running a program in a box before that point runs it with no user. While it waits the launch
+   holds a mark, `$XDG_RUNTIME_DIR/kdos/boxes/<box>.wait.<pid>` holding its start time, by which
+   [`kdos-box stop`](#kdos-box) finds and ends it; `kdos-box enter` waits the same way.
 9. **Prepare the boundary.** See [Confinement](#confinement). The box's private runtime directory
    is refreshed, the [keeper](#the-keeper) is started if none runs and the launch waits for its
    filtered bus, and then `kdos-boxsock` is asked for the launcher's tagged socket and given five
@@ -610,8 +618,17 @@ The root filesystem path, or the image, comes last, because `create` treats ever
 first positional argument as the container's command.
 
 A development box over somebody else's image is created by `distrobox create --name <box> --image
-<ref> --yes`, with `--unshare-netns`, `--unshare-ipc`, `--unshare-devsys`, `--unshare-process`,
-`--init` and `--home <dir>` added as the profile asks, `/run/cups` bound in when its socket exists,
+<ref> --yes --no-entry`. `--no-entry` stops distrobox writing a menu entry of its own for the box,
+which `kdos-box remove`, a `podman rm`, would leave behind as a dead launcher; a box's launchers
+come only from [`kdos-box export`](#kdos-box-export), `kdos-box remove` deletes them with the box,
+and `kdos-fetch-app` creates its box the same way. distrobox's standard output, which carries its
+`distrobox enter <box>` and a pull's image id, goes to `/dev/null`. Its standard error is read line
+by line with the colour sequences taken out: its closing `Distrobox '<box>' successfully created.`,
+`To enter, run:` and the blank line after it are dropped, and every other line, its errors
+included, reaches the terminal. `Creating '<box>' using image <ref>` is shown while the container
+is being made, and its `[ OK ]` follows when it is. The only way in that the create prints is
+`kdos-box enter <box>`. The create adds `--unshare-netns`, `--unshare-ipc`, `--unshare-devsys`, `--unshare-process`,
+`--init` and `--home <dir>` as the profile asks, `/run/cups` bound in when its socket exists,
 and `/dev/dri` bound in for private devices with `gpu = yes`.
 
 ## Confinement
@@ -1030,6 +1047,9 @@ Resolution runs in four steps:
    own application chooser is asked: one `org.freedesktop.portal.OpenURI.OpenURI` call per file
    with `ask` set, through `gdbus`, which puts up `xdg-desktop-portal-kde`'s chooser and launches
    what is picked through its desktop entry, a boxed application's generated launcher included.
+   The chooser's list of every application, and its search, leave out entries marked
+   `NoDisplay=true` (helpers and settings pages) unless one handles the file's type or is among
+   the request's choices (`xdg-desktop-portal-kde`'s `hidden-entries.patch`).
    Otherwise the first candidate opens. Where `gdbus` is missing or the portal refuses, the first
    candidate opens, because losing a dialog is a worse desktop and losing the click a broken one.
 4. **Run it.** The entry's `Exec` line is split by `kxdg_exec_split()` with field codes
@@ -1097,11 +1117,11 @@ lets one manager serve both.
 | `base` | `pack:<id>`, `image:<ref>` | none (the first compose records the pack) | Which lane creates the box. `kdos-box create` also takes `box:<name>`, which it resolves to that box's own `pack:` or `image:` base and saves in its place; see [create with a box base](#create-with-a-box-base) |
 | `image` | an image reference | none | Shown by `kdos-box list` for a box with no `base`. No launch consults it. `create` with an `image:` base takes the reference from `base`, not from this key |
 | `persistence` | `persistent`, `ephemeral`, `frozen` | `persistent` | Pack lane: `ephemeral` is `--rootfs …:O --rm`, a throwaway overlay over the composed root and the container removed when it stops; `frozen` is `:O` alone, the container kept and its writes not. Store lane: `ephemeral` is `--rm`, and `frozen` is not enforced |
-| `network` | `host`, `private`, `none` | `host` | Pack lane: `--network host`; no flag, which is the rootless private namespace; `--network none`. Store lane: `private` gives `--unshare-netns`, and `none` adds `--network none`, so the box has no interface on either lane |
-| `ipc` | `shared`, `private` | `shared` | `--ipc host` when shared; store lane `--unshare-ipc` when private |
-| `devices` | `shared`, `private` | `shared` | `/dev` and `/sys` bound in when shared; store lane `--unshare-devsys` when private |
-| `processes` | `shared`, `private` | `shared` | `--pid host` when shared; store lane `--unshare-process` when private |
-| `home` | `shared`, `private` | `shared` | Private gives the box its own home, the `home` directory inside `~/.local/share/kdos/boxes/<name>` (or `$XDG_DATA_HOME/kdos/boxes/<name>`), bound at your home's own path so every launch's working directory exists; your home is not bound. A development box passes it to `distrobox --home` |
+| `network` | `host`, `private`, `none` | `host` | Pack and store lanes: `--network host`; no flag, which is podman's rootless private namespace; `--network none`. Development box: `--network host`, `--unshare-netns`, and `--unshare-netns` with `--network none`. `none` leaves the box no interface on any lane |
+| `ipc` | `shared`, `private` | `shared` | Pack and store lanes: `--ipc host` when shared, podman's own IPC namespace when private. Development box: `--ipc host`, or `--unshare-ipc` |
+| `devices` | `shared`, `private` | `shared` | Pack and store lanes: `/dev` and `/sys` bound in when shared, podman's own when private. Development box: the same binds, or `--unshare-devsys` |
+| `processes` | `shared`, `private` | `shared` | Pack and store lanes: `--pid host` when shared, podman's own PID namespace when private. Development box: `--pid host`, or `--unshare-process` |
+| `home` | `shared`, `private` | `shared` | Pack and store lanes: shared binds your own `$HOME` in; private gives the box its own home, the `home` directory inside `~/.local/share/kdos/boxes/<name>` (or `$XDG_DATA_HOME/kdos/boxes/<name>`), bound at your home's own path so every launch's working directory exists, and your home is not bound. Development box: your own `$HOME`, or `distrobox --home` |
 | `init` | `yes`, `no` | `no` | `--init` on a development box. A pack box and a store box always run `kdos-boxinit` as their init |
 | `wayland` | `yes`, `no` | `yes` | No tagged socket in the box's private runtime directory, and an empty `WAYLAND_DISPLAY`. Not enforced on a development box, which shares the session's runtime directory |
 | `audio` | `yes`, `no` | `yes` | No PipeWire or PulseAudio socket linked into the private runtime directory. Not enforced on a development box |
@@ -1130,10 +1150,14 @@ rewritten.
 
 ### How the profile reports itself
 
-`kdos-box profile <name>` prints each key beside the mechanism that enforces it, and a `!` line
-under any setting it cannot deliver. Which keys are in that state depends on the box's lane: a pack
-box and a store box see their own runtime directory as `/run/user/<uid>`, and a development box
-shares the session's.
+`kdos-box profile <name>` prints each key beside the mechanism that enforces it on the box's own
+lane, and a `!` line under any setting it cannot deliver. A pack or store box shows podman's
+mechanisms (`--network host`, `a network namespace of its own (podman's rootless default)`,
+`--ipc host`, `podman's own /dev and /sys`, `its layer directory's home, bound at $HOME` and so
+on), never a distrobox flag; a development box shows distrobox's (`--unshare-netns`,
+`--unshare-ipc`, `--unshare-devsys`, `--unshare-process`, `--home`). Which keys cannot be
+delivered depends on the lane too: a pack box and a store box see their own runtime directory as
+`/run/user/<uid>`, and a development box shares the session's.
 
 - `wayland = no`, `audio = no` and `x11 = no` are enforced by what is left out of a private runtime
   directory, so on a development box each gets a `!` line: the session's socket, PipeWire's socket
@@ -1152,11 +1176,22 @@ shares the session's.
 - A `grant` word that is no name in the vocabulary gets one, so a typo is never read as a
   permission, and so does an `accent` that is no KDOS accent, whose title bars stay the neutral
   `KDOSBox` scheme. No accent prints as `none`.
-- A box whose kept writes are on a live session's memory overlay gets one: podman's storage, for a
-  store box, and the box's layer directory, for a persistent pack box, are under `$HOME`, which on a
-  live medium is an overlay whose upper is RAM, and they end with the session. A session whose
-  [`kdos persist`](kdos-command.md#kdos-persist) store is in use (mounted at `/mnt/persist`) keeps
-  them, and gets no line.
+- A box whose kept writes are in a live session's memory gets one, worded by lane. A persistent
+  pack box whose layer directory is on an overlay or in memory gets `! the writes are in this live
+  session's memory and end with it — a pack box keeps them only on an installed system`, with or
+  without a [`kdos persist`](kdos-command.md#kdos-persist) store, because `kdos-packd` puts the
+  box's upper in the runtime directory's memory and only an installed system keeps it. A store or
+  development box whose podman storage is in memory gets ``! the writes are on this live session's
+  memory overlay and end with it — a `kdos persist` store keeps them from its next boot``; a
+  session whose persistence store is in use (mounted at `/mnt/persist`) keeps that storage, and
+  gets no line.
+- A box with a container whose profile file was modified more than a minute after the container
+  was created gets ``! the profile was written after this box was created — a change to anything
+  but `accent` applies once `kdos-box remove <box>` has run and the box is made again``, so a
+  namespace or `home` change is never shown as in force when the container predates it. A write
+  through `kdos-box profile` or the Boxes page that changes only `accent` keeps the file's
+  modification time, so it raises no line; editing the file by hand moves it, accent or not. A
+  box with no container never gets the line.
 - `export = auto` triggers nothing. `genlaunchers` writes launchers for every installed pack and
   every store box at once, and `kdos-box export <box> <app>` is the per-application route.
 - `audio = no` or `gpu = no` with `devices = shared` cannot be enforced through the device nodes. A
@@ -1259,12 +1294,12 @@ snapshot tag, is 1 to 63 characters from `A-Z a-z 0-9 . _ -` and does not start 
 
 | Command | Does |
 |---|---|
-| `list`, `ls` | Every box with its base, state, persistence, disk use of `~/.local/share/kdos/boxes/<name>` and accent (`none` for a box with none; `--json` carries the stored token, `session`), including boxes that have a profile but no container (state `not created`). `--json` prints the same as one JSON document, which the Boxes settings page and Discover's KDOS backend read |
-| `create <name> [key=value ...]` | Writes the profile and creates the box, then prints `<name> created` and the profile. A base is required: `base=pack:<id>`, `base=image:<ref>` or `base=box:<name>` (see [create with a box base](#create-with-a-box-base)). Fails if a container of that name exists. The profile is written before the base is checked, so a create that fails leaves its profile behind, listed as `not created` until `kdos-box remove <name>` deletes it |
+| `list`, `ls` | Every box with its base, state, persistence, disk use of `~/.local/share/kdos/boxes/<name>` and accent (`none` for a box with none; `--json` carries the stored token, `session`), including boxes that have a profile but no container (state `not created`). `--json` prints the same as one JSON document, each box also carrying `confinement` (what its last launch recorded) and `manager` (the container's `manager` label, `distrobox` for any container distrobox made), which the Boxes settings page and Discover's KDOS backend read |
+| `create <name> [key=value ...]` | Writes the profile and creates the box, then prints `<name> created — enter it with: kdos-box enter <name>` and the profile; distrobox's own closing instruction is not printed. A base is required: `base=pack:<id>`, `base=image:<ref>` or `base=box:<name>` (see [create with a box base](#create-with-a-box-base)). Fails if a container of that name exists. The profile is written before the base is checked, so a create that fails leaves its profile behind, listed as `not created` until `kdos-box remove <name>` deletes it |
 | `enter <name> [command ...]` | Starts the box and runs a login shell (`/bin/bash -l`) or the command inside it. `--window` opens the Konsole window even with no terminal, which is how KRunner opens a box's shell. See below for when it opens a window |
 | `run [-l <launcher-id>] <name> <app> [args ...]` | The launch path, in this box, with its windows under the launcher id `-l` names |
 | `apps <name>` | Starts the box and lists the desktop ids in its `/usr/share/applications` |
-| `export <name> <app>` | A launcher `$XDG_DATA_HOME/applications/<name>.<stem>.desktop` (`~/.local/share/applications` when the variable is unset) whose command is `kdos-box run -l <name>.<stem> <name> <command> %U`, and a shim `~/.local/bin/<command>@<name>`. `<app>` is a desktop id that `kdos-box apps` lists, or a command. See [kdos-box export](#kdos-box-export) |
+| `export <name> <app>` | Refuses an `<app>` the box has no entry or command for. A launcher `$XDG_DATA_HOME/applications/<name>.<stem>.desktop` (`~/.local/share/applications` when the variable is unset) whose command is `kdos-box run -l <name>.<stem> <name> <command> %U`, and a shim `~/.local/bin/<command>@<name>`. `<app>` is a desktop id that `kdos-box apps` lists, or a command. See [kdos-box export](#kdos-box-export) |
 | `unexport <name> <app>` | Removes the launcher and the shim, both `<app>@<name>` and `<command>@<name>` |
 | `freeze <name> [out.kpack]` | The writable layer as one pack. See below |
 | `import <file.kpack> [as <name>]` | Installs a pack through `kdos-packd`, and with `as` creates a box on it |
@@ -1273,8 +1308,8 @@ snapshot tag, is 1 to 63 characters from `A-Z a-z 0-9 . _ -` and does not start 
 | `snapshots <name>` | Lists them with their sizes |
 | `rollback <name> <tag>` | Replaces the writable layer with a snapshot. Refused while the box is running |
 | `start`, `restart <name>` | Start recovers a stuck box, creates again a pack box or store box whose container that recovery removed, and composes a pack box first, as the launch path does; it exits 1 for a removed box whose profile records no base. A start that fails prints `<name>: <reason>` and exits 1, and the Boxes settings page shows that line after "did not start:". The reason is podman's last line, or for a box that has no container yet `it has no container yet: its application's first launch, or kdos-box create <name>, makes it`. Restart is stop, then start, and does not start a box that would not stop |
-| `stop <name> ...` | Never `podman stop`: a box that shares the host's PID namespace and has no cgroup of its own (every store box, and a pack box in a login with no delegated subtree) sits in the login's cgroup, where podman's stop signals nothing and leaves the box `stopping`. Stop sends SIGTERM to every application the box's launches started (each process in the init's mount namespace, or with the box's `KDOS_BOX` once the init is gone) and, with `podman kill`, to its init; waits up to 10 seconds for the box to be down and its applications gone; then SIGKILL to what is left and 3 seconds more. Several boxes are stopped together, in one grace period. Exit 0 when every box is down; otherwise each box still up is named with its state and the exit is 1. The box's keeper ends with it |
-| `remove <name> [--force]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. The confirmation names the profile's path, and names the directory on a second line only when it exists. Under `--force`, and for a box that is not running, it runs the stop sequence first, so no application a stopped box still runs holds an exec session that `podman rm` would refuse over; then `podman rm`, with `-f` under `--force`. When podman refuses, it prints podman's last line and `<name> was not removed (podman rm exited N)`, releases nothing and exits with podman's status: a running box is refused without `--force`. A box with no container, such as one whose create failed, has its profile deleted and any composed stack released, prints `<name> had no container — its profile is removed` and exits 0; a name with neither a container nor a profile releases any composed stack the same way, prints `<name> has no container to remove` and exits 1. When `podman container exists` cannot tell (status 125), it releases nothing and exits with that status. Stop the box before removing it |
+| `stop <name> ...` | Never `podman stop`: a box that shares the host's PID namespace and has no cgroup of its own (every store box, and a pack box in a login with no delegated subtree) sits in the login's cgroup, where podman's stop reaches the box's init and the init's descendants (crun's `kill-all-without-cgroup.patch`, which finds them through the parent links in `/proc`) and leaves running every application the box's launches started, each a `podman exec` that descends from its own `conmon` and outlives the init. Stop sends SIGTERM to every application the box's launches started (each process in the init's mount namespace, or with the box's `KDOS_BOX` once the init is gone), to every launch of the user's still waiting for the box to be ready — a `kdos-box run <name>`, a launcher's `kdos-appbox -b <name> … run` or a `kdos-box enter <name>`, found by the wait mark it holds (`$XDG_RUNTIME_DIR/kdos/boxes/<name>.wait.<pid>`, whose start time must still name the process), so it does not go on to launch into the box after the next start — and, with `podman kill`, to its init; waits up to 10 seconds for the box to be down and its applications and waiting launches gone; then SIGKILL to what is left and 3 seconds more. Several boxes are stopped together, in one grace period. Exit 0 when every box is down; otherwise each box still up is named with its state and the exit is 1. The box's keeper ends with it |
+| `remove <name> [--force] [--purge]` | Removes the container and releases its composed stack. The profile (`~/.config/kdos/boxes/<name>.conf`) is kept unless `--purge` is given, and so is `~/.local/share/kdos/boxes/<name>`: a pack box's writable layer, its snapshots and a private home. A store box's writes are inside its container and go with it. Every launcher and shim [`export`](#kdos-box-export) wrote for the box goes with it: each `<name>.*.desktop` entry marked `X-KDOS-Export=true` whose `X-KDOS-Box` is the box, and each `~/.local/bin/*@<name>` linked to `kdos-appbox`, after which `kbuildsycoca6` rebuilds the menu's cache; another box's exports stay. The confirmation names the profile's path, names the directory on a second line only when it exists, and ends with `<name>: N exported launchers and commands removed` (`1 exported launcher or command`) when there were any. Under `--force`, and for a box that is not running, it runs the stop sequence first, so no application a stopped box still runs holds an exec session that `podman rm` would refuse over; then `podman rm`, with `-f` under `--force`. When podman refuses, it prints podman's last line and `<name> was not removed (podman rm exited N)`, releases nothing and exits with podman's status: a running box is refused without `--force`. A remove that keeps the profile marks it with a first line, `# kept by kdos-box remove; remove --purge deletes it`, which changes no setting; the next create's write of the profile drops the mark, and `kdos-box profile` keeps it on a box with no container. `--purge` deletes the profile as well and prints `<name> removed, and its profile <path> deleted`. A box with no container whose profile carries the mark keeps it, deletes its exports, releases any composed stack, prints ``<name> has no container; its profile is kept in <path>; `kdos-box remove <name> --purge` deletes it`` and exits 0, so repeating a remove never deletes what the first said it kept. A box with no container and an unmarked profile, such as one whose create failed, or any box under `--purge`, has its profile and its exports deleted and any composed stack released, prints `<name> had no container — its profile is removed` and exits 0; a name with neither a container nor a profile releases any composed stack and deletes any exports the same way, and exits 0 when there were exports and otherwise prints `<name> has no container to remove` and exits 1. When `podman container exists` cannot tell (status 125), it releases nothing and exits with that status. Stop the box before removing it |
 | `profile <name> [key=value ...]` | Prints the profile, or sets keys and then prints it |
 | `gc [--dry-run] [--session-end]` | Stops boxes past their `autostop` with no window open. See [Warmup and collection](#warmup-and-collection) |
 
@@ -1365,7 +1400,14 @@ Export starts the box and reads `/usr/share/applications/<app>.desktop` inside i
 exists and has an `Exec`, its `Exec`, `Name` and `Icon` are taken from it: the launcher runs
 `kdos-box run -l <launcher-id> <box>` followed by the entry's own command words and `%U` (the
 entry's field codes are dropped), and is named `<Name> (<box>)`. A word that names no entry is the
-command itself, and it is also the launcher's name and `Icon`. `StartupWMClass` is the launcher id.
+command itself, and export asks the box whether it has it, running `sh -c 'command -v -- "$1"'`
+inside it with the word as `$1`; a box that answers no is refused with `the box <box> has no
+command or application named <app>`, exit 1, and nothing is written. A box that cannot be started
+or asked is exported unchecked, with a warning. The launcher of a bare command is named after it,
+runs in a terminal (`Terminal=true`), takes the terminal's icon (`utilities-terminal`) and the
+subtitle `<app> in the box <box>`, since a command has no window or icon of its own. An `<app>`
+that starts with `-` is an option, not an application, and is a usage error for both `export` and
+`unexport`. `StartupWMClass` is the launcher id.
 The launcher is written to `$XDG_DATA_HOME/applications`, or `~/.local/share/applications` when the
 variable is unset, which is the directory `genlaunchers --user` writes and the Start menu reads.
 
@@ -1383,6 +1425,7 @@ which carries no `X-KDOS-Alien` key, is kept.
 `unexport` removes the launcher, the `<app>@<box>` shim and the `<command>@<box>` shim. It takes the
 command from the box's entry when the box is already running, and otherwise from the `Exec` line of
 the launcher export wrote, so it does not start a stopped box to learn which shim to delete.
+`kdos-box remove` deletes every export of the box it removes, so no launcher outlives its box.
 
 ## Warmup and collection
 

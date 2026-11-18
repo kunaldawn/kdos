@@ -31,7 +31,10 @@ WizardPage {
            : pass.text !== again.text ? i18n("The two passphrases do not match.")
            : i18n("A passphrase cannot start or end with a space here.")
 
-    QQC2.Switch {
+    /* A check box, not a switch: Breeze draws a switch's track the same
+     * on and off but for a faint tint, and this choice must read at a
+     * glance. */
+    QQC2.CheckBox {
         text: i18nc("@option:check", "Encrypt the system disk")
         checked: page.answers.luks
         onToggled: {
@@ -69,20 +72,26 @@ WizardPage {
         Kirigami.PasswordField {
             id: pass
             Kirigami.FormData.label: i18nc("@label:textbox", "Passphrase:")
-            Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+            Layout.fillWidth: true
             placeholderText: i18nc("@info:placeholder", "Passphrase")
             Accessible.name: i18nc("@label:textbox", "Disk passphrase")
+            /* Tab goes to the second field, past this field's reveal
+             * button, so what is typed after one Tab is the confirmation;
+             * Shift+Tab from the second field reaches the reveal button. */
+            KeyNavigation.tab: again
             onTextChanged: page.answers.luksPassphrase = text
+        }
+        StrengthLabel {
+            visible: pass.text.length > 0
+            secret: pass.text
+            field: pass
         }
         Kirigami.PasswordField {
             id: again
             Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
-            Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+            Layout.fillWidth: true
             placeholderText: i18nc("@info:placeholder", "Passphrase, again")
             Accessible.name: i18nc("@label:textbox", "Disk passphrase, again")
-        }
-        StrengthLabel {
-            secret: pass.text
         }
     }
 }

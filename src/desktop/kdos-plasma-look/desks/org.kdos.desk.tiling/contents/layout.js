@@ -8,10 +8,10 @@
  * ---------------------------------
  *   The Tiling desk — one thin top bar per screen, and the auto-tiler on
  *
- * The Start button (the mark alone), the desktops by name, the window list,
- * then the processor and memory as text, the tray and the clock. Every
- * window is tiled, so the bar gives the screen back and carries no
- * launchers.
+ * The Start button (the mark alone), the desktops by name and without
+ * window outlines, which would cover the names, the window list, then the
+ * processor and memory as text, the tray and the clock. Every window is
+ * tiled, so the bar gives the screen back and carries no launchers.
  *
  * Laying this desk out records that the auto-tiler is wanted: krohnkite is
  * enabled in kwinrc here, which KWin reads at its next start or
@@ -27,11 +27,6 @@ var favorites = [
     "systemsettings.desktop",
     "org.kde.discover.desktop",
 ];
-
-function fixedFamily() {
-    var fixed = String(ConfigFile("kdeglobals", "General").readEntry("fixed") || "");
-    return fixed.split(",")[0];
-}
 
 // A meter's total sensor is what its button speaks: the applet's tooltip
 // subtext is "<sensor name>: <value>" of the first total sensor and empty
@@ -91,8 +86,10 @@ for (var s = 0; s < screenCount; s++) {
 
     var pager = bar.addWidget("org.kde.plasma.pager");
     pager.currentConfigGroup = ["General"];
-    // displayedText: 0 number, 1 name, 2 none.
+    // displayedText: 0 number, 1 name, 2 none. A bar this thin has no room
+    // for both: the window outlines would be drawn over the names.
     pager.writeConfig("displayedText", 1);
+    pager.writeConfig("showWindowOutlines", false);
 
     bar.addWidget("org.kde.plasma.windowlist");
     bar.addWidget("org.kde.plasma.panelspacer");
@@ -102,16 +99,13 @@ for (var s = 0; s < screenCount; s++) {
 
     addTray(bar);
 
+    // No font keys: the applet's own font fits the panel's height and the
+    // font in force, so it grows with the display scale and larger fonts. A
+    // manual font is sized against the screen's pixel density, which the
+    // scale cancels, and stays the same size at 200%.
     var clock = bar.addWidget("org.kde.plasma.digitalclock");
     clock.currentConfigGroup = ["Appearance"];
     clock.writeConfig("showDate", false);
-    var family = fixedFamily();
-    if (family.length > 0) {
-        clock.writeConfig("autoFontAndSize", false);
-        clock.writeConfig("fontFamily", family);
-        clock.writeConfig("fontSize", 10);
-        clock.writeConfig("fontWeight", 400);
-    }
 }
 
 var plugins = ConfigFile("kwinrc", "Plugins");

@@ -447,7 +447,13 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
 - `kpkg help` prints the full command list. `kpkg` has no update command; the system is updated,
   and software the base leaves out installed, with `kdos update` ([Updating](updating.md)).
 - `kpkg install --root DIR <port>` installs into another root, such as a mounted target or a
-  second slot, and `kpkg list --root DIR` lists one.
+  second slot, and `kpkg list --root DIR` lists one. The usage is `kpkg [--root <path>] <command>
+  [options]`: `--root` may come before the command word or among its options, and a `-` word
+  before the command that `kpkg help` does not list under Options prints
+  `kpkg: unknown option '<word>' — try: kpkg help` and exits 1. Only `install`, `remove`,
+  `list`, `info`, `check`, `facets`, `needs` and `binhost` read a root; a leading `--root` before
+  any other command prints `kpkg: option '--root' is not for '<command>'` and exits 1, and an
+  install-only option before a command other than `install` is refused the same way.
 - `kpkg check` reads the record taken after the package's install hook ran, so a mode a hook sets
   is not a finding.
 - A failed build leaves its work directory, `/var/cache/kpkg/work/<name>`, for you to look at. The
@@ -516,7 +522,7 @@ A `kpkg install` or `kpkg remove` waits and never finishes
 
 ## Known gaps
 
-- [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
+- [No published release's update has been applied to an installed machine](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)
 - `kpkg help` lists an `update` command that does not exist; see
   [Packaging](../../kdos/06-reference/command-index.md#packaging) in the command index.
 

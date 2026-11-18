@@ -15,10 +15,10 @@
 # lets one survive a logout at all, so a lingering user's boxes keep running.
 #
 # `kdos-box stop`, NOT `podman stop`. A box that shares the host's PID
-# namespace and has no cgroup of its own — every store box — is one `podman
-# stop` signals nothing in, and it would hold this stop for its whole timeout
-# and leave the box `stopping`. kdos-box signals each container's init and the
-# applications its launches started, all containers together.
+# namespace and has no cgroup of its own — every store box — is one whose
+# `podman stop` reaches the init and its descendants and leaves running every
+# application the box's launches started. kdos-box signals those applications,
+# every launch still waiting for the box, and the init, all containers together.
 #
 # THEN PODMAN'S PAUSE PROCESS. A rootless podman keeps one process per user
 # holding its user namespace open, named in $XDG_RUNTIME_DIR/libpod/tmp/

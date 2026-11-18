@@ -132,11 +132,25 @@ static int state_line(const char *step, char *code, size_t ccap,
 	return found;
 }
 
-/* When the network was last asked for a newer tree; 0 for never. */
+/*
+ * When the network was last asked for what CheckNew fetches here; 0 for
+ * never. A machine with slots fetches a newer tree (the `fetch` line); one
+ * with no second slot, the live medium among them, fetches only its own
+ * release's binhost index (the `binhost` line), and a binhost fetch that
+ * found no network or could not download counts as none, so the "Check for
+ * updates" pressed after connecting asks again rather than waiting out
+ * --refresh-after.
+ */
 long long state_fetch_time(void)
 {
 	char code[32];
 	long long t;
+	if (!state_slots_ok()) {
+		if (state_line("binhost", code, sizeof(code), &t, NULL, 0) != 0 ||
+		    !strcmp(code, "no-network") || !strcmp(code, "fetch-failed"))
+			return 0;
+		return t;
+	}
 	return state_line("fetch", code, sizeof(code), &t, NULL, 0) == 0 ? t : 0;
 }
 
@@ -175,7 +189,7 @@ static void doc_clear(void)
 	su.offer[0] = su.installed[0] = su.tree[0] = su.date[0] = 0;
 	su.lane[0] = 0;
 	su.problem[0] = su.detail[0] = 0;
-	su.signer_key[0] = su.signer_name[0] = su.channel[0] = 0;
+	su.signer_key[0] = su.signer_name[0] = su.origin[0] = 0;
 	su.verified = 0;
 	free(su.notes);
 	su.notes = NULL;
@@ -218,7 +232,11 @@ void state_reload_doc(void)
 		doc_str(doc, "date", su.date, sizeof(su.date));
 		doc_str(doc, "problem", su.problem, sizeof(su.problem));
 		doc_str(doc, "detail", su.detail, sizeof(su.detail));
-		doc_str(doc, "channel", su.channel, sizeof(su.channel));
+		/* The offer's bytes come from its lane's origin, the
+		 * `image` or `binhost` base the check fetched through,
+		 * never from the tree's `channel`. */
+		doc_str(doc, strcmp(su.lane, "image") ? "binhost" : "image",
+			su.origin, sizeof(su.origin));
 		if ((v = json_get(doc, "behind")))
 			su.behind = (int)json_number(v);
 		if ((v = json_get(doc, "size")))
@@ -467,9 +485,11 @@ void state_route(const char *key, char *out, size_t cap)
 }
 
 /*
- * A channel is "", an absolute directory, or an http, https or file URL, with
- * no blank in it and no character outside printable ASCII: `kdos update`
- * hands it to curl as one argument, and update.conf is read a line at a time.
+ * A channel is "", an absolute directory, or an https or file URL, with no
+ * blank in it and no character outside printable ASCII: `kdos update` hands
+ * it to curl as one argument, with `--proto =https,file`, so an http channel
+ * would be saved and then fail every fetch; and update.conf is read a line
+ * at a time.
  * What arrives from any of them is verified against /etc/kdos/keys/tree, so
  * the channel chooses a place and never a key.
  */
@@ -485,8 +505,7 @@ static int channel_ok(const char *c)
 			return 0;
 	if (c[0] == '/')
 		return 1;
-	static const char *const schemes[] = { "https://", "http://", "file:///",
-					       NULL };
+	static const char *const schemes[] = { "https://", "file:///", NULL };
 	for (int i = 0; schemes[i]; i++) {
 		size_t n = strlen(schemes[i]);
 		if (!strncmp(c, schemes[i], n) && c[n])

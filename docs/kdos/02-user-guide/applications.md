@@ -23,8 +23,9 @@ recipe in this repository and installed on the host like every other program. Th
 | **Boxed** | A catalogue row naming Debian packages, built by podman into a rootless container of its own | *KDOS packs*, *Debian, built in a box* and the boot medium | `kdos app install <id>` | KDOS does not port the program, ports an older version than you need, or you want it kept apart from the system |
 
 The live ISO already carries the *base*: the Plasma session, the core KDE applications (Konsole,
-Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and
-Yakuake, with the KIO workers and thumbnailers they use), Firefox ESR, Discover, networking,
+Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager,
+Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), VLC, which Elisa
+plays through, Firefox ESR, Discover, the Orca screen reader and BRLTTY for braille, networking,
 printing and the box stack. It carries no compiler: a build on the machine starts by installing
 the `build-tools` group. The rest of the about
 2,400 native ports, from LibreOffice, GIMP, Krita, Blender and the rest of KDE Gear to Thunderbird,
@@ -115,7 +116,7 @@ the installer offers the same ones (see [Installation](installation.md#8-applica
 |---|---|
 | `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | KDE Gear's games, education, mail, calendar and contacts (KMail, Kontact, KOrganizer), audio and video (Kdenlive, K3b, JuK), graphics (KolourPaint, Skanpage), utilities and development tools: each group is the Gear meta port of its name, such as `kde-gear-pim` |
 | `kde-network` | KTorrent, KRDC, Krfb, Google Drive in Dolphin, the online-account providers, Samba sharing from Dolphin's properties |
-| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, ISO Image Writer, the Help Center |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, the Help Center |
 | `kde-artwork` | The KDE wallpaper collection and the Oxygen theme |
 | `office` | LibreOffice, Calibre, TeXstudio |
 | `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
@@ -138,6 +139,18 @@ Each member joins the world set by its own name, so removing a port from a group
 installed. The download size is shown once the binhost index is on the machine, and only for a
 group whose every member installs prebuilt. On the live ISO a group goes into the live session's
 memory, like anything else installed there.
+
+### Removing a port
+
+```sh
+sudo kpkg remove kdenlive
+```
+
+`kpkg remove` uninstalls the port and takes it out of the world set and the origin record, so the
+next update does not bring it back. It acts on the system that is running. When an update has
+already been written into the other system slot, that slot keeps its own copy of the package and,
+once the update is set for the next boot, of the world set too; run the removal again after
+restarting into it.
 
 ### The data a port carries
 
@@ -374,9 +387,9 @@ In a terminal, `mpd` with `rmpc`, `termusic` and `cmus` play music; `sox` conver
 
 | Application | What it is for |
 |---|---|
-| Haruna | The default video player, over mpv |
+| Haruna | The default video player once it is installed, over mpv |
 | mpv | A player with no toolkit, with the `uosc` on-screen controls |
-| VLC | VLC 3 with its Qt 5 interface; it runs on Xwayland |
+| VLC | VLC 3 with its Qt 5 interface; it runs on Xwayland. It is on the installation medium, and opens video, WebM audio and AC-3 while Haruna is not installed. A new account starts VLC with its first-run privacy question already answered: it fetches no album art or track details from the network |
 | SMPlayer, Celluloid, Dragon Player | Other players |
 | PlasmaTube | YouTube through Invidious or Piped, and PeerTube |
 | Kodi | A full-screen media centre for local and network media |
@@ -461,20 +474,21 @@ services these need, `62_virtlogd` and `63_libvirtd`, are listed in
 | Kalm | Breathing exercises |
 | GCompris, Tux Paint | Activities and drawing for young children |
 
-The KDOS and *KDOS from Scratch* books open in the browser from the menu's Library, and in the
-Help Center, KHelpCenter, beside every KDE application's handbook once it is installed
-(`kdos update install khelpcenter`); `kdos-doc` opens the KDOS book from a prompt. *KDOS from
-Scratch* is `kdos update install kdos-kfs`.
+The KDOS book is on every machine and opens in the browser from the menu's Library; `kdos-doc`
+opens it from a prompt. *KDOS from Scratch*, how the system is built, is installed with
+`sudo kdos update install kdos-kfs`. Both open in the Help Center, KHelpCenter, beside every KDE
+application's handbook once it is installed (`sudo kdos update install khelpcenter`).
 
 ### Local AI, speech and translation
 
-These run on this machine's processor and send nothing to a remote service:
+These run on this machine's processor and send nothing to a remote service. None is on the
+installation medium; each is a port installed with `sudo kdos update install <port>`:
 
 | Program | What it is for |
 |---|---|
 | llama.cpp | Local language models, from a prompt, as a local server, and from KRunner as [`ask <question>`](../04-programs/plasma-shell.md#ask) |
-| whisper.cpp | Speech to text; the `base.en` model is a port of its own and is installed too, and Dolphin's **Transcribe** action uses it |
-| Piper | Text to speech |
+| whisper.cpp | Speech to text, the port `whisper.cpp`. The `base.en` model is a port of its own, `whisper-model-base-en`, which puts it in `/usr/share/whisper.cpp/models`; with both installed, Dolphin's **Transcribe** action uses them |
+| Piper | Text to speech, the port `piper`; `kdos speech voice get` fetches a voice for it |
 | translateLocally | Machine translation |
 
 ### Software radio
@@ -611,7 +625,7 @@ Default Applications page (a role) and File Associations page (one type), lands 
 | Pictures, camera RAW | Gwenview; Canon CR3 and Nikon NRW in darktable; JPEG 2000, DDS, OpenEXR and HDR in Okular; Windows metafiles in Inkscape; GIMP's own `.xcf` in GIMP | KolourPaint, GIMP, Krita, Inkscape, darktable |
 | PDF, PostScript, DjVu, XPS, comics | Okular | PDF4QT |
 | E-books | Calibre's viewer | Arianna, Okular |
-| Video | Haruna | mpv, VLC, SMPlayer, Dragon Player |
+| Video, WebM audio, AC-3 | Haruna (VLC on the installation medium) | mpv, VLC, SMPlayer, Dragon Player |
 | Music | Elisa | Strawberry, JuK |
 | Terminal | Konsole | Yakuake |
 | Screenshots and screen recording | Spectacle, on the `Print` keys | Flameshot |
@@ -631,10 +645,12 @@ page notes that Ark may not open every file type; its details name one, ISO imag
 reads and which stay with ISO Image Writer. *Open All in Ark* there would make Ark the default for
 disk images as well.
 
-A default outside the base, such as Thunderbird or LibreOffice, takes effect once its port is
-installed. Until then, and after its application is removed, a row falls through to the next
-installed application that claims the type. `testing/mimecheck.py` holds the list against the
-build tree, so that every row names an application a port installs.
+A row may name several applications, best first, and the first one installed opens the file. The
+video rows name Haruna and then VLC, so a video plays in VLC on the installation medium and in
+Haruna once Haruna is installed, with nothing else to change. A default outside the base, such as
+Thunderbird or LibreOffice, takes effect once its port is installed. Until then, and after its
+application is removed, a row falls through to another installed application that claims the type;
+office documents and mail links have none on the medium, so opening one shows the chooser.
 
 ## Discover
 
@@ -649,7 +665,7 @@ network only when you press a button that says it will.
 | `medium` | The packs and application sets on the boot medium, and the catalogue's applications whose pack is only there | Offline, verified as each pack mounts |
 | `kdos-store` | The catalogue's applications with no pack anywhere, and Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image, less those that cannot work in a box | Built from Debian packages in a box of its own, over the network, and each says so before it starts; a Debian application's box is `deb.<package>` |
 | `kdos-boxes` | Boxes that no application above accounts for, such as one you made with `kdos-box create` | Removal only |
-| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Installed ports leave with the system version; Discover offers no removal |
+| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Discover offers no removal; see [Removing a port](#removing-a-port) |
 | `kdos-ports-source`, shown as *KDOS, built on this computer* | Each port the binhost holds that is not installed, as a second origin of the same application | Built on the machine from its recipe, by `kdos update install --source`, with an administrator's password every time; what it lacks comes prebuilt or is built too, as System Settings › System Versions › Installing software says |
 | The system update | The next KDOS release, as an A/B update (see [Keeping it current](administration.md#keeping-it-current)) | Written into the other slot; **Restart** starts it |
 | Firmware | Firmware updates fwupd knows for this machine's devices, from the metadata snapshot each release carries | Applied by fwupd; system firmware at the next restart |
@@ -657,8 +673,10 @@ network only when you press a button that says it will.
 An application in a box carries a *Runs in a box* badge on its page, which opens the box's page in
 System Settings. Double-clicking a `.ktar` set or a `.kpack` pack in Dolphin opens it in Discover,
 which installs it offline, and a stick holding a set is offered in a notification when it is
-plugged in. **Check for updates** fetches the newest signed release information, at most once an
-hour; nothing else in Discover touches the network until an install says so.
+plugged in. **Refresh** on the Updates page fetches the newest signed release information, at most
+once an hour; on the live medium, and on a computer installed with one system slot, it fetches the
+release's signed package index instead, since there is no second slot to update. Nothing else in
+Discover touches the network until an install says so.
 
 The update tray in the panel is Discover's: it says when a system update is ready, when one is
 installed and waiting for a restart, and how many known vulnerabilities the update closes, and it
@@ -729,9 +747,9 @@ resolves its dependencies normally. How the Debian packages are pinned is descri
 
 ### What the rows cover
 
-The rows are applications KDOS does not build natively, and a few alternatives to ones it does
-(never a KDE application, since KDE Gear is built natively and a boxed copy would be a second
-Start-menu entry of the same name):
+The rows are applications KDOS does not build natively, and a few alternatives to ones it does. A
+KDE application has a row only when it has no port, as Okteta, KStars and Heaptrack do: a boxed
+copy of a ported one would be a second Start-menu entry of the same name. The rows cover
 document readers and note-taking, page layout and panorama stitching, mail and chat, 3D viewing and
 reconstruction, electronics viewers and logic analysis, audio routing and effects, development
 tools, and a wide range of science (chemistry and materials codes, astronomy, GIS, statistics,
@@ -777,7 +795,10 @@ The next Qt application finds the base and the runtime already built and needs o
 Debian's package manager. `--dry-run` prints the generated container build files instead, and counts
 a shared runtime once, as a real install would. Sizes are shown as estimates everywhere: what the
 package manager resolves depends on the snapshot, and shared layers are stored once however many
-applications use them.
+applications use them. For an application that is not installed, `kdos app info` adds the base and
+runtime this computer has not built yet, and names them, so before the first install on a base it
+reads, for example, `8.6M (an estimate), 595M with rt-gtk and base, which this computer has not
+built`.
 
 When you install several applications and one fails, the others stay installed and the failure is
 named, as `N of M did not install`. Nothing is rolled back.
@@ -790,8 +811,8 @@ language files for Tesseract OCR. A data set installed this way is built but not
 application's box; an imported data pack is grafted. See [What does not work](#what-does-not-work).
 
 `kdos app install --pending` reads `/var/lib/kdos/apps-pending`, where the installer records the
-groups you ticked when it did not install them: it had neither a set to import nor a network, or
-the import or the build failed. After a failure the file is kept, so running the command again does
+groups you ticked. The installer builds and imports nothing itself: what you ticked waits for the
+installed machine, its network and its container engine. After a failure the file is kept, so running the command again does
 the rest. The file belongs to root and the command runs as you, so it stays in place after a run in
 which everything installed too; a further `--pending` then tries the same groups again and reports
 each application as not installed because its box exists. Delete the file once everything has
@@ -801,8 +822,9 @@ installed:
 sudo rm /var/lib/kdos/apps-pending
 ```
 
-The first login after installation says in a notification that the chosen applications are ready to
-install, once; delete `~/.config/kdos/apps-offered` to see it again.
+While the file names a selection, a notification that stays until dismissed says that software
+chosen during install is not installed yet, and how many selections wait; its **Open Discover**
+lists them under *Selected during install*, and installs them from there. It is withdrawn once the file names none.
 
 Two limits apply before you start:
 
@@ -815,7 +837,7 @@ Two limits apply before you start:
   session is that overlay, held in memory and lost at power-off unless the session has a
   persistence store (`kdos persist`; see
   [Boot and init](../03-architecture/boot-and-init.md#the-live-medium-and-persistence)). Install
-  KDOS to disk to keep them. `kdos doctor` reports a `$HOME` on an overlay, and `kdos-box profile`
+  KDOS to disk to keep them. `kdos doctor` lists a `$HOME` on an overlay as a skipped check, and `kdos-box profile`
   prints a `!` line under such a box's `persistence`. The overlay is memory, which the session
   shares with everything else it writes, so an install first compares its estimate with the free
   space there and refuses, naming both, when the build would not fit.
@@ -871,9 +893,11 @@ applications and VSCodium. An id in `SELECTION` whose application was not instal
 machine has no pack in the archive; import names it as not in this archive and counts it as a
 failure.
 
-The installer looks for a set on a stick too; see
-[Installation](installation.md#8-applications) for what it does with one. On a live session an
-imported application runs, but its box's writable layer is held in memory and lost at power-off.
+The installer does not import a set; it records the groups you tick (see
+[Installation](installation.md#8-applications)). On a live session a stick holding a set is
+offered to Discover when it is plugged in, and an application imported there runs, but its box's
+writable layer is held in memory and lost at power-off. To keep a set, carry the `.ktar` to the
+installed machine and run `kdos app import` there.
 
 ## Launching
 
@@ -955,7 +979,9 @@ kdos-appbox open --choose report.pdf    # pick a handler
 
 When more than one program claims the type and none is set as the default, `kdos-appbox open` asks,
 with the desktop portal's application chooser, the same "Open With" dialog Dolphin shows, which
-lists host and boxed applications alike; `--choose` asks whatever the defaults say. Its *Remember*
+lists host and boxed applications alike. It leaves out the entries hidden from the menu, helpers
+and settings pages, unless one handles the file's type or the request names it, and searching its
+full list does not find them either. `--choose` asks whatever the defaults say. Its *Remember*
 choice makes the answer the default for that type. A boxed application can be the default handler
 for a type. When nothing claims a
 type, the request goes to the system's `xdg-open` script. One call opens up to four files, all with
@@ -1079,6 +1105,10 @@ Removing an application:
 - deletes the application's image, and any runtime image no other installed application uses;
 - never deletes the base image, which every application sits on;
 - regenerates the launchers, shims and file-type associations from what remains.
+
+An application that is not installed, with no box, no profile and no image, is reported as
+`==> <id> is not installed` and the command still succeeds, so removing a group passes over the
+members that were never installed.
 
 What happens to the work inside the box depends on the kind of box. Your own files in your home
 directory are never touched, because the box shares your home directory. A store box's writable

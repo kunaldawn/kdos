@@ -80,6 +80,61 @@ done, and keeps its rows when the list of offered updates is unchanged, which it
 refused or failed update; without the patch the page lists nothing, with Update All still
 enabled, until Refresh. It is to be offered upstream.
 
+`sysupdate-appstream-after-check.patch` makes the system-update backend ask a target's `GetVersion`
+and `CheckNew` before it fetches the target's AppStream, and fetch the AppStream only for a target
+that offers a version. [kdos-sysupdated](#port-kdos-sysupdated) regenerates the AppStream from the
+update document, which the check behind `CheckNew` rewrites, so a copy read before the check
+describes the previous one; upstream's order shows the first session that finds a release with its
+size "Unknown" until Refresh, because `sysupdate-size.patch` finds no release of the offered
+version. It applies after `update-failed-stays-listed.patch` and is to be offered upstream.
+
+`notifier-reboot-clears.patch` makes the tray notifier ask every backend notifier's `needsReboot()`
+at each `needsRebootChanged` and report the change both ways, and makes the tray item set its title,
+tooltip, icon and the "Install Updates and Restart…" and "Install Updates and Shut Down…" entries
+from the answer each time. The notifier keeps its persistent "Restart is required" notification and
+closes it when the restart is withdrawn, and before it posts another. A restart withdrawn while
+updates are still offered shows the tray item again at once: upstream hides an item of ordinary
+updates until `requiredNotificationInterval` has passed since the last notification, which would
+leave the update the disarmed slot held out of the tray for up to a day, KDOS's interval. The patch
+also has the system-update backend read `io.kdos.Slots1`'s `State` on the bus it reaches
+`sysupdate1` on when it starts, and follow it after. When `rebootRequired` is true and the armed
+slot's version (`State`'s `version` while its `phase` is `armed`) is newer, by AppStream's
+`vercmpSimple`, than the version the target's `GetVersion` answered, less the `(slot A)` that
+answer carries, the backend sets the updater's
+restart, so an update applied from a terminal puts the restart prompt on the Updates page instead of
+"Up to date"; a slot armed at the running or an older version is a switch between versions and sets
+none. A `State` that arrives before the first fetch has read `GetVersion` is taken again when the
+fetch ends. When `rebootRequired` goes false, the backend clears the restart and lists the targets
+again, so an open Updates page drops "Restart and Install Updates" and offers the update again.
+Upstream latches the first announcement for the session in the notifier and learns of a restart
+only from the backend's own Install, which it keeps for the life of the process, so after "Keep" on
+the System Versions page disarms a trial slot, the tray, through
+[kdos-discover](#port-kdos-discover)'s notifier plugin, the notification and the open window would
+keep asking for a restart that boots the slot already running. The notifier half is to be offered upstream; the backend half names a KDOS
+interface and stays KDOS's.
+
+`sysupdate-licenses.patch` makes the system-update resource's `licenses()` return
+`AppStreamUtils::licenses()` of its component, the license objects (name, URL, whether it is free)
+the application page's Licenses field reads. Upstream returns the project and metadata licences as
+bare SPDX strings, which the page reads as nothing, so More Info on the KDOS update shows
+"Licenses:" with nothing after it although
+[kdos-sysupdated](#port-kdos-sysupdated)'s AppStream file carries `MIT`. It is to be offered
+upstream.
+
+`notifyrc-update-restart.patch` makes the tray notifier's "Restart is required" notification,
+posted when an installed update needs a restart, find its configuration and go out once. Upstream
+builds it with the static `KNotification::event()`, which queues a `sendEvent()` of its own, and
+then calls `sendEvent()` itself, so `org.freedesktop.Notifications` receives two `Notify` calls for
+every restart; it posts the `UpdateRestart` event with `KNotification::DefaultEvent`, which makes
+KNotification look it up in the default component, `plasma_workspace`, whose notifyrc declares no
+such event, rather than in the `discoverabstractnotifier` component the call names; and that
+component's notifyrc spells the group `[Event/UpdateResart]`. The patch constructs the
+`KNotification` with its title, text and icon and the `discoverabstractnotifier` component, without
+`DefaultEvent`, so the one `sendEvent()` posts it, and renames the group `[Event/UpdateRestart]`;
+KNotification shows nothing for an event its component does not declare, so the notification
+appears only with both halves. It applies after `notifier-reboot-clears.patch` and is to be offered
+upstream.
+
 `ratings-need-reviews.patch` shows the application page's rating row and its Reviews section,
 with "Write a Review", only when the resource's backend has a reviews backend, and leaves the Home
 page's "Highest-Rated Games" and "Highest-Rated Developer Tools" rows empty when the current

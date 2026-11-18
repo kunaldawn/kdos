@@ -8,7 +8,12 @@ colour scheme) and its permissions: network, home folder and what it writes, dev
 card and sound, memory, processor and process limits, when it stops while idle, whether its
 windows show, when it may use the X11 display, and which desktop-wide Wayland and bus grants it
 holds. While a box runs, the page says which boundary held for it — confined, tagged or not
-confined — and why, in the words kdos-appbox recorded at its last launch.
+confined — and why, in the words kdos-appbox recorded at its last launch. A running distrobox
+with no profile and no record, such as the one `kdos-fetch-app` makes and `distrobox enter`
+starts, reads as not confined, because a distrobox shares the home and the session's runtime
+directory, display and bus; the page knows it by the container's `manager` label in
+`kdos-box list --json`. kdos-box's own boxes carry that label too, since `distrobox create` makes
+them, but each has a profile, so one with no record stays unknown.
 
 The page writes no file of its own about a box and never calls podman. It reads the profile
 from `~/.config/kdos/boxes/<box>.conf`, shows beside each control what `kdos-box profile <box>`

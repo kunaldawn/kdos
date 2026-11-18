@@ -22,10 +22,12 @@
 #include <KService>
 
 #include <QDir>
+#include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QTimer>
 
 #include <algorithm>
@@ -41,6 +43,27 @@ namespace
  * by launching its application changes no file this page watches until its
  * runtime records its state. */
 constexpr int PollMs = 15000;
+
+/* kdos-appbox writes a reason as a clause ("the box shares the session's
+ * runtime directory, …"); the page sets it after the verdict's own full
+ * stop, so it is given a capital and a full stop of its own. Only a plain
+ * word takes the capital, the rule the profile's notes follow: a program
+ * name, a path or a profile key ("wayland = no, …") keeps its spelling. */
+QString asSentence(const QString &clause)
+{
+    static const QRegularExpression plainWord(u"^[a-z]+\\b(?![/.=_-])(?!\\s*=)"_s);
+    QString s = clause.trimmed();
+    if (s.isEmpty()) {
+        return s;
+    }
+    if (plainWord.match(s).hasMatch()) {
+        s[0] = s.at(0).toUpper();
+    }
+    if (!s.endsWith(u'.') && !s.endsWith(u'!') && !s.endsWith(u'?')) {
+        s += u'.';
+    }
+    return s;
+}
 
 }
 
@@ -246,6 +269,19 @@ QList<BoxRow> BoxListModel::parseListing(const QString &output)
         if (created > 0) {
             r.created = QDateTime::fromSecsSinceEpoch(created);
         }
+        /* A distrobox with no profile is not kdos-box's (kdos-fetch-app
+         * makes one) and is entered with `distrobox enter`, which shares
+         * the home, the session's runtime directory, its display and
+         * its bus: this is the verdict it reads as. kdos-box makes its own
+         * boxes with `distrobox create` too, so they carry the same label,
+         * but each has a profile that may unshare any of those, and one
+         * started by `kdos-box enter` writes no record: it stays unknown.
+         * decorate() puts a record's verdict in place of this one. */
+        if (o.value(u"manager"_s).toString() == "distrobox"_L1 && !QFileInfo::exists(boxProfileDir() + u'/' + r.name + u".conf"_s)) {
+            r.confinement = u"unconfined"_s;
+            r.confinementReason = i18nc("@info why a box is not confined",
+                                        "It is a distrobox, which shares your home and the session's runtime directory, display and bus.");
+        }
         rows << r;
     }
     return rows;
@@ -274,10 +310,15 @@ void BoxListModel::decorate(BoxRow &row) const
             row.iconName = service->icon();
         }
     }
-    if (row.isRunning()) {
-        const ConfinementRecord rec = readConfinementRecord(row.name);
+    if (!row.isRunning()) {
+        row.confinement.clear();
+        row.confinementReason.clear();
+        return;
+    }
+    const ConfinementRecord rec = readConfinementRecord(row.name);
+    if (rec.state != Confinement::Unknown || row.confinement.isEmpty()) {
         row.confinement = confinementId(rec.state);
-        row.confinementReason = rec.state == Confinement::Confined ? QString() : rec.reason;
+        row.confinementReason = rec.state == Confinement::Confined ? QString() : asSentence(rec.reason);
     }
 }
 

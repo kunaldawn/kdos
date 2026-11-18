@@ -29,23 +29,23 @@ to be edited for a store to be used: at boot the initramfs asks `blkid` for a fi
 the generator's escaping: the init is written by a heredoc, and the generated script has a plain
 `$`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1193-1265 pin=3aace9336e51 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1232-1304 pin=3aace9336e51 -->
 
 `find_persist` is the lookup. It asks for the label again every tenth of a second while USB storage
 is still arriving, so a store on a stick that is enumerated after the medium is found is still used:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=983-1086 pin=4d82dbf65d60 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1022-1125 pin=4d82dbf65d60 -->
 
 A store on the disk the medium was found on is mounted through a loop device at the partition's
 offset, because the medium's whole-disk mount keeps the kernel from opening any partition on that
 disk; `persist_dev` decides:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1070-1092 pin=e97ce69fa4ef -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1109-1131 pin=e97ce69fa4ef -->
 
 The store's mount is moved into the new root as `/mnt/persist`, so the running session can see it
 and the shutdown can remount it read-only by that name before it reboots:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1348-1357 pin=3877b564d3c6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1388-1397 pin=3877b564d3c6 -->
 
 On the store itself, the overlay uses two directories, `upper/` (the session's files) and `work/`
 (overlayfs's own), which the initramfs creates when they are missing.
@@ -57,7 +57,7 @@ device when the store is on the boot disk:
 
 The menu entry that skips the store:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=351-356 pin=00a38d5e1ac3 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=355-360 pin=b72a60e88754 -->
 
 ## Usage
 

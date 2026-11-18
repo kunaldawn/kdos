@@ -35,7 +35,7 @@ enum {
 	KN_TRIAL,		/* this boot is a trial slot          */
 	KN_ROLLBACK,		/* the last trial did not start       */
 	KN_OOM,			/* kdos-oomd closed something         */
-	KN_PENDING,		/* applications chosen at install wait */
+	KN_PENDING,		/* selections chosen at install wait   */
 	KN_FIRMWARE,		/* a firmware port the hardware needs  */
 	KN_COUNT
 };
@@ -93,7 +93,7 @@ typedef struct {
 } KnOom;
 
 typedef struct {
-	int n;			/* application ids the file names     */
+	int n;			/* selection ids the file names       */
 	char key[32];		/* its content, hashed                */
 } KnPending;
 

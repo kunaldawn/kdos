@@ -434,6 +434,7 @@ import hashlib, json, os, re, subprocess, sys
 HOST_MODULES = {
     "org.kde.discover": "Discover registers it for its backends' delegates",
     "org.kde.plasma.welcome.private": "plasma-welcome registers it for its pages",
+    "org.kdos.installer": "kdos-installer-gui registers it in its executable",
 }
 LEVELS = ["--unqualified", "info", "--unresolved-type", "info", "--unused-imports", "info",
           "--context-properties", "info", "--deprecated", "info"]
@@ -622,6 +623,8 @@ run_ports() {         # <portdir>... ; builds, tests, loads, installs
         [ -d "$pkg/usr/lib" ] && PT_LIBS="$pkg/usr/lib${PT_LIBS:+:$PT_LIBS}"
         [ -d "$pkg/usr/lib/qt6/plugins" ] && PT_PLUGINS="$pkg/usr/lib/qt6/plugins${PT_PLUGINS:+:$PT_PLUGINS}"
         [ -d "$pkg/usr/lib/qt6/qml" ] && PT_QML="$pkg/usr/lib/qt6/qml:$PT_QML"
+        # kdos-theme's greeter pictures read the wallpapers from this root.
+        [ -d "$pkg/usr/share/wallpapers" ] && export KDOS_WALLPAPERS="$pkg/usr/share/wallpapers"
         check_plugins "$n" "$pkg" || r=1
         while read -r p; do install_package "$n" "$p" || r=1; done < <(packages_of "$pkg")
         while read -r p; do check_sddm_theme "$n" "$p" || r=1; done < <(find "$pkg/usr/share/sddm/themes" \

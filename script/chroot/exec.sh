@@ -182,6 +182,9 @@ case "${KDOS_PKG_STORE:-0}" in
     *)     _store=; _store_check=0 ;;
 esac
 
+_release=
+[ "${KDOS_GIT_DIRTY:-0}" = 0 ] && _release=${KDOS_GIT_TAG:-}
+
 # Execute command inside chroot, from /kdos so relative paths hold, with an
 # environment cleared by `env -i` down to HOME, TERM, PATH and the variables
 # named on that line.
@@ -223,6 +226,14 @@ esac
 #   KDOS_GIT_DATE      70_image/045_identity.sh into /etc/os-release
 #   KDOS_GIT_TIME      the commit's time in Unix seconds, which
 #                      70_image/105_ports.sh stamps into /ports/TREE
+#   KDOS_GIT_TAG,      the release tag on the commit itself, empty when it
+#   KDOS_GIT_RELEASE   has none, and that tag again only when the checkout
+#                      is clean, set here: a dirty tree's packages are not
+#                      the release's. 70_image/105_ports.sh stamps
+#                      KDOS_GIT_RELEASE into /ports/TREE and 010_binhost.sh
+#                      into the binhost index as `version`, the one name
+#                      `kdos update` matches the two by; empty, both name
+#                      the commit
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and 70_image calls kdos-appbox
@@ -260,5 +271,7 @@ exec chroot "$CHROOT_DIR" /usr/bin/env -i \
     KDOS_GIT_DIRTY="${KDOS_GIT_DIRTY:-0}" \
     KDOS_GIT_DATE="${KDOS_GIT_DATE:-}" \
     KDOS_GIT_TIME="${KDOS_GIT_TIME:-}" \
+    KDOS_GIT_TAG="${KDOS_GIT_TAG:-}" \
+    KDOS_GIT_RELEASE="$_release" \
     PATH=/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

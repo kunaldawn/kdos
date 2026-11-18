@@ -1200,7 +1200,7 @@ static void accounts_draw(KRect b)
 	f.w = fw;
 	ktui_input(f, cfg.hostname, sizeof(cfg.hostname), 0, "kdos");
 	if (!ki_host_ok(cfg.hostname))
-		ktui_draw_text(f.x + fw + 1, f.y, b.w, "letters, digits and -",
+		ktui_draw_text(f.x + fw + 1, f.y, b.w, "letters, digits, inner -",
 			       KT_ERR, KT_BG, 0);
 	ktui_lay_gap(&l, 1);
 
@@ -1230,8 +1230,8 @@ static void accounts_draw(KRect b)
 		ktui_input(f, cfg.username, sizeof(cfg.username), 0, "kdos");
 		if (!ki_name_ok(cfg.username))
 			ktui_draw_text(f.x + fw + 1, f.y, b.w,
-				       "lowercase, no leading digit", KT_ERR,
-				       KT_BG, 0);
+				       "lowercase, no leading digit or -",
+				       KT_ERR, KT_BG, 0);
 		else if (ki_name_reserved(cfg.username))
 			ktui_draw_text(f.x + fw + 1, f.y, b.w,
 				       "a system account's name", KT_ERR,
@@ -1338,7 +1338,8 @@ static void accounts_draw(KRect b)
 static int accounts_validate(char *err, size_t n)
 {
 	if (!ki_host_ok(cfg.hostname)) {
-		snprintf(err, n, "hostname must be letters, digits and dashes");
+		snprintf(err, n, "a host name is letters, digits and dashes, "
+				 "and does not start or end with a dash");
 		return 1;
 	}
 	/* Root first: an OEM install makes no account but still unlocks root
@@ -1356,8 +1357,8 @@ static int accounts_validate(char *err, size_t n)
 	if (cfg.oem)
 		return 0;
 	if (!ki_name_ok(cfg.username)) {
-		snprintf(err, n,
-			 "username must be lowercase letters, digits, - or _");
+		snprintf(err, n, "a user name is lowercase letters, digits, - "
+				 "and _, and starts with a letter or _");
 		return 1;
 	}
 	if (ki_name_reserved(cfg.username)) {
@@ -1885,16 +1886,23 @@ static void install_draw(KRect b)
 	ktui_section(b.x, y, b.w, "PROGRESS");
 	y++;
 
-	int donecount = 0, active = 0;
+	/* Each step counts by its weight (install.c, THE STEPS' WEIGHTS), so
+	 * the copy moves the bar as far as it takes time; a skipped step
+	 * counts for nothing. */
+	double whole = 0, done = 0;
 	for (int i = 0; i < inst.nsteps; i++) {
-		if (inst.step[i].state == ST_DONE || inst.step[i].state == ST_SKIP)
-			donecount++;
-		if (inst.step[i].state == ST_RUNNING)
-			active = 1;
+		const StepUi *s = &inst.step[i];
+		int w = s->weight > 0 ? s->weight : 1;
+
+		if (s->state == ST_SKIP)
+			continue;
+		whole += w;
+		if (s->state == ST_DONE)
+			done += w;
+		else if (s->state == ST_RUNNING && s->frac > 0)
+			done += s->frac * w;
 	}
-	double overall = (double)donecount / inst.nsteps;
-	if (active && inst.cur >= 0 && inst.step[inst.cur].frac > 0)
-		overall += inst.step[inst.cur].frac / inst.nsteps;
+	double overall = whole > 0 ? done / whole : 0;
 
 	char pct[32];
 	snprintf(pct, sizeof(pct), " %d%% ", (int)(overall * 100));

@@ -45,8 +45,16 @@
  *
  * A PORT'S OWN METAINFO WINS. Where a package ships
  * usr/share/metainfo/<id>.metainfo.xml, that component is the record, given
- * the package name and, when it has none, the icon of the desktop entry it
- * launches. A desktop entry no metainfo of the same package launches becomes a
+ * the package name and, when it has none, the icon and the categories of the
+ * desktop entry it launches: most metainfo files name no category, and
+ * KdosBackend places a component in Discover's categories, All Applications
+ * among them, and picks the icon of one whose own icon the machine lacks by
+ * its categories. A component with no desktop-id <launchable> launches
+ * usr/share/applications/<id> (<id>.desktop for an id without the suffix)
+ * when the same package installs it, and is written with that launchable:
+ * LibreOffice's legacy libreoffice-writer.desktop ids name no launchable,
+ * and would otherwise be listed without an icon and a second time as their
+ * desktop entry. A desktop entry no metainfo of the same package launches becomes a
  * component of its own, read by libappstream's desktop-entry reader; one that
  * is NoDisplay or Hidden, or not an application, describes nothing a person
  * installs and is skipped.
@@ -104,9 +112,10 @@ Owned ownedBy(const QString &manifest)
     return o;
 }
 
-QString desktopIcon(const QString &path)
+// A key of the [Desktop Entry] group only: an action's icon is not the
+// program's.
+QString desktopValue(const QString &path, QLatin1StringView key)
 {
-    // The [Desktop Entry] group only: an action's icon is not the program's.
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly))
         return {};
@@ -117,8 +126,8 @@ QString desktopIcon(const QString &path)
             inEntry = line == "[Desktop Entry]"_L1;
             continue;
         }
-        if (inEntry && line.startsWith("Icon="_L1))
-            return line.mid(5).trimmed();
+        if (inEntry && line.startsWith(key) && line.mid(key.size()).trimmed().startsWith(u'='))
+            return line.mid(line.indexOf(u'=') + 1).trimmed();
     }
     return {};
 }
@@ -343,15 +352,30 @@ int main(int argc, char **argv)
             }
             c.setPackageNames({pkg});
             c.insertCustomValue(u"KDOS::Version"_s, owned.version);
-            const AppStream::Launchable l = c.launchable(AppStream::Launchable::KindDesktopId);
-            for (const QString &entry : l.entries()) {
+            QStringList entries = c.launchable(AppStream::Launchable::KindDesktopId).entries();
+            if (entries.isEmpty()) {
+                const QString implied = c.id().endsWith(".desktop"_L1) ? c.id() : c.id() + u".desktop"_s;
+                if (owned.desktop.contains(u"usr/share/applications/"_s + implied)) {
+                    AppStream::Launchable made;
+                    made.setKind(AppStream::Launchable::KindDesktopId);
+                    made.addEntry(implied);
+                    c.addLaunchable(made);
+                    entries = {implied};
+                }
+            }
+            for (const QString &entry : std::as_const(entries)) {
                 const QString desktopRel = u"usr/share/applications/"_s + entry;
                 if (owned.desktop.contains(desktopRel)) {
                     launched.insert(desktopRel);
                     if (!hasIcon(c)) {
-                        const QString icon = desktopIcon(root.filePath(desktopRel));
+                        const QString icon = desktopValue(root.filePath(desktopRel), "Icon"_L1);
                         if (!icon.isEmpty())
                             c.addIcon(iconFor(icon));
+                    }
+                    if (c.categories().isEmpty()) {
+                        const QStringList categories = desktopValue(root.filePath(desktopRel), "Categories"_L1).split(u';', Qt::SkipEmptyParts);
+                        for (const QString &category : categories)
+                            c.addCategory(category.trimmed());
                     }
                 }
             }

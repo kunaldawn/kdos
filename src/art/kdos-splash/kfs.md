@@ -25,21 +25,29 @@ missing the build warns and the machine boots with no splash.
 - `-O2`, `-Wall` — The tree's optimisation level, named again, and the usual warnings.
 
 ## Notes
-Two commands end the splash, and both return only once it has stopped drawing. `quit` leaves the
-console in text mode with its cursor shown, for a text prompt next: the initramfs's rescue shell
-and a single-user boot's `sulogin`. `handoff`, which `rcS` sends on every other boot, also puts
-tty1 into graphics mode with its text cleared and its cursor hidden, so nothing is drawn between
-the splash's last frame and the greeter compositor's first; `kdos-getty` puts the VT back into
-text mode when it has to show a prompt there instead. The client sets the VT's mode, not the
-running splash, because the splash was started in the initramfs and every path it opens after
-`switch_root` resolves in the emptied initramfs root.
+Two commands end the splash, and both return only once it has stopped drawing. While it draws,
+the splash holds the foreground VT in `KD_GRAPHICS`, so no console text lands on the picture.
+`quit` puts it back in text mode with its cursor shown, for a text prompt next: the initramfs's
+rescue shell and a single-user boot's `sulogin`; the VT then redraws the boot messages it
+buffered. The `quit` client does the same after the splash has gone, but only on a VT in
+`VT_AUTO` mode, so a splash killed without its outro does not leave the rescue shell or getty
+drawing nothing. `handoff`, which `rcS` sends on every other boot, keeps tty1 in graphics mode
+for the display manager, so nothing is drawn between the splash's last frame and the greeter
+compositor's first; `kdos-getty` puts the VT back into text mode when it has to show a prompt
+there instead. The tagline is text, so it holds WCAG AA, 4.5:1, on
+the ground in every scheme: it is the scheme's `pdark` (`KT_MID`'s slot) where that reaches the
+floor, and otherwise `pdark` moved toward `primary` one percent at a time until it does (Amber and
+Ice, whose `pdark` is 3.56:1 and 4.42:1). The walk aims at 4.52 because the splash measures with
+the WCAG formula in floating point and libkcolor's `kcol_contrast`, which the self-test judges
+with, rounds each channel through a table. The WHY detail lines are in the scheme's text colour.
 
 The motion comes from the kernel command line because the power-on runs in the initramfs, before
 any root filesystem with a setting in it is mounted. `KDOS_SPLASH_CMDLINE` names a file read in
-its place, and `kdos-splash preview` takes the motion as an optional last argument, so both
-motions can be rendered and compared on a development host. The same command line decides whether
-the splash runs at all: `run` without `quiet` exits at once, so the verbose and single-user entries
-show the boot's text instead.
+its place, and `kdos-splash preview` takes the motion and then an accent as optional last
+arguments, so both motions and every scheme can be rendered and compared on a development host.
+
+The same command line decides whether the splash runs at all: `run` without `quiet` exits at
+once, so the verbose and single-user entries show the boot's text instead.
 
 The progress bar gives the initramfs a fixed first share and `rcS` the rest. The splash finds the
 boundary from its own root: `/init` is there while the initramfs runs and gone once

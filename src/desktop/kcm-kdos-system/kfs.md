@@ -40,6 +40,11 @@ KIO's `help:` worker finds the page through `/usr/share/doc/HTML/en/kdos`, the l
 [kdos-doc](#port-kdos-doc) installs (see
 [Help](../../../docs/kdos/04-programs/kdos-settings.md#help)).
 
+System Settings shows a KCM in a scene of its own beside its sidebar and footer, so a dialog drawn
+in the page's scene blocks only the page, and a click on the sidebar goes through and discards it.
+The Start This Version Next Time prompt is `popupType: QQC2.Popup.Window` with `modal: true`: a
+window of its own, application-modal, so the rest of System Settings waits until it is answered.
+
 Applying a different update location or install route raises an administrator prompt, which needs the polkit
 agent of the Plasma session; a page opened outside a session gets a refusal and says so. A
 location is written whole into one `tree =` line of `/etc/kdos/update.conf`, so a path or an

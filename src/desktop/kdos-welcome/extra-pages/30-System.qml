@@ -14,8 +14,9 @@
  *
  *   two slots   configured true, slot_a and slot_b both name a filesystem
  *   one slot    configured true, slot_a or slot_b empty: an install too
- *               small for two, the reuse plan, or slots unticked; updates
- *               are applied over the running system with --in-place
+ *               small for two, the reuse plan, or slots unticked; an update
+ *               is fetched and applied over the running system, the same
+ *               two commands System Versions' help names
  *   no state    configured false (kdos-bootctl exits 1), or a reply that
  *               does not parse: the live medium, which has no boot state
  *
@@ -104,7 +105,7 @@ Welcome.ScrollablePage {
             text: page.twoSlots
                 ? i18ndc("kdos-welcome", "@info", "An update is written into the slot you are not running, checked against its signature, and used from the next restart. Your files, settings and boxes are kept apart from both slots and are the same in either.")
                 : (page.oneSlot
-                   ? i18ndc("kdos-welcome", "@info", "This installation has one system slot, so an update can only be written over the running system, with <b>kdos update apply --in-place</b> in a terminal, and there is no previous version to go back to. A second slot can be added later; the KDOS book's Installation chapter says how.")
+                   ? i18ndc("kdos-welcome", "@info", "This installation has one system slot: in a terminal, <b>sudo kdos update fetch</b> downloads an update and <b>sudo kdos update apply</b> writes it over the running system, used from the next restart; there is no previous version to go back to. A second slot can be added later; the KDOS book's Installation chapter says how.")
                    : i18ndc("kdos-welcome", "@info", "This session runs from the live medium, which has no system slots to update and no previous version to go back to. An installation onto a disk keeps two."))
         }
 

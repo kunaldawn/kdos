@@ -71,6 +71,14 @@ whatever the style draws, so the group would show a disabled "Translucent" over 
 panel.
 It is to be offered upstream.
 
+`layout-list-order.patch` makes the keyboard settings' Add Layout dialog list layouts from A to Z
+by name, ignoring case, and the variants of the chosen layout in the XKB registry's order, the
+layout itself first, until a search is entered; a search sorts both by match score, best first,
+with equal scores kept in that order. Upstream sorts both lists by score alone; every score is 0
+before a search, so the score gives no order, and the layout list opens at Wolof. The first row is
+xkeyboard-config's "A user-defined custom Layout", which sorts before Albanian. It is to be
+offered upstream.
+
 ## Notes
 
 Two of the settings modules talk to system services that this package does not provide. Date & Time

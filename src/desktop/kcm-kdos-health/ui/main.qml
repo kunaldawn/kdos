@@ -8,9 +8,11 @@
  *   Health — `kdos doctor`, a row per check
  *
  * Laid out as kinfocenter's command-output pages are — loading, nothing to
- * show, the report; Refresh, Copy to Clipboard and a filter — with one row
- * per check instead of a block of text, so a check that needs attention is
- * marked in the negative colour and named as such to a screen reader.
+ * show, the report; Check Again, Copy to Clipboard and a filter — with one
+ * row per check instead of a block of text, so a check that needs attention
+ * is marked in the negative colour and named as such to a screen reader.
+ * Check Again's shortcut is a key string, not a StandardKey: Kirigami's
+ * tooltip prints the shortcut as text, and an enum prints as its number.
  */
 
 pragma ComponentBehavior: Bound
@@ -36,7 +38,7 @@ KCM.ScrollViewKCM {
             icon.name: "view-refresh"
             text: i18ndc("kdos-kcm-health", "@action:button", "Check Again")
             enabled: root.controller.ready
-            shortcut: StandardKey.Refresh
+            shortcut: "F5"
             onTriggered: root.controller.refresh()
         },
         Kirigami.Action {

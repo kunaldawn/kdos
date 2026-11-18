@@ -5603,7 +5603,8 @@ image. `src/libs` holds the `libk*` libraries these programs compile in; it hold
 ### src/system
 
 The system layer: the `kdos` command and its services, packs and boxes, the box socket, the
-installer, and the two books on the image. On the `PORT_REPO` of every phase from `40_lang` to
+installer, and the two books: the KDOS book, which the image carries, and *KDOS from Scratch*,
+which `sudo kdos update install kdos-kfs` adds. On the `PORT_REPO` of every phase from `40_lang` to
 `60_kernel`. 8 ports.
 
 | Port | Version | Description | Phase |

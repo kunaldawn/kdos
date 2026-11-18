@@ -760,7 +760,7 @@ int pack_box_start(const char *box)
 		return 0;
 
 	/* A BOX LEFT `stopping` IS NOT STARTABLE. A `podman stop` from outside
-	 * this program signals nothing in a box that shares the host's PID
+	 * this program that timed out on a box sharing the host's PID
 	 * namespace (box.c), and podman then refuses a start with `container
 	 * state improper`, which names nothing a reader can act on.
 	 * `box_unstick` is the recovery, shared with the app-launch path in

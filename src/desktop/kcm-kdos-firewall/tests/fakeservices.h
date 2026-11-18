@@ -116,6 +116,9 @@ public:
      * holds it; and how many of the next calls are answered with an error. */
     int holdMs = 0;
     int failNext = 0;
+    /* Every Notify whose reply has gone out, held or not. A server sends no
+     * ActionInvoked for an id before the reply that names it. */
+    int replied = 0;
 
 private:
     quint32 m_next = 1;

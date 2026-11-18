@@ -13,7 +13,9 @@
  * the last one did; the two slot forms say what each slot holds; the
  * Updates form is the one setting on the page, and Apply writes it. The
  * live medium has none of them: it keeps no versions and is not updated,
- * so the page says that and offers the installer instead.
+ * so the page says that and offers the installer instead. An install with
+ * one system slot shows that slot's form under the one-version message
+ * and no form for the slot it does not have.
  */
 
 pragma ComponentBehavior: Bound
@@ -30,6 +32,10 @@ KCM.SimpleKCM {
 
     implicitWidth: Kirigami.Units.gridUnit * 36
     implicitHeight: Kirigami.Units.gridUnit * 34
+
+    /* A configured boot state with a slot that has no root: installed with
+     * one system slot. */
+    readonly property bool oneSlot: kcm.available && kcm.configured && kcm.slotList.some(s => !s.present)
 
     header: ColumnLayout {
         spacing: 0
@@ -131,7 +137,7 @@ KCM.SimpleKCM {
         Kirigami.PlaceholderMessage {
             Layout.fillWidth: true
             Layout.margins: Kirigami.Units.gridUnit * 2
-            visible: !kcm.available || !kcm.configured
+            visible: !kcm.available || !kcm.configured || root.oneSlot
             icon.name: !kcm.loaded ? "view-refresh" : !kcm.available ? "dialog-error" : kcm.live ? "media-optical" : "drive-harddisk-root"
             text: !kcm.loaded ? i18nc("@info:placeholder", "Reading the installed versions…")
                 : !kcm.available ? i18nc("@info:placeholder", "The system versions service is not running")
@@ -158,6 +164,7 @@ KCM.SimpleKCM {
                 required property var modelData
 
                 Layout.fillWidth: true
+                visible: modelData.present
                 slotInfo: modelData
                 busy: kcm.busy
                 twinFormLayouts: [updatesForm]
@@ -240,7 +247,17 @@ KCM.SimpleKCM {
             QQC2.Label {
                 Layout.fillWidth: true
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 24
-                text: i18nc("@info", "Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart; if it does not start properly, the computer goes back by itself.")
+                /* A one-slot install has no slot to write into but the
+                 * running one: kdos-sysupdated fetches only the binhost
+                 * index of the tree in place and prepares nothing, so
+                 * Discover installs no system update. `kdos update fetch`
+                 * takes the newer tree and `kdos update apply` writes it,
+                 * over the running system with no previous version to fall
+                 * back to; apply alone installs nothing newer than the tree
+                 * already in /ports. */
+                text: root.oneSlot
+                    ? i18nc("@info", "Whatever the source, an update is installed only if it carries the KDOS release signature. On this computer it is installed from a terminal: “sudo kdos update fetch” downloads it and “sudo kdos update apply” installs it. It is written over the running system and takes effect after a restart, and there is no previous version to go back to if it does not start properly.")
+                    : i18nc("@info", "Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart; if it does not start properly, the computer goes back by itself.")
                 wrapMode: Text.Wrap
                 font: Kirigami.Theme.smallFont
             }
@@ -265,7 +282,10 @@ KCM.SimpleKCM {
                 Accessible.name: i18nc("@info:whatsthis %1 reason", "The last update stopped: %1", kcm.lastError)
             }
 
+            /* Discover installs a system update only into a second slot. */
             QQC2.Button {
+                objectName: "openUpdatesButton"
+                visible: !root.oneSlot
                 text: kcm.offerVersion !== "" ? i18nc("@action:button", "Update in Discover…") : i18nc("@action:button", "Check for Updates in Discover…")
                 icon.name: "plasmadiscover"
                 Accessible.name: kcm.offerVersion !== "" ? i18nc("@action:button", "Update in Discover") : i18nc("@action:button", "Check for updates in Discover")
@@ -326,11 +346,64 @@ KCM.SimpleKCM {
 
     /* A dialog declared in a SimpleKCM is moved into its scrolled content
      * and centred there, out of view behind its own modal dim: it is
-     * parented to the window's overlay. */
+     * parented to the window's overlay.
+     *
+     * System Settings shows a KCM in a scene of its own beside the sidebar
+     * and the footer, so a prompt drawn inside that scene blocks only the
+     * page: a click on the sidebar goes through and discards the prompt
+     * unanswered. The prompt opens as a window of its own and, modal, blocks
+     * input to every other window of the program until it is answered. Where
+     * the platform has no second window it falls back into the scene.
+     *
+     * Kirigami's Dialog takes preferredWidth as a floor under the content's
+     * implicit width, which for the subtitle is its whole sentence on one
+     * line; only maximumWidth caps it, and the subtitle wraps inside.
+     *
+     * Kirigami's own dim is a black wash and its edge is the scheme's frame
+     * contrast; on a dark scheme neither shows, and the prompt reads as part
+     * of the page. The dim fades the page toward the window's background,
+     * which shows on a light scheme and a dark one alike, and the edge is
+     * drawn halfway from the view's background to its text. The background
+     * replaces Kirigami's, shadow included, so the dim and the edge alone
+     * set the prompt apart from the page: an edge colour taken closer to the
+     * background leaves nothing to show where the prompt ends. As a window
+     * the frame is square, since a rounded one leaves the window's own fill
+     * showing at its corners; drawn in the page's own scene, it is rounded.
+     * The test is the frame's window and not popupType, which stays Window
+     * where the platform puts the prompt in the scene. */
     Kirigami.PromptDialog {
         id: startDialog
+        objectName: "startDialog"
 
         parent: root.QQC2.Overlay.overlay
+        popupType: QQC2.Popup.Window
+        modal: true
+        preferredWidth: Kirigami.Units.gridUnit * 24
+        maximumWidth: Kirigami.Units.gridUnit * 24
+
+        QQC2.Overlay.modal: Rectangle {
+            objectName: "startDialogDim"
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+
+            /* The popup sets the dim's opacity as it opens and closes. */
+            Behavior on opacity {
+                OpacityAnimator {
+                    duration: Kirigami.Units.longDuration
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
+
+        background: Rectangle {
+            objectName: "startDialogFrame"
+            Kirigami.Theme.colorSet: Kirigami.Theme.View
+            Kirigami.Theme.inherit: false
+
+            color: Kirigami.Theme.backgroundColor
+            radius: Window.window === root.Window.window ? Kirigami.Units.cornerRadius : 0
+            border.width: 1
+            border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.5)
+        }
 
         property var slotInfo: null
 

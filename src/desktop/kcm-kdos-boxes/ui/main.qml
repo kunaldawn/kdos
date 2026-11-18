@@ -111,8 +111,13 @@ KCM.ScrollViewKCM {
         }
     }
 
+    /* Its own title: left to the default it repeats the module's name, and
+     * the two columns both read "Boxes". */
     KCM.SimpleKCM {
         id: placeholder
+
+        objectName: "boxPlaceholder"
+        title: i18nc("@title the column beside the list before a box is chosen", "Box Settings")
 
         Kirigami.PlaceholderMessage {
             anchors.centerIn: parent

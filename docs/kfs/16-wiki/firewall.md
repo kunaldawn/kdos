@@ -76,8 +76,9 @@ to `/run/nftables-fallback.nft`. Either way the script reports `[FAIL]`. `stop` 
    ```
 
    It answers `nftables: ruleset loaded` or `nftables: no ruleset loaded`. Run it with `sudo`:
-   reading the ruleset needs root, and as an ordinary user the script's `nft list ruleset` fails and
-   it reports `no ruleset loaded` whatever is loaded.
+   the kernel hands the ruleset only to root, so as an ordinary user it answers
+   `nftables: needs root to read the ruleset`, and `service list` shows that line in the
+   nftables row whether a ruleset is loaded or not.
 
 2. List the rules the kernel holds:
 

@@ -441,13 +441,29 @@ void kb_notify(const char *app, const char *summary, const char *body)
 			av[n++] = "/org/freedesktop/Notifications";
 			av[n++] = "--method";
 			av[n++] = "org.freedesktop.Notifications.Notify";
-			av[n++] = app && *app ? app : "kdos";
+			/*
+			 * THE SENDER IS ALWAYS "KDOS Tools", whatever `app`
+			 * says: Plasma heads the toast and files the history
+			 * group under this argument, and kdos.notifyrc, which
+			 * the hint below names for every caller, is "KDOS
+			 * Tools" on the Notifications page. Another name here
+			 * splits one application's history into two groups.
+			 */
+			(void)app;
+			av[n++] = "KDOS Tools";
 			av[n++] = "0";
 			av[n++] = "";
 			av[n++] = summary;
 			av[n++] = body ? body : "";
 			av[n++] = "[]";
-			av[n++] = "{}";
+			/*
+			 * x-kde-appname NAMES kdos.notifyrc (kdos-tools).
+			 * Plasma files a notification with no notifyrc and no
+			 * shown application entry under "other applications",
+			 * which plasma-workspace keeps out of the history, so
+			 * one that fired while nobody looked would be lost.
+			 */
+			av[n++] = "{'x-kde-appname': <'kdos'>}";
 			/*
 			 * THE TIMEOUT IS NOT OPTIONAL and must be POSITIVE.
 			 *

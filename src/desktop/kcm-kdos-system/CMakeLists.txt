@@ -28,7 +28,7 @@ include(FeatureSummary)
 include(ECMDeprecationSettings)
 
 find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS Core DBus Gui Qml Quick)
-find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS CoreAddons I18n KCMUtils)
+find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS CoreAddons I18n KCMUtils KIO)
 
 ecm_set_disabled_deprecation_versions(QT 6.11.0 KF 6.31.0)
 
@@ -47,6 +47,7 @@ target_link_libraries(kcm_kdos_system_static PUBLIC
     KF6::CoreAddons
     KF6::I18n
     KF6::KCMUtilsQuick
+    KF6::KIOGui
     Qt6::Core
     Qt6::DBus
 )

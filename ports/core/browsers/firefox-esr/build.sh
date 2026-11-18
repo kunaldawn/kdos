@@ -122,12 +122,10 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     "DNSOverHTTPS": { "Enabled": false, "Locked": true },
     "NetworkPrediction": false,
     "SearchSuggestEnabled": false,
-    "TranslateEnabled": false,
     "IPProtectionAvailable": false,
     "SkipTermsOfUse": true,
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
-    "GenerativeAI": { "Enabled": false, "Locked": true },
     "AIControls": { "Default": { "Value": "blocked", "Locked": true } },
     "FirefoxHome": {
       "Weather": false,

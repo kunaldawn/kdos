@@ -17,9 +17,11 @@
  *   hasSecurityUpdates  an offer exists and closes at least one finding of
  *                       `kdos cve --json`: the finding's port is among the
  *                       update's packages, at or past its fixed version
- *   needsReboot         State `rebootRequired`, a slot armed by
- *                       `kdos-bootctl try` and not yet booted; `kdos-bootctl
- *                       status --json` when the daemon does not answer
+ *   needsReboot         a staged update (KdosParse's stagedUpdate): State
+ *                       `rebootRequired`, a slot armed by `kdos-bootctl try`
+ *                       and not yet booted, holding a version newer than the
+ *                       running one by ListSlots; `kdos-bootctl status
+ *                       --json` when the daemon does not answer
  *
  * IT READS, IT NEVER FETCHES. CheckNew refreshes the signed index when the
  * last fetch is an hour old, so a tray that called it would reach the network
@@ -27,13 +29,19 @@
  * update document already on disk, which the nightly offline check and the
  * person's own "Check for updates" leave behind.
  *
- * AN UPDATE BEING ACQUIRED STAYS VISIBLE. Discover does not reattach to a
- * job it did not start, so while State reports one the plugin keeps a job in
- * the notification area, "Preparing the system update", N of M.
+ * AN UPDATE BEING ACQUIRED STAYS VISIBLE, ONCE. A job State reports that
+ * began while org.kde.discover was not on the session bus gets the plugin's
+ * own job in the notification area, "Preparing the system update", N of M;
+ * one that began while Discover ran is taken for Discover's, reported by its
+ * transaction. Decided once per job: a second entry would leave two for one
+ * update.
  *
  * THE TRIAL IS NOT THE TRAY'S. BackendNotifierModule has updates, security
  * updates and a pending restart, and no way to say "running 0.2.14 on
- * trial"; kdos-notice posts that notice from the same State.
+ * trial"; kdos-notice posts that notice from the same State. A slot armed
+ * at the running version or an older one is such a switch, not an update:
+ * Discover would answer it with "Restart is required … for the updates to
+ * take effect" and "Update and Restart", so it is no pending restart here.
  * ---------------------------------
  */
 
@@ -80,7 +88,8 @@ private:
     void readSecurity();
     void readSlots();
     void readBootctl();
-    void applySlots(const SlotsState &state);
+    void readSlotList();
+    void applySlots(const SlotsState &state, bool fromDaemon);
     void recompute();
     void trackJob(const SlotsState &state);
     void runTool(const QString &program, const QStringList &arguments, std::function<void(const QByteArray &, bool)> done);

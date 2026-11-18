@@ -48,7 +48,7 @@ removing it. Nothing else records whether a service starts at boot. The image sh
 
 The installer writes or removes the markers for the services in its table:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=9a2600b3e3b2 -->
 
 The last field is whether the service is on by default.
 

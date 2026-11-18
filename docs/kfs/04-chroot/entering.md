@@ -116,7 +116,7 @@ build every hit anyway and compare.
 
 ### The command, in an empty environment
 
-<!-- kfs:include script/chroot/exec.sh lines=239-264 pin=7ebdcf3cf3da -->
+<!-- kfs:include script/chroot/exec.sh lines=250-277 pin=a37bc871a11f -->
 
 `chroot` makes `build/fs` the root and runs the tree's own `/usr/bin/env -i`, which clears the
 environment completely and sets only the variables listed. Then the tree's bash changes to `/kdos`,
@@ -167,6 +167,13 @@ The variables that cross into the chroot:
 
 `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE`, `KDOS_GIT_TIME`
 :   The commit the tree is being built from, stamped into the image.
+
+`KDOS_GIT_TAG`, `KDOS_GIT_RELEASE`
+:   The release tag (`v<digit>…`) on that commit from `make build`, empty when it has none or
+    `KDOS_GIT_TAG=none` asked for none, and, set by this
+    script itself, the same tag only when `KDOS_GIT_DIRTY` is `0`: a dirty tree's packages are not
+    the release's. `105_ports.sh` writes `KDOS_GIT_RELEASE` into `/ports/TREE` as `version <tag>`
+    (see [The recipe tree](../15-image/105-ports.md#the-stamp-and-the-key)).
 
 A variable the `Makefile` passes into the container but this line does not name reaches the two
 container phases and none of the chroot ones. Adding a build setting is therefore two edits: the

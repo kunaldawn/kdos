@@ -11,7 +11,9 @@
  * Welcome.ScrollablePage scrolls the Flickable given as its `view`; this is
  * that Flickable, holding one column the page's items go into, so a page that
  * grows past the window (larger text, a narrow window) scrolls instead of
- * clipping its last controls.
+ * clipping its last controls. The column is inset by a grid unit, the inset
+ * of the page's own heading and description above it, so a page's content
+ * lines up with them.
  * ---------------------------------
  */
 
@@ -24,7 +26,7 @@ Flickable {
     id: flick
 
     default property alias content: column.data
-    readonly property int gutter: Kirigami.Units.largeSpacing
+    readonly property int gutter: Kirigami.Units.gridUnit
 
     contentWidth: width
     contentHeight: column.implicitHeight + gutter * 2

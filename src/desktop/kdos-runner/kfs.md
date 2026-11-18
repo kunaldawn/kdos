@@ -30,11 +30,25 @@ One program serves both, so the library has no port of its own.
 categories KRunner sorts above every other whatever a row's relevance; without it Applications and
 System Settings lead and `night light` + Enter starts an application. Because the ranking is per
 runner, a medium pack answers only after `install`, or `gimp` would rank the pack above the
-installed GIMP. KDOS's System Settings pages are left to System Settings' own runner, which finds
-them by the `X-KDE-Keywords` of their metadata; a palette row for each would be the same page
-twice. `lib <words>` is a `querySingleRunner` call naming `kdos-library`, KRunner's own
-single-runner mode: a `?` prefix cannot exclude other runners, and KRunner reads it as its help
-trigger.
+installed GIMP; and on the live medium, where the installer's entry `kdos-installer.desktop` is
+installed, `install kdos`, or any prefix of `kdos` after `install`, answers nothing, or Enter on
+*Install KDOS* would search Discover instead of starting the installer. A verb's values are ranked
+a step apart by their place among the rows shown, in their own order, since KRunner keeps no
+order among rows of one relevance and shows only a runner's first eight: `accent` lists `next`
+and `prev` first, or they would be its ninth and tenth rows and never on screen, then the accents
+as the boot menu does, and `desk` names the desks as the desk picker does (*KDOS*, *Dock*,
+*Tiling*). KDOS's System Settings pages are left to System Settings' own runner, which finds them
+by their names and the `X-KDE-Keywords` of their metadata, except for a page's whole title (the
+`Name` of its `kcm_kdos_*.desktop`): krunnerrc ranks Applications above System Settings, and the
+Applications runner allows a letter wrong in each word, so `KDOS Look` + Enter would open *The KDOS
+Book*. The palette answers the whole title with the page, as *Open KDOS Look* over *System
+Settings*, since System Settings lists the page under its bare name too; the library ranks its rows
+for that title at most 0.42, by the one test of a title that both share. Whatever the query,
+`KDOS Lo` as much as `KDOS Look`, a library row that reads a page's name is retitled *KDOS Look in
+KDOS book*, since System Settings' runner lists the page under its bare name for a part of the
+title too, so no two rows of the popup share a title. `lib <words>` is a `querySingleRunner` call
+naming `kdos-library`, KRunner's own single-runner mode: a `?` prefix cannot exclude other runners,
+and KRunner reads it as its help trigger.
 
 ## Notes
 

@@ -418,7 +418,6 @@ static int place(const char *rel, void *u)
 		kp_err("Conflict: %s is a file in package but a directory on "
 		       "system", rel);
 	} else {
-		kp_msg("Installing %s -> %s", rel, dst);
 		if (rename(src, dst) < 0) {
 			/* The staging dir is on the target fs so that placing a
 			 * file is a rename — but the target fs is not one
@@ -443,6 +442,48 @@ static int place(const char *rel, void *u)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
+
+/* The one root check of kpkgadd, kpkgdel and kpkg facets --strip. The test
+ * is "is this a directory I can write", not "am I uid 0": a build installs
+ * into a sysroot it owns without being root, and a uid check would refuse
+ * it. A root that is missing or is not a directory is a mistyped path and
+ * reads "no such directory", as `kpkg list` says it; access() alone passes a
+ * writable regular file, which would then fail at the database lock with a
+ * message naming a path under a file. The rest of the message follows errno,
+ * since a read-only root is not a permission problem and telling root to run
+ * as root hides the typo; the three commands share it so that their messages,
+ * and the pages that list them, agree. */
+int kp_root_unwritable(const char *root)
+{
+	struct stat st;
+	int e;
+	if (stat(root, &st) == 0 && !S_ISDIR(st.st_mode))
+		e = ENOTDIR;
+	else if (access(root, W_OK) == 0)
+		return 0;
+	else
+		e = errno;
+	if (e == ENOENT || e == ENOTDIR)
+		kp_err("no such directory: %s", root);
+	else if (e == EROFS)
+		kp_err("%s is read-only", root);
+	else if (e == EACCES || e == EPERM)
+		kp_err("cannot write to %s — run as root", root);
+	else
+		kp_err("cannot write to %s: %s", root, strerror(e));
+	return 1;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+void kp_db_shown(const KpConf *c, char *buf, size_t cap)
+{
+	size_t n = strlen(c->root);
+	while (n && c->root[n - 1] == '/')
+		n--;
+	snprintf(buf, cap, "%.*s%s%s", (int)n, c->root,
+		 c->pkgdb_dir[0] == '/' ? "" : "/", c->pkgdb_dir);
+}
 
 int add_main(int argc, char **argv)
 {
@@ -500,13 +541,8 @@ int add_main(int argc, char **argv)
 		kp_msg("Signature good (key %s)", signer);
 
 	const char *root = c.root[0] ? c.root : "/";
-	/* The test is "can I write here", not "am I uid 0": a build installs
-	 * into a sysroot it owns without being root, and a uid check would
-	 * refuse it. */
-	if (access(root, W_OK) != 0) {
-		kp_err("cannot write to %s — run as root", root);
+	if (kp_root_unwritable(root))
 		return 1;
-	}
 
 	char name[256], ver[128], rel[128];
 	if (split_pkgname(kb_basename(pkgfile), name, ver, rel, sizeof(name))) {
@@ -540,6 +576,17 @@ int add_main(int argc, char **argv)
 	KbArgv x = {0};
 	kb_argv_add(&x, "tar");
 	/*
+	 * ONE DECODER THREAD, or a package fails to install on a small machine.
+	 * xz decodes a multi-block file with a thread per core by default, and
+	 * every thread of a -9 package with 32 MiB blocks holds about 100 MB, so
+	 * a large package on a 4 GB live session is killed by kdos-oomd after
+	 * anything else has used the memory. One thread holds the 64 MiB
+	 * dictionary and little more. tar splits the compressor on spaces
+	 * itself; there is no shell involved.
+	 */
+	kb_argv_add(&x, "--use-compress-program=xz -T1");
+	kb_argv_add(&x, "--quoting-style=literal");
+	/*
 	 * `-p` OR EVERY SETUID BIT IN EVERY PACKAGE IS SILENTLY DROPPED.
 	 *
 	 * GNU tar restores permissions in full only for the superuser unless
@@ -550,14 +597,25 @@ int add_main(int argc, char **argv)
 	 * until something needs the privilege, in a program that has no way
 	 * to say why it cannot have it.
 	 */
-	kb_argv_add(&x, "--quoting-style=literal");
 	kb_argv_add(&x, "-xpvf");
 	kb_argv_add(&x, pkgfile);
 	kb_argv_add(&x, "-C");
 	kb_argv_add(&x, tmpl);
 	kb_argv_end(&x);
 	KbBuf listing = {0};
-	if (kb_run_capture_buf(&x, &listing) != 0) {
+	/* tar's and xz's stderr reach ours, so a failed extraction says why
+	 * (a killed decoder, a short file, a full disk) beside the line below;
+	 * the -v listing goes to the capture, not to the terminal. */
+	int was_verbose = kb_proc_verbose;
+	kb_proc_verbose = 1;
+	/* Flushed first: a piped stdout holds the Installing line in its buffer,
+	 * and the log would read tar's complaint before the package it is
+	 * about. */
+	fflush(stdout);
+	fflush(stderr);
+	int xrc = kb_run_capture_buf(&x, &listing);
+	kb_proc_verbose = was_verbose;
+	if (xrc != 0) {
 		kp_err("Failed to extract %s", pkgfile);
 		kb_buf_free(&listing);
 		kb_rmtree(tmpl);
@@ -620,8 +678,11 @@ int add_main(int argc, char **argv)
 
 	int lock = kp_db_lock(&c);
 	if (lock < 0) {
-		kp_err("cannot lock the package database %s: %s", db,
-		       strerror(errno));
+		int e = errno;
+		char shown[1100];
+		kp_db_shown(&c, shown, sizeof(shown));
+		kp_err("cannot lock the package database %s: %s", shown,
+		       strerror(e));
 		kb_rmtree(tmpl);
 		return 1;
 	}

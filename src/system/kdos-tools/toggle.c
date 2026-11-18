@@ -35,7 +35,8 @@
  *                factor applies again rather than a copy of it.
  *
  * A CHORD HAS NOWHERE TO PRINT, so off a terminal the new state is a
- * notification instead.
+ * notification instead, titled with the switch's label ("Night Light on")
+ * and with a body that says what the new state does.
  * ---------------------------------
  */
 
@@ -52,14 +53,31 @@
 #include "kbase.h"
 #include "kdos-tools.h"
 
+/* `name` is the word typed; `label` is the switch's name in words, which is
+ * what the notification a chord raises is titled with; `what` is the
+ * description `kdos toggle` lists. `on_body` and `off_body` are that
+ * notification's body for the state the switch is in afterwards: one text
+ * for both would tell a person who switched it off what it does when on. */
 static const struct {
 	const char *name;
+	const char *label;
 	const char *what;
+	const char *on_body;
+	const char *off_body;
 } TOGGLES[] = {
-	{ "stay-awake", "never sleep, lock or blank on idle" },
-	{ "night-light", "warm the screen (KWin's Night Light)" },
-	{ "dnd", "hold notifications back (Do Not Disturb)" },
-	{ "reduced-motion", "no animations (AnimationDurationFactor 0)" },
+	{ "stay-awake", "Stay Awake", "never sleep, lock or blank on idle",
+	  "the machine stays awake: no sleep, lock or blank on idle",
+	  "the machine sleeps, locks and blanks on idle as set" },
+	{ "night-light", "Night Light", "warm the screen (KWin's Night Light)",
+	  "the screen is warmed now and all day",
+	  "the screen is back to its normal colours" },
+	{ "dnd", "Do Not Disturb", "hold notifications back (Do Not Disturb)",
+	  "notifications are held back until it is switched off",
+	  "notifications are shown as they arrive" },
+	{ "reduced-motion", "Reduced Motion",
+	  "no animations (AnimationDurationFactor 0)",
+	  "animations are off everywhere",
+	  "animations run at their usual speed" },
 };
 
 #define NTOGGLES ((int)(sizeof(TOGGLES) / sizeof(TOGGLES[0])))
@@ -421,8 +439,10 @@ int cmd_toggle(int argc, char **argv)
 	} else {
 		char sum[64];
 
-		snprintf(sum, sizeof(sum), "%s %s", argv[0], on ? "on" : "off");
-		kb_notify("kdos", sum, TOGGLES[which].what);
+		snprintf(sum, sizeof(sum), "%s %s", TOGGLES[which].label,
+			 on ? "on" : "off");
+		kb_notify("kdos", sum, on ? TOGGLES[which].on_body
+					  : TOGGLES[which].off_body);
 	}
 	return 0;
 }

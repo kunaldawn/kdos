@@ -252,11 +252,40 @@ static int plasmashell_up(KdtBus **out);
 
 /*
  * WHAT "ARRANGED BY HAND" MEANS: the panels, where each sits, and the applets
- * on each in their order — asked of plasmashell itself, read-only. Not the
- * panels file's time: plasmashell rewrites that file for a popup's size and
- * other applet state, so its mtime moves when nothing was arranged.
+ * on each in their order, with the settings every desk writes into them —
+ * Start's icon and label, the pinned apps, each meter's face — asked of
+ * plasmashell itself, read-only. Not the panels file's time: plasmashell
+ * rewrites that file for a popup's size and other applet state, so its mtime
+ * moves when nothing was arranged.
+ *
+ * A DESK THAT LOST ITS SETTINGS ENDS THE DESCRIPTION WITH A `lost` LINE: a
+ * Start without its icon, a task manager without launchers or a meter
+ * without a face is an applet the desk did not lay out, since every desk
+ * writes those keys. The description is the digest's input, so a desk that
+ * loses them after the digest is recorded differs from it as well.
+ *
+ * ONLY VALUES AN APPLET WRITES BACK UNCHANGED ARE DESCRIBED. The digest is
+ * taken straight after the template runs, before the applets load, and each
+ * applet then stores its setting again: the task manager its launcher list,
+ * serialised from the URLs (an `applications:` URL is kept whether its
+ * desktop file exists or not), the meter its face id. A key an applet
+ * rewrites in another form would make every untouched desk read as edited.
  */
 static const char PANELS_JS[] =
+	"let lost = false;"
+	"let cfg = (x, g, k) => {"
+	" x.currentConfigGroup = [g]; return String(x.readConfig(k, '')); };"
+	"let desc = x => {"
+	" let t = x.type, v;"
+	" if (t == 'org.kde.plasma.kickoff')"
+	"  v = [cfg(x, 'General', 'icon'), cfg(x, 'General', 'menuLabel')];"
+	" else if (t == 'org.kde.plasma.icontasks')"
+	"  v = [cfg(x, 'General', 'launchers')];"
+	" else if (t.startsWith('org.kde.plasma.systemmonitor'))"
+	"  v = [cfg(x, 'Appearance', 'chartFace')];"
+	" else return t;"
+	" if (!v[0]) lost = true;"
+	" return t + '=' + v.join('/'); };"
 	"panels().forEach(p => {"
 	" p.currentConfigGroup = ['General'];"
 	" let o = String(p.readConfig('AppletOrder', '')).split(';')"
@@ -264,11 +293,24 @@ static const char PANELS_JS[] =
 	" let w = p.widgets();"
 	" let ids = o.length ? o : w.map(x => x.id);"
 	" print(p.location + '|' + p.alignment + '|' + ids.map(i => {"
-	"  let x = p.widgetById(i); return x ? x.type : ''; }).join(',') + "
-	"'\\n'); });";
+	"  let x = p.widgetById(i); return x ? desc(x) : ''; }).join(',') + "
+	"'\\n'); });"
+	"if (lost) print('lost\\n');";
 
-/* The description's digest, or NULL when plasmashell is not answering. */
-static char *panels_digest(KdtBus *b)
+/* Whether a description's last line is `lost`. */
+static int panels_lost(const char *out)
+{
+	size_t n = strlen(out);
+
+	while (n && (out[n - 1] == '\n' || out[n - 1] == ' '))
+		n--;
+	return n >= 4 && !strncmp(out + n - 4, "lost", 4) &&
+	       (n == 4 || out[n - 5] == '\n');
+}
+
+/* The description's digest, or NULL when plasmashell is not answering;
+ * `lost` (when not NULL) says whether the desk lost its settings. */
+static char *panels_digest(KdtBus *b, int *lost)
 {
 	char err[256] = "", hex[65], *out;
 	KbSha256 h;
@@ -278,6 +320,8 @@ static char *panels_digest(KdtBus *b)
 			     sizeof(err), "s", PANELS_JS);
 	if (!out)
 		return NULL;
+	if (lost)
+		*lost = panels_lost(out);
 	kb_sha256_init(&h);
 	kb_sha256_update(&h, out, strlen(out));
 	kb_sha256_final(&h, hex);
@@ -288,7 +332,7 @@ static char *panels_digest(KdtBus *b)
 /* [Desk] LaidOutPanels: the digest of the panels a desk laid out. */
 static void record_panels(KdtBus *b)
 {
-	char *d = panels_digest(b);
+	char *d = panels_digest(b, NULL);
 
 	if (d)
 		kdt_kcfg_set("kdosrc", "Desk", "LaidOutPanels", d, 0);
@@ -308,13 +352,18 @@ static int desk_status(int json)
 	 * Outside a session nothing can be asked, and a desk laid out by its
 	 * template at the first login has a LaidOut and no digest yet: the
 	 * first status after it takes the panels as laid out and records
-	 * them, so Welcome's first look at an untouched desk records it.
+	 * them, so Welcome's first look at an untouched desk records it. A
+	 * desk that has lost its settings by then is not recorded: it reads
+	 * as edited until a desk is laid out again.
 	 */
 	if (laid && *laid && plasmashell_up(&b)) {
-		char *now = panels_digest(b);
+		int lost = 0;
+		char *now = panels_digest(b, &lost);
 
 		if (now && want && *want)
 			edited = strcmp(now, want) != 0;
+		else if (now && lost)
+			edited = 1;
 		else if (now)
 			kdt_kcfg_set("kdosrc", "Desk", "LaidOutPanels", now, 0);
 		free(now);

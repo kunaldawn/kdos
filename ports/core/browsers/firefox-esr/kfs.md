@@ -104,10 +104,12 @@ After `mach install`, `build.sh` adds what makes the package KDOS's:
 - `distribution/policies.json`, Firefox's enterprise policies, which turn off telemetry,
   studies, remote improvements and remote settings, application and system add-on updates, the
   feedback commands, Firefox accounts, the default-browser check, captive portal detection,
-  network prediction, search suggestions, translation, IP Protection, the terms-of-use prompt,
-  the first-run and post-update pages, the weather, sponsored and recommended content on the new
-  tab page and in the address bar, Mozilla's messaging and onboarding, and lock DNS over HTTPS and
-  the AI features off;
+  network prediction, search suggestions, IP Protection, the terms-of-use prompt, the first-run
+  and post-update pages, the weather, sponsored and recommended content on the new tab page and in
+  the address bar, Mozilla's messaging and onboarding, and lock DNS over HTTPS off. `AIControls`
+  blocks and locks every AI feature, translation and the chatbot among them; it supersedes the
+  older `TranslateEnabled` and `GenerativeAI` policies, which the file therefore leaves out, since
+  Firefox logs "Ignoring … policy in favor of AIControls" at every start for each one present;
 - `distribution/distribution.ini`, naming the distributor;
 - `browser/defaults/preferences/kdos.js`, which points the spelling checker at the
   [hunspell-en](#port-hunspell-en) dictionaries in `/usr/share/hunspell`, opens files through the

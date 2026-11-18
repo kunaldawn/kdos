@@ -77,6 +77,13 @@ if command -v fsck >/dev/null 2>&1; then
     _fsck_rc=$?
 fi
 mount -a
+# The initramfs mounts the root with no options, and `mount -a` skips a
+# filesystem that is already mounted, so the root's fstab options (noatime,
+# a btrfs compress=) apply only through this remount, which takes them from
+# fstab. A root with no fstab line — the live medium's overlay — is left alone.
+if findmnt -s -n / >/dev/null 2>&1; then
+    mount -o remount /
+fi
 [ -n "$_fsck_out" ] && printf '%s\n' "$_fsck_out" > /run/kdos-fsck.log
 if [ $((_fsck_rc & 4)) -ne 0 ]; then
     splash detail "fsck: errors left uncorrected, see /run/kdos-fsck.log"

@@ -15,10 +15,11 @@
  * CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER, so fbcon does not claim the
  * framebuffer until a glyph is printed on a virtual terminal. /dev/console is
  * the LAST console=: the serial port on the live entries (`console=tty0
- * console=ttyS0`), so boot messages go there and the screen is the splash's
- * until the display manager's compositor takes it; tty0 on an installed
- * machine, where the initramfs's first echo ends the deferral and fbcon draws
- * every boot message over it.
+ * console=ttyS0,115200n8`), tty0 on an installed machine, where the
+ * initramfs's first echo ends the deferral. Either way the splash puts the
+ * foreground VT in KD_GRAPHICS while it draws (console_claim), and a VT in
+ * graphics mode draws no text, so no boot message lands on the picture; the
+ * messages still go to the VT's buffer and show once it is back in text mode.
  *
  * TWO MOTIONS, ONE PICTURE. `kdos.splash=phosphor` on the kernel command line
  * is Phosphor mode's CRT, the power-on a window gets from the desktop's CRT
@@ -57,14 +58,18 @@
  *                                   arrives it sweeps)
  *   kdos-splash accent NAME         switch the running splash's colour scheme
  *   kdos-splash quit                power-off animation, then exit; the console
- *                                   is left in text mode with its cursor shown
+ *                                   is put back in text mode with its cursor
+ *                                   shown, and draws the boot's messages; the
+ *                                   client does that too, so it holds when no
+ *                                   splash answers (vt_text)
  *   kdos-splash handoff             power-off animation, then exit; tty1 is left
  *                                   black, in graphics mode, for the display
  *                                   manager's compositor
- *   kdos-splash preview WxH T out.ppm [modern|phosphor]
+ *   kdos-splash preview WxH T out.ppm [modern|phosphor] [ACCENT]
  *                                   render the frame at T seconds to a file,
  *                                   with no framebuffer and no FIFO, in the
- *                                   motion named or the command line's
+ *                                   motion named or the command line's, and
+ *                                   in the scheme named or the default
  *
  * Commands reach the running instance through a FIFO in /dev, which is the
  * one filesystem that survives switch_root intact (devtmpfs is moved, not
@@ -91,6 +96,7 @@
 #include <unistd.h>
 #include <linux/fb.h>
 #include <linux/kd.h>
+#include <linux/vt.h>
 
 #include "penguin.h"
 
@@ -123,6 +129,7 @@ static const struct spl_scheme {
 /* The accent in force, projected onto the names the drawing code uses. The two
  * derived values are kcol_mix results, not free-hand colours. */
 static uint32_t C_PHOS, C_PHOSDIM, C_DIM, C_AMBER, C_ALARM, C_TEXT, C_DEEP;
+static uint32_t C_TAG;		/* pdark, lifted to SPL_TAG_FLOOR on deep   */
 static uint32_t C_HOT;		/* mix(text, white, 60) — the beam flash    */
 static uint32_t C_GLOW;		/* mix(text, white, 68) — the mascot rim    */
 
@@ -141,6 +148,49 @@ static uint32_t spl_mix(uint32_t a, uint32_t b, int pct)
 	return out;
 }
 
+/* WCAG relative luminance and contrast ratio, the measure kcol_contrast
+ * takes, in floating point: the splash links nothing from libkcolor, and the
+ * selftest checks every scheme's tagline with kcol_contrast itself. */
+static double spl_lin(unsigned c)
+{
+	double v = c / 255.0;
+
+	return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
+}
+
+static double spl_contrast(uint32_t a, uint32_t b)
+{
+	double la = 0.2126 * spl_lin((a >> 16) & 0xff) +
+		    0.7152 * spl_lin((a >> 8) & 0xff) +
+		    0.0722 * spl_lin(a & 0xff) + 0.05;
+	double lb = 0.2126 * spl_lin((b >> 16) & 0xff) +
+		    0.7152 * spl_lin((b >> 8) & 0xff) +
+		    0.0722 * spl_lin(b & 0xff) + 0.05;
+
+	return la > lb ? la / lb : lb / la;
+}
+
+/*
+ * THE TAGLINE IS TEXT, SO IT HOLDS WCAG AA ON THE GROUND. It is the scheme's
+ * `pdark`, the accent's dark tone, where that reaches the floor on `deep`; on
+ * a scheme where it does not (Amber at 3.56:1, Ice at 4.42:1) it is moved
+ * toward `primary` one percent at a time until it does, so it stays the
+ * accent's hue and is only as much brighter as legibility needs. The floor
+ * carries a margin over 4.5 so that kcol_contrast's table, which rounds each
+ * channel, measures the same verdict.
+ */
+#define SPL_TAG_FLOOR 4.52
+
+static uint32_t spl_tag(uint32_t pdark, uint32_t primary, uint32_t deep)
+{
+	uint32_t c = pdark;
+	int pct = 0;
+
+	while (pct < 100 && spl_contrast(c, deep) < SPL_TAG_FLOOR)
+		c = spl_mix(pdark, primary, ++pct);
+	return c;
+}
+
 static void spl_peng_pal(uint32_t glow, uint32_t amber, uint32_t phos,
 			 uint32_t phosdim);
 
@@ -155,6 +205,7 @@ static int spl_accent(const char *name)
 			continue;
 		C_PHOS = s->primary;
 		C_PHOSDIM = s->pdark;
+		C_TAG = spl_tag(s->pdark, s->primary, s->deep);
 		C_DIM = s->dim;
 		C_AMBER = s->secondary;
 		C_ALARM = s->urgent;
@@ -208,7 +259,10 @@ struct line {
  * the splash's part, and it is most of the value.
  */
 #define MAX_DETAIL 10
-#define DETAIL_COLS 68
+/* A detail line is kept whole up to the client's command buffer (`say`), and
+ * cut to the panel's width only when it is drawn, so one line fits each
+ * screen's panel rather than the narrowest's. */
+#define DETAIL_COLS 254
 
 static struct fb_var_screeninfo vi;
 static struct fb_fix_screeninfo fi;
@@ -222,6 +276,7 @@ static uint32_t *canvas;      /* what the screen would show, unmodulated */
 
 static unsigned char *glyphs; /* PSF bitmap data */
 static int gw, gh, gstride, gcount;
+static int ellipsis_glyph = -1; /* the font's U+2026, -1 when it has none */
 
 static struct line lines[MAX_LINES];
 static int nlines;
@@ -291,6 +346,55 @@ static double now_s(void)
 /* ------------------------------------------------------------------ font */
 
 /*
+ * The glyph that maps U+2026 in a font's unicode table, or -1. The text the
+ * splash draws is ASCII and indexes glyphs by byte, so the table is read for
+ * this one character: PSF1's is little-endian 16-bit code points, each glyph's
+ * ended by 0xFFFF; PSF2's is UTF-8, each glyph's ended by 0xFF. In both, a
+ * marker (0xFFFE, 0xFE) starts the glyph's multi-character sequences, which
+ * are no single character and are skipped.
+ */
+static int font_ellipsis(FILE *f, int psf2)
+{
+	int g = 0, seq = 0, c;
+	unsigned char u[3];
+	int nu = 0;
+
+	while (g < gcount && (c = fgetc(f)) != EOF) {
+		if (!psf2) {
+			int hi = fgetc(f);
+			if (hi == EOF)
+				break;
+			c |= hi << 8;
+			if (c == 0xffff) {
+				g++, seq = 0;
+				continue;
+			}
+			if (c == 0xfffe)
+				seq = 1;
+			else if (!seq && c == 0x2026)
+				return g;
+			continue;
+		}
+		if (c == 0xff) {
+			g++, seq = 0, nu = 0;
+			continue;
+		}
+		if (c == 0xfe) {
+			seq = 1, nu = 0;
+			continue;
+		}
+		/* A lead byte restarts the character; U+2026 is E2 80 A6. */
+		if ((c & 0xc0) != 0x80)
+			nu = 0;
+		if (nu < 3)
+			u[nu++] = (unsigned char)c;
+		if (!seq && nu == 3 && u[0] == 0xe2 && u[1] == 0x80 && u[2] == 0xa6)
+			return g;
+	}
+	return -1;
+}
+
+/*
  * PSF1 and PSF2 both, because the console fonts KDOS ships are PSF1 (Terminus
  * 8x16) but nothing stops a later font from being PSF2.
  */
@@ -301,6 +405,7 @@ static int font_load(const char *path)
 		return -1;
 
 	unsigned char hdr[32];
+	int psf2 = 0, table = 0;
 	if (fread(hdr, 1, 4, f) != 4) {
 		fclose(f);
 		return -1;
@@ -311,6 +416,7 @@ static int font_load(const char *path)
 		gh = hdr[3];
 		gcount = (hdr[2] & 0x01) ? 512 : 256;
 		gstride = 1;
+		table = hdr[2] & 0x02;
 		fseek(f, 4, SEEK_SET);
 	} else if (hdr[0] == 0x72 && hdr[1] == 0xb5 &&
 		   hdr[2] == 0x4a && hdr[3] == 0x86) {   /* PSF2 */
@@ -323,6 +429,8 @@ static int font_load(const char *path)
 		gh      = *(uint32_t *)(hdr + 24);
 		gw      = *(uint32_t *)(hdr + 28);
 		gstride = (gw + 7) / 8;
+		psf2 = 1;
+		table = *(uint32_t *)(hdr + 12) & 0x01;
 		fseek(f, headersize, SEEK_SET);
 	} else {
 		fclose(f);
@@ -342,6 +450,7 @@ static int font_load(const char *path)
 		fclose(f);
 		return -1;
 	}
+	ellipsis_glyph = table ? font_ellipsis(f, psf2) : -1;
 	fclose(f);
 	return 0;
 }
@@ -362,9 +471,9 @@ static void fill(int x, int y, int w, int h, uint32_t c)
 			px(i, j, c);
 }
 
-static void draw_glyph(int x, int y, unsigned char ch, int scale, uint32_t c)
+static void draw_glyph(int x, int y, int ch, int scale, uint32_t c)
 {
-	if (!glyphs || ch >= gcount)
+	if (!glyphs || ch < 0 || ch >= gcount)
 		return;
 	const unsigned char *g = glyphs + (size_t)ch * gstride * gh;
 
@@ -392,6 +501,43 @@ static void draw_text(int x, int y, const char *s, int scale, int tracking, uint
 		draw_glyph(x, y, *p, scale, c);
 		x += gw * scale + tracking;
 	}
+}
+
+/*
+ * A LINE WIDER THAN ITS ROOM ENDS IN AN ELLIPSIS. Up to `cols` cells of `s`
+ * are drawn; a longer line is cut at the last space that leaves room for the
+ * marker, its trailing spaces dropped, and the marker drawn after it: the
+ * font's U+2026 in one cell, or "..." in three when the font has none. A
+ * line with no space early enough (one long path, say) is cut at the room
+ * itself. Without the marker a cut line reads as the whole message.
+ */
+static void draw_fitted(int x, int y, const char *s, int cols, int scale,
+			uint32_t c)
+{
+	int n = (int)strlen(s);
+	int step = gw * scale;
+
+	if (n <= cols) {
+		draw_text(x, y, s, scale, 0, c);
+		return;
+	}
+	int mark = ellipsis_glyph >= 0 ? 1 : 3;
+	int room = cols - mark;
+	if (room < 0)
+		room = 0;
+	int cut = room;
+	while (cut > 0 && s[cut] != ' ')
+		cut--;
+	while (cut > 0 && s[cut - 1] == ' ')
+		cut--;
+	if (!cut)
+		cut = room;
+	for (int i = 0; i < cut; i++, x += step)
+		draw_glyph(x, y, (unsigned char)s[i], scale, c);
+	if (ellipsis_glyph >= 0)
+		draw_glyph(x, y, ellipsis_glyph, scale, c);
+	else
+		draw_text(x, y, "...", scale, 0, c);
 }
 
 /* ----------------------------------------------------------------- frame */
@@ -782,7 +928,7 @@ static void compose(int tick)
 
 		const char *tag = "musl . GNU . sysvinit . KDE Plasma";
 		draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
-			  tag, body_scale, 0, C_DIM);
+			  tag, body_scale, 0, C_TAG);
 	}
 
 	/* A rule between the identity and the machine talking. */
@@ -792,9 +938,11 @@ static void compose(int tick)
 
 	/*
 	 * THE FAILURE PANEL'S ROOM IS TAKEN FIRST. Once a stage has failed with
-	 * a reason, the reason is drawn under the stage list, in alarm on the
-	 * dimmest surface, at HALF the body scale — the point is to fit real
-	 * log text on screen, and a boot log line is wider than a stage name.
+	 * a reason, the reason is drawn under the stage list, `WHY:` in alarm
+	 * and the reason in the text colour, one scale step under the body
+	 * (panel_ds) — the point is to fit real log text on screen, and a boot
+	 * log line is wider than a stage name. Each detail line is cut to the
+	 * columns that scale leaves inside the panel.
 	 * Its height comes out of the list's rows before the list is laid out,
 	 * so every detail line lands above the bottom edge on any screen that
 	 * holds two stage rows and the panel; a list given its rows first would
@@ -839,11 +987,13 @@ static void compose(int tick)
 
 		draw_text(body_x, dy, "WHY:", ds, 0, C_ALARM);
 		dy += lh;
+		/* Indented two cells under `WHY:`, inside the rule's width. */
+		int cols = body_w / (gw * ds) - 2;
 		for (int i = 0; i < ndetail; i++, dy += lh) {
 			if (dy + lh > fbh)
 				break;	/* never scribble past the panel */
-			draw_text(body_x + gw * ds * 2, dy, detail[i], ds, 0,
-				  C_DIM);
+			draw_fitted(body_x + gw * ds * 2, dy, detail[i], cols,
+				    ds, C_TEXT);
 		}
 	}
 }
@@ -1089,16 +1239,23 @@ static void read_mode(void)
 /* ------------------------------------------------------------------ init */
 
 /*
- * Tell the console to sit still.
+ * Take the foreground VT for the picture.
  *
  * The kernel is built with CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER, which
  * is the whole reason the framebuffer is free for us. Only a printed glyph
  * ends the deferral, and this write is escape sequences alone, so it claims
  * nothing: where fbcon has already taken over (an installed machine's
- * console=tty0) it clears the console and hides the cursor, so no blinking
- * block sits on the animation, and elsewhere it changes nothing on screen.
- * On virtio-gpu the framebuffer is scanned out with the deferral still
- * pending, measured in the rig.
+ * console=tty0) it clears the console and hides the cursor, and elsewhere it
+ * changes nothing on screen. On virtio-gpu the framebuffer is scanned out with
+ * the deferral still pending, measured in the rig.
+ *
+ * Then KD_GRAPHICS: fbcon draws nothing on a VT in graphics mode, so the
+ * initramfs's and rcS's lines, a kernel message and a deferred take-over that
+ * a later glyph ends all stay off the picture. The mode is the VT's and
+ * outlives this process, so it is set only after every early return in run()
+ * and console_release() is the splash's way out: a splash that set it and left
+ * without putting it back would leave the console drawing nothing, which the
+ * `quit` client's vt_text() undoes for a splash that was killed.
  */
 static void console_claim(void)
 {
@@ -1107,18 +1264,25 @@ static void console_claim(void)
 		return;
 	static const char seq[] = "\033[2J\033[H\033[?25l";
 	(void)!write(ttyfd, seq, sizeof(seq) - 1);
+	(void)ioctl(ttyfd, KDSETMODE, KD_GRAPHICS);
 }
 
-/* The console back, for whoever writes text on it next — unless the next is
- * the display manager's compositor, where a cursor shown now would blink on
- * the black until the compositor takes the VT. */
+/* The console back in text mode with its cursor shown, for whoever writes text
+ * on it next; it redraws its buffer, the boot's messages included. The `quit`
+ * client does the same after the splash is gone (vt_text), for a splash that
+ * never got here. Not on a hand-off: the display manager's compositor takes
+ * the VT from elogind in graphics mode, and a VT put back into text now would
+ * draw rcS's last lines and a blinking cursor on the black until it does
+ * (vt_handoff). */
 static void console_release(void)
 {
 	if (ttyfd < 0)
 		return;
 	static const char seq[] = "\033[?25h";
-	if (!handing_off)
+	if (!handing_off) {
+		(void)ioctl(ttyfd, KDSETMODE, KD_TEXT);
 		(void)!write(ttyfd, seq, sizeof(seq) - 1);
+	}
 	close(ttyfd);
 	ttyfd = -1;
 }
@@ -1234,8 +1398,6 @@ static int run(void)
 	if (fb_open() < 0)
 		return 0;   /* fail open: no framebuffer, no splash, no fuss */
 
-	console_claim();
-
 	if (font_load("/usr/share/kdos/splash.psf") < 0 &&
 	    font_load("/usr/share/consolefonts/ter-v16n.psf") < 0)
 		return 0;
@@ -1264,6 +1426,8 @@ static int run(void)
 	signal(SIGTERM, on_signal);
 	signal(SIGINT, on_signal);
 	signal(SIGPIPE, SIG_IGN);
+
+	console_claim();
 
 	double t0 = now_s();
 	char buf[512];
@@ -1353,11 +1517,13 @@ static int run(void)
  * Render one frame to a PPM instead of to the screen, so the look can be
  * iterated on without booting anything:
  *
- *   kdos-splash preview 1280x800 0.35 out.ppm [modern|phosphor]
+ *   kdos-splash preview 1280x800 0.35 out.ppm [modern|phosphor] [ACCENT]
  *
  * The second argument is the intro progress in seconds; anything past the
  * intro gives the settled picture. The motion is the one named, or the
- * command line's when none is.
+ * command line's when none is; the scheme is the one named, or libkcolor's
+ * default. A scheme name that does not exist is a usage error here, where a
+ * person typed it, and not on the FIFO.
  */
 static int preview(const char *geom, const char *at, const char *out)
 {
@@ -1398,8 +1564,9 @@ static int preview(const char *geom, const char *at, const char *out)
 	 * preview fixture uses a nine-digit file count and a port name longer
 	 * than any pane.
 	 *
-	 * The detail lines are rcS's six, deliberately at and over DETAIL_COLS:
-	 * real log output does not respect a column budget.
+	 * The detail lines are rcS's six, one of them deliberately wider than
+	 * the panel at any scale: real log output does not respect a column
+	 * budget, and that line is the one the ellipsis is seen on.
 	 */
 	static const char *INITRD[] = {
 		"T2", "SPROBING BLOCK DEVICES", "O", "SDEVICE MANAGER", "O",
@@ -1549,6 +1716,32 @@ static void vt_handoff(void)
 	close(fd);
 }
 
+/*
+ * THE FOREGROUND VT BACK IN TEXT MODE for a `quit`, whether or not a splash
+ * answered. console_release() does this on the splash's own way out, but a
+ * splash killed without its outro leaves the VT in KD_GRAPHICS, where the
+ * rescue shell, sulogin and kdos-getty would draw nothing. Only a VT in
+ * VT_AUTO mode is touched: a VT in VT_PROCESS mode belongs to a session
+ * elogind handed to a compositor, and putting that one into text mode would
+ * draw the console over the desktop.
+ */
+static void vt_text(void)
+{
+	static const char seq[] = "\033[?25h";
+	struct vt_mode vm;
+	int mode = KD_TEXT;
+	int fd = open("/dev/tty0", O_RDWR | O_NOCTTY | O_CLOEXEC);
+
+	if (fd < 0)
+		return;
+	if (ioctl(fd, VT_GETMODE, &vm) == 0 && vm.mode == VT_AUTO &&
+	    ioctl(fd, KDGETMODE, &mode) == 0 && mode == KD_GRAPHICS) {
+		(void)ioctl(fd, KDSETMODE, KD_TEXT);
+		(void)!write(fd, seq, sizeof(seq) - 1);
+	}
+	close(fd);
+}
+
 int main(int argc, char **argv)
 {
 	const char *cmd = argc > 1 ? argv[1] : "run";
@@ -1564,12 +1757,14 @@ int main(int argc, char **argv)
 		read_mode();
 		return quiet_boot ? run() : 0;
 	}
-	if (!strcmp(cmd, "preview") && argc > 4 && argc < 7) {
-		if (argc == 6 && strcmp(argv[5], "modern") &&
+	if (!strcmp(cmd, "preview") && argc > 4 && argc < 8) {
+		if (argc >= 6 && strcmp(argv[5], "modern") &&
 		    strcmp(argv[5], "phosphor"))
 			goto usage;
+		if (argc == 7 && !spl_accent(argv[6]))
+			goto usage;
 		read_mode();
-		if (argc == 6)
+		if (argc >= 6)
 			crt = !strcmp(argv[5], "phosphor");
 		return preview(argv[2], argv[3], argv[4]);
 	}
@@ -1587,8 +1782,11 @@ int main(int argc, char **argv)
 		return say("D%s\n", arg, 0);
 	if (!strcmp(cmd, "accent"))
 		return say("A%s\n", arg, 0);
-	if (!strcmp(cmd, "quit"))
-		return say("Q%s\n", NULL, 1);
+	if (!strcmp(cmd, "quit")) {
+		say("Q%s\n", NULL, 1);
+		vt_text();
+		return 0;
+	}
 	if (!strcmp(cmd, "handoff")) {
 		say("H%s\n", NULL, 1);
 		vt_handoff();
@@ -1598,6 +1796,6 @@ int main(int argc, char **argv)
 usage:
 	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|detail TEXT|\n"
 		"                    total N|accent NAME|quit|handoff|\n"
-		"                    preview WxH T OUT [modern|phosphor]}\n");
+		"                    preview WxH T OUT [modern|phosphor] [ACCENT]}\n");
 	return 1;
 }

@@ -31,11 +31,6 @@ var favorites = [
     "org.kde.discover.desktop",
 ];
 
-function fixedFamily() {
-    var fixed = String(ConfigFile("kdeglobals", "General").readEntry("fixed") || "");
-    return fixed.split(",")[0];
-}
-
 // The tray's own settings, in its applet's [General] group (plasma-workspace
 // systemtraysettings.cpp). plasma-pa's microphone item is hidden, and two
 // default-on tray applets are kept off. Plasma's camera indicator: KDOS's
@@ -83,16 +78,13 @@ for (var s = 0; s < screenCount; s++) {
     bar.addWidget("org.kde.plasma.panelspacer");
     addTray(bar);
 
+    // No font keys: the applet's own font fits the panel's height and the
+    // font in force, so it grows with the display scale and larger fonts. A
+    // manual font is sized against the screen's pixel density, which the
+    // scale cancels, and stays the same size at 200%.
     var clock = bar.addWidget("org.kde.plasma.digitalclock");
     clock.currentConfigGroup = ["Appearance"];
     clock.writeConfig("showDate", true);
-    var family = fixedFamily();
-    if (family.length > 0) {
-        clock.writeConfig("autoFontAndSize", false);
-        clock.writeConfig("fontFamily", family);
-        clock.writeConfig("fontSize", 10);
-        clock.writeConfig("fontWeight", 400);
-    }
 
     var dock = new Panel;
     dock.screen = s;

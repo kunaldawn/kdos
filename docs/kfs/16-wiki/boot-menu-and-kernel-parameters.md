@@ -35,13 +35,13 @@ the firmware boot entry labelled `KDOS` is written by the installer with
 The medium's menu is a heredoc in the ISO step, written into the ISO tree and never into the root
 filesystem:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=336-364 pin=27763b733baa -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=340-368 pin=4c3956687bc9 -->
 
 `$BOOT_THEME` is the output of `kdos-bootctl theme --print` for the [accent]{.idx} the image is built in;
 `$WALLPAPER` and `$FONT_LINES` name the backdrop and the converted Terminus face, when the build
 found them. The memory test entry is appended after it:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=378-392 pin=0c1a7fc58339 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=382-396 pin=0c1a7fc58339 -->
 
 The medium is ISO9660 and read-only, so this file cannot be edited on a written stick. A change
 for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change is a change to
@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2755-2787 pin=a862490fe7d7 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3228-3260 pin=a862490fe7d7 -->
 
 `KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
 no text cursor is drawn between the splash and the login screen.
@@ -73,10 +73,13 @@ are unaffected.
 ### What kdos-bootctl rewrites
 
 `kdos-bootctl` regenerates every entry whose title starts with `/KDOS`, and `default_entry`, from
-the boot state, and writes the file only when the text differs. It builds every `/KDOS` command
+the boot state, and writes the file only when the text differs. The other slot's entry is left
+out while the state marks that slot `unfilled`, so a slot an update stopped writing cannot be
+picked by hand until the update finishes it (see
+[A/B slots and rollback](ab-slots-and-rollback.md#updating-through-the-inactive-slot)). It builds every `/KDOS` command
 line from the **first** `/KDOS` entry's, less the words it sets per entry:
 
-<!-- kfs:include src/system/kdos-tools/bootctl.c lines=877-930 pin=2202937c55ec -->
+<!-- kfs:include src/system/kdos-tools/bootctl.c lines=891-944 pin=2202937c55ec -->
 
 Every other word carries over, so a word you add to the first entry's `cmdline` reaches every
 `/KDOS` entry the next time the menu is regenerated, and a word you add only to another entry is
@@ -119,11 +122,11 @@ described on [Microcode and firmware](microcode-and-firmware.md#the-regulatory-d
 | `KDOS Live` | `KDOS` |
 | `KDOS Live (clean session)`: adds `nopersist` | `KDOS (verbose)`: `loglevel=7`, no `quiet` and no splash |
 | `KDOS Live (verbose)`: `loglevel=7`, no `quiet` and no splash | `KDOS (single user)`: `loglevel=7 single`, no splash |
-| `Memory Test (memtest86+)`, UEFI only | `KDOS (slot <x>)`, when the other root slot has a root and a kernel |
+| `Memory Test (memtest86+)`, UEFI only | `KDOS (slot <x>)`, when the other root slot has a root and a kernel and is not marked `unfilled` |
 | | `Memory Test (memtest86+)`, UEFI only |
 
-The live medium's quiet entries carry `console=tty0 console=ttyS0`. The kernel prints its
-messages on both, and the last one named, the serial line, becomes `/dev/console`, where the
+The live medium's quiet entries carry `console=tty0 console=ttyS0,115200n8`. The kernel prints its
+messages on both, and the last one named, the serial line at 115200 baud, becomes `/dev/console`, where the
 initramfs and `rcS` print theirs. `KDOS Live (verbose)` names them the other way round, so there
 the screen is `/dev/console`. An installed machine's entries carry `console=tty0` alone, so
 everything prints on the screen. An entry without `quiet` runs no splash, and its console log

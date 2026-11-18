@@ -1,0 +1,64 @@
+Subject: Offer NoDisplay applications in the app chooser only as choices
+
+The chooser's full list holds every valid application service, NoDisplay
+ones included, so opening a video offers kaccess as "Accessibility" with
+a blank icon, the Bluetooth wizard, the Fcitx 5 helpers and settings
+pages. A NoDisplay entry stays in the model and is shown when it is a
+choice for the file, from the request or the MIME associations, and is
+left out of the list of all applications and its search.
+
+--- a/src/appchooserdialog.cpp
++++ b/src/appchooserdialog.cpp
+@@ -202,6 +202,11 @@
+     return m_supportedMimeTypes;
+ }
+ 
++bool ApplicationItem::noDisplay() const
++{
++    return m_applicationService->noDisplay();
++}
++
+ void ApplicationItem::setApplicationCategory(ApplicationItem::ApplicationCategory category)
+ {
+     m_applicationCategory = category;
+@@ -297,6 +302,13 @@
+         return false;
+     }
+ 
++    // An entry hidden from the menus is offered only as a choice for this
++    // file: among all applications it is a helper or a settings page, often
++    // with no icon, and not something to open a file with.
++    if (category != ApplicationItem::PreferredApplication && index.data(AppModel::ApplicationNoDisplayRole).toBool()) {
++        return false;
++    }
++
+     if (m_filter.isEmpty()) {
+         return true;
+     }
+@@ -514,6 +526,8 @@
+             return static_cast<int>(item.applicationCategory());
+         case ApplicationSupportedMimeTypesRole:
+             return QVariant::fromValue(item.supportedMimeTypes());
++        case ApplicationNoDisplayRole:
++            return item.noDisplay();
+         default:
+             break;
+         }
+--- a/src/appchooserdialog.h
++++ b/src/appchooserdialog.h
+@@ -45,6 +45,7 @@
+     QString applicationIcon() const;
+     QString applicationDesktopFile() const;
+     QList<QMimeType> supportedMimeTypes() const;
++    bool noDisplay() const;
+ 
+     void setApplicationCategory(ApplicationCategory category);
+     ApplicationCategory applicationCategory() const;
+@@ -203,6 +204,7 @@
+         ApplicationDesktopFileRole,
+         ApplicationCategoryRole,
+         ApplicationSupportedMimeTypesRole,
++        ApplicationNoDisplayRole,
+     };
+ 
+     explicit AppModel(QObject *parent = nullptr);

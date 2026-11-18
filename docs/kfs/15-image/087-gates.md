@@ -7,11 +7,12 @@ program is missing, a link into a package that was swept, a QML module the base 
 `script/phases/70_image/087_gates.sh` runs four checks over the tree that is about to become the
 image, and stops the phase on their findings, before the initramfs and the ISO are written; the
 first check stops it only for what it finds under the four directories that hold manuals,
-documentation and translations.
+documentation and translations. A build with `KDOS_MAKE_BINHOST=1` adds a fifth, over the
+binhost [010_binhost.sh](010-binhost.md) wrote.
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/087_gates.sh lines=50-79 pin=bf626b89516f -->
+<!-- kfs:include script/phases/70_image/087_gates.sh lines=50-104 pin=a1e4ccb47842 -->
 
 The first three checks are Python programs in `testing/`, which `script/chroot/exec.sh` binds
 read-only at `/kdos/testing` in the chroot; the fourth is `script/lib/imageset.py`, the script
@@ -65,6 +66,14 @@ failed build prints every problem the tree has, not just the first.
   either tree provides is counted; neither fails. Under `KDOS_IMAGE=full` nothing is dropped and
   the step says so.
 
+The binhost's `N:` lines
+: Runs under `KDOS_MAKE_BINHOST=1` only, when `/kdos/build/binhost/PACKAGES` exists. A current
+  package stanza, one with an `E:` and no `O:`, must carry an `N:` line, the build-only ports the
+  package needs at run time (see [010_binhost.sh](010-binhost.md#the-index)). One without it has
+  no run-time needs record in the build tree, so `kdos update install` would keep every
+  build-only dependency of it; the check prints `FAIL <n> binhost package(s) carry no N: line (no
+  run-time needs record): <names>`, and rebuilding each named port records its needs.
+
 Under `KDOS_IMAGE=base` the tree is the [image stage](017-stage.md), trimmed to the base, so the
 last three checks are also the proof that the base's closure is whole: a library, an interpreter,
 a program, a QML module or a Python package a base package needs that went with the packages
@@ -82,7 +91,8 @@ The exact rules of each, their exemptions and how to run them by hand are in
 `unowned.py` prints a `FAIL unowned` line for each path it stops on, `linkcheck.py` a `FAIL` line
 for each finding, and `entrycheck.py` a line naming the kind of finding (`link`, `exec`, `icon` or
 `udev`) and a count of each at the end, and `imageset.py` a `FAIL` line for each edge met only
-outside the base and an `imageset: verify:` count line. All four are in the step's log,
+outside the base and an `imageset: verify:` count line, and the binhost check one `FAIL` line
+naming its packages. All of them are in the step's log,
 `build/logs/70_image/<NNNN>_gates.sh.log` (see
 [Step logs](../../kdos/05-developer/build-system.md#step-logs)). The fix is usually in a recipe: a missing `depends`, a package that
 installs a link to a file it does not ship, a desktop entry naming the wrong program, a build

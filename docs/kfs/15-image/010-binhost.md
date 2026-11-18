@@ -13,7 +13,7 @@ directory.
 
 ## Switching it on
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=59-62 pin=73a5f902efa6 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=61-64 pin=73a5f902efa6 -->
 
 `KDOS_MAKE_BINHOST` comes from the `make build` command line, through the `Makefile` and
 `script/chroot/exec.sh`. Set to anything but `1`, the step prints the line above and exits.
@@ -32,7 +32,7 @@ make build KDOS_MAKE_BINHOST=1
 
 ## The signing key
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=64-74 pin=79afd37a89a5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=66-76 pin=79afd37a89a5 -->
 
 The key pair is made once, by `kpkg keygen`, in `build/binhost-key/`, and every later run signs
 with the same key. kpkg writes the private half with mode 0600 and never replaces an existing
@@ -45,7 +45,7 @@ release-signing key, so only removing the directory by hand makes a new key.
 
 ## Moving the packages
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=76-88 pin=19babb00269e -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=78-90 pin=19babb00269e -->
 
 Every package in the cache is moved into `build/binhost/`, over a file of the same name, which
 leaves `build/fs`'s cache empty for the next build in either image mode: under `KDOS_IMAGE=base`,
@@ -76,10 +76,17 @@ make build KDOS_MAKE_BINHOST=1 BUILD_ARGS=--fresh
 
 ## The index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=90-100 pin=f9126924ee3d -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=92-111 pin=0e27dd3a19b7 -->
 
 `kpkg index --sign` writes the index, `PACKAGES`, its signature `PACKAGES.sig`, and a signature
-beside each package, over every package in the directory. `kpkg verify-index` then reads the
+beside each package, over every package in the directory. With `--buildonly
+/ports/buildonly` and `PKGDB_DIR` at the build tree's database, it gives each package file of
+the version and release installed there an `N:` line: the package's run-time needs record
+(`/var/lib/kpkg/db/.needs/<name>`), each edge resolved to the installed package that provides it,
+kept where `ports/buildonly` lists that package. `kdos update install` follows a dependency into a
+build-only port only where the line names it, so a prebuilt `kcharselect` takes no `cmake`. An
+empty `N:` is measured and needs none; a stanza with none is unmeasured, keeps every edge, and
+fails [the gates](087-gates.md) when it is a current package. `kpkg verify-index` then reads the
 index back with `KPKG_KEYRING` pointed at `build/binhost-key/`, so the one key the index was
 signed with is the only key trusted, as a client holding that key would read it. A failed
 verification stops the phase.
@@ -99,7 +106,7 @@ The index format and the rules a client applies are in
 
 ## The catalogue
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=102-123 pin=3b85a50dfbf5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=113-134 pin=3b85a50dfbf5 -->
 
 Discover lists what a binhost can add from an AppStream catalogue beside its index, which a client
 asks for as `binhost/swcatalog/xml/kdos-binhost.xml` and keeps at that path under
@@ -114,7 +121,7 @@ binhost. How each component is read is on [The software catalogue](086-swcatalog
 
 ## The release index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=125-159 pin=260e907312f3 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=136-170 pin=d4599ba2dcde -->
 
 The release index carries this tree's packages and no others. The step reads `PACKAGES` and marks
 every [superseded]{.idx} package: a package stanza, one with no `O:` (which marks a delta), whose
@@ -123,7 +130,7 @@ current package larger than one GitHub release asset, `SRC_PART_SIZE` from `port
 (1,900 MiB unless `KDOS_PART_SIZE` names another), stops the phase, naming the file: a machine
 takes a package whole, and the release could not carry it.
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=160-174 pin=44ef9b003423 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=171-185 pin=44ef9b003423 -->
 
 `kdos update` never asks for a binhost file by its name alone: it asks the [release index]{.idx},
 `kdos-update.idx`, where the file is, and keeps it only with the size and SHA-256 the index gives.
@@ -132,9 +139,11 @@ key and the superseded packages with their signatures: each package, sidecar and
 `binhost/<name>`, the index and its signature at
 `binhost/PACKAGES` and `binhost/PACKAGES.sig`, and the catalogue at its path above, every one with
 the release `-`, which means beside the index. `ports/releaselib.sh` is the writer, the same one
-`ports/publish --release` uses for a release. The `version` is the short commit hash the build
-records, cut to twelve characters, which is what a machine whose `/ports` names no release calls
-its tree. `kpkg sign` signs it with the binhost key and `kpkg verify-pkg` reads it back against that key alone, so a
+`ports/publish --release` uses for a release. The `version` is the release tag when the image is built from a
+clean tagged checkout (`KDOS_GIT_RELEASE`, which [the recipe tree](105-ports.md) stamps into
+`/ports/TREE` too), else the short commit hash the build records, cut to twelve characters, which
+is what a machine whose `/ports` names no release calls its tree; `kdos update` refuses an index
+whose version differs from its tree's. `kpkg sign` signs it with the binhost key and `kpkg verify-pkg` reads it back against that key alone, so a
 machine trusting `kdos-binhost.pub` takes the directory, copied to a stick or served as it is, as
 the place `binhost =` names in `/etc/kdos/update.conf`. The format, and the published form whose
 files are in releases `binhost-<version>-01`, `-02`, … of at most 1,000 assets each, are in

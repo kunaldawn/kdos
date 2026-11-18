@@ -40,7 +40,8 @@ palette made.
 
 `kdos-sddm.patch` makes the Breeze greeter the KDOS one. `theme.conf` shows the KDOS mark
 (`distributor-logo-kdos` from [kdos-icons](#port-kdos-icons)) and takes its background from
-`/var/lib/sddm/kdos-background.png`, the accent's dark wallpaper copied with the rest of the set;
+`/var/lib/sddm/kdos-background.png`, the accent's dark wallpaper dimmed until the greeter's text
+reads on it (see [kdos-theme](#port-kdos-theme)), copied with the rest of the set;
 the scheme's Window ground is drawn under it, so a greeter that finds no such file shows the
 accent's ground instead of an empty window. The clock is set in the fixed-width face (a new
 `MonoClock.qml`, Breeze's clock with the family changed, and the time's no-break spaces made plain
@@ -53,11 +54,14 @@ not for upstream.
 
 **The lock screen as the login.** On a machine that logs in automatically into a locked session,
 the stock Breeze lock screen is the first thing shown, and it is drawn from the same
-`org.kde.breeze.components` as this greeter: the same clock position, user box and footer, on the
-same accent's wallpaper (`kscreenlockerrc` names the accent's wallpaper package, whose dark image
-is the greeter's background). Changing the layout here and not there would make the two screens a
-person types the same password into look different, so the patch changes only the mark, the
-clock's face, the footer and the background, never the layout.
+`org.kde.breeze.components` as this greeter: the same user box, the circle and the name at one
+place on both, over the same accent's wallpaper (`kscreenlockerrc` names the accent's wallpaper
+package, whose dark image, dimmed toward the scheme's ground, is the greeter's background). The
+two differ where Plasma's lock screen does: its clock sits higher, only the greeter carries the
+credit, and the password field sits 13 pixels lower on the lock screen than on the greeter (its top
+edge at about y 603 on the greeter and y 616 on the lock screen, at 1920 by 1080). The patch
+changes only the mark, the clock's face, the footer and the background, never the layout, so the
+user box stays where it is on both.
 
 **The footer's two keyboard buttons work over the greeter's session bus.** The Virtual Keyboard
 button is Breeze's: `Keyboards.KWinVirtualKeyboard.forceActivate()`, a D-Bus call to the

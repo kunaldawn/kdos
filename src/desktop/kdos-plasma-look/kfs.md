@@ -9,8 +9,9 @@ generated at build time from the one palette in libkcolor. It installs
   `breeze_cursors`, the square Breeze decoration, the `kdos` Plasma style, the fonts, its own
   KSplash and the `KDOS-<Title>` wallpaper;
 - the Plasma style `kdos`, `/usr/share/plasma/desktoptheme/kdos`: square, opaque panel, popup,
-  tooltip, button, task-manager and pager frames with a one-pixel accent rule, falling back to
-  Breeze for everything it does not draw;
+  tooltip, button, task-manager and pager frames with a one-pixel accent rule, and the slider,
+  progress bar, radio button, check marks and switch in the accent, falling back to Breeze for
+  everything it does not draw;
 - the three desks, `/usr/share/plasma/layout-templates/org.kdos.desk.{kdos,dock,tiling}`;
 - the Konsole schemes and profiles `KDOS-<Title>` and the qt5ct palettes `KDOS-<Title>.conf`;
 - the login screen's files for each accent, `/usr/share/kdos/greeter/<accent>/`, which
@@ -31,9 +32,11 @@ How the accents are switched is [`kdos theme`](../../../docs/kdos/04-programs/kd
   role falls below 4.5:1 on either background of its set, or a decoration below 3:1. `-q` prints
   only the failures, so the build log names what broke.
 - `kdos-theme greeter-globals --sddm` — One directory per accent holding the `kdeglobals`,
-  `plasmarc` and `kcminputrc` the SDDM greeter reads from the `sddm` account's home, and a
-  `background.png` link to the accent's dark wallpaper. The greeter reads no light or dark setting,
-  so the light accent's directory carries its dark partner's files.
+  `plasmarc` and `kcminputrc` the SDDM greeter reads from the `sddm` account's home, and
+  `background.png`, the accent's dark wallpaper dimmed until the greeter's text holds 4.5:1 on its
+  brightest pixel. It reads the wallpapers [kdos-wallpapers](#port-kdos-wallpapers) installed,
+  which is why that port is in `depends`. The greeter reads no light or dark setting, so the light
+  accent's directory carries its dark partner's files.
 - `kdos-theme greeter-globals "$LOOK/kdos/xdg/kdeglobals"` — Merges the default accent's
   `[Colors:*]` and `[ColorEffects:*]` groups, the colour keys of `[WM]` and `[General] ColorScheme`
   into the installed `kdeglobals`, leaving every other line as written. KColorScheme reads colours
@@ -90,12 +93,22 @@ panel template without it. `genlook.py` refuses a desk that is missing either. E
 `layouts/org.kde.plasma.desktop-layout.js` lays out the desk named by `kdosrc [Desk] Layout`, so
 the Global Theme page and `kdos desk` always agree, and records when it did in `[Desk] LaidOut`;
 `kdos desk` records a digest of the panels it laid out in `[Desk] LaidOutPanels` and compares it
-with the panels now to tell whether they were changed since.
+with the panels now to tell whether they were changed since. The digest covers each panel's place,
+its applets in order and the settings every desk writes into them (Start's icon and label, the
+pinned apps, each meter's face), and a desk whose Start has no icon, whose task manager has no
+launchers or whose meter has no face reads as changed even before a digest is recorded: every desk
+writes those keys, so their absence means the panels are not the ones it laid out. The clock
+carries no font keys: the applet's own font fits the panel and follows the font in force, and a
+manual one is sized against the screen's pixel density, which the display scale cancels. The
+Tiling desk's pager shows the desktops' names without window outlines, which would be drawn over
+the names on a bar that thin.
 The pinned apps in the desks are the first words of `~/.config/kdos/favorites`, the list of boxes
 warmed at login; `testing/lnfcheck.py` compares the two.
 
-**The Plasma style.** It draws only the panel, popups, tooltips, buttons, the task manager and
-the pager, with `FallbackTheme=default` for the rest, and ships no `colors` file, so it follows whichever
+**The Plasma style.** It draws only the panel, popups, tooltips, buttons, the task manager, the
+pager, the slider, the progress bar, the radio and check marks and the switch, with
+`FallbackTheme=default`
+for the rest, and ships no `colors` file, so it follows whichever
 scheme is in force. Each of the panel, dialog and tooltip frames is installed twice, at its path
 and under `solid/`: an opaque panel, a solid dialog and every PlasmaComponents tooltip and menu
 ask for the `solid/` path by name, and without the copy they would get Breeze's. No `translucent/`
@@ -106,3 +119,30 @@ icon from the icon theme, and nothing reads a style's icon SVGs. The pager's cel
 its desktop labels are always drawn in the text colour, which Breeze's filled current cell puts on
 the light accent of a dark scheme, so the current desktop is an accent outline and bottom rule
 over the panel's own ground.
+
+The slider's fill, the progress bar's fill (the volume and brightness OSD's among them) and the
+radio and check marks are the accent, `ColorScheme-ButtonFocus`, over a hollow track: Breeze's
+fills them with `ColorScheme-Highlight`, the darkened selection, which on a dark accent barely
+parts from its groove, and its fallback radio barely parts from the ground. The track is a faint
+text-coloured outline around the ground itself, so the fill meets the ground at the focus colour's
+3:1 floor. Plasma takes a style's file whole or not at all, so each of `slider.svgz`,
+`bar_meter_horizontal.svgz`, `radiobutton.svgz`, `checkmarks.svgz` and `switch.svgz` holds every
+element its component asks for; shipping `radiobutton.svgz` is also what moves PlasmaComponents'
+radio button off the compatibility path that draws it from `actionbutton.svgz`.
+
+The switch (`switch.svgz`) is a 36 by 18 pixel hollow groove, outlined in the radio's ring
+(`ColorScheme-Text` at 60%, at least 4.4:1 against the ground on every accent), the accent filled
+up to the handle when it is on, and a square handle in the button's ground. Breeze's switch parts
+from a dark ground at about 1.5:1, which leaves an unchecked switch, the tray's "Raise maximum
+volume" among them, all but invisible. Plasma's `SwitchIndicator` reads these elements, and
+`genlook.py` stops the build when one is missing: the frames `inactive-*` and `active-*` (all
+nine parts each), `hint-bar-size` (the groove's size), and `handle`, `handle-hover`,
+`handle-pressed`, `handle-active`, `handle-focus` and `handle-shadow`. It shows one of the first
+four at a time, so each is a whole handle, not an overlay: the ring outline at rest, the hover
+colour under the pointer and with keyboard focus, a tinted handle outlined in the accent while
+pressed, and the accent outline when on. With keyboard focus `handle-focus`, a two-pixel accent
+outline, is drawn over the hover handle; `handle-shadow` is empty.
+
+A popup's margins are 8 pixels and its insets 4. Kickoff spaces its header, and pads its header and
+footer, by the dialog's margin less its inset, so equal values put the account picture against
+the user's name.

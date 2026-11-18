@@ -76,7 +76,7 @@ system log (`mdadm.conf(5)`).
 **The RAID step of the initramfs**, from `script/phases/70_image/090_initramfs.sh`, assembles every
 array whose members it finds, on the live medium and on an installed system:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=620-628 pin=1019c6f0eacb -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=647-655 pin=1019c6f0eacb -->
 
 ## Usage
 

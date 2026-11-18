@@ -6,3 +6,20 @@ those change), a passwd naming the sddm account, one accent's login-screen set
 under usr/share/kdos/greeter/amber, and empty kbd keymaps for the console
 keymap search. The selftest copies it before each run, so a writer never edits
 the fixture itself.
+
+copy-progress.txt is a real rsync --info=progress2 --no-inc-recursive stream,
+each line prefixed with the seconds since rsync started, thinned to a line
+each 50 ms and keeping every line without file counts. The selftest feeds it
+to `harness copy` at its own times and re-timed, and bounds the time left the
+Copy step's note shows.
+
+live-shape.txt is the live medium's tree in rsync's copy order (the ISO's
+system.sfs, listed and sorted by path), as runs of 128 entries: entries and
+bytes per run. A run with a third field, L, is extra names of hard-linked
+files (15% of the bytes, as on the live root), which rsync -H counts in its
+total and makes as links at no copy cost; the stream advances the file
+count over them and no bytes or time. The selftest builds progress2 streams
+from it at several costs per byte and per file, and bounds the time left on
+the tree the installer actually copies, given the link names' bytes and,
+to show the bound needs them, without. Refresh it when the tree's shape
+changes a lot.

@@ -15,6 +15,17 @@ KDOS, and the way to write a KDOS installer stick from the desktop.
   package-wide English-only rule would remove anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
+## Patches
+
+`status-wrap.patch` lets the status line under the USB drive field wrap, gives it the stretch of
+the row it shares with the Create button, and reserves two lines of height for it. Upstream leaves
+it on one line, so at the window's default width a sentence such as "Could not find the key to
+verify the ISO image", which every image from an unknown distribution shows, is cut off where the
+button begins. The row is otherwise as tall as the button, and the main window does not grow for
+a label's height-for-width, so without the reserved height a wrapped sentence loses the bottom of
+its second line. It is to be offered upstream as a merge request against
+`utilities/isoimagewriter`.
+
 ## Notes
 
 The check is by file name and covers KDE neon and Arch Linux (a detached `.sig` beside the image,

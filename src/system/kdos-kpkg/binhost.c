@@ -9,7 +9,8 @@
  *
  *   kpkg keygen <name>            make a signing key
  *   kpkg sign <file> <key>        write <file>.sig over any one file
- *   kpkg index <dir> [--sign K]   write PACKAGES (+ PACKAGES.sig, + sidecars)
+ *   kpkg index <dir> [--sign K] [--buildonly F]
+ *                                 write PACKAGES (+ PACKAGES.sig, + sidecars)
  *   kpkg verify-index <dir>       check it against the keyring
  *   kpkg binhost [--root R] <dir> <port>
  *                                 install the prebuilt package IF it matches,
@@ -26,6 +27,16 @@
  *
  * A client uses a prebuilt package when all three equal its own, and builds
  * from source otherwise. There is no BUILD_ID counter and no "close enough".
+ *
+ *   N:  the build-only ports (the `--buildonly` list, ports/buildonly) the
+ *       package needs at run time, space-separated: its recorded run-time
+ *       needs (`<db>/.needs/<name>`, kpkg.h) resolved to the installed
+ *       packages that provide them. Written only with `--buildonly`, and only
+ *       for a file of the version and release installed here with a needs
+ *       record; an empty `N:` is measured and needs none of them, no `N:` is
+ *       unmeasured. `kdos update install` follows a dependency into a listed
+ *       port only where the line names it, so a prebuilt install leaves out
+ *       the compilers a package was built with.
  *
  * SIGN THE INDEX, NOT EVERY PACKAGE. The index carries each package's SHA-256,
  * so one signature transitively covers every file it names — and the per-package
@@ -169,18 +180,108 @@ static int split_pkgfile(const char *file, char *name, size_t ncap, char *ver,
 	return 0;
 }
 
+/* The words of a ports/buildonly-shaped file, NULL-terminated
+ * (kb_strv_free); NULL when it cannot be read. '#' starts a comment. */
+static char **buildonly_read(const char *path)
+{
+	char *data = kb_read_all(path, NULL);
+	if (!data)
+		return NULL;
+	int n = 0, cap = 64;
+	char **v = kb_calloc((size_t)cap + 1, sizeof(*v));
+	for (char *l = data; l && *l;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		char *h = strchr(l, '#');
+		if (h)
+			*h = 0;
+		char *save = NULL;
+		for (char *w = strtok_r(l, " \t\r", &save); w;
+		     w = strtok_r(NULL, " \t\r", &save)) {
+			if (n == cap) {
+				cap *= 2;
+				v = kb_realloc(v, ((size_t)cap + 1) * sizeof(*v));
+			}
+			v[n++] = kb_strdup(w);
+			v[n] = NULL;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return v;
+}
+
+/*
+ * The `N:` line of the package file `name`-`ver`-`rel`: the ports of `bo`
+ * that provide one of its recorded run-time needs, in `bo`'s order, into
+ * `out`. 0 when it is measured (the installed package is that version and
+ * release and has a needs record), -1 when it is not and the stanza carries
+ * no `N:`. The ownership table is loaded once, on the first package asked.
+ */
+static int needs_buildonly(const KpConf *c, const char *name, const char *ver,
+			   const char *rel, char *const *bo, KpOwned **owned,
+			   KbBuf *out)
+{
+	char iv[64], ir[32];
+	if (kp_installed_version(c, name, iv, sizeof(iv), ir, sizeof(ir)) != 0 ||
+	    strcmp(iv, ver) || strcmp(ir, rel))
+		return -1;
+	char *rec = kp_installed_needs(c, name, NULL);
+	if (!rec)
+		return -1;
+	if (!*owned)
+		*owned = kp_owned_load(c);
+	int nb = 0;
+	while (bo[nb])
+		nb++;
+	char *hit = kb_calloc((size_t)nb + 1, 1);
+	for (char *l = rec, *nl; l && *l; l = nl) {
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl++ = 0;
+		if (!*l)
+			continue;
+		const char *byname = NULL, *who = NULL;
+		char **where = kp_needs_where(c, l, &byname);
+		for (char **w = where; *w && !who; w++)
+			who = *owned ? kp_owned_owner(*owned, *w) : NULL;
+		if (!who && byname && kp_installed(c, byname))
+			who = byname;
+		for (int i = 0; who && i < nb; i++)
+			if (!strcmp(bo[i], who) && strcmp(who, name))
+				hit[i] = 1;
+		kb_strv_free(where);
+	}
+	for (int i = 0, k = 0; i < nb; i++)
+		if (hit[i])
+			kb_buf_printf(out, "%s%s", k++ ? " " : "", bo[i]);
+	free(hit);
+	free(rec);
+	return 0;
+}
+
 int kp_cmd_index(const KpConf *c, int argc, char **argv)
 {
-	const char *dir = NULL, *keyfile = NULL;
+	const char *dir = NULL, *keyfile = NULL, *bofile = NULL;
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--sign") && i + 1 < argc)
 			keyfile = argv[++i];
+		else if (!strcmp(argv[i], "--buildonly") && i + 1 < argc)
+			bofile = argv[++i];
 		else if (argv[i][0] != '-')
 			dir = argv[i];
 	}
 	if (!dir) {
-		printf("Usage: kpkg index <dir> [--sign <secret-key>]\n");
+		printf("Usage: kpkg index <dir> [--sign <secret-key>] "
+		       "[--buildonly <file>]\n");
+		return 1;
+	}
+	char **bo = NULL;
+	KpOwned *owned = NULL;
+	if (bofile && !(bo = buildonly_read(bofile))) {
+		kp_err("cannot read the build-only list %s", bofile);
 		return 1;
 	}
 
@@ -191,6 +292,7 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 	char **files = kb_listdir(dir, NULL);
 	if (!files) {
 		kp_err("cannot read %s", dir);
+		kb_strv_free(bo);
 		return 1;
 	}
 	/* Sorted: the index is an artefact that gets diffed and signed, so it
@@ -209,7 +311,7 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 	KbBuf b = {0};
 	kb_buf_printf(&b, "K:kdos-index-1\nA:%s\nB:%s\n\n", arch, bhash);
 
-	int n = 0, nd = 0;
+	int n = 0, nd = 0, nm = 0;
 	for (int i = 0; i < nf; i++) {
 		size_t fl = strlen(files[i]);
 
@@ -301,13 +403,26 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 
 		kb_buf_printf(&b,
 			      "P:%s\nV:%s\nR:%s\nA:%s\nF:%s\nS:%lld\nC:%s\n"
-			      "B:%s\nE:%s\nT:%s\n\n",
+			      "B:%s\nE:%s\nT:%s\n",
 			      name, ver, rel, arch, files[i],
 			      (long long)st.st_size, sha, bhash, ehash, desc);
+		if (bo) {
+			KbBuf nb = {0};
+			if (needs_buildonly(c, name, ver, rel, bo, &owned,
+					    &nb) == 0) {
+				kb_buf_printf(&b, "N:%s\n", nb.p ? nb.p : "");
+				nm++;
+			}
+			kb_buf_free(&nb);
+		}
+		kb_buf_str(&b, "\n");
 		n++;
 		free(path);
 	}
 	kb_strv_free(files);
+	kb_strv_free(bo);
+	if (owned)
+		kp_owned_free(owned);
 
 	char *out = kb_path_join(dir, INDEX_NAME);
 	int rc = kb_write_all(out, b.p, b.n);
@@ -318,6 +433,9 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 		return 1;
 	}
 	kp_msg("Indexed %d package(s) and %d delta(s) into %s", n, nd, out);
+	if (bofile)
+		kp_msg("%d of %d package(s) carry their measured run-time needs "
+		       "(N:)", nm, n);
 
 	if (keyfile) {
 		uint8_t seed[KSIG_SEED_LEN], pub[KSIG_PUB_LEN];

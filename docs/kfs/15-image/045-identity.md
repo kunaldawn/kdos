@@ -11,7 +11,7 @@ Settings → **About this System** shows the build beside the version, from
 
 The `Makefile` works them out from your clone when it starts the build container:
 
-<!-- kfs:include Makefile lines=202-205 pin=91e0519d3113 -->
+<!-- kfs:include Makefile lines=218-221 pin=91e0519d3113 -->
 
 `KDOS_GIT_COMMIT` is the short hash of `HEAD`, `KDOS_GIT_DIRTY` is `1` when `git status` shows any
 change, `KDOS_GIT_DATE` is the commit date as `YYYY-MM-DD`, and `KDOS_GIT_TIME` the commit time in

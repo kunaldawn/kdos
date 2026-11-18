@@ -141,6 +141,7 @@ carried in is replaced:
 | `XDG_RUNTIME_DIR` | `/run/user/<uid>`, only when that directory exists: a shell no PAM session started (ssh) is pointed at the directory of a login that is still open, or at none |
 | `DBUS_SESSION_BUS_ADDRESS` | `unix:path=$XDG_RUNTIME_DIR/bus`, only when the socket exists, so an ssh shell reaches a running session's bus |
 | `XDG_CURRENT_DESKTOP`, `XDG_MENU_PREFIX` | `KDE` and `plasma-`, so a file opened from a console opens in the application the desktop opens it in: `kde-mimeapps.list`, where every KDOS default application is named, is read only by a program whose desktop names `KDE` |
+| `KDE_SESSION_VERSION` | `6`, the value startplasma sets: xdg-utils compares it as a number whenever the desktop is `KDE`, and with it empty `xdg-mime` prints `[: : integer expected` |
 | `XDG_CONFIG_DIRS` | `/usr/share/kdos/xdg` appended after `/etc/xdg` when missing |
 | `QT_QPA_PLATFORM` | `wayland;xcb`: Qt uses Wayland and falls back to Xwayland only when its Wayland plugin cannot start, which is a Qt 5 program built without one |
 | `QT_QPA_PLATFORMTHEME` | `kde`: a Qt 6 program finds plasma-integration's theme and the colours of `kdeglobals`; a Qt 5 program finds the `qt5ct` port's plugin under the same name, which reads the qt5ct files `kdos theme` writes |
@@ -154,7 +155,7 @@ directory at most once:
 
 | Directory | When | What it holds |
 |---|---|---|
-| `/usr/share/kdos/xdg-live` | The root is the live medium's overlay | No file index of a home that is gone at the next boot, no timed lock and no wallet for an account with no password, no update notice, the welcome tour on its live page |
+| `/usr/share/kdos/xdg-live` | The root is the live medium's overlay | No file index of a home that is gone at the next boot, no timed lock and no wallet for the `kdos` account SDDM logs in automatically (password `kdos`, which is never typed to reach the desktop and unlocks a Meta+L lock), no update notice, the welcome tour on its live page |
 | `/usr/share/kdos/xdg-vm` | `kdos in-vm` says this is a virtual machine | No idle dimming, blanking, timed lock or idle and lid suspend, which from outside the guest look like a hung one |
 | `/etc/xdg` | Always | The machine owner's settings, and every package's autostart entries |
 | `/usr/share/kdos/xdg` | Always | Every KDOS default: `kwinrc`, `kscreenlockerrc`, `powerdevilrc`, `startkderc`, `kde-mimeapps.list`, the environment scripts below, and the rest |
@@ -213,7 +214,7 @@ user's first login. KDOS ships these:
 | Entry | Runs | What for |
 |---|---|---|
 | `kdos-session-good.desktop` | `kdos-notice --bless` | The second mark of a confirmed boot: once `org.kde.plasmashell` has answered for a minute, asks `kdos-sysupdated` to record that this boot reached a working desktop (see [Boot and init](boot-and-init.md#counting-and-confirming)) |
-| `kdos-notice.desktop` | `kdos-notice` | Notices for updated programs that need a restart, known vulnerabilities, a trial or rolled-back system version, a program closed to free memory, and applications chosen at install that are not installed yet |
+| `kdos-notice.desktop` | `kdos-notice` | Notices for updated programs that need a restart, known vulnerabilities, a trial or rolled-back system version, a program closed to free memory, and software chosen at install that is not installed yet. Each carries `x-kde-appname=kdos`, which names `/usr/share/knotifications6/kdos.notifyrc` ("KDOS Tools"), so it stays in the notification history and is configured on System Settings' Notifications page. The restart notice counts only replaced executable code, a program or library still mapped executable after its file was replaced (`kdos restarts`), so installing an application, whose index triggers rewrite the icon, MIME and font caches every program has mapped for reading, raises none |
 | `kdos-boxes-restore.desktop` | `kdos-appbox session restore` | The boxes of the last session, when the session is set to restore the previous one (see [Ending a session](#ending-a-session)) |
 | `kdos-fwask.desktop` | `kdos-fwask` | The firewall's "Allow on this network?" question |
 | `kdos-mpris.desktop` | `kdos-mpctl mpris` | Plasma's media controls for mpd, over MPRIS; only when mpd is installed |
@@ -275,7 +276,7 @@ system's own `/etc/init.d` scripts:
 | `22_pipewire-pulse.sh` | `pipewire-pulse` | The PulseAudio server every Pulse client finds, the panel's volume applet among them; restarted whenever `pipewire` is |
 | `25_mpd.sh` | `mpd` | Only when a `mpd.conf` exists in one of the places mpd reads; the image ships none. It makes `$XDG_RUNTIME_DIR/mpd` first, where the socket [`kdos-mpctl`](../04-programs/kdos-command.md#kdos-mpctl) and every client `MPD_HOST` points at (`/etc/profile.d/45-mpd.sh`) reach mpd; mpd makes that directory itself only when it binds no address |
 | `30_timers.sh` | `timers` | The user's periodic jobs: every row of `/etc/kdos/user-services/timers.d` and `~/.config/kdos/timers.d`, under `snooze`, in one supervised process. Its start also builds the first file index in the background (`kdos-updatedb --if-missing`) when there is none |
-| `40_boxes.sh` | `boxes` | Starts nothing. Its `stop` runs first, because the table stops backwards, and stops every running container of the user's within thirty seconds, through `kdos-box stop`: `podman stop` signals nothing in a box that shares the host's PID namespace and has no cgroup of its own. It then ends podman's rootless pause process, by the pid in `$XDG_RUNTIME_DIR/libpod/tmp/pause.pid` |
+| `40_boxes.sh` | `boxes` | Starts nothing. Its `stop` runs first, because the table stops backwards, and stops every running container of the user's within thirty seconds, through `kdos-box stop`: in a box that shares the host's PID namespace and has no cgroup of its own, `podman stop` reaches the box's init and its descendants and leaves running the applications its launches started. It then ends podman's rootless pause process, by the pid in `$XDG_RUNTIME_DIR/libpod/tmp/pause.pid` |
 
 Each script is asked `ready` before the next starts, so PipeWire's socket exists before WirePlumber
 connects, and the backend reports ready only after the last. turnstile holds the login until then,
@@ -796,6 +797,11 @@ with no arguments. An application comes back with its own start-up state: no doc
 window positions, and one window however many it had. A window that matches no desktop entry is not
 recorded, and does not come back (see
 [Known gaps](../06-reference/known-gaps.md#session-restore-reopens-applications-not-their-documents)).
+Nor is an entry named in ksmserverrc `[General] excludeApps`, compared with the storage id exactly
+(`org.kde.plasma-welcome.desktop`, suffix and case included). KDOS's
+`/usr/share/kdos/xdg/ksmserverrc` names Welcome there, so a Welcome window open at a logout does
+not come back at the next login as the full tour, without the page it was opened at. A list set
+in System Settings → Session replaces KDOS's.
 
 `kdos-boxes.sh` sorts first (`-` before `.`), so the record is taken while the boxes `gc` is about
 to stop are still running. KDE's own session restore starts launchers, not boxes, so when the

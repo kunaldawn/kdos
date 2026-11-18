@@ -10,7 +10,8 @@
  * The fixtures under fixtures/ are kinstall's own output: two streams a real
  * `kinstall --events json` wrote (refused answers; a dry run stopped for not
  * being root) and one success in the same shape. Beside them, a rules list,
- * an XKB symbols directory holding `us` and `de` only, and a zone1970.tab.
+ * an XKB symbols directory holding `us` and `de` only, a zone1970.tab, and
+ * two mounts tables, the live medium's and an installed machine's.
  */
 
 #include "answers.h"
@@ -128,9 +129,18 @@ private Q_SLOTS:
         QVERIFY(Answers::usernameOk(QStringLiteral("ann")));
         QVERIFY(!Answers::usernameOk(QStringLiteral("Ann")));
         QVERIFY(!Answers::usernameOk(QStringLiteral("9lives")));
+        QVERIFY(!Answers::usernameOk(QStringLiteral("-ann")));
+        QVERIFY(Answers::usernameOk(QStringLiteral("_ann-")));
+        QVERIFY(!Answers::usernameOk(QString(33, QLatin1Char('a'))));
+        QCOMPARE(Answers::suggestUsername(QStringLiteral("-2-Ann")), QStringLiteral("ann"));
         QVERIFY(Answers::hostnameOk(QStringLiteral("kdos-box1")));
         QVERIFY(!Answers::hostnameOk(QStringLiteral("-kdos")));
         QVERIFY(!Answers::hostnameOk(QStringLiteral("a.b")));
+        QVERIFY(!Answers::hostnameOk(QStringLiteral("kdos-")));
+        QVERIFY(!Answers::hostnameOk(QString()));
+        QVERIFY(Answers::hostnameOk(QStringLiteral("k")));
+        QVERIFY(Answers::hostnameOk(QString(63, QLatin1Char('k'))));
+        QVERIFY(!Answers::hostnameOk(QString(64, QLatin1Char('k'))));
         QVERIFY(Answers::fullnameOk(QStringLiteral("José Álvarez, Room 4")));
         QVERIFY(!Answers::fullnameOk(QStringLiteral("Ann:0:0")));
         QVERIFY(!Answers::fullnameOk(QStringLiteral("Ann\tLee")));
@@ -168,6 +178,35 @@ private Q_SLOTS:
         QVERIFY(s.failure().isEmpty());
         s.close(0);
         QCOMPARE(done.count(), 1);
+    }
+
+    void streamWeights()
+    {
+        /* The copy weighs 8 against the short steps' 1, and the skipped
+         * step's 3 counts for nothing: half way through the copy the bar is
+         * at (1 + 4) / 10, where counting steps would put it at 1.5 / 3. */
+        EventStream s;
+        QVERIFY(s.feed(QByteArrayLiteral(
+            "{\"t\":\"plan\",\"steps\":["
+            "{\"index\":0,\"title\":\"Prepare\",\"detail\":\"\",\"state\":\"pending\",\"weight\":1},"
+            "{\"index\":1,\"title\":\"Copy system\",\"detail\":\"\",\"state\":\"pending\",\"weight\":8},"
+            "{\"index\":2,\"title\":\"Slot B\",\"detail\":\"\",\"state\":\"skipped\",\"weight\":3},"
+            "{\"index\":3,\"title\":\"Finish\",\"detail\":\"\",\"state\":\"pending\",\"weight\":1}]}\n"
+            "{\"t\":\"S\",\"step\":0,\"title\":\"Prepare\"}\n"
+            "{\"t\":\"S\",\"step\":1,\"title\":\"Copy system\"}\n")));
+        QCOMPARE(s.overall(), 0.1);
+        QVERIFY(s.feed(QByteArrayLiteral("{\"t\":\"P\",\"step\":1,\"frac\":0.5}\n")));
+        QCOMPARE(s.overall(), 0.5);
+        QVERIFY(s.feed(QByteArrayLiteral("{\"t\":\"S\",\"step\":3,\"title\":\"Finish\"}\n")));
+        QCOMPARE(s.overall(), 0.9);
+
+        /* A plan line with no weights, as an older kinstall writes it,
+         * counts every step as 1. */
+        EventStream u;
+        QVERIFY(u.feed(fixture("success.jsonl").left(fixture("success.jsonl").indexOf('\n') + 1)));
+        QVERIFY(u.feed(QByteArrayLiteral("{\"t\":\"S\",\"step\":2,\"title\":\"Copy system\"}\n"
+                                         "{\"t\":\"P\",\"step\":2,\"frac\":0.5}\n")));
+        QCOMPARE(u.overall(), 0.5 / 4);
     }
 
     void streamRefused()
@@ -251,6 +290,49 @@ private Q_SLOTS:
         QCOMPARE(z, (QStringList{QStringLiteral("UTC"), QStringLiteral("Africa/Nairobi"), QStringLiteral("America/New_York"),
                                  QStringLiteral("Asia/Kolkata"), QStringLiteral("Europe/Berlin")}));
         QCOMPARE(Backend::readZones(QStringLiteral(FIXTURES_DIR "/absent.tab")), QStringList{QStringLiteral("UTC")});
+    }
+
+    void live()
+    {
+        /* An overlay at `/` is the live medium; one under a container's
+         * store is not, and an unreadable table is not either. */
+        QVERIFY(Backend::liveRoot(QStringLiteral(FIXTURES_DIR "/mounts-live")));
+        QVERIFY(!Backend::liveRoot(QStringLiteral(FIXTURES_DIR "/mounts-installed")));
+        QVERIFY(!Backend::liveRoot(QStringLiteral(FIXTURES_DIR "/absent.mounts")));
+    }
+
+    void diskPlan()
+    {
+        /* A disk with no partitions leaves the reuse plan nothing to use,
+         * so choosing one turns to the erase plan; any other keeps it. */
+        QCOMPARE(Backend::diskPlan(QStringLiteral("reuse"), 0), QStringLiteral("wipe"));
+        QCOMPARE(Backend::diskPlan(QStringLiteral("wipe"), 0), QStringLiteral("wipe"));
+        QCOMPARE(Backend::diskPlan(QStringLiteral("reuse"), 2), QStringLiteral("reuse"));
+        QCOMPARE(Backend::diskPlan(QStringLiteral("wipe"), 2), QStringLiteral("wipe"));
+    }
+
+    void dumpArgs()
+    {
+        /* Root's payload goes to every plan, root's or not, and to a probe
+         * as this user, so the Disk page's plan decides on the Summary's
+         * number; a root probe takes none and measures again, the dumps
+         * that size nothing take none, and before a root probe there is
+         * none. */
+        const QVariantMap root{{QStringLiteral("payload_kb"), 4963328.0}, {QStringLiteral("appbox_kb"), 2048.0}};
+        const QStringList payload{QStringLiteral("--payload-kb"), QStringLiteral("4963328"), QStringLiteral("--appbox-kb"),
+                                  QStringLiteral("2048")};
+        const QStringList answers{QStringLiteral("--config"), QStringLiteral("-")};
+        const QStringList plan{QStringLiteral("--dump"), QStringLiteral("plan"), QStringLiteral("--json")};
+        const QStringList probe{QStringLiteral("--dump"), QStringLiteral("probe"), QStringLiteral("--json")};
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("plan"), true, root), answers + payload + plan);
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("probe"), true, root), answers + payload + probe);
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("plan"), true, root, true), answers + payload + plan);
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("probe"), true, root, true), answers + probe);
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("plan"), true, {}), answers + plan);
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("look"), false, root),
+                 (QStringList{QStringLiteral("--dump"), QStringLiteral("look"), QStringLiteral("--json")}));
+        QCOMPARE(Backend::dumpArgs(QStringLiteral("apps"), true, root),
+                 (answers + QStringList{QStringLiteral("--dump"), QStringLiteral("apps"), QStringLiteral("--json")}));
     }
 };
 

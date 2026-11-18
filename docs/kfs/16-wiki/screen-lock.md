@@ -37,8 +37,9 @@ minutes and turns off at 15 on mains power, which is PowerDevil's, from
 
 In a virtual machine and on the live medium an overlay directory goes first in
 `XDG_CONFIG_DIRS` and turns the timed lock off, because over a viewer a desktop that locked
-itself looks like one that stopped, and the live account has no password to type; `Meta+L` and
-the lock on resume still work. The zero timeout is what makes System Settings → **Screen Locking**
+itself looks like one that stopped, and the live session logs in by itself, so nobody trying the
+system has typed the live account's password, `kdos`; `Meta+L` and the lock on resume still lock,
+and `kdos` unlocks them. The zero timeout is what makes System Settings → **Screen Locking**
 read "Never" there, rather than the 10 minutes the overlay would otherwise inherit. From
 `fs/usr/share/kdos/xdg-vm/kscreenlockerrc`:
 

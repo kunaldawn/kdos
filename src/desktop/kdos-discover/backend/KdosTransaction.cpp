@@ -65,6 +65,7 @@ bool KdosTransaction::start()
 {
     if (m_cancelled || m_finished)
         return false;
+    static_cast<KdosResource *>(resource())->setFailure({});
     runStep();
     return true;
 }
@@ -89,7 +90,7 @@ void KdosTransaction::runStep()
         // none, the step is tried and its own error is the message.
         const QNetworkInformation *net = QNetworkInformation::instance();
         if (net && net->reachability() == QNetworkInformation::Reachability::Disconnected) {
-            fail(i18n("Installing %1 needs a network connection, and this computer is offline.", resource()->name()));
+            fail(i18n("it needs a network connection, and this computer is offline"));
             return;
         }
         setStatus(DownloadingStatus);
@@ -228,8 +229,13 @@ void KdosTransaction::fail(const QString &why)
     if (m_finished)
         return;
     qCWarning(LIBDISCOVER_BACKEND_KDOS_LOG) << resource()->name() << "failed:" << why;
-    Q_EMIT passiveMessage(role() == RemoveRole ? i18n("%1 was not removed: %2", resource()->name(), why)
-                                                : i18n("%1 was not installed: %2", resource()->name(), why));
+    // Discover shows a transaction's message only behind "See Technical
+    // Details" of a generic error, so the reason is also the notice on the
+    // resource's own page.
+    const QString said = role() == RemoveRole ? i18n("%1 was not removed: %2", resource()->name(), why)
+                                              : i18n("%1 was not installed: %2", resource()->name(), why);
+    static_cast<KdosResource *>(resource())->setFailure(said);
+    Q_EMIT passiveMessage(said);
     finish(DoneWithErrorStatus);
 }
 

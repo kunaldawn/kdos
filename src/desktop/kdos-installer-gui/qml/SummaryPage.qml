@@ -10,7 +10,9 @@
  * Read from `kinstall --dump plan --json` over the same answer file the
  * install is given, so what is shown is what will run, skipped steps
  * included. Answers the backend refuses are shown as its refusal, and the
- * install cannot be started from here until they are changed.
+ * install cannot be started from here until they are changed. A disk that
+ * gets one system slot where two were asked for is a warning above the
+ * list, and KDOS application groups are named by their titles.
  */
 
 import QtQuick
@@ -33,6 +35,18 @@ WizardPage {
 
     onEntered: Backend.refreshPlan()
 
+    /* A native group by its title on the Applications page; the id where
+     * the page has none. */
+    function groupTitle(id) {
+        const native = Backend.apps.native || [];
+        for (let i = 0; i < native.length; i++) {
+            if (native[i].id === id) {
+                return native[i].title || id;
+            }
+        }
+        return id;
+    }
+
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         type: Kirigami.MessageType.Error
@@ -47,6 +61,13 @@ WizardPage {
         text: page.plan.plan === "wipe"
             ? i18n("Everything on %1 is erased when the install starts.", page.plan.disk)
             : i18n("%1 is formatted when the install starts; the other partitions are kept.", page.plan.root)
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        type: Kirigami.MessageType.Warning
+        visible: page.fresh && page.refused.length === 0 && !page.plan.ab && !!page.plan.lvm
+        text: i18n("This disk has no room for a second system slot, so an update cannot be undone.")
     }
 
     Kirigami.FormLayout {
@@ -69,9 +90,8 @@ WizardPage {
             text: page.plan.ab
                 ? i18n("Two system slots of %1 each, so an update can be undone; /home and the swap shared",
                        Backend.formatSize((page.plan.lvm ? page.plan.lvm.slot_mb : 0) * 1048576))
-                : page.plan.lvm ? i18n("One system slot: this disk has no room for a second, so updates cannot be undone")
+                : page.plan.lvm ? i18n("One system slot")
                 : i18n("One system on %1", page.plan.root || "")
-            color: page.plan.ab ? Kirigami.Theme.textColor : Kirigami.Theme.neutralTextColor
             Accessible.name: i18nc("@info:whatsthis", "System: %1", text)
         }
         QQC2.Label {
@@ -86,7 +106,9 @@ WizardPage {
         }
         QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Swap:")
-            text: page.plan.swap === "none" ? i18n("None") : i18n("%1 MiB", page.plan.swap_mb)
+            /* As a string, so the number reads as kinstall's refusal
+             * writes it ("4096 MiB"), with no digit grouping. */
+            text: page.plan.swap === "none" ? i18n("None") : i18n("%1 MiB", String(page.plan.swap_mb))
             Accessible.name: i18nc("@info:whatsthis", "Swap: %1", text)
         }
         QQC2.Label {
@@ -158,7 +180,7 @@ WizardPage {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             text: !page.plan.groups || page.plan.groups.length === 0 ? i18n("None")
-                : page.plan.groups.join(", ") + " — " + i18n("downloaded during the install")
+                : page.plan.groups.map(g => page.groupTitle(g)).join(", ") + " — " + i18n("downloaded during the install")
             Accessible.name: i18nc("@info:whatsthis", "KDOS applications: %1", text)
         }
         QQC2.Label {

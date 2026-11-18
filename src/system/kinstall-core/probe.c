@@ -541,12 +541,50 @@ int ki_dev_on_disk(const char *dev, const char *disk)
 }
 
 /*
+ * AN ACTIVE VOLUME OF THE GROUP STANDING ON ANOTHER DISK, read from sysfs:
+ * every LVM volume is a dm device whose uuid starts `LVM-`, whose name is
+ * `vg-lv` and whose `slaves` are the physical volumes it lies on. sysfs needs
+ * no privilege, so this is what an unprivileged front end's plan sees, where
+ * `pvs` cannot read the labels.
+ */
+static int vg_active_off_disk(const char *vg, const char *disk)
+{
+	char **ents = kb_listdir("/sys/block", NULL);
+	int hit = 0;
+
+	for (char **e = ents; e && *e && !hit; e++) {
+		char p[320], uuid[160] = "", name[160] = "", g[128], lv[128];
+		char **sl;
+
+		if (strncmp(*e, "dm-", 3))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/uuid", *e);
+		kb_read_line_file(p, uuid, sizeof(uuid));
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/name", *e);
+		kb_read_line_file(p, name, sizeof(name));
+		if (strncmp(uuid, "LVM-", 4) ||
+		    ki_dm_split(name, g, sizeof(g), lv, sizeof(lv)) ||
+		    strcmp(g, vg))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/slaves", *e);
+		sl = kb_listdir(p, NULL);
+		for (char **s = sl; s && *s && !hit; s++)
+			hit = !ki_dev_on_disk(*s, disk);
+		kb_strv_free(sl);
+	}
+	kb_strv_free(ents);
+	return hit;
+}
+
+/*
  * THE GROUP BY NAME, FROM LVM'S OWN LIST OF PHYSICAL VOLUMES. The active
  * volumes in ki_lv miss a group with no volume, one whose volumes did not
  * activate, and the other half of a group that spans the target disk and
  * another. `pvs` reads every label, so each of those still shows as a PV of
- * the group on a device off the disk. A `pvs` that does not run is taken as
- * no group: without lvm there is no vgcreate for the name to stop.
+ * the group on a device off the disk. `pvs` reads labels only as root, so
+ * the group's active volumes are asked of sysfs as well, and a plan made
+ * unprivileged refuses the clash the install would. With no lvm at all
+ * there is no vgcreate for the name to stop.
  */
 int ki_vg_off_disk(const char *vg, const char *disk)
 {
@@ -557,6 +595,8 @@ int ki_vg_off_disk(const char *vg, const char *disk)
 
 	if (!kb_have_prog("lvm"))
 		return 0;
+	if (vg_active_off_disk(vg, disk))
+		return 1;
 	kb_argv_add(&a, "lvm");
 	kb_argv_add(&a, "pvs");
 	kb_argv_add(&a, "--noheadings");
@@ -594,6 +634,68 @@ int ki_vg_off_disk(const char *vg, const char *disk)
 	}
 	kb_buf_free(&out);
 	return hit;
+}
+
+/*
+ * A WHOLE-DISK PHYSICAL VOLUME'S GROUP. An active volume on it lists the
+ * disk itself among its `slaves`, which sysfs shows anybody; `lvm pvs`
+ * names the group of an inactive one, and reads labels only as root.
+ */
+static void disk_pv_vg(Disk *d)
+{
+	char **ents = kb_listdir("/sys/block", NULL);
+	KbArgv a = {0};
+	KbBuf out = {0};
+
+	for (char **e = ents; e && *e && !d->vg[0]; e++) {
+		char p[320], uuid[160] = "", name[160] = "", g[64], lv[128];
+
+		if (strncmp(*e, "dm-", 3))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/slaves/%.31s", *e,
+			 d->name);
+		if (!kb_path_exists(p))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/uuid", *e);
+		kb_read_line_file(p, uuid, sizeof(uuid));
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/name", *e);
+		kb_read_line_file(p, name, sizeof(name));
+		if (!strncmp(uuid, "LVM-", 4) &&
+		    !ki_dm_split(name, g, sizeof(g), lv, sizeof(lv)))
+			kb_strlcpy(d->vg, g, sizeof(d->vg));
+	}
+	kb_strv_free(ents);
+	if (d->vg[0] || geteuid() != 0 || !kb_have_prog("lvm"))
+		return;
+	kb_argv_add(&a, "lvm");
+	kb_argv_add(&a, "pvs");
+	kb_argv_add(&a, "--noheadings");
+	kb_argv_add(&a, "-o");
+	kb_argv_add(&a, "vg_name");
+	kb_argv_add(&a, d->path);
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &out) == 0 && out.p) {
+		char *v = out.p, *end;
+
+		while (isspace((unsigned char)*v))
+			v++;
+		end = v + strcspn(v, " \t\r\n");
+		*end = 0;
+		kb_strlcpy(d->vg, v, sizeof(d->vg));
+	}
+	kb_buf_free(&out);
+}
+
+void ki_disk_signature(Disk *d)
+{
+	Part p;
+
+	memset(&p, 0, sizeof(p));
+	d->fstype[0] = d->vg[0] = 0;
+	sniff_fs(d->path, &p);
+	kb_strlcpy(d->fstype, p.fstype, sizeof(d->fstype));
+	if (!strcmp(d->fstype, "LVM2_member"))
+		disk_pv_vg(d);
 }
 
 /*
@@ -908,12 +1010,62 @@ void probe_disks(void)
 
 	apply_mounts();
 	probe_lvs();
+	/* After the activation, so a whole-disk volume's group is in sysfs. */
+	for (int i = 0; i < ki_ndisk; i++)
+		if (!ki_disk[i].nparts)
+			ki_disk_signature(&ki_disk[i]);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static unsigned long long walk_kb, walk_appbox_kb;
+static unsigned long long walk_link_bytes, walk_link_appbox_bytes;
 static size_t appbox_len;
+
+/* The inodes with more than one name seen so far, by (st_dev, st_ino), in an
+ * open-addressed table kept at most half full. */
+static struct walk_ino {
+	dev_t dev;
+	ino_t ino;
+	int used;
+} *walk_inos;
+static size_t walk_ino_cap, walk_ino_n;
+
+static size_t walk_ino_slot(struct walk_ino *t, size_t cap, dev_t dev,
+			    ino_t ino)
+{
+	size_t h = ((size_t)ino * 0x9E3779B97F4A7C15ull) ^ (size_t)dev;
+
+	for (h &= cap - 1; t[h].used && (t[h].dev != dev || t[h].ino != ino);
+	     h = (h + 1) & (cap - 1))
+		;
+	return h;
+}
+
+/* Non-zero when this inode was seen before; records it otherwise. */
+static int walk_ino_seen(dev_t dev, ino_t ino)
+{
+	size_t h;
+
+	if (2 * (walk_ino_n + 1) > walk_ino_cap) {
+		size_t cap = walk_ino_cap ? walk_ino_cap * 2 : 4096;
+		struct walk_ino *t = kb_calloc(cap, sizeof(*t));
+
+		for (size_t i = 0; i < walk_ino_cap; i++)
+			if (walk_inos[i].used)
+				t[walk_ino_slot(t, cap, walk_inos[i].dev,
+						walk_inos[i].ino)] = walk_inos[i];
+		free(walk_inos);
+		walk_inos = t;
+		walk_ino_cap = cap;
+	}
+	h = walk_ino_slot(walk_inos, walk_ino_cap, dev, ino);
+	if (walk_inos[h].used)
+		return 1;
+	walk_inos[h] = (struct walk_ino){ dev, ino, 1 };
+	walk_ino_n++;
+	return 0;
+}
 static const char appbox_path[] = "/home/kdos/.local/share/containers";
 static const char livehome_path[] = "/home/kdos/";
 static const char batcache_path[] = "/home/kdos/.cache/bat";
@@ -939,6 +1091,14 @@ static int walk_cb(const char *path, const struct stat *st, int type,
 	walk_kb += kb;
 	if (store)
 		walk_appbox_kb += kb;
+	/* Every name of a file after its first: rsync -H counts each in the
+	 * bytes of its percentage and makes it a link at no copy cost. */
+	if (S_ISREG(st->st_mode) && st->st_nlink > 1 &&
+	    walk_ino_seen(st->st_dev, st->st_ino)) {
+		walk_link_bytes += (unsigned long long)st->st_size;
+		if (store)
+			walk_link_appbox_bytes += (unsigned long long)st->st_size;
+	}
 	return 0;
 }
 
@@ -956,10 +1116,16 @@ static int walk_cb(const char *path, const struct stat *st, int type,
 void probe_payload(void)
 {
 	walk_kb = walk_appbox_kb = 0;
+	walk_link_bytes = walk_link_appbox_bytes = 0;
 	appbox_len = sizeof(appbox_path) - 1;
 	nftw("/", walk_cb, 24, FTW_PHYS | FTW_MOUNT);
+	free(walk_inos);
+	walk_inos = NULL;
+	walk_ino_cap = walk_ino_n = 0;
 	ki_sys.payload_kb = walk_kb;
 	ki_sys.appbox_kb = walk_appbox_kb;
+	ki_sys.link_extra_bytes = walk_link_bytes;
+	ki_sys.link_extra_appbox_bytes = walk_link_appbox_bytes;
 }
 
 void probe_system(void)
@@ -1251,11 +1417,75 @@ static const char *groups_path(void)
 	return env && *env ? env : "/ports/groups";
 }
 
+/*
+ * HOW MANY PORTS A MEMBER INSTALLS. A meta port is a recipe with no
+ * `source =` line, which installs nothing of its own and pulls in its
+ * `depends`; a group of one such port (kde-gear-games) holds a whole Gear
+ * set, and counted by its line it would read as one program. The recipes
+ * are beside the groups file, at <dir>/core/<shelf>/<name>/kpkgbuild, as
+ * on the image's /ports; a member with no recipe there counts as one.
+ */
+static int member_ports(const char *dir, const char *name)
+{
+	char core[PATH_MAX / 2], path[PATH_MAX];
+	char **shelves;
+	char *data = NULL;
+	int n = 1, meta = 1, deps = 0;
+
+	snprintf(core, sizeof(core), "%.2000s/core", dir);
+	shelves = kb_listdir(core, NULL);
+	for (char **sh = shelves; sh && *sh && !data; sh++) {
+		snprintf(path, sizeof(path), "%s/%.255s/%.255s/kpkgbuild",
+			 core, *sh, name);
+		data = kb_read_all(path, NULL);
+	}
+	kb_strv_free(shelves);
+	if (!data)
+		return 1;
+	for (char *l = data, *nl; l && *l; l = nl ? nl + 1 : NULL) {
+		char *key = l, *v;
+		size_t kl;
+
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		while (*key == ' ' || *key == '\t')
+			key++;
+		kl = strcspn(key, " \t=");
+		v = key + kl;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		if (*v != '=' || *key == '#')
+			continue;
+		v++;
+		if (kl == 6 && !strncmp(key, "source", 6))
+			meta = 0;
+		if (kl == 7 && !strncmp(key, "depends", 7))
+			for (char *w = strtok(v, " \t\r"); w;
+			     w = strtok(NULL, " \t\r"))
+				deps++;
+	}
+	free(data);
+	if (meta && deps)
+		n = deps;
+	return n;
+}
+
 /* The format is ports/groups': a `group <id> <title>` line, then member
  * ports up to the next group line; `#` starts a comment. */
 void probe_groups(void)
 {
-	char *data = kb_read_all(groups_path(), NULL);
+	const char *gp = groups_path();
+	char *data = kb_read_all(gp, NULL);
+	char dir[PATH_MAX];
+	char *slash;
+
+	kb_strlcpy(dir, gp, sizeof(dir));
+	slash = strrchr(dir, '/');
+	if (slash)
+		*slash = 0;
+	else
+		kb_strlcpy(dir, ".", sizeof(dir));
 
 	ki_nnative = 0;
 	for (char *l = data; l && *l;) {
@@ -1287,8 +1517,12 @@ void probe_groups(void)
 				g->chosen = 0;
 			}
 		} else if (ki_nnative > 0) {
-			for (char *w = strtok(l, " \t\r"); w; w = strtok(NULL, " \t\r"))
-				ki_native[ki_nnative - 1].nports++;
+			char *save = NULL;
+
+			for (char *w = strtok_r(l, " \t\r", &save); w;
+			     w = strtok_r(NULL, " \t\r", &save))
+				ki_native[ki_nnative - 1].nports +=
+					member_ports(dir, w);
 		}
 		l = nl ? nl + 1 : NULL;
 	}

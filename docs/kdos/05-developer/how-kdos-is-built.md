@@ -700,7 +700,7 @@ overlay over `build/fs` (below):
 | `088_ledger.sh` | Writes the image ledger, `build/image-ledger`: every package the finished tree holds, largest first, with its bytes and the dependency path from a `ports/base` seed that put it there (`script/lib/imageset.py --ledger`), and prints its top twenty and total |
 | `090_initramfs.sh` | Builds the initramfs, `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store's directories; with `KDOS_PACK_KDOS=1`, also packs the system as the base pack `kdos` |
-| `105_ports.sh` | Stages the recipe-only ports tree for `/ports` in `build/image-ports` with its `TREE` stamp, puts the release key's public half in `/etc/kdos/keys/tree`, and writes the source offer `/usr/share/kdos/SOURCES` |
+| `105_ports.sh` | Stages the recipe-only ports tree for `/ports` in `build/image-ports` with its `TREE` stamp (which names the release on a clean checkout of a tagged commit) and the release notes `RELEASE`, puts the release key's public half in `/etc/kdos/keys/tree`, and writes the source offer `/usr/share/kdos/SOURCES` |
 | `110_iso.sh` | Assembles the ISO tree, appending the staged ports tree to `system.sfs`, writes `build/iso-build/kdos.iso`, and fails a base ISO larger than 1,900 MiB (`KDOS_ISO_MAX`), printing the ledger's top twenty, unless `KDOS_ISO_GATE=0` |
 
 The order carries dependencies: the binhost and the package store run on `build/fs` before the
@@ -735,7 +735,9 @@ stamps every inode with the epoch, so the clamp is also what the medium shows.
 **The recipe tree and the source offer.** Every image carries the ports tree at `/ports`, recipes
 only, so a shipped machine can update by building from source. `105_ports.sh` stages it: every
 file in each port directory except the sources its recipe hashes (`sha256 =`) and any archive,
-`ports/shelves`, `ports/sources.idx`, `ports/groups` (the native groups), `src/` at `/ports/src`
+`ports/shelves`, `ports/sources.idx`, `ports/groups` (the native groups), `ports/RELEASE` (the
+release notes `kdos update notes` and What's New show; the step stops when it is missing or over
+16 KiB), `src/` at `/ports/src`
 for the programs of our own, whose
 sources no archive holds, `docs/kdos`, `docs/screenshots` and `docs/kfs` under `/ports/docs`, and
 `script/book` at `/ports/script/book`. Those last are the sources of `kdos-doc` and `kdos-kfs`,
@@ -746,7 +748,12 @@ has neither. The tree is about 100 MB unsquashed; the fetched sources it leaves 
 about 42 GB. `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of
 `/ports/src` that hold ports. `/ports/TREE` names the commit and its time (`kdos-tree 1`, then
 `commit` and `time` lines), which is how `kdos update fetch` tells a newer published tree from an
-older one, and `build/keys/kdos-release.pub`, when it exists, goes into `/etc/kdos/keys/tree` as the
+older one. An image built from a clean checkout of a tagged commit also names its release there,
+`version <tag>`, which is how a machine finds that release's binhost with no `update.conf`; the log
+says `/ports/TREE names release <tag>`, and any other build says why it names none. The tag comes
+from `make build` (`KDOS_GIT_TAG`, the one release tag, `v<digit>…`, on `HEAD`), and `ports/publish --release` refuses an
+ISO whose tree names no release, another release or another commit, or that carries no
+`/ports/RELEASE`. `build/keys/kdos-release.pub`, when it exists, goes into `/etc/kdos/keys/tree` as the
 key such a tree must be signed with. Without it the image trusts no tree, and `kdos update fetch`
 there stops before downloading anything, recording `no-key`. The same step writes `/usr/share/kdos/SOURCES`, the written source
 offer: the repository, the commit the image was built from (`-dirty` when the tree had unrecorded

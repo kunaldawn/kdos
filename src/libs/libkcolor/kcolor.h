@@ -187,6 +187,10 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap);
  * — lands on slot 10 and never on slot 2. A bright ramp left generic is an
  * accent that only applies to the text nobody emphasised.
  *
+ * SLOT 8, BRIGHT BLACK, IS TEXT: kcol_muted, the same as kcol_ansi's, at
+ * 4.5:1 or more on slot 0. Programs write de-emphasised figures and labels
+ * in it, so the fill colour `dim` there is text a shade off the ground.
+ *
  * BLUE, MAGENTA AND CYAN ARE NOT THE SCHEME'S AND ARE NOT DERIVED FROM IT.
  * No scheme names them, and a console whose eight colours collapse onto one
  * accent cannot show `ls --color`, a diff or a syntax highlight — every

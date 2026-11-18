@@ -33,8 +33,57 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "kinstall-core.h"
+
+/*
+ * THE PAYLOAD A FRONT END ALREADY HAS. The walk measures what this user can
+ * enter, and on the live medium directories only root may enter (/root among
+ * them) are closed to the live account: its payload comes out smaller than
+ * root's, and a page that asks as the user offers a swap a mebibyte larger
+ * than the root plan accepts. A front end that has root's
+ * figures from its first probe hands them on with --payload-kb and
+ * --appbox-kb, and every dump then decides on root's numbers. The install
+ * never takes them; it measures its own.
+ */
+static int payload_given;
+static unsigned long long given_payload_kb, given_appbox_kb;
+
+void ki_dump_payload_set(unsigned long long payload_kb,
+			 unsigned long long appbox_kb)
+{
+	payload_given = 1;
+	given_payload_kb = payload_kb;
+	given_appbox_kb = appbox_kb < payload_kb ? appbox_kb : payload_kb;
+}
+
+/* probe_payload(), or the figures handed on; after probe_system(), which
+ * clears them. */
+static void dump_payload(void)
+{
+	if (!payload_given) {
+		probe_payload();
+		return;
+	}
+	ki_sys.payload_kb = given_payload_kb;
+	ki_sys.appbox_kb = given_appbox_kb;
+}
+
+/*
+ * WHAT AN UNPRIVILEGED PLAN CANNOT SEE. A volume group named KI_VG on another
+ * disk stops the install's vgcreate after this disk is erased. As root `pvs`
+ * reads every label; as anybody else only the group's active volumes show,
+ * in sysfs, so a group that is not active passes the check here and is
+ * refused by the install. The plan says so where it would make the group.
+ */
+static const char *unchecked_note(void)
+{
+	if (geteuid() == 0 || cfg.plan != PLAN_WIPE || !cfg.lvm)
+		return NULL;
+	return "as this user: volume groups on other disks that are not "
+	       "active; the install checks them as root";
+}
 
 /* Sectors are what /sys reports and 512 is what it reports them IN, whatever
  * the drive's physical sector size is — the same conversion the pages use. */
@@ -98,6 +147,9 @@ static void probe_text(void)
 		       d->removable ? "  removable" : "",
 		       d->readonly ? "  read-only" : "",
 		       d->is_boot_media ? "  BOOT MEDIA" : "");
+		if (d->fstype[0])
+			printf("    whole disk: %s%s%s\n", d->fstype,
+			       d->vg[0] ? ", volume group " : "", d->vg);
 		if (ki_disk_check(d, why, sizeof(why)))
 			printf("    refused: %s\n", why);
 		else if (!disk_ab_fits(d))
@@ -181,6 +233,12 @@ static void probe_json(void)
 			kb_json_str(&b, why);
 		else
 			kb_buf_str(&b, "null");
+		/* `fstype` and `vg`: the whole-device signature of a disk
+		 * with no partitions, "" for none. */
+		kb_buf_str(&b, ",\n     \"fstype\": ");
+		kb_json_str(&b, d->fstype);
+		kb_buf_str(&b, ", \"vg\": ");
+		kb_json_str(&b, d->vg);
 		kb_buf_str(&b, ",\n     \"partitions\": [");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
@@ -303,8 +361,9 @@ static void plan_dump(int json)
 	probe_system();
 	probe_disks();
 	if (disk_by_path(cfg.disk))
-		probe_payload();
-	char problem[256] = "";
+		dump_payload();
+	char problem[256] = "", swp[256] = "";
+	const char *unchecked = unchecked_note();
 	int bad = ki_answers_check(problem, sizeof(problem)) ||
 		  ki_target_check(problem, sizeof(problem));
 
@@ -382,10 +441,15 @@ static void plan_dump(int json)
 		else
 			printf("root          %s%s\n", root,
 			       cfg.luks ? ", inside LUKS2" : "");
-		printf("swap          %s", swap_name());
-		if (swap_kind() != SWAP_NONE)
-			printf(" %ld MB", cfg.swap_mb);
-		printf("\n");
+		/* The A/B layout makes its swap a volume whatever kind was
+		 * asked for, and the line above already names it. */
+		if (!(cfg.plan == PLAN_WIPE && cfg.lvm && ki_ab() &&
+		      ki_swap_lv_mb())) {
+			printf("swap          %s", swap_name());
+			if (swap_kind() != SWAP_NONE)
+				printf(" %ld MiB", cfg.swap_mb);
+			printf("\n");
+		}
 		printf("hostname      %s\n", cfg.hostname);
 		if (cfg.oem)
 			printf("user          none: the first boot sets one up "
@@ -433,6 +497,8 @@ static void plan_dump(int json)
 		printf("dry run       %s\n", cfg.dry_run ? "yes" : "no");
 		if (bad)
 			printf("refused       %s\n", problem);
+		if (unchecked)
+			printf("not checked   %s\n", unchecked);
 		printf("\nsteps\n");
 		for (int i = 0; i < inst.nsteps; i++)
 			printf("  %-2d %-24s %-8s %s\n", i + 1,
@@ -560,6 +626,18 @@ static void plan_dump(int json)
 	kb_buf_str(&b, "],\n  \"refused\": ");
 	if (bad)
 		kb_json_str(&b, problem);
+	else
+		kb_buf_str(&b, "null");
+	/* The swap's own refusal, whatever else is refused first: the Disk
+	 * page, where the swap is chosen, shows it there. */
+	kb_buf_str(&b, ", \"swap_problem\": ");
+	if (ki_swap_check(swp, sizeof(swp)))
+		kb_json_str(&b, swp);
+	else
+		kb_buf_str(&b, "null");
+	kb_buf_str(&b, ", \"not_checked\": ");
+	if (unchecked)
+		kb_json_str(&b, unchecked);
 	else
 		kb_buf_str(&b, "null");
 	kb_buf_str(&b, ",\n  \"steps\": [");
@@ -712,7 +790,7 @@ int ki_dump(const char *what, int json)
 {
 	if (!strcmp(what, "probe")) {
 		probe_system();
-		probe_payload();
+		dump_payload();
 		probe_disks();
 		if (json)
 			probe_json();

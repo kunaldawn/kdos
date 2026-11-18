@@ -253,11 +253,13 @@ bool FakeNotifications::handleMessage(const QDBusMessage &message, const QDBusCo
         const QDBusMessage reply = message.createReply(QVariant::fromValue(n.id));
         if (holdMs > 0) {
             QDBusConnection c = connection;
-            QTimer::singleShot(holdMs, this, [c, reply]() mutable {
+            QTimer::singleShot(holdMs, this, [this, c, reply]() mutable {
                 c.send(reply);
+                replied++;
             });
         } else {
             connection.send(reply);
+            replied++;
         }
         return true;
     }

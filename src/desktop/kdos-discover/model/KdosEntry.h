@@ -64,7 +64,7 @@ struct Entry {
     QStringList mimetypes;
     QStringList packages; // the Debian packages behind a Catalogue or Debian entry
     QStringList members; // what a Set or an Archive installs
-    QString kind; // a pack's kind: app, runtime, base or data
+    QString kind; // a pack's kind: app, runtime, base or data; for a Port or PortSource, the AppStream kind of the component it is listed by (desktop-application, console-application, addon, ...)
     QString packOrigin; // store or medium, for a Pack or a Catalogue row; empty for none
     QString signature; // what kdos-pack verify answered, for a PackFile
     QString path; // the file behind an Archive or a PackFile

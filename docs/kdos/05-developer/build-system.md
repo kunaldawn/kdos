@@ -38,10 +38,11 @@ The container sees the repository at `/workspace`. `src/`, `fs/`, `script/`, `po
 and `testing/`, the `Makefile` and the `Dockerfile` are mounted read-only and only `build/` is
 writable, so a build cannot modify its own sources; nothing else of the checkout, `.git`
 included, is mounted. The
-`Makefile` passes eighteen variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
+`Makefile` passes nineteen variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
 `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY` (recorded in each snapshot and stamped into
 `/etc/os-release`), `KDOS_GIT_DATE` (the commit's date, stamped beside them), `KDOS_GIT_TIME` (the
-commit's time in Unix seconds, stamped into `/ports/TREE`), the job count `KDOS_JOBS`
+commit's time in Unix seconds, stamped into `/ports/TREE`), `KDOS_GIT_TAG` (the release tag, `v<digit>…`, on
+`HEAD`, see [The release tag](#the-release-tag)), the job count `KDOS_JOBS`
 (empty unless the developer set it), the `system.sfs` codec `KDOS_ISO_COMP` and block size
 `KDOS_ISO_BLOCK`, the release size gate's limit `KDOS_ISO_MAX` and switch `KDOS_ISO_GATE` (any
 value but a positive number, or `0` or `1`, stops `make build`), what the ISO carries,
@@ -667,6 +668,8 @@ inside it:
 | `KDOS_PKG_STORE_MAX` | A size, default `60G` | `70_image/015_pkgstore.sh`, the cap the store is evicted down to |
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE` | The short commit, `1` when the tree had unrecorded changes, and the commit's date as `YYYY-MM-DD` | `70_image/045_identity.sh`, which stamps them into `/etc/os-release` |
 | `KDOS_GIT_TIME` | The commit's time in Unix seconds | `70_image/105_ports.sh`, which stamps it with the commit into `/ports/TREE` |
+| `KDOS_GIT_TAG` | The release tag (`v<digit>…`) on `HEAD`, or empty when it has none or `KDOS_GIT_TAG=none` was given | `70_image/105_ports.sh`, which stops the step with `FATAL: tag '<t>' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40` for a tag outside `ports/publish --release`'s alphabet, and otherwise only reports why `/ports/TREE` names no release |
+| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh` itself: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty | `70_image/105_ports.sh`, which writes it into `/ports/TREE` as `version <tag>` |
 
 A variable the `Makefile` passes into the build container but `script/chroot/exec.sh` does not
 name reaches the container phases and none of the chroot ones. `70_image` is a chroot phase, so an
@@ -939,19 +942,21 @@ shows; none has been timed, so the default stays zstd:19. The write times are of
 vary by a fifth. The headers and static libraries compress far better than what stays: the
 facet cut takes 1.86 GB of files and 278 MiB of `system.sfs`.
 
-Those tables are of the whole earlier base, 1,004 packages. The base `ports/base` names now,
-853 packages with the run-time facets alone (the rules above and gcc's `facet_dev` line), is
-4.51 GB of files:
+Those tables are of a base of 1,004 packages. A base of 853 packages with the run-time facets
+alone (the rules above and gcc's `facet_dev` line), 4.51 GB of files, measured the same way:
 
 | Codec | Block | `system.sfs` | Write | Read (one core) |
 |---|---|---|---|---|
 | `zstd:19` | 1M | 1,781 MiB | 99 s | 4.2 s |
 | `xz-bcj` | 1M | 1,680 MiB | 212 s | 29.1 s |
 
-With the kernel, the initramfs, the boot loader and the `/ports` append beside it, about 90 MiB,
-the ISO is about 1,870 MiB at zstd:19: under the 1,900 MiB gate by about 30 MiB. A build that
-lands over it either cuts the base further, which the ledger guides, or sets
-`KDOS_ISO_COMP=xz-bcj`, about 100 MiB smaller.
+Both base sets are larger than the one the v0.2 image was built from: its `system.sfs` is
+1,517 MiB at zstd:19 and its ISO 1,573 MiB, 327 MiB under the 1,900 MiB gate, so the kernel,
+the initramfs, the boot loader and the `/ports` append beside `system.sfs` take about 56 MiB.
+The base `ports/base` names, with Orca, BRLTTY, plocate, ISO Image Writer and Adwaita added,
+measures 1,662,947,328 bytes (1,585 MiB) of ISO, 315 MiB under the gate. A build that lands over
+the gate either cuts the base further, which the ledger guides, or sets `KDOS_ISO_COMP=xz-bcj`,
+about 6% smaller.
 
 ## Databases stamped into the image
 
@@ -1468,6 +1473,40 @@ is not mounted into the container, are recorded in each snapshot so the picker c
 commit it came from. Run outside the container, `kdosbuild` asks `git` instead. The same two, with
 `KDOS_GIT_DATE`, are what `70_image/045_identity.sh` stamps into the image's `/etc/os-release`;
 that step does not ask `git`, so an image built without `make build` is unstamped.
+
+### The release tag
+
+An image names the release it is in `/ports/TREE`, as `version <tag>`, and a machine finds that
+release's binhost by the name alone. `make build` takes the tag from `git tag --points-at HEAD
+--list 'v[0-9]*'`, so only a release tag, one named `v<digit>…`, names a release: the archive tags
+`ports/publish` makes (`sources-N`, `src-*`, `packs-*`) never do. A lightweight tag counts as well
+as an annotated one, `KDOS_GIT_TAG=<tag>` picks one when there are several, and
+`KDOS_GIT_TAG=none` builds a tagged commit as an unreleased one. Before it starts the container it
+stops on any of three faults:
+
+| Fault | Message |
+|---|---|
+| Several release tags on `HEAD` and no `KDOS_GIT_TAG` | `HEAD carries several release tags (<tags>): name the release with KDOS_GIT_TAG=<tag>, or KDOS_GIT_TAG=none for none` |
+| `KDOS_GIT_TAG` names a tag that is not a release tag on `HEAD` | `KDOS_GIT_TAG=<t> is not a release tag (v<digit>…) on HEAD` |
+| The tag is outside `^[A-Za-z0-9_+~][A-Za-z0-9._+~-]{0,39}$`, the names `ports/publish --release` accepts | `tag '<t>' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40` |
+
+`script/chroot/exec.sh` turns the tag into `KDOS_GIT_RELEASE` only when `KDOS_GIT_DIRTY` is `0`,
+and `git status --porcelain` counts an untracked file as a change: an image built from a checkout
+with changes carries packages that are not the release's, and naming the release would have
+machines install the release's packages over them. `70_image/105_ports.sh` prints which case it
+met:
+
+| Case | Line |
+|---|---|
+| A clean checkout of a tagged commit | `/ports/TREE names release <tag>` |
+| A tag, and changes in the checkout | `the checkout has changes: /ports/TREE does not name release <tag>` |
+| No tag on `HEAD` | `HEAD carries no tag: /ports/TREE names no release, and prebuilt installs need binhost = in update.conf` |
+
+The binhost the same build writes is not named by the tag: `70_image/010_binhost.sh` stamps its
+index `version` with the commit cut to 12 characters, and `kdos update` refuses an index whose
+version is not the tree's, so a machine running a named image cannot take `build/binhost` as its
+`binhost =`. The release's own index is written by `ports/publish --release`, under the tag; see
+[Cutting a release](developing.md#cutting-a-release).
 
 ### How the program is organised
 

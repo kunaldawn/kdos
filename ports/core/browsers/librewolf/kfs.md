@@ -54,5 +54,9 @@ and points `--with-l10n-base` at its bundled translations.
 The policies file adds to firefox-esr's: no default bookmarks, HTTPS-only mode, no Encrypted Media
 Extensions, content analysis off at every interception point, local network access protection on,
 with trackers blocked and a prompt, an update URL of `https://localhost`, no default-browser agent,
-language packs refused as extensions, and the new-tab top sites and highlights off. `kdos.js` keeps only the spelling dictionary path and the
-portal file chooser, and no `distribution.ini` is written.
+language packs refused as extensions, and the new-tab top sites and highlights off. Like
+firefox-esr's, it blocks and locks every AI feature, translation among them, through `AIControls`
+alone and leaves out the older `TranslateEnabled` and `GenerativeAI` policies, which the browser
+ignores beside `AIControls` with an "Ignoring … policy in favor of AIControls" line at every
+start. `kdos.js` keeps only the spelling dictionary path and the portal file chooser, and no
+`distribution.ini` is written.

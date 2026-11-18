@@ -12,6 +12,14 @@ Accessibility holds every switch. KDOS adds a few things: the screen reader work
 login and on the login screen, the Welcome tour asks about accessibility first, the eight accents
 are held to contrast floors, and the text consoles have BRLTTY for braille and speech.
 
+The installation medium, and every system installed from it, carries the Orca screen reader,
+BRLTTY and the liblouis braille tables, with Speech Dispatcher and eSpeak NG as their voice.
+Dasher, KMouth, Kontrast and the Piper speech synthesiser are ports installed on demand:
+
+```sh
+sudo kdos update install dasher kmouth kontrast piper
+```
+
 ## What is available
 
 | Need | What KDOS offers | Where |
@@ -24,8 +32,8 @@ are held to contrast floors, and the text consoles have BRLTTY for braille and s
 | Typing with limited movement | Sticky, slow and bounce keys | [Keyboard aids](#keyboard-aids) |
 | Clicking with limited movement | Dwell click: resting the pointer clicks | [Dwell click](#dwell-click) |
 | Pointing without a mouse | Mouse keys: the number pad moves the pointer and clicks | [Pointing from the keyboard](#pointing-from-the-keyboard) |
-| Writing with a pointer or a switch | Dasher, which types letters chosen by steering | [Writing with Dasher](#writing-with-dasher) |
-| Speaking typed text | KMouth, over Speech Dispatcher | [Writing with Dasher](#writing-with-dasher) |
+| Writing with a pointer or a switch | Dasher, which types letters chosen by steering, once installed | [Writing with Dasher](#writing-with-dasher) |
+| Speaking typed text | KMouth, over Speech Dispatcher, once installed | [Writing with Dasher](#writing-with-dasher) |
 | Typing without a keyboard | Plasma's on-screen keyboard | [The on-screen keyboard](#the-on-screen-keyboard) |
 | Contrast and colour | Eight accents held to contrast floors, one of them light; colour-blindness correction and inverted colours | [Colour and contrast](#colour-and-contrast) |
 | Less motion | One switch that stops every animation | [Reducing motion](#reducing-motion) |
@@ -60,16 +68,13 @@ drives a braille display through BRLTTY's client interface, BrlAPI, when BRLTTY 
 [Programs that talk to BRLTTY](#programs-that-talk-to-brltty)). Orca's own settings, voices, key
 echo and verbosity among them, are in its preferences dialog.
 
-Plasma's screen-reader module starts Orca itself. It would switch for good to starting an `orca`
-service unit if it ever saw systemd on the session bus, and KDOS has no units, so the shipped
-`/usr/share/kdos/xdg/kaccessrc` makes that switch impossible and the chord keeps starting Orca.
-Whether Orca is on stays your setting: the chord, the System Settings page and the Welcome switch
-each write it to `[ScreenReader] Enabled` in your `~/.config/kaccessrc`, and the module starts Orca
-at login when it says so.
+Whether Orca is on is your setting: the chord, the System Settings page and the Welcome switch
+each write it to `[ScreenReader] Enabled` in your `~/.config/kaccessrc`, and Orca starts at every
+login while it says so.
 
 ## Braille and speech at a text console
 
-Four packages provide braille and speech below the desktop.
+Four packages provide braille and speech below the desktop, all four on the image.
 [The ports catalogue](../06-reference/ports-catalogue.md) lists them with the rest of the ports.
 
 | Port | Version | What it is |
@@ -152,11 +157,16 @@ Dispatcher. Speech Dispatcher is built with ALSA output and `espeak-ng` as its o
 Its Python module, `speechd`, is installed with it, and so is `spd-conf`, which writes a per-user
 configuration and runs Speech Dispatcher's own diagnostics.
 
-`piper`, a neural speech synthesiser, is on the image as well and speaks through PipeWire. It
-ships no voice: a voice is a model file passed with `-m`, and `kdos speech voice get` fetches one
-into `~/.local/share/piper/voices` (see
-[`kdos speech`](../04-programs/kdos-command.md#kdos-speech)). Speech Dispatcher and BRLTTY do not use
-it (see [Local AI, speech and translation](applications.md#local-ai-speech-and-translation)).
+`piper`, a neural speech synthesiser that speaks through PipeWire, is not on the image; install it
+with `sudo kdos update install piper`. It ships no voice: a voice is a model file passed with
+`-m`, and `kdos speech voice get` fetches one into `~/.local/share/piper/voices` (see
+[`kdos speech`](../04-programs/kdos-command.md#kdos-speech)). Without piper, `kdos speech say` and
+`kdos speech voice get` say it is not installed and name that command, and download nothing.
+Klipper's **Read Aloud** action appears only while piper and a voice are both installed. Speech to
+text works the same way: `kdos speech get` and `kdos speech transcribe` need whisper.cpp
+(`sudo kdos update install whisper.cpp`, and `whisper-model-base-en` for a model every account
+finds in `/usr/share`), and say so when it is missing. Speech Dispatcher and BRLTTY do not use
+Piper (see [Local AI, speech and translation](applications.md#local-ai-speech-and-translation)).
 
 ### Contracted braille
 
@@ -229,8 +239,11 @@ magnified, make text harder to read (see [Phosphor mode](theming.md#phosphor-mod
 | A web page | The browser's own zoom, `Ctrl++` |
 | The text consoles | The console font is a fixed 16×32-pixel bitmap |
 
-The Welcome tour's **Make Text Larger…** opens the font page. A boxed application takes the fonts
-and the scale the session hands it; one that ignores them keeps its own toolkit's settings.
+The Welcome tour's **Make Text Larger…** opens the font page. A new font size reaches open windows
+in their text, but they keep their size, so a label can be cut short until the window is made
+larger. The panel, Kickoff and the Welcome tour take the new size once they are reopened, or at
+the next login. A boxed application takes the fonts and the scale the session hands it; one that
+ignores them keeps its own toolkit's settings.
 
 ### The pointer size
 
@@ -267,6 +280,8 @@ Navigation) or on the Welcome tour's Accessibility page; the speed and accelerat
 
 ## Writing with Dasher
 
+Dasher and KMouth are not on the image; `sudo kdos update install dasher kmouth` installs both.
+
 Dasher writes text without a keyboard. Letters stream towards the pointer in boxes sized by how
 likely each one is to come next, and steering into a box writes its letter, so a mouse, a head
 pointer, an eye tracker that moves the pointer or a single switch is enough. It can speak what has
@@ -282,8 +297,9 @@ dialogue or later under Settings → Configure KMouth.
 ## The on-screen keyboard
 
 Plasma's on-screen keyboard types into whichever window has the keyboard focus. KWin runs one
-input method at a time, and KDOS starts fcitx5, the input method for Chinese, Japanese and Korean
-(see [Input methods](administration.md#input-methods)). To use the on-screen keyboard instead,
+input method at a time, and KDOS starts fcitx5, the input-method framework; its Chinese, Japanese
+and Korean engines and fonts are the `lang-zh`, `lang-ja` and `lang-ko` groups (see
+[Input methods](administration.md#input-methods)). To use the on-screen keyboard instead,
 choose Plasma Keyboard on System Settings → Keyboard → Virtual Keyboard. It then appears when a
 text field is focused by touch or a tablet pen; to have a mouse click bring it up too, set **Show
 Virtual Keyboard** on the same page to **With Touch, Tablet, and Mouse**. A program running under
@@ -314,8 +330,9 @@ Every scheme is held to contrast floors when the image is built, and none can sh
 every text role at 4.5:1 or better, the WCAG AA level for normal-sized text, on both backgrounds it
 is drawn on; focus and hover decorations at 3:1; and a selected row at 4.5:1, for its own text
 and for the list's ordinary text over a translucent selection. See
-[How the accents are kept readable](theming.md#how-the-accents-are-kept-readable). Kontrast checks
-any pair of colours against the same guidelines.
+[How the accents are kept readable](theming.md#how-the-accents-are-kept-readable). Kontrast,
+installed with `sudo kdos update install kontrast`, checks any pair of colours against the same
+guidelines.
 
 KWin also corrects for colour blindness (protanopia, deuteranopia and tritanopia), and inverts the
 colours of the whole screen or of one window; both are under System Settings → Accessibility and
@@ -372,17 +389,6 @@ KDOS_A11Y=1 kdos-appbox -b app.hugin run hugin
 it on. A box's filter is set when the box starts, so a screen reader switched on later reaches a
 running box from its next start. What a boxed application offers is whatever its own toolkit
 publishes.
-
-## The announcement record
-
-`libktui`, the library KDOS's text-console programs (the installer's full-screen front end among
-them) are built on, keeps a per-frame record of what each control would announce, filled in
-through `ktui_announce()`: the control's kind, a name, a value and its position in its set, so a
-reader built on it could say "check box Administrator, on" or "tab Keys, 2 of 3". A password field
-announces that it is one, with the value `hidden`, and never its contents. Nothing on the system
-reads the record except the library's own self-test; at a text console BRLTTY reads the screen
-itself. The programming interface is described in
-[The C libraries](../05-developer/c-libraries.md#announcements).
 
 ## See also
 

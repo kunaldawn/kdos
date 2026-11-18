@@ -22,7 +22,8 @@
  *     probably owns /usr/lib/libfoo.so.1 — the database says.
  *   - /proc/<pid>/maps marks a mapping whose file has been unlinked with the
  *     literal suffix ` (deleted)`. That is the kernel telling you, not an
- *     inference from mtimes.
+ *     inference from mtimes. Only an executable mapping is code: a deleted
+ *     cache or data file mapped for reading is not reported.
  *   - the desktop knows which of those processes has a window.
  *
  * Prior art has the pieces and not the join: `needrestart` is Debian-only and
@@ -90,17 +91,67 @@ static void add_pkg(struct hit *h, const char *pkg)
 }
 
 /*
- * One process. Returns 1 if it is running deleted code.
+ * One line of /proc/<pid>/maps, without its newline. Returns 1 and writes the
+ * mapped path to `file` when the line is replaced code a package could own;
+ * returns 0 for anything else.
  *
  * The `(deleted)` suffix is the kernel's, and it is exact: the mapping refers to
  * an inode with no remaining name. A file that was REPLACED rather than removed
  * also shows this way, because a package manager that installs over a running
  * binary unlinks the old inode — which is precisely the upgrade case this exists
  * to catch.
+ *
+ * Only an executable mapping counts. A program or library always maps its text
+ * with `x`, so a replaced one is never missed; a data file mapped for reading
+ * (icon-theme.cache, the MIME and font caches, a locale archive) is not code,
+ * and every install's index triggers rewrite those under every running
+ * program, so counting them would report the whole desktop after any install.
  */
+static int restarts_maps_code(const char *line, char *file, size_t len)
+{
+	static const char SUF[] = " (deleted)";
+	const size_t suflen = sizeof(SUF) - 1;
+	size_t n = strlen(line);
+	if (n <= suflen || strcmp(line + n - suflen, SUF))
+		return 0;
+
+	/* The permissions are the second field, `r-xp`, `x` third. */
+	const char *perms = strchr(line, ' ');
+	if (!perms || strlen(perms) < 4 || perms[3] != 'x')
+		return 0;	/* data, not code */
+
+	/* The path is the sixth field and may itself contain spaces, so it is
+	 * found by skipping five fields rather than by tokenising the whole
+	 * line. */
+	const char *p = line;
+	for (int field = 0; field < 5 && p; field++) {
+		p = strchr(p, ' ');
+		while (p && *p == ' ')
+			p++;
+	}
+	if (!p || *p != '/')
+		return 0;	/* anonymous, or a special mapping */
+
+	size_t flen = (size_t)(line + n - suflen - p);
+	if (flen >= len)
+		return 0;
+	memcpy(file, p, flen);
+	file[flen] = '\0';
+
+	/*
+	 * A deleted mapping under /memfd:, /dev/zero or /SYSV is normal and
+	 * permanent — shared memory, not an upgraded library. Only something a
+	 * package could own is interesting.
+	 */
+	return !strncmp(file, "/usr/", 5) || !strncmp(file, "/lib", 4) ||
+	       !strncmp(file, "/bin/", 5) || !strncmp(file, "/sbin/", 6) ||
+	       !strncmp(file, "/opt/", 5);
+}
+
+/* One process. Returns 1 if it is running deleted code. */
 static int scan_proc(const char *pid_s, const KpOwned *owned, struct hit *h)
 {
-	char path[512], line[4096];
+	char path[512], line[4096], file[1024];
 
 	snprintf(path, sizeof(path), "/proc/%s/maps", pid_s);
 	FILE *f = fopen(path, "r");
@@ -113,39 +164,7 @@ static int scan_proc(const char *pid_s, const KpOwned *owned, struct hit *h)
 
 	while (fgets(line, sizeof(line), f)) {
 		line[strcspn(line, "\n")] = '\0';
-		size_t n = strlen(line);
-		static const char SUF[] = " (deleted)";
-		const size_t suflen = sizeof(SUF) - 1;
-		if (n <= suflen || strcmp(line + n - suflen, SUF))
-			continue;
-
-		/* The path is the sixth field and may itself contain spaces, so
-		 * it is found by skipping five fields rather than by tokenising
-		 * the whole line. */
-		const char *p = line;
-		for (int field = 0; field < 5 && p; field++) {
-			p = strchr(p, ' ');
-			while (p && *p == ' ')
-				p++;
-		}
-		if (!p || *p != '/')
-			continue;	/* anonymous, or a special mapping */
-
-		char file[1024];
-		size_t flen = (size_t)(line + n - suflen - p);
-		if (flen >= sizeof(file))
-			continue;
-		memcpy(file, p, flen);
-		file[flen] = '\0';
-
-		/*
-		 * A deleted mapping under /memfd:, /dev/zero or /SYSV is normal
-		 * and permanent — shared memory, not an upgraded library. Only
-		 * something a package could own is interesting.
-		 */
-		if (strncmp(file, "/usr/", 5) && strncmp(file, "/lib", 4) &&
-		    strncmp(file, "/bin/", 5) && strncmp(file, "/sbin/", 6) &&
-		    strncmp(file, "/opt/", 5))
+		if (!restarts_maps_code(line, file, sizeof(file)))
 			continue;
 
 		found = 1;

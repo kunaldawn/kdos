@@ -314,12 +314,15 @@ int  box_state(const char *box, char *buf, size_t n);
  * kept, because its writes are in the container). */
 int  box_unstick(const char *box, char *state, size_t n);
 /* `sig` to every process of the box but its init — the applications its
- * launches started — by the init's mount namespace, or by KDOS_BOX once the
- * init is gone. Signal 0 counts them. Returns how many were signalled. */
+ * launches started, by the init's mount namespace or by KDOS_BOX once the
+ * init is gone — and to every launch still waiting for the box, by its wait
+ * mark ($XDG_RUNTIME_DIR/kdos/boxes/<box>.wait.<pid>). Signal 0 counts them.
+ * Returns how many were signalled. */
 int  box_signal_all(const char *box, int sig);
-/* Stop boxes without `podman stop`: SIGTERM to the applications and the init,
- * `grace` seconds, then SIGKILL and three more. Returns how many are still
- * up. */
+/* Stop boxes without `podman stop`: SIGTERM to the applications, the
+ * launches still waiting for the box and the init, `grace` seconds, then
+ * SIGKILL and three more. Returns how many are still up. box_unstick runs
+ * the same sequence without the waiting launches. */
 int  box_stop_many(const char *const *boxes, int n, int grace);
 int  box_create(const Profile *p);
 int  box_list(void);

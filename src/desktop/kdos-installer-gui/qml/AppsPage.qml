@@ -11,10 +11,11 @@
  * downloaded prebuilt into the new system during the install when the
  * network answers, and recorded for `kdos update install --pending` when it
  * does not; the language group the keyboard or the time zone points at
- * starts ticked, and says so. The catalogue's groups are boxed applications, recorded and
- * offered by the first login, which builds them. The page says how each
- * arrives, because a person must not find out at the first login that
- * nothing was installed.
+ * starts ticked, and says so; each names how many ports it installs, a
+ * meta-port member counted by kinstall as the ports it depends on. The
+ * catalogue's groups are boxed applications, recorded and offered by the
+ * first login, which builds them. The page says how each arrives, because a
+ * person must not find out at the first login that nothing was installed.
  */
 
 import QtQuick
@@ -61,8 +62,10 @@ WizardPage {
                            : i18nc("@info %1 the Japanese keyboard", "Suggested for %1", modelData.why))
                 : ""
             Accessible.name: why
-                ? i18nc("@info:whatsthis %1 group %2 reason", "%1, downloaded during the install; %2", text, why)
-                : i18nc("@info:whatsthis %1 group", "%1, downloaded during the install", text)
+                ? i18ncp("@info:whatsthis %2 group %1 count %3 reason", "%2, %1 port, downloaded during the install; %3",
+                         "%2, %1 ports, downloaded during the install; %3", modelData.ports || 0, text, why)
+                : i18ncp("@info:whatsthis %2 group %1 count", "%2, %1 port, downloaded during the install",
+                         "%2, %1 ports, downloaded during the install", modelData.ports || 0, text)
             onToggled: {
                 page.answers.setGroupChosen(modelData.id, checked);
                 Backend.refreshApps();
@@ -77,6 +80,11 @@ WizardPage {
                 QQC2.Label {
                     visible: nativeGroup.why.length > 0
                     text: nativeGroup.why
+                    color: Kirigami.Theme.disabledTextColor
+                }
+                QQC2.Label {
+                    visible: nativeGroup.modelData.ports !== undefined
+                    text: i18ncp("@info", "%1 port", "%1 ports", nativeGroup.modelData.ports || 0)
                     color: Kirigami.Theme.disabledTextColor
                 }
             }

@@ -17,7 +17,9 @@ the program's windows it moves to the next, so repeated presses walk all of them
 It is a KWin script written in QML, a KWin/Script package installed to
 `/usr/share/kwin/scripts/kdos_runraise/`, with one desktop entry per program in
 `/usr/share/kglobalaccel/`. The keys are KWin actions, so they are listed under KWin on System
-Settings' Shortcuts page, where each can be changed, and on the key card.
+Settings' Shortcuts page, where each can be changed, and on the key card, each as "Raise or Open
+<program> (<what>)" with the program's command as it is typed: "Raise or Open lynx (web)" beside
+"Raise or Open mc (files)".
 
 ## Flags
 
@@ -44,6 +46,11 @@ CMake refuses to configure when the programs the script names and the entries be
 `--hold` keeps the window after the program exits, so a program that cannot start (`rmpc` with no
 MPD to connect to, `iamb` with no configuration) leaves its error on screen instead of a window
 that closes before it can be read. A window held after a normal quit keeps its caption, so the key
-raises it until it is closed. A program that is not installed still has its key; Konsole then says
-the program was not found and starts a shell in its place. No program here is a dependency of the port: each is a terminal program a person may
-remove without losing the rest.
+raises it until it is closed.
+
+No program here is a dependency of the port: each is a terminal program a person may remove without
+losing the rest. The port is on the installation medium and of its seven programs only `lynx` is,
+through `xdg-utils`; the other six install with `sudo kdos update install mc aerc rmpc khal iamb
+micro` (`ikhal` is `khal`'s). A program that is not installed still has its key, which opens a
+Konsole window titled after the program holding a shell; Konsole's "could not find" line comes
+before the shell's greeting, which scrolls it out of view.

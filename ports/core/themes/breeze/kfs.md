@@ -57,6 +57,18 @@ KDOS's `/usr/share/kdos/xdg/breezerc` turns both on. It is applied after `sandbo
 whose hunks it is cut against, and is to be offered upstream to
 [Breeze](https://invent.kde.org/plasma/breeze) as two options of the decoration.
 
+`button-focus-outline.patch` outlines a push button, tool button or combo box that has keyboard
+focus in the colour scheme's `DecorationFocus`, the colour the style already gives the focus
+frame of a line edit, check box or slider. Upstream outlines a focused button in `Highlight`, the
+selection background, as it does a hovered or pressed one. A dark KDOS accent's selection is the
+accent darkened until text reads on it, so that ring sits at about 1.6:1 against the resting
+frame, where `DecorationFocus` is the accent itself. Hover and press keep `Highlight`. The outline
+fades on the hover animation, which runs for hover, focus and press alike and cannot say which of
+them is ending, so the patch also has push and tool buttons drive the style's pressed animation
+from keyboard focus alone: while that one fades out, the ring fades from `DecorationFocus` to the
+resting frame, where it would otherwise drop to `Highlight` on the first frame. It is to be
+offered upstream to [Breeze](https://invent.kde.org/plasma/breeze).
+
 ## Notes
 
 The cursors ship in the source as finished XCursor files, with the SVGs they were drawn from in

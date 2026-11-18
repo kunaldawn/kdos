@@ -338,6 +338,33 @@ private Q_SLOTS:
         QVERIFY(!read(u"calls.log"_s).contains(u"SetChannel"_s));
     }
 
+    /* System Settings' wrapper clears needsSave after save() returns
+     * (KCModuleQml::save); a refused address keeps the edit unsaved
+     * through that, so Reset and the title's '*' still offer it. */
+    void refusedChannelStaysUnsaved()
+    {
+        begin();
+        QTRY_VERIFY(m_kcm->isConfigured());
+        m_kcm->setChannelKind(u"address"_s);
+        m_kcm->setChannelLocation(u"http://example.com/kdos"_s);
+        QCOMPARE(m_kcm->channelError(), u"Updates are read from an https or file address."_s);
+        QVERIFY(m_kcm->needsSave());
+        m_kcm->save();
+        m_kcm->setNeedsSave(false);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        QTRY_VERIFY(m_kcm->needsSave());
+        QTest::qWait(200);
+        QVERIFY(m_kcm->needsSave());
+        QCOMPARE(m_kcm->channelLocation(), u"http://example.com/kdos"_s);
+        QVERIFY(!read(u"calls.log"_s).contains(u"SetChannel"_s));
+
+        /* Reset brings back the saved channel. */
+        m_kcm->load();
+        QTRY_COMPARE(m_kcm->channelKind(), u"release"_s);
+        QVERIFY(m_kcm->channelLocation().isEmpty());
+        QTRY_VERIFY(!m_kcm->needsSave());
+    }
+
     void composeChannel_data()
     {
         QTest::addColumn<QString>("kind");
@@ -351,7 +378,7 @@ private Q_SLOTS:
         QTest::newRow("folder space") << u"folder"_s << u"/media/my stick"_s << u"/media/my stick"_s << false;
         QTest::newRow("folder empty") << u"folder"_s << QString() << QString() << false;
         QTest::newRow("https") << u"address"_s << u"https://example.org/kdos"_s << u"https://example.org/kdos"_s << true;
-        QTest::newRow("http") << u"address"_s << u"http://10.0.0.2/kdos"_s << u"http://10.0.0.2/kdos"_s << true;
+        QTest::newRow("http") << u"address"_s << u"http://10.0.0.2/kdos"_s << u"http://10.0.0.2/kdos"_s << false;
         QTest::newRow("file") << u"address"_s << u"file:///srv/kdos"_s << u"file:///srv/kdos"_s << true;
         QTest::newRow("ftp") << u"address"_s << u"ftp://example.org/kdos"_s << u"ftp://example.org/kdos"_s << false;
         QTest::newRow("no host") << u"address"_s << u"https:///kdos"_s << u"https:///kdos"_s << false;
@@ -443,6 +470,55 @@ private Q_SLOTS:
         write(u"error"_s, u"kpkg: signature check failed\n"_s);
         m_kcm->load();
         QTRY_COMPARE(m_kcm->lastError(), u"kpkg: signature check failed"_s);
+    }
+
+    /* An update stopped part way through slot B: its root is neither the
+     * old version nor the new one, so nothing offers to start it. */
+    void incompleteSlotIsNotOffered()
+    {
+        begin();
+        write(u"unfilled"_s, u"b\n"_s);
+        m_kcm->load();
+        QTRY_COMPARE(slot(1)->state(), u"incomplete"_s);
+        QVERIFY(slot(1)->isPresent());
+        QVERIFY(!slot(1)->isBootable());
+        QCOMPARE(slot(1)->title(), u"Slot B"_s);
+        QVERIFY(slot(1)->versionText().isEmpty());
+        QCOMPARE(slot(1)->stateText(), u"Incomplete"_s);
+        QVERIFY(!slot(1)->reason().isEmpty());
+
+        m_kcm->startNextTime(u"b"_s);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        QCOMPARE(m_kcm->message(), slot(1)->reason());
+        QVERIFY(!read(u"calls.log"_s).contains(u"Try"_s));
+    }
+
+    /* A server that marks the slot only by `state` is read the same way. */
+    void incompleteStateAloneIsEnough()
+    {
+        Kdos::SlotInfo s(u"b"_s);
+        s.update({{u"present"_s, true},
+                  {u"version"_s, u"0.2.1"_s},
+                  {u"title"_s, u"KDOS 0.2.1 (slot B)"_s},
+                  {u"bootable"_s, true},
+                  {u"state"_s, u"incomplete"_s}});
+        QCOMPARE(s.state(), u"incomplete"_s);
+        QVERIFY(!s.isBootable());
+        QCOMPARE(s.title(), u"Slot B"_s);
+    }
+
+    /* Installed with one system slot: the boot state names only slot A. */
+    void oneSlotInstallIsConfigured()
+    {
+        begin();
+        write(u"bootstate"_s, read(u"bootstate"_s).replace(u"9b2e4d70-61c3-4f8a-8e22-7c5a1f0b3d02"_s, QString()));
+        m_kcm->load();
+        QTRY_VERIFY(!slot(1)->isPresent());
+        QVERIFY(m_kcm->isConfigured());
+        QVERIFY(slot(0)->isPresent());
+        QVERIFY(slot(0)->isRunning());
+        QCOMPARE(slot(1)->state(), u"empty"_s);
+        QVERIFY(!slot(1)->isBootable());
     }
 
     void oneRootIsNotConfigured()

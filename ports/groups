@@ -47,7 +47,7 @@ group kde-network KDE torrents, remote desktop, file sharing and online accounts
 ktorrent krdc krfb kio-gdrive kaccounts-providers kdenetwork-filesharing
 
 group kde-system KDE disk usage, search, logs, wallets, characters and handbooks
-filelight sweeper kfind ksystemlog kwalletmanager kcharselect isoimagewriter
+filelight sweeper kfind ksystemlog kwalletmanager kcharselect
 khelpcenter
 
 group kde-artwork KDE wallpapers and the Oxygen theme

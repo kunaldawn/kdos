@@ -1,0 +1,109 @@
+Subject: Draw rest days in the red that contrasts most with the calendar's ground, dimmed in a disabled table
+
+--- a/src/kdatetable.cpp
++++ b/src/kdatetable.cpp
+@@ -25,6 +25,63 @@
+ 
+ #include "kdaterangecontrol_p.h"
+ 
++// WCAG relative luminance of a colour, 0 for black to 1 for white.
++static qreal relativeLuminance(const QColor &color)
++{
++    const auto linear = [](qreal channel) {
++        return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
++    };
++    const QColor rgb = color.toRgb();
++    return 0.2126 * linear(rgb.redF()) + 0.7152 * linear(rgb.greenF()) + 0.0722 * linear(rgb.blueF());
++}
++
++// WCAG contrast ratio of two colours, 1 for equal luminance to 21 for black on white.
++static qreal contrastRatio(const QColor &a, const QColor &b)
++{
++    const qreal la = relativeLuminance(a);
++    const qreal lb = relativeLuminance(b);
++    return (qMax(la, lb) + 0.05) / (qMin(la, lb) + 0.05);
++}
++
++// The red a rest day is drawn in: dark red or light red, whichever contrasts more with the ground
++// it is drawn on. Dark red alone reads on a light ground and is close to invisible on a dark one.
++// In a disabled table the red is mixed toward the ground until it contrasts no more than the
++// plain text of a disabled cell, which the palette's Disabled group dims; a full-strength red
++// would mark the rest days as the only ones still live.
++static QColor restDayTextColor(const QColor &ground, const QColor &plainText, bool enabled)
++{
++    const QColor darkRed(Qt::darkRed);
++    const QColor lightRed = QColor::fromHslF(0.0, 1.0, 0.75);
++    const QColor red = contrastRatio(darkRed, ground) >= contrastRatio(lightRed, ground) ? darkRed : lightRed;
++    const qreal limit = contrastRatio(plainText, ground);
++    if (enabled || contrastRatio(red, ground) <= limit) {
++        return red;
++    }
++    const QColor redRgb = red.toRgb();
++    const QColor groundRgb = ground.toRgb();
++    const auto mixed = [&redRgb, &groundRgb](qreal towardGround) {
++        const auto channel = [towardGround](qreal from, qreal to) {
++            return from + (to - from) * towardGround;
++        };
++        return QColor::fromRgbF(channel(redRgb.redF(), groundRgb.redF()),
++                                channel(redRgb.greenF(), groundRgb.greenF()),
++                                channel(redRgb.blueF(), groundRgb.blueF()));
++    };
++    // Every channel moves monotonically toward the ground's, so the contrast falls monotonically
++    // with the mix and a bisection finds the least mix that meets the limit.
++    qreal low = 0.0;
++    qreal high = 1.0;
++    for (int step = 0; step < 16; ++step) {
++        const qreal middle = (low + high) / 2.0;
++        if (contrastRatio(mixed(middle), ground) > limit) {
++            low = middle;
++        } else {
++            high = middle;
++        }
++    }
++    return mixed(high);
++}
++
+ class KDateTable::KDateTablePrivate : public KDateRangeControlPrivate
+ {
+ public:
+@@ -279,13 +336,14 @@
+     if (row == 0) {
+         // We are drawing a header cell
+ 
++        cellBackgroundColor = palette().color(QPalette::Window);
++
+         // If not a normal working day, then use "do not work today" color
+         if (!workingDay && !isHighContrastColorSchemeInUse()) {
+-            cellTextColor = Qt::darkRed;
++            cellTextColor = restDayTextColor(cellBackgroundColor, palette().color(QPalette::WindowText), isEnabled());
+         } else {
+             cellTextColor = palette().color(QPalette::WindowText);
+         }
+-        cellBackgroundColor = palette().color(QPalette::Window);
+ 
+         // Set the text to the short day name and bold it
+         cellFont.setBold(true);
+@@ -327,8 +385,8 @@
+ 
+             // Text Colour priorities will be (high-to-low):
+             // * Customized Day Colour
+-            // * Day of Pray Colour (Red letter)
+             // * Selected Day Colour
++            // * Day of Pray Colour (Red letter)
+             // * Normal Day Colour
+ 
+             // Determine various characteristics of the cell date
+@@ -367,9 +425,10 @@
+                 cellTextColor = mode.fgColor;
+             }
+ 
+-            // If the cell day is the day of religious observance, then always color text red unless Custom overrides
+-            if (!customDay && dayOfPray && !isHighContrastColorSchemeInUse()) {
+-                cellTextColor = Qt::darkRed;
++            // If the cell day is the day of religious observance, then color text red unless Custom or the selection overrides:
++            // a highlight colour leaves no red at 3:1 in most schemes, so a selected day keeps the highlighted text colour
++            if (!customDay && !selectedDay && dayOfPray && !isHighContrastColorSchemeInUse()) {
++                cellTextColor = restDayTextColor(cellBackgroundColor, palette().color(foregroundRole()), isEnabled());
+             }
+         }
+ 

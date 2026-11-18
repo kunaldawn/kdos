@@ -46,7 +46,7 @@ KDOS session wrapper and no X sessions (see
 [Session and environment](session-and-environment.md#how-sddm-starts-the-session)), the accounts
 from uid 1000 up, and the theme, from `fs/etc/sddm.conf.d/00-kdos.conf`:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=56-69 pin=8cac08410de7 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=61-74 pin=8cac08410de7 -->
 
 [`kde_settings.conf`]{.idx term="/etc/sddm.conf.d/kde_settings.conf"} is the one home of
 `[Autologin]`. The installer writes it, the Login Screen page of System Settings writes it, and it

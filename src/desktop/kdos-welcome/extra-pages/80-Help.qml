@@ -9,7 +9,10 @@
  *   80-Help.qml — where answers are, on this machine
  *
  * The KDOS book and KDOS from Scratch are HTML under /usr/share/doc, opened
- * in the browser; KDOS from Scratch is there once kdos-kfs is installed.
+ * in the browser. KDOS from Scratch is there only once kdos-kfs is
+ * installed, which the page tells by that port's desktop entry,
+ * kdos-library-kfs-book: without it the point says how to install it and its
+ * button is greyed rather than opening a missing file.
  * `kdos help` and the manual pages are the terminal's way in. Nothing here
  * needs the network.
  * ---------------------------------
@@ -30,13 +33,17 @@ Welcome.ScrollablePage {
     id: page
 
     heading: i18ndc("kdos-welcome", "@title:window", "Help")
-    description: i18ndc("kdos-welcome", "@info:usagetip", "Every part of KDOS is written down, and the books are on this machine.")
+    description: i18ndc("kdos-welcome", "@info:usagetip", "Every part of KDOS is written down, and the KDOS book is on this machine.")
 
     Kdos.Run {
         id: run
     }
 
     property string failure: ""
+
+    readonly property Welcome.ApplicationInfo kfs: Welcome.ApplicationInfo {
+        desktopName: "kdos-library-kfs-book"
+    }
 
     function open(argv: list<string>): void {
         run.launch(argv, (code, text) => page.failure = text);
@@ -64,9 +71,12 @@ Welcome.ScrollablePage {
         Kdos.Point {
             icon: "run-build"
             title: i18ndc("kdos-welcome", "@title", "KDOS from Scratch")
-            text: i18ndc("kdos-welcome", "@info", "The second book: how this image was built, phase by phase and port by port. Install it with <b>kdos update install kdos-kfs</b>.")
+            text: page.kfs.exists
+                ? i18ndc("kdos-welcome", "@info", "The second book: how this image was built, phase by phase and port by port.")
+                : i18ndc("kdos-welcome", "@info", "The second book: how this image was built, phase by phase and port by port. It is not on this machine; install it with <b>sudo kdos update install kdos-kfs</b>.")
             action: i18ndc("kdos-welcome", "@action:button", "Open KDOS from Scratch")
             actionIcon: "run-build"
+            actionEnabled: page.kfs.exists
             onTriggered: page.open(["xdg-open", "file:///usr/share/doc/kfs/index.html"])
         }
 

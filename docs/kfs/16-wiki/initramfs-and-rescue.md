@@ -53,11 +53,11 @@ escaping: the init is written by a heredoc, and the generated script has a plain
 path checks for `nopersist` separately, to skip the persistence store. Every word is explained in
 [Command-line parameters KDOS reads](../../kdos/03-architecture/boot-and-init.md#command-line-parameters-kdos-reads):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=645-675 pin=2d484d0f7c3e -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=672-702 pin=2d484d0f7c3e -->
 
 The rescue helper, which every failure ends in:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=569-591 pin=17c2e4e0f539 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=579-606 pin=6f1c3908e567 -->
 
 The new kernel's initramfs and its deploy, in the `linux` postinstall:
 
@@ -123,7 +123,8 @@ When `init` cannot finish, the splash shows the reason and quits, and a shell op
 `/dev/console` with the reason printed above it. On an installed machine `/dev/console` is `tty1`,
 the screen. When it is the serial line, as on the live entries or on any command line whose last
 `console=` is `ttyS0`, a second shell opens on `tty1` with the same reason, and the serial line
-prints `A rescue shell is also open on tty1.` above its own prompt.
+prints `A rescue shell is also open on tty1.` above its own prompt. The shell on the screen ends
+its banner with `Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk.`
 
 1. Read the reason. The table in [Troubleshooting](#troubleshooting) says what each one means.
 2. Look around. `PATH` is `/bin`. `blkid`, `mount`, `umount`, `dmesg`, `modprobe` and the
@@ -134,7 +135,9 @@ prints `A rescue shell is also open on tty1.` above its own prompt.
    reach a program it runs.
 3. Repair what you can: run `e2fsck` on an unmounted ext root, open a container with
    `cryptsetup open`, assemble an array with `mdadm --assemble --scan`.
-4. Restart the machine: `sync; echo b > /proc/sysrq-trigger`. The initramfs carries no `reboot`.
+4. Restart the machine: `Ctrl+Alt+Del`, or `sync; echo b > /proc/sysrq-trigger`. The initramfs
+   carries no `reboot`, and `Ctrl+Alt+Del` there restarts at once with no `sync` of its own, so run
+   `sync` first after changing a disk.
 
 Do not leave the shell on `/dev/console` with `exit`: it is process 1, and the kernel panics with
 `Attempted to kill init`. On an installed machine that is the shell on `tty1`; on the live medium,
@@ -158,7 +161,8 @@ the one on the serial line.
 |---|---|---|
 | `Error: Root device with UUID=… not found!`, then `Disk boot failed: no root at UUID=… with /sbin/init on it` | `blkid` in the rescue shell: is the UUID there, and on which device? | A disk that is absent from `blkid` needs a driver the initramfs does not carry; add its module name to `/boot/initramfs.modules` in that root, and the next kernel the `linux` package installs there carries it. A changed UUID: record it with `kdos-bootctl set-slot <slot> <fs-uuid> [<luks-uuid>]`, where `<slot>` is `a` or `b`, and the menu's `root=` is regenerated from the boot state. On an encrypted slot give the container's UUID too: `set-slot` clears it when it is left out. On a machine with no boot state, correct `root=` in the `/KDOS` entries of `limine.conf` |
 | `Error: /sbin/init not found on root device!`, then the same `Disk boot failed` line | `mount` the root by hand in the rescue shell and look at `/sbin/init` | The root is not a KDOS root, or is damaged; see [Recovering an unbootable system](recovering-an-unbootable-system.md) |
-| `cryptdevice: no device for …` or `Failed to unlock …` | `blkid -t TYPE=crypto_LUKS` | A wrong container UUID on the command line or in the boot state. Repeated wrong passphrases end here too |
+| `cryptdevice: no device for …` or `Failed to unlock …` | `blkid -t TYPE=crypto_LUKS` | A wrong container UUID on the command line or in the boot state |
+| `Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again.` | The keyboard layout: the prompt reads US key positions | `Ctrl+Alt+Del` gives three more tries; see [Encrypted root](encrypted-root.md#troubleshooting) |
 | `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` on the splash, and the boot goes on | `e2fsck -p` left errors on an ext root | Run `e2fsck -f` on the root while it is not mounted, from the live medium |
 | `Failed to find KDOS installation media.` (live) | Is the stick still in? Did it enumerate within the scan's ten seconds? | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
 | `Failed to find KDOS installation media.`, with `Cannot release /mnt/iso after <dev> — stopping the scan` before it on the serial line (live) | The scan's one mount point stayed busy | Reboot; report the device |

@@ -21,6 +21,17 @@ using namespace Qt::StringLiterals;
 namespace Kdos
 {
 
+namespace
+{
+/* A slot an update stopped writing: its root is part old tree, part new,
+ * and the ESP's label for it still names the old version. Either key
+ * marks it, so a server that sends only one is still read right. */
+bool incomplete(const QVariantMap &map)
+{
+    return map.value(u"incomplete"_s).toBool() || map.value(u"state"_s).toString() == "incomplete"_L1;
+}
+}
+
 SlotInfo::SlotInfo(const QString &slotId, QObject *parent)
     : QObject(parent)
     , m_id(slotId)
@@ -53,6 +64,11 @@ QString SlotInfo::letter() const
 
 QString SlotInfo::title() const
 {
+    /* The server's title and the root's version describe what the slot
+     * held before the update began writing it, which is no longer there. */
+    if (incomplete(m_map)) {
+        return i18nc("@title %1 slot letter", "Slot %1", letter());
+    }
     const QString t = m_map.value(u"title"_s).toString();
     if (!t.isEmpty()) {
         return t;
@@ -77,6 +93,10 @@ QString SlotInfo::versionText() const
 {
     if (!isPresent()) {
         return i18nc("@info a slot with no system in it", "Nothing installed");
+    }
+    /* The record's version is the system the update began overwriting. */
+    if (incomplete(m_map)) {
+        return QString();
     }
     return version().isEmpty() ? i18nc("@info version", "Unknown") : version();
 }
@@ -139,16 +159,23 @@ bool SlotInfo::isFailed() const
 
 bool SlotInfo::isBootable() const
 {
-    return m_map.value(u"bootable"_s).toBool();
+    return !incomplete(m_map) && m_map.value(u"bootable"_s).toBool();
 }
 
 QString SlotInfo::reason() const
 {
-    return m_map.value(u"reason"_s).toString();
+    const QString r = m_map.value(u"reason"_s).toString();
+    if (r.isEmpty() && incomplete(m_map)) {
+        return i18nc("@info", "An update stopped while writing this slot. The next update writes it again.");
+    }
+    return r;
 }
 
 QString SlotInfo::state() const
 {
+    if (incomplete(m_map)) {
+        return u"incomplete"_s;
+    }
     const QString s = m_map.value(u"state"_s).toString();
     if (!s.isEmpty()) {
         return s;
@@ -171,6 +198,8 @@ QString SlotInfo::stateText() const
     QString text;
     if (s == "trial"_L1) {
         text = isRunning() ? i18nc("@info slot state", "On trial: kept once this session is confirmed") : i18nc("@info slot state", "Starts once at the next restart");
+    } else if (s == "incomplete"_L1) {
+        text = i18nc("@info slot state", "Incomplete");
     } else if (s == "failed"_L1) {
         text = i18nc("@info slot state", "Did not start: the computer went back to the other version");
     } else if (s == "confirmed"_L1) {

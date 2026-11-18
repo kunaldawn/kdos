@@ -475,6 +475,13 @@ group games       app.gnome-chess
 # on the day depends on the snapshot, and a number presented as fact that
 # the install then contradicts is worse than no number.
 #
+# <category> IS ONE MAIN CATEGORY of the desktop-entry specification:
+# AudioVideo, Development, Education, Game, Graphics, Network, Office,
+# Science, Settings, System or Utility. Discover draws a catalogue
+# application with its category's icon, and an additional category
+# (TextEditor, Biology, Electronics, Java) has none, so the application shows
+# a placeholder.
+#
 # A row with no `meta` falls back to its id, category Other and no tagline.
 # That is what an application looks like until somebody writes one, and it
 # must never be an error — otherwise adding software is a two-file change
@@ -531,14 +538,14 @@ meta app.hugin                Hugin|Graphics|948849664|Panorama stitching, with 
 meta app.hexchat              HexChat|Network|5537523|IRC Client
 meta app.igv                  Integrative Genomics Viewer|Science|191418197|desktop genome vizualisation tool
 meta app.imagej               ImageJ|Graphics|102488017|Image processing and analysis
-meta app.jmol                 Jmol|Java|217396121|Java molecular viewer for three-dimensional chemical structures
+meta app.jmol                 Jmol|Development|217396121|Java molecular viewer for three-dimensional chemical structures
 meta app.kstars               KStars|Education|51489441|Desktop Planetarium
 meta app.maxima               wxMaxima|Education|176230490|A graphical user interface for Maxima, a powerful computer algebra system
 meta app.mesa-utils          mesa-utils|Development|12000000|glxgears, glxinfo and es2gears — what a GL problem is diagnosed with
 meta app.meld                 Meld|Development|27420076|Compare and merge your files
 meta app.meshlab              MeshLab|Graphics|21299497|View and process meshes
 meta app.mousepad             Mousepad|Utility|27109392|Mousepad is a simple text editor for the Xfce desktop environment
-meta app.nanovna-saver        NanoVNASaver|Electronics|132036605|Tool for reading, displaying and saving data from the NanoVNA
+meta app.nanovna-saver        NanoVNASaver|Development|132036605|Tool for reading, displaying and saving data from the NanoVNA
 meta app.nwchem               NWChem|Science|172651342|Computational chemistry from molecules to periodic solids
 meta app.okteta               Okteta|Utility|11835288|Hex editor
 meta app.openfoam             OpenFOAM|Science|313987950|Computational fluid dynamics toolbox
@@ -555,17 +562,17 @@ meta app.rtklib               RTKLIB|Science|5923727|GNSS positioning: RTK and P
 meta app.scilab               Scilab|Science|337266491|Scientific software for numerical computations
 meta app.scipy-stack          Jupyter Notebook|Development|173446126|Run Jupyter Notebook
 meta app.scribus              Scribus|Graphics|194802512|Open Source Page Layout and Desktop Publishing (DTP)
-meta app.seaview              SeaView|Biology|5481472|Edits multiple sequence alignments and prints them in PostScript format.
+meta app.seaview              SeaView|Science|5481472|Edits multiple sequence alignments and prints them in PostScript format.
 meta app.simple-scan          Document Scanner|Graphics|61777196|Make a digital copy of your photos and documents
 meta app.sioyek               Sioyek|Office|67424790|A PDF viewer for research papers and technical books
 meta app.siril                Siril|Science|39508199|Astronomical image processor
 meta app.sonicpi              SuperCollider IDE|AudioVideo|265815844|realtime computer music system
 meta app.surf                 Surf|Network|275196928|Simple web browser by the suckless community
 meta app.vorta                Vorta|Utility|33146013|Backup client
-meta app.vscodium             VSCodium|TextEditor|371281015|VSCodium. Code editing. Redefined.
+meta app.vscodium             VSCodium|Development|371281015|VSCodium. Code editing. Redefined.
 meta app.xarchiver            Xarchiver|Utility|5275935|Create, extract and modify archives
 meta app.xournalpp            Xournal++|Office|13530622|Take handwritten notes
 meta app.xtb                  xtb|Science|4281157|Semi-empirical extended tight-binding quantum chemistry
 meta app.zathura              Zathura|Office|8969283|A minimalistic document viewer
-meta data.kicad-packages3d    KiCad 3D models|Electronics|1169343364|3D models of footprints for the KiCad 3D viewer
+meta data.kicad-packages3d    KiCad 3D models|Development|1169343364|3D models of footprints for the KiCad 3D viewer
 meta data.tesseract-langs     Tesseract languages|Office|10658768|OCR language data: German, French, Spanish, Hindi, Simplified Chinese and Japanese, with English

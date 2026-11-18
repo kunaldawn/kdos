@@ -30,10 +30,10 @@ name.
 The recipe installs the bus policy `/usr/share/dbus-1/system.d/io.kdos.Power1.conf`, which lets
 root own the name and anybody call it, and the polkit actions
 `/usr/share/polkit-1/actions/io.kdos.power1.policy`: `io.kdos.firewall.set`, which needs an
-administrator's password once per agent session, `io.kdos.accent.set`, which the person in the
-active session is granted and which covers the splash's motion as well, and
-`io.kdos.filesharing.start`, granted the same way, because the call takes no argument and starts
-only what the next boot would. It installs no D-Bus
+administrator's password, kept for a few minutes for the process that gave it,
+`io.kdos.accent.set`, which the person in the active session is granted and which covers the
+splash's motion as well, and `io.kdos.filesharing.start`, granted the same way, because the call
+takes no argument and starts only what the next boot would. It installs no D-Bus
 activation file: `/etc/init.d/55_powerd.sh` starts the daemon under `ksvc` and waits for the
 name, and an activation file would let the bus start a second, unsupervised copy for a caller that
 came early. The daemon answers the socket before it reaches the bus and retries a bus it cannot

@@ -842,13 +842,13 @@ def uniform(m):
 ACCENT = "ButtonFocus"
 
 
-def theme_plate(sc, bg_cls, rule_cls, rule_op):
+def theme_plate(sc, bg_cls, rule_cls, rule_op, margins=4):
     """Panel, popup and tooltip: one opaque plate with a one-pixel rule on
     every edge. FrameSvg disables the edges a panel sits against, so a bottom
     panel shows only its top rule and a floating one is outlined."""
     svg = Svg(sc)
     layers = [(bg_cls, 1.0, "fill")] + [(rule_cls, rule_op, "line", s, 1) for s in SIDES]
-    y = frame(svg, "", 0, 0, 1, layers, uniform(4), insets=uniform(4))
+    y = frame(svg, "", 0, 0, 1, layers, uniform(margins), insets=uniform(4))
     return svg, y
 
 
@@ -865,8 +865,11 @@ def theme_panel(sc):
     return svg.text()
 
 
+# A popup's margins exceed its insets: Kickoff spaces its header, and pads its
+# header and footer, by the dialog's margin less its inset, so equal ones put
+# the account picture against the user's name and the tabs against the edge.
 def theme_dialog(sc):
-    return theme_plate(sc, "Background", ACCENT, 1.0)[0].text()
+    return theme_plate(sc, "Background", ACCENT, 1.0, margins=8)[0].text()
 
 
 def theme_tooltip(sc):
@@ -962,6 +965,159 @@ def theme_pager(sc):
     return svg.text()
 
 
+# The slider, the progress bar and the radio and check marks. Plasma's
+# fallback style fills a slider, a progress bar and a radio's mark with the
+# Highlight class, the darkened selection, which on a dark accent barely
+# parts from the groove, and draws an unchecked radio as a ring that barely
+# parts from the ground. Here every mark is the accent over a hollow track:
+# the track is a faint outline around the ground itself, so the accent fill
+# meets the ground inside it at the focus colour's own 3:1 floor. Each file
+# replaces the fallback's whole, so each holds every element its component
+# asks for.
+TRACK = ("Text", 0.45)
+RING = ("Text", 0.6)
+
+
+def ring_path(cx, cy, r, w):
+    """A ring of width `w` and outer radius `r`, as one even-odd path."""
+    def disc(rr):
+        return "M%s,%s a%s,%s 0 1,0 %s,0 a%s,%s 0 1,0 %s,0 Z" % (
+            fmt(cx - rr), fmt(cy), fmt(rr), fmt(rr), fmt(2 * rr), fmt(rr), fmt(rr), fmt(-2 * rr))
+    return disc(r) + (" " + disc(r - w) if w < r else "")
+
+
+def path(cls, d, opacity=1.0):
+    return ('<path class="ColorScheme-%s" d="%s" style="fill:currentColor;fill-opacity:%s;'
+            'fill-rule:evenodd;stroke:none"/>') % (cls, d, fmt(opacity))
+
+
+def square_marks(svg, x, y, size, specs):
+    """One element per (id, layers) in `specs`, each a `size` square at
+    (x, y) stepping right; a layer is (cls, opacity, "fill") or
+    (cls, opacity, "line", px) for an outline `px` wide."""
+    for ident, layers in specs:
+        kids = [svg.rect(None, x, y, size, size)]
+        for layer in layers:
+            cls, op = layer[0], layer[1]
+            if layer[2] == "fill":
+                kids.append(svg.rect(None, x, y, size, size, cls, op))
+                continue
+            px = layer[3]
+            kids += [svg.rect(None, x, y, size, px, cls, op),
+                     svg.rect(None, x, y + size - px, size, px, cls, op),
+                     svg.rect(None, x, y + px, px, size - 2 * px, cls, op),
+                     svg.rect(None, x + size - px, y + px, px, size - 2 * px, cls, op)]
+        svg.group(ident, kids)
+        x += size + 4
+
+
+# The slider: a six-pixel hollow track, the accent filled up to the handle,
+# and a square handle in the button's ground whose outline turns the hover
+# colour under the pointer and the accent, twice as wide, with focus.
+def theme_slider(sc):
+    svg = Svg(sc)
+    outline = [TRACK + ("line", s, 1) for s in SIDES]
+    y = frame(svg, "groove", 0, 0, 3, outline, uniform(3))
+    y = frame(svg, "groove-highlight", 0, y, 3, [(ACCENT, 1.0, "fill")], uniform(3))
+    size = 20
+    for i, orient in enumerate(("horizontal", "vertical")):
+        square_marks(svg, 0, y + i * (size + 4), size, [
+            (orient + "-slider-shadow", []),
+            (orient + "-slider-handle", [("ButtonBackground", 1.0, "fill"), RING + ("line", 1)]),
+            (orient + "-slider-hover", [("ButtonHover", 1.0, "line", 1)]),
+            (orient + "-slider-focus", [(ACCENT, 1.0, "line", 2)]),
+        ])
+    svg.add(svg.rect("hint-handle-size", 4 * (size + 4), y, size, size))
+    return svg.text()
+
+
+def theme_bar_meter(sc):
+    svg = Svg(sc)
+    outline = [TRACK + ("line", s, 1) for s in SIDES]
+    y = frame(svg, "bar-inactive", 0, 0, 3, outline, uniform(3))
+    y = frame(svg, "bar-active", 0, y, 3, [(ACCENT, 1.0, "fill")], uniform(3))
+    svg.add(svg.rect("hint-bar-size", 0, y, 6, 6))
+    return svg.text()
+
+
+# A radio is round, its shape being what tells it from a check box: a ring in
+# the ground, the accent ring when checked, the accent dot as its mark.
+def theme_radiobutton(sc):
+    svg = Svg(sc)
+    specs = [
+        ("normal", 8, [("ButtonBackground", 1.0, 8), RING + (1,)]),
+        ("checked", 8, [("ButtonBackground", 1.0, 8), (ACCENT, 1.0, 1)]),
+        ("hover", 8, [("ButtonHover", 1.0, 1)]),
+        ("focus", 10, [(ACCENT, 1.0, 2)]),
+        ("symbol", 3, [(ACCENT, 1.0, 3)]),
+        ("shadow", 11, []),
+    ]
+    x = 0
+    for ident, r, layers in specs:
+        cx = cy = 11
+        kids = [svg.rect(None, x + cx - r, cy - r, 2 * r, 2 * r)]
+        kids += [path(cls, ring_path(x + cx, cy, r, w), op) for cls, op, w in layers]
+        svg.group(ident, kids)
+        x += 26
+    svg.add(svg.rect("hint-size", x, 3, 16, 16))
+    return svg.text()
+
+
+# The check box's mark lies over the button's `normal` frame: the accent
+# outline and a solid accent square inside it, drawn at half strength for a
+# partly checked box. The radio mark is the compatibility path's, which a
+# style that ships radiobutton.svgz never takes, kept so the file is whole.
+def theme_checkmarks(sc):
+    svg = Svg(sc)
+    svg.group("checkbox", [svg.rect(None, 0, 0, 16, 16)]
+              + [svg.rect(None, *r, cls=ACCENT) for r in
+                 ((0, 0, 16, 1), (0, 15, 16, 1), (0, 1, 1, 14), (15, 1, 1, 14), (4, 4, 8, 8))])
+    svg.group("radiobutton", [svg.rect(None, 0, 20, 16, 16),
+                              path(ACCENT, ring_path(8, 28, 8, 1)),
+                              path(ACCENT, ring_path(8, 28, 3, 3))])
+    return svg.text()
+
+
+# The switch: a hollow groove outlined in the radio's ring, which holds 3:1
+# against the ground on every accent where Breeze's switch parts from a dark
+# ground at about 1.5:1, the accent filled up to the handle when on, and a
+# square handle in the button's ground. Plasma's SwitchIndicator shows one
+# handle element at a time, so the hover, pressed and on handles are whole
+# handles and not overlays; handle-focus and handle-shadow are drawn over and
+# under whichever it shows.
+SWITCH_SIZE = (36, 18)
+SWITCH_ELEMENTS = (
+    ["%s-%s" % (p, c) for p in ("inactive", "active") for c in (
+        "topleft", "top", "topright", "left", "center", "right",
+        "bottomleft", "bottom", "bottomright")]
+    + ["hint-bar-size", "handle", "handle-hover", "handle-pressed", "handle-active",
+       "handle-focus", "handle-shadow"])
+
+
+def theme_switch(sc):
+    svg = Svg(sc)
+    outline = [RING + ("line", s, 1) for s in SIDES]
+    y = frame(svg, "inactive", 0, 0, 3, outline, uniform(3))
+    y = frame(svg, "active", 0, y, 3, [(ACCENT, 1.0, "fill")], uniform(3))
+    w, h = SWITCH_SIZE
+    svg.add(svg.rect("hint-bar-size", 0, y, w, h))
+    y += h + 4
+    ground = ("ButtonBackground", 1.0, "fill")
+    square_marks(svg, 0, y, h, [
+        ("handle", [ground, RING + ("line", 1)]),
+        ("handle-hover", [ground, ("ButtonHover", 1.0, "line", 1)]),
+        ("handle-pressed", [ground, ("Highlight", 0.3, "fill"), (ACCENT, 1.0, "line", 1)]),
+        ("handle-active", [ground, (ACCENT, 1.0, "line", 1)]),
+        ("handle-focus", [(ACCENT, 1.0, "line", 2)]),
+        ("handle-shadow", []),
+    ])
+    text = svg.text()
+    missing = [e for e in SWITCH_ELEMENTS if 'id="%s"' % e not in text]
+    if missing:
+        die("switch.svgz lacks %s" % " ".join(missing))
+    return text
+
+
 def svgz(path, text):
     """gzip with no name and no timestamp, so the bytes depend on the text."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -984,6 +1140,11 @@ def write_desktoptheme(args, sc):
     svgz(os.path.join(root, "widgets/button.svgz"), theme_button(sc))
     svgz(os.path.join(root, "widgets/tasks.svgz"), theme_tasks(sc))
     svgz(os.path.join(root, "widgets/pager.svgz"), theme_pager(sc))
+    svgz(os.path.join(root, "widgets/slider.svgz"), theme_slider(sc))
+    svgz(os.path.join(root, "widgets/bar_meter_horizontal.svgz"), theme_bar_meter(sc))
+    svgz(os.path.join(root, "widgets/radiobutton.svgz"), theme_radiobutton(sc))
+    svgz(os.path.join(root, "widgets/checkmarks.svgz"), theme_checkmarks(sc))
+    svgz(os.path.join(root, "widgets/switch.svgz"), theme_switch(sc))
 
 
 # ─── the desk templates ───────────────────────────────────────────────────

@@ -1,0 +1,138 @@
+Subject: Draw a focused button's outline in the focus colour
+
+renderButtonFrame outlines a hovered, pressed or keyboard-focused button
+in the palette's Highlight, the selection background. A colour scheme
+whose selection is darkened for text to read on it, as a dark accent's
+is, leaves the focus ring close to the resting frame: 1.57:1 on KDOS
+Bone. A button with visual focus is now outlined in the scheme's
+DecorationFocus, which the style already uses for the focus frame of
+line edits, check boxes and sliders; hover and press keep Highlight.
+
+The outline's fade runs on the hover animation, whose state covers
+hover, focus and press, so on its own it cannot tell a focus ring from
+a hover ring once both have ended. Push and tool buttons now register
+the widget state engine's pressed animation and drive it from visual
+focus alone, and the frame is told when that one is fading out: the
+ring then fades from DecorationFocus to the resting frame instead of
+dropping to Highlight on the first frame of the fade.
+
+--- a/kstyle/animations/breezeanimations.cpp
++++ b/kstyle/animations/breezeanimations.cpp
+@@ -112,7 +112,7 @@
+     // buttons
+     if (auto toolButton = qobject_cast<QToolButton *>(widget)) {
+         _toolButtonEngine->registerWidget(toolButton, AnimationHover | AnimationFocus);
+-        _widgetStateEngine->registerWidget(toolButton, AnimationHover | AnimationFocus);
++        _widgetStateEngine->registerWidget(toolButton, AnimationHover | AnimationFocus | AnimationPressed);
+ 
+     } else if (qobject_cast<QCheckBox *>(widget) || qobject_cast<QRadioButton *>(widget)) {
+         _widgetStateEngine->registerWidget(widget, AnimationHover | AnimationFocus | AnimationPressed);
+@@ -123,7 +123,7 @@
+             _toolBoxEngine->registerWidget(toolBox);
+         }
+ 
+-        _widgetStateEngine->registerWidget(button, AnimationHover | AnimationFocus);
++        _widgetStateEngine->registerWidget(button, AnimationHover | AnimationFocus | AnimationPressed);
+ 
+     }
+ 
+--- a/kstyle/breezehelper.cpp
++++ b/kstyle/breezehelper.cpp
+@@ -707,8 +707,15 @@
+         }
+     }
+ 
++    // Keyboard focus outlines the button in the scheme's focus colour. The
++    // selection colour a hover uses may be darkened for text to read on it,
++    // and a focus ring drawn in it barely differs from the resting frame.
++    // While focus fades out the pen fades from the focus colour, or the ring
++    // would drop to the selection colour on the first frame of the fade.
++    const bool focusFadingOut = stateProperties.value("focusFadingOut");
++    const QColor activePenColor = (visualFocus || focusFadingOut) ? focusColor(palette) : highlightColor;
+     if ((hovered || visualFocus || down) && enabled) {
+-        penBrush = highlightColor;
++        penBrush = visualFocus ? focusColor(palette) : highlightColor;
+     }
+ 
+     // Animations
+@@ -720,7 +727,7 @@
+     }
+     if (penAnimation != AnimationData::OpacityInvalid && enabled) {
+         QColor color1 = penBrush.color();
+-        QColor color2 = highlightColor;
++        QColor color2 = activePenColor;
+         penBrush = KColorUtils::mix(color1, color2, penAnimation);
+     }
+ 
+--- a/kstyle/breezestyle.cpp
++++ b/kstyle/breezestyle.cpp
+@@ -4547,12 +4547,16 @@
+     _animations->widgetStateEngine().updateState(widget, AnimationFocus, down && enabled);
+     // NOTE: Using hover animation for all pen animations to prevent flickering when closing the menu.
+     _animations->widgetStateEngine().updateState(widget, AnimationHover, (hovered || visualFocus || down) && enabled);
++    // The pressed animation of a button tracks keyboard focus alone, so the
++    // frame knows when the ring that is fading out was a focus ring.
++    _animations->widgetStateEngine().updateState(widget, AnimationPressed, visualFocus && enabled);
+     qreal bgAnimation = _animations->widgetStateEngine().opacity(widget, AnimationFocus);
+     qreal penAnimation = _animations->widgetStateEngine().opacity(widget, AnimationHover);
+ 
+     QHash<QByteArray, bool> stateProperties;
+     stateProperties["enabled"] = enabled;
+     stateProperties["visualFocus"] = visualFocus;
++    stateProperties["focusFadingOut"] = !visualFocus && _animations->widgetStateEngine().isAnimated(widget, AnimationPressed);
+     stateProperties["hovered"] = hovered;
+     stateProperties["down"] = down;
+     stateProperties["checked"] = checked;
+@@ -4585,6 +4589,9 @@
+     _animations->widgetStateEngine().updateState(widget, AnimationFocus, down && enabled);
+     // NOTE: Using hover animation for all pen animations to prevent flickering when closing the menu.
+     _animations->widgetStateEngine().updateState(widget, AnimationHover, (hovered || visualFocus || down) && enabled);
++    // The pressed animation of a button tracks keyboard focus alone, so the
++    // frame knows when the ring that is fading out was a focus ring.
++    _animations->widgetStateEngine().updateState(widget, AnimationPressed, visualFocus && enabled);
+     qreal bgAnimation = _animations->widgetStateEngine().opacity(widget, AnimationFocus);
+     qreal penAnimation = _animations->widgetStateEngine().opacity(widget, AnimationHover);
+ 
+@@ -4602,6 +4609,7 @@
+     QHash<QByteArray, bool> stateProperties;
+     stateProperties["enabled"] = enabled;
+     stateProperties["visualFocus"] = visualFocus;
++    stateProperties["focusFadingOut"] = !visualFocus && _animations->widgetStateEngine().isAnimated(widget, AnimationPressed);
+     stateProperties["hovered"] = hovered;
+     stateProperties["down"] = down;
+     stateProperties["checked"] = checked;
+@@ -5007,6 +5015,9 @@
+     _animations->widgetStateEngine().updateState(widget, AnimationFocus, down && enabled);
+     // NOTE: Using hover animation for all pen animations to prevent flickering when closing the menu.
+     _animations->widgetStateEngine().updateState(widget, AnimationHover, (hovered || visualFocus || down) && enabled);
++    // The pressed animation of a button tracks keyboard focus alone, so the
++    // frame knows when the ring that is fading out was a focus ring.
++    _animations->widgetStateEngine().updateState(widget, AnimationPressed, visualFocus && enabled);
+     qreal bgAnimation = _animations->widgetStateEngine().opacity(widget, AnimationFocus);
+     qreal penAnimation = _animations->widgetStateEngine().opacity(widget, AnimationHover);
+ 
+@@ -5019,6 +5030,7 @@
+     QHash<QByteArray, bool> stateProperties;
+     stateProperties["enabled"] = enabled;
+     stateProperties["visualFocus"] = visualFocus;
++    stateProperties["focusFadingOut"] = !visualFocus && _animations->widgetStateEngine().isAnimated(widget, AnimationPressed);
+     stateProperties["hovered"] = hovered;
+     stateProperties["down"] = down;
+     stateProperties["checked"] = checked;
+@@ -5498,12 +5510,16 @@
+     // NOTE: Using focus animation for bg down because the pressed animation only works on press when enabled for buttons and not on release.
+     _animations->widgetStateEngine().updateState(widget, AnimationFocus, down && enabled);
+     _animations->widgetStateEngine().updateState(widget, AnimationHover, (hovered || visualFocus || down) && enabled);
++    // The pressed animation of a button tracks keyboard focus alone, so the
++    // frame knows when the ring that is fading out was a focus ring.
++    _animations->widgetStateEngine().updateState(widget, AnimationPressed, visualFocus && enabled);
+     const qreal bgAnimation = _animations->widgetStateEngine().opacity(widget, AnimationFocus);
+     const qreal penAnimation = _animations->widgetStateEngine().opacity(widget, AnimationHover);
+ 
+     const QHash<QByteArray, bool> stateProperties{
+         {"enabled", enabled},
+         {"visualFocus", visualFocus},
++        {"focusFadingOut", !visualFocus && _animations->widgetStateEngine().isAnimated(widget, AnimationPressed)},
+         {"hovered", hovered},
+         {"down", down},
+         {"isActiveWindow", widget ? widget->isActiveWindow() : true},

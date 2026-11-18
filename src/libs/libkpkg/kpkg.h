@@ -438,7 +438,9 @@ char **kp_facet_wanted(const KpConf *c, const char *port);
  * that is the name of one of its own files, an interpreter, a qmldir or a
  * Python module (any `.py` or package directory) in its own manifest. PRESENT, EVEN EMPTY, means "measured";
  * ABSENT means "installed before needs were recorded", which every reader
- * reports as unmeasured, never as needing nothing.
+ * reports as unmeasured, never as needing nothing. Its readers are
+ * `kpkg needs` (needs.c) and `kpkg index --buildonly`
+ * (binhost.c needs_buildonly), which writes a stanza's N: line from it.
  *
  * WHAT PROVIDES AN EDGE (kp_needs_where), relative to the root:
  *

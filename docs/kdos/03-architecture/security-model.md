@@ -173,9 +173,11 @@ for a session is in [The session](session.md#starting-a-session).
 memory, which PipeWire's threads need. KDOS's `30-kdos.conf` gives every login real-time priority
 1, the lowest, which is what KWin asks for its input and frame-commit threads, and SDDM's
 `30-sddm.conf` gives the same to the `sddm` account for the login screen's KWin. A group entry
-outranks `*` whatever the file order, so a member of `audio` keeps 95. The kernel's real-time
-throttle (`kernel.sched_rt_runtime_us`) keeps a process at priority 1 from taking more than 95% of
-a CPU.
+outranks `*` whatever the file order, so a member of `audio` keeps 95. What keeps a process at
+priority 1 from starving the rest of the machine is the kernel's fair-class deadline server
+(`/sys/kernel/debug/sched/fair_server`), which runs normal tasks for a share of every second on
+each CPU however busy its real-time threads are. The real-time throttle bounds nothing on this
+kernel: `kernel.sched_rt_runtime_us` equals `kernel.sched_rt_period_us` (1000000).
 
 ### How a password is checked
 
@@ -187,9 +189,13 @@ Without its setuid bit the lock screen refuses every password, and the session c
 from another console. kscreenlocker is built with the password service `kde` and the fingerprint
 service `kde-fingerprint`; smart-card, face and second-factor unlocking are built off.
 
-An account with an empty password (the live medium's) unlocks the lock screen with an empty field,
-because `system-auth` carries `nullok`. The live medium also turns the timed lock off
-(`/usr/share/kdos/xdg-live/kscreenlockerrc`), so its screen locks only when asked.
+An account with an empty password would unlock the lock screen with an empty field, because
+`system-auth` carries `nullok`; no account on the image has one. The live medium's account is
+`kdos` with the password `kdos`, as is `root`, and its session is SDDM's automatic login, so the
+password is never typed to reach the desktop. An empty field does not unlock the live lock screen;
+`kdos` does. The live medium turns the timed lock off
+(`/usr/share/kdos/xdg-live/kscreenlockerrc`), so its screen locks only when asked: Meta+L and the
+lock on resume still lock it.
 
 **An automatic login can start behind the lock screen.** `sddm-autologin` runs `pam_env` with
 `/etc/security/sddm-autologin.conf`, which puts `/etc/kdos/autologin-xdg` first in
@@ -208,7 +214,9 @@ of it, which unlocks the default wallet without a second prompt. Nothing unlocks
 no password to keep: after an automatic login, or a login that was not a graphical one, the wallet
 asks for its own password the first time something opens it. Unlocking the lock screen runs no
 session phase, so it never unlocks the wallet. The live medium turns the wallet off
-(`/usr/share/kdos/xdg-live/kwalletrc`), since its account has no password.
+(`/usr/share/kdos/xdg-live/kwalletrc`), since its automatic login types no password to open a
+wallet with, and a wallet there would ask for a new password to guard secrets gone at the next
+boot.
 
 ### The mode of `/etc/shadow`
 
@@ -776,15 +784,18 @@ the kernel's own default, so the build fails if a later kernel stops honouring i
 
 ### Security modules
 
-The kernel starts the security modules named in `CONFIG_LSM`, which is
-`landlock,lockdown,yama,integrity`; no boot entry passes an `lsm=` that would change the list.
+The kernel's `CONFIG_LSM` is `landlock,lockdown,yama,integrity`, and no boot entry passes an
+`lsm=` that would change it. The modules actually running are listed in
+`/sys/kernel/security/lsm`, on the securityfs that `/etc/fstab` mounts at `/sys/kernel/security`
+(`nosuid,nodev,noexec`); on this kernel it reads `capability,landlock,lockdown,yama`, with no
+integrity module.
 
 | Module | What it does here |
 |---|---|
 | Landlock | Lets an unprivileged program restrict its own file and network access. [`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox) uses it to run a native program under a profile of readable and writable paths and allowed TCP ports; nothing is run that way unless you ask |
 | Lockdown | Built in, in its default mode, `none`: it restricts nothing until root writes `integrity` or `confidentiality` to `/sys/kernel/security/lockdown` or a `lockdown=` boot option names one |
 | Yama | Restricts `ptrace`. Nothing sets `kernel.yama.ptrace_scope`, so it keeps the kernel's default of 1: a process may trace only its own descendants, and `gdb -p` or `strace -p` on another process of your own fails unless you run it as root or start the program under the tracer |
-| Integrity | The kernel's keyrings for signature checks; it enforces no policy by itself |
+| Integrity | Not in the running list. The integrity keyrings for signature checks are built (`CONFIG_INTEGRITY_SIGNATURE` and the platform and machine keyrings), and no IMA or EVM policy is enforced |
 
 SELinux, AppArmor, Smack, TOMOYO, LoadPin, SafeSetID and IPE are compiled in but are not in the
 list, so none of them runs.
@@ -846,7 +857,7 @@ KDOS uses three keyrings, and keeping them apart is structural rather than a con
 
 | Directory | Attests | Used for | Shipped with |
 |---|---|---|---|
-| `/etc/kdos/keys` | Who built a release | The release index (`kdos-update.idx`), the binary-package host (binhost) index, package signature files, and the slot image manifest | No key |
+| `/etc/kdos/keys` | Who built a release | The release index (`kdos-update.idx`), the binary-package host (binhost) index, package signature files, and the slot image manifest | `kdos-binhost.pub` and `kdos-release.pub`, the image's own build's, each when the build found `build/binhost-key/kdos-binhost.pub` or `build/keys/kdos-release.pub`; otherwise no key, and prebuilt installs and the image lane refuse with `no-key` |
 | `/etc/kdos/keys/packs` | That whoever holds the matching secret key signed a pack or a pack index | Pack indexes and packs' own signatures, read by `kdos-packd` and `kdos-pack verify` | `kdos-packs.pub` (see below) |
 | `/etc/kdos/keys/tree` | That a published ports tree came from whoever holds the release key the image was built with | `kdos-ports.tar.xz.sig`, read by `kdos update fetch` before the tree is unpacked | `kdos-release.pub`, when the build found `build/keys/kdos-release.pub`; otherwise no key |
 

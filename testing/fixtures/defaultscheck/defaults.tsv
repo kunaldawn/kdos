@@ -136,7 +136,7 @@ kde-mimeapps.list	Default Applications	image/png	org.kde.gwenview.desktop	kdos	I
 kde-mimeapps.list	Default Applications	application/pdf	okularApplication_pdf.desktop	kdos	PDF: Okular
 kde-mimeapps.list	Default Applications	image/vnd.djvu	okularApplication_djvu.desktop	kdos	DjVu: Okular
 kde-mimeapps.list	Default Applications	application/epub+zip	calibre-ebook-viewer.desktop	kdos	E-books: Calibre viewer
-kde-mimeapps.list	Default Applications	video/mp4	org.kde.haruna.desktop	kdos	Video: Haruna
+kde-mimeapps.list	Default Applications	video/mp4	org.kde.haruna.desktop;vlc.desktop;	kdos	Video: Haruna, VLC on the medium
 kde-mimeapps.list	Default Applications	audio/mpeg	org.kde.elisa.desktop	kdos	Music: Elisa
 kde-mimeapps.list	Default Applications	x-scheme-handler/rdp	org.remmina.Remmina.desktop	kdos	Remote desktop: Remmina
 kde-mimeapps.list	Default Applications	x-scheme-handler/spice	org.remmina.Remmina.desktop	kdos	Remote desktop: Remmina

@@ -87,37 +87,42 @@ Its description, from `fs/etc/kdos/keys/tree/README`:
 The image step that fills it. An image built without the release key ships the ring empty, and
 then refuses every fetched tree:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=151-160 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=184-193 pin=68e72034c604 -->
 
 ### /etc/kdos/keys/
 
 The release index, the binhost index and the slot image manifest are kept only when their signature
 verifies against a `*.pub` directly in this directory; a release's index is signed with both the
-release key and the binhost key. The image ships it with no key there, so until one is added all
-of them are recorded as `unverified`: `kdos update apply` refuses, Discover offers no system update,
-and `kdos update apply --source` is the one way to update, by building here. Its description, from
+release key and the binhost key. The image ships the two keys of the build that made it,
+`kdos-binhost.pub` and `kdos-release.pub`, when that build had them; an image built without them
+ships the directory with no key, and then all of them are recorded as `no-key`: `kdos update
+apply` refuses the image and binhost lanes, Discover offers no system update, and `kdos update
+apply --source` is the one way to update, by building here. Its description, from
 `fs/etc/kdos/keys/README`:
 
 <!-- kfs:include fs/etc/kdos/keys/README -->
 
 ### /ports/TREE
 
-The stamp naming the commit `/ports` was made from and when. `kdos update fetch` compares it with a
-fetched tree's own stamp and refuses an older tree; a `/ports` with no stamp, from an image built
-without a commit, accepts any signed tree. The same step writes it:
+The stamp naming the commit `/ports` was made from and when, and the release it is. `kdos update
+fetch` compares it with a fetched tree's own stamp and refuses an older tree; a `/ports` with no
+stamp, from an image built without a commit, accepts any signed tree. The same step writes it:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=141-150 pin=91e34053e828 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=166-183 pin=bd0c2a400e65 -->
 
-On a booted image it reads, with the image's own commit and time:
+On a booted image it reads, with the image's own commit, time and release:
 
 ```text
 kdos-tree 1
 commit <short commit>
 time <seconds since 1970>
+version <release>
 ```
 
-A tree a release published carries a fourth line, `version <release>`, which names the release
-whose `kdos-update.idx` the binhost is found through.
+The `version` line names the release whose `kdos-update.idx` the binhost is found through. An
+image has it when it was built from a clean checkout of a tagged commit, and every tree a release
+published has it; an image without it finds no binhost until `/etc/kdos/update.conf` names one or
+a fetch installs the published tree (see [Fetching a newer tree](#fetching-a-newer-tree)).
 
 ### /etc/kpkg.conf
 
@@ -153,15 +158,17 @@ The full list is in [Filesystem and IPC](../../kdos/06-reference/filesystem-and-
 ## Usage
 
 `ports/publish --release` publishes a release's tree, binhost and slot image with the index that
-finds them, but no published release yet carries them, so no update has been taken from one; see
-[Known gaps](#known-gaps). The update lanes are exercised against fixtures by
-`testing/selftest.sh`.
+finds them. Against the published v0.2 release the tree's fetch, the binhost index and prebuilt
+installs have run over the network; an image update has been applied from a signed local image,
+not from a release; see [Known gaps](#known-gaps). The update lanes are exercised against fixtures
+by `testing/selftest.sh`.
 
 ### From the desktop
 
 Discover's tray icon shows when an update is offered. Open Discover's **Updates** page: the KDOS
 system update is listed with its version beside any application updates, and its text names the
-lane it comes by and the size still to download. **Update All** writes the inactive slot, and **Restart to update** reboots
+lane it comes by and the size still to download, or to copy when the binhost or image is a local
+directory. **Update All** writes the inactive slot, and **Restart to update** reboots
 into it. The update is confirmed a minute into the next session, or rolled back by itself when
 that boot does not get there (see [A/B slots and rollback](ab-slots-and-rollback.md)). System
 Settings → **System Versions** shows what each slot holds and why the last update stopped, if it
@@ -222,7 +229,10 @@ did.
    ```
 
 A tree whose stamp is older than the installed one is refused, and a tree with the same commit is
-reported as current.
+reported as current (`the ports tree is current (<commit>)`), unless the installed stamp names no
+release and the published one does: then the published tree replaces `/ports`
+(`/ports now holds tree <commit> (signed by key <id>)`), so an image built from an untagged
+checkout of a release's commit learns the release, and its binhost, at its first fetch.
 
 ### Fetching from a stick
 
@@ -316,8 +326,8 @@ confirmed way back until this one is confirmed or rolled back.
 
 ### Installing software
 
-The base the ISO carries is Plasma, the core KDE applications, Firefox, the toolchain and the
-system's own tools; everything else the release built is in its binhost. A port reaches this
+The base the ISO carries is Plasma, the core KDE applications, Firefox and the system's own
+tools, with no compiler; everything else the release built is in its binhost. A port reaches this
 machine by one of three routes:
 
 | Route | How | What it takes |
@@ -341,6 +351,16 @@ time it builds.
    sudo kdos update fetch --binhost-only
    ```
 
+   It fetches the index of the release `/ports/TREE` names, or of the `binhost =` in
+   `/etc/kdos/update.conf`. With neither it exits 1 and says so: ``kdos update: no binhost is
+   named: /ports/TREE names no release and /etc/kdos/update.conf has no `binhost =` line; `sudo
+   kdos update fetch` takes a published tree that names its release``. When the last full fetch
+   refused the published tree as older than this machine's, as it does on an image built after
+   the release, the fetch is left out and only `binhost =` is named: ``kdos update: no binhost is
+   named: /ports/TREE names no release, and the published tree is older than this machine's; name
+   one with `binhost =` in /etc/kdos/update.conf``. A named release with nothing published at its
+   address gives `kdos update: no binhost is published at <base>`.
+
 2. See what an install would do. This needs no root:
 
    ```bash
@@ -348,7 +368,9 @@ time it builds.
    ```
 
    One line per package, `<pkg> prebuilt <file> <bytes>` or `<pkg> source <version>-<release>`,
-   then `total <prebuilt-count> <bytes> <source-count>`.
+   then `total <prebuilt-count> <bytes> <source-count>`. When the download does not fit in the
+   free space where the cache is, the plan ends with `kdos update: the packages to download take
+   <size> and <cache> has <size> free`, and the dry run exits 1.
 
 3. Install:
 
@@ -424,7 +446,8 @@ Each group that installs leaves the file; with nothing recorded it prints `nothi
 
 On the live medium, `kdos update install` works the same way, into the overlay in RAM: what it
 installs is gone at the next restart, unless the medium has a persistence store (see
-[Live persistence](live-persistence.md)).
+[Live persistence](live-persistence.md)). Each package file and its `.sig` leave the cache once
+the package is installed, since the cache is in the same RAM as the root it went into.
 
 `--root DIR` installs into a root that is not running, `DIR` absolute, by the prebuilt route only:
 a build compiles against the root it runs in, so `--source` with `--root` exits 2.
@@ -452,6 +475,11 @@ a build compiles against the root it runs in, so `--source` with `--root` exits 
    ```bash
    find /etc -name '*.kdos-new'
    ```
+
+   The new default sits beside this machine's copy as `<file>.kdos-new`, and inside a `*.d`
+   directory as the hidden `.<file>.kdos-new`, because a program that reads such a directory
+   whole would read a visible copy too. See
+   [A/B slots and rollback](ab-slots-and-rollback.md#updating-through-the-inactive-slot).
 
 4. Read what the running version changed: `kdos update notes`.
 
@@ -542,6 +570,21 @@ Discover offers no system update, or `kdos update check` reports a problem
   the directory holds only its `README`. `kdos update apply` still builds whatever the recipes in
   `/ports` are ahead of. See [Known gaps](#known-gaps).
 
+`no signed binhost index is on this machine`
+: `kdos update install` found no binhost index and could not fetch one. The second line says why:
+  ``no binhost is named`` means `/ports/TREE` names no release and `update.conf` has no
+  `binhost =`; write one, as in
+  [A v0.2 machine finds no prebuilt package](../../kdos/06-reference/known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release),
+  or run `sudo kdos update fetch` to take a published tree that names its release. When the line
+  says the published tree is older than this machine's, that fetch is refused, and `binhost =` is
+  the one way. ``<base> names a
+  binhost the last fetch did not see`` means one has been named since: run
+  `sudo kdos update fetch --binhost-only`.
+
+`the packages to download take <size> and <cache> has <size> free`
+: The install would not fit where its packages are cached, and nothing was downloaded. Free space
+  there, or install fewer ports at once; on the live medium the cache is in RAM.
+
 `fetch-failed` on every fetch
 : A release that carries no `kdos-ports.tar.xz` fails at the download: the latest release is such
   a one, and `sudo kdos update fetch` with no `update.conf` prints
@@ -605,7 +648,8 @@ Discover offers no system update, or `kdos update check` reports a problem
 
 ## Known gaps
 
-- [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
+- [A v0.2 machine finds no prebuilt package until `update.conf` names the release](../../kdos/06-reference/known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release)
+- [No published release's update has been applied to an installed machine](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)
 - [An update with --root compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-with---root-compiles-against-the-running-system)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)

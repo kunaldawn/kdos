@@ -11,7 +11,11 @@
  * ruling), and the formats for dates, numbers and money are a person's own
  * choice in System Settings afterwards. The time zone is asked here because
  * it is the machine's, not a person's: tzdata's zone1970.tab, which a typed
- * filter narrows, with the zone's local time beside it.
+ * filter narrows, with the zone's local time beside it. A filter that
+ * matches nothing leaves the chosen zone shown and chosen.
+ *
+ * The firmware row says when Secure Boot is on, and a warning says what it
+ * costs: the installed machine does not start until it is off.
  */
 
 import QtQuick
@@ -67,6 +71,16 @@ WizardPage {
         text: i18n("This is not the live medium. Installing from a running system copies this system, and any disk chosen later is erased; the disk this system runs from is not offered.")
     }
 
+    /* Limine's EFI loader is unsigned and KDOS enrols no keys, so the
+     * install completes and the installed machine does not start until
+     * Secure Boot is off. Said before a disk is chosen, not after. */
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        type: Kirigami.MessageType.Warning
+        visible: Backend.probe.secure_boot === true
+        text: i18n("Secure Boot is on. KDOS installs, but the installed computer will not start until Secure Boot is turned off in the firmware setup.")
+    }
+
     Kirigami.FormLayout {
         Layout.fillWidth: true
 
@@ -89,7 +103,7 @@ WizardPage {
             model: page.zones
             currentIndex: page.zones.indexOf(Backend.answers.timezone)
             displayText: currentIndex >= 0 ? currentText
-                       : page.zones.length === 0 ? i18nc("@item:inlistbox", "No zone matches")
+                       : page.zones.length === 0 ? i18nc("@item:inlistbox %1 the chosen zone", "%1 (no zone matches the filter)", Backend.answers.timezone)
                        : i18nc("@item:inlistbox %1 the chosen zone, not among the matches", "%1 (choose a match)", Backend.answers.timezone)
             enabled: page.zones.length > 0
             popup.width: width
@@ -139,6 +153,7 @@ WizardPage {
             Kirigami.FormData.label: i18nc("@label", "Firmware:")
             text: Backend.probe.firmware === "uefi"
                 ? (Backend.probe.firmware_bits === 32 ? i18n("UEFI (32-bit)") : i18n("UEFI"))
+                  + (Backend.probe.secure_boot === true ? i18nc("@info after the firmware", ", Secure Boot on") : "")
                 : Backend.probe.firmware === "bios" ? i18n("Legacy BIOS") : "—"
             Accessible.name: i18nc("@info:whatsthis", "Firmware: %1", text)
         }

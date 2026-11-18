@@ -62,7 +62,7 @@ KCM.ScrollViewKCM {
             Layout.fillWidth: true
             visible: root.controller.available
             wrapMode: Text.Wrap
-            text: i18ndc("kdos-kcm-firewall", "@info the firewall's default policy", "Everything else arriving from the network is turned away. Replies to connections this computer made, and ping, always get in.")
+            text: i18ndc("kdos-kcm-firewall", "@info the firewall's default policy", "Nothing arriving from the network gets in unless its service is open below. Always let in: replies to connections this computer made, ping and the error messages networking depends on, discovery on the local network (mDNS, and NetBIOS and WS-Discovery replies), DHCPv6 replies, addresses and name lookups for devices joined to this computer's Wi-Fi hotspot, and name lookups from containers run as root.")
         }
     }
 

@@ -104,6 +104,14 @@ void kp_xz_env_restore(char *saved[2]);
 int depends_main(int argc, char **argv);
 int add_main(int argc, char **argv);
 int del_main(int argc, char **argv);
+/* 1, with an ERROR line naming why (missing, read-only, not permitted),
+ * when this process cannot write to root (add.c). */
+int kp_root_unwritable(const char *root);
+/* The database path as a message names it: the root and the database
+ * directory joined by one slash, so `--root /mnt/` reads /mnt/var/lib/kpkg/db
+ * and the default root reads /var/lib/kpkg/db, not //var/lib/kpkg/db
+ * (add.c). */
+void kp_db_shown(const KpConf *c, char *buf, size_t cap);
 int build_main(int argc, char **argv);
 /*
  * Build the port in `portdir` and, on success, copy the path of the package

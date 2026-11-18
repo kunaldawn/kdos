@@ -44,7 +44,7 @@ A notification's id is good only while the server that issued it runs. Plasma ta
 `replaces_id` it never issued as the new notification's own number, so replacing or closing an
 id from an earlier login, or from a plasmashell that has since restarted, would replace or close
 another program's notification. kdos-notice forgets every id when it starts and when the server
-changes owner; a notice that was waiting for a person (restarts, CVEs, the applications still to install) is
+changes owner; a notice that was waiting for a person (restarts, CVEs, the software still to install) is
 then posted again to the
 new server, since a restarted plasmashell lost it.
 

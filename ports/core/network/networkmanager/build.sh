@@ -72,13 +72,13 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/nmtui.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Network
-GenericName=Network Settings
+Name=nmtui
+GenericName=Network connections in a terminal
 Comment=Wi-Fi, Ethernet and VPN connections
 Exec=nmtui
 Icon=network-wired
 Terminal=true
-Categories=Settings;Network;
+Categories=Network;ConsoleOnly;
 Keywords=network;wifi;wireless;ethernet;vpn;nmtui;
 EOF
 chmod 644 "$PKG/usr/share/applications/nmtui.desktop"

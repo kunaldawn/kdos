@@ -86,6 +86,12 @@ bullets below are the switch-by-switch reading of it.
 - `no-source-tree.patch` — writes an empty `QT_SOURCE_TREE` into the installed `QtBuildInternalsExtra.cmake`. Upstream records the path of the source tree there, which in a package is the build directory under `/var/cache/kpkg`.
 
 ## Notes
+`openurl-local-file.patch` is what opens a local HTML page at a section from a Qt program: the
+Help button of a KDOS settings page, through [kguiaddons](#port-kguiaddons)' `help:` handler, and
+any `Qt.openUrlExternally()` of a `file:` URL with a fragment. Without it the desktop portal is
+asked, refuses a `file:` URI, and nothing opens. Every port that links Qt rebuilds on a change to
+it.
+
 `build.sh` ends by checking that no file under `/usr/lib/cmake` in the package names
 `/var/cache/kpkg`. A build path that reached the installed CMake files would be read by every Qt
 module built afterwards, and would point at a directory that does not exist on the target.

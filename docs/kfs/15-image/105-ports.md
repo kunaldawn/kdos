@@ -9,19 +9,22 @@ image's [source offer]{.idx}: where the source of everything on the image can be
 
 ## Staging the tree
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=54-68 pin=4ea46f88efe5 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=56-75 pin=07f4fb13b814 -->
 
 In the chroot, `/ports` is a bind mount of the repository's `ports/` directory, which holds every
 fetched tarball beside its recipe and which the first squash of the root leaves out. It cannot be
 filtered where it is, so the tree is staged as a copy in `build/image-ports/ports`, and
 `110_iso.sh` appends that to `system.sfs` as `/ports`. The staging directory is emptied first, and
 `umask 022` keeps the group and other write bits off everything the step creates. `ports/shelves`, the
-list of shelves, `ports/sources.idx`, the index of the source archive, and `ports/groups`, the
-[groups]{.idx} of applications that `kdos update install <group>` and the installer offer, are
+list of shelves, `ports/sources.idx`, the index of the source archive, `ports/groups`, the
+[groups]{.idx} of applications that `kdos update install <group>` and the installer offer, and
+`ports/RELEASE`, the release notes that `kdos update notes` prints and What's New shows, and
+`ports/buildonly`, the build-only ports `kdos update` keeps out of a prebuilt plan, are
 required. The groups are what a machine reads to install a set of ports by one name; see
-[Installing software](../16-wiki/updating.md#installing-software).
+[Installing software](../16-wiki/updating.md#installing-software). A `RELEASE` over 16 KiB stops
+the phase, because `kdos update notes` reads only the first 16 KiB and would cut the rest off.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=70-96 pin=005ab5a0ade2 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=77-103 pin=005ab5a0ade2 -->
 
 For each port under `/ports/core/<shelf>/<name>`, every file is copied except two kinds of source:
 
@@ -41,7 +44,7 @@ Files and directories whose names begin with a dot are skipped. What is left is 
 `build.sh`, patches, `postinstall.sh`, the port's `kfs.md` note and any other file the recipe
 ships. No recipe at all under `/ports/core` stops the phase.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=98-106 pin=ffe47f64821a -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=105-113 pin=ffe47f64821a -->
 
 `src/` is copied whole to `/ports/src`, because the programs of KDOS's own are built from it and no
 archive holds their sources. Its areas stay side by side, since a desktop program's `build.sh`
@@ -62,7 +65,7 @@ its renderer also reads `ports/core` and `script/phases`.
 Dot-files and `__pycache__` directories are removed from the copies, and every mode is made
 readable by all.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=108-116 pin=2ae9719ff407 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=115-123 pin=2ae9719ff407 -->
 
 A file over 16 MB under the copied `core/` is a source the filters above missed, and stops the
 phase, naming up to five of them. The staging then logs the number of ports, files and programs of
@@ -70,14 +73,27 @@ our own, and the size of the staged tree.
 
 ## The stamp and the key
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=141-160 pin=f377f0227aab -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=160-193 pin=971c5de60f2f -->
 
 `/ports/TREE` names the commit the tree is and that commit's time, in the format
-`ports/publish --release` writes into a published tree, which adds `version <tag>`: the release
-whose signed `kdos-update.idx` the binhost is then found through. `kdos update fetch` refuses a signed tree
+`ports/publish --release` writes into a published tree. `kdos update fetch` refuses a signed tree
 whose `TREE` time is older than the one in `/ports`, and takes one of the same commit for current,
 so an image without the stamp would take any signed tree, an older one included. Without
 `KDOS_GIT_COMMIT` there is no stamp.
+
+A fourth line, `version <tag>`, names the [release]{.idx term="release tag"} the image is: the
+release whose signed `kdos-update.idx` the binhost is found through, so without it every prebuilt
+install refuses unless `/etc/kdos/update.conf` names a `binhost =`. The line is
+`KDOS_GIT_RELEASE`, which `script/chroot/exec.sh` sets to the Makefile's `KDOS_GIT_TAG`, the one
+release tag (`v<digit>…`) on `HEAD`, only when the checkout is clean, untracked files included: a
+dirty tree's packages are not the release's, and an archive tag (`sources-N`, `src-*`, `packs-*`)
+names no release. The step says which case it met: `/ports/TREE names release <tag>`,
+`the checkout has changes: /ports/TREE does not name release <tag>`, or `HEAD carries no tag:
+/ports/TREE names no release, and prebuilt installs need binhost = in update.conf`. A tag outside
+the alphabet `ports/publish --release` accepts stops the phase with `FATAL: tag '<t>' cannot name a
+release: letters, digits and . _ + ~ - only, not first . or -, at most 40`. How a tag is chosen
+and refused before the build starts is in
+[The release tag](../../kdos/05-developer/build-system.md#the-release-tag).
 
 [`/etc/kdos/keys/tree`]{.idx} is the keyring `kdos update fetch` checks a published tree against. The step
 empties it of keys and installs the public half of the release key, `build/keys/kdos-release.pub`,
@@ -95,14 +111,14 @@ that image's `kdos update install --prebuilt` and image lane refuse with `no-key
 
 ## The source offer
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=179-199 pin=959efcc4c4c7 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=212-232 pin=959efcc4c4c7 -->
 
 The step reads every installed package's recipe, under `/ports/core` or `/kdos/src`, and collects
 the hash of every source it names. `ports/sources.idx` says which `sources-<N>` release of the
 archive holds each hash, so the releases the image's sources are in are those the index gives for
 any of the collected hashes. The hashes the index does not hold are counted.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=201-227 pin=2ea75f8df3d3 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=234-260 pin=2ea75f8df3d3 -->
 
 `SOURCES` names the repository, the commit (with `-dirty` when the tree had unrecorded changes,
 `unrecorded` without a commit), its date, and a `release` line for each archive release that
@@ -122,7 +138,8 @@ the image when `110_iso.sh` appends it to `system.sfs`:
 /ports/shelves
 /ports/sources.idx
 /ports/groups
-/ports/TREE                   with a commit only
+/ports/RELEASE                the release notes
+/ports/TREE                   the commit, and the release on a clean tagged build
 /ports/src/                   the programs of KDOS's own
 /ports/docs/kdos/  /ports/docs/screenshots/  /ports/docs/kfs/
 /ports/script/book/

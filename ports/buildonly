@@ -13,9 +13,14 @@
 # `depends =` names a port's build and run-time needs alike. The image's
 # closure (ports/base, script/lib/imageset.py) does not follow a dependency
 # into a port listed here, so a compiler a recipe builds with stays off the
-# medium. A listed port is still built, still in the binhost and still
-# installed by `kdos update install` or a source build that needs it, and
-# ports/base naming one puts it back on the medium.
+# medium. A listed port is still built, still in the binhost and installed
+# when it is named itself or a source build needs it, and ports/base naming
+# one puts it back on the medium. A prebuilt `kdos update install` from a
+# tree that carries this file as /ports/buildonly follows a dependency into
+# a listed port only where the package's binhost index stanza names that
+# port on its `N:` line (its recorded run-time needs, as wesnoth's name
+# boost); a stanza with no `N:` line, and a tree without the file, keep
+# every edge, and a `--source` install follows every edge.
 #
 # A PORT HERE MUST BE NOTHING A PROGRAM ON THE IMAGE RUNS OR LOADS. 087_gates
 # proves it: linkcheck fails the image when a DT_NEEDED or a #! resolves to

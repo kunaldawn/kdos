@@ -14,7 +14,7 @@
  * last is the result:
  *
  *   {"t":"plan","steps":[{"index":0,"title":"Prepare","detail":"…",
- *                         "state":"pending"}, …]}
+ *                         "state":"pending","weight":1}, …]}
  *   {"t":"S","step":4,"title":"Copy system"}    a step begins
  *   {"t":"K","step":1}                          a step is skipped
  *   {"t":"P","step":4,"frac":0.42}              its progress, -1 unknown
@@ -24,6 +24,10 @@
  *   {"t":"F","step":9,"text":"…"}               the failure, with its reason
  *   {"t":"D"}                                   every step finished
  *   {"t":"exit","status":0}                     the last line, always
+ *
+ * A step's `weight` is its share of the whole install against a short
+ * step's 1 (the copies weigh by their bytes), for a bar over the install
+ * that moves with its time; a reader takes a missing one as 1.
  *
  * Status 0 is a finished install, 1 a failed one, 2 answers refused before
  * anything was written (the reason in an `F` line with step -1). The process
@@ -64,8 +68,9 @@ static void plan_line(void)
 		kb_json_str(&b, inst.step[i].title);
 		kb_buf_str(&b, ",\"detail\":");
 		kb_json_str(&b, inst.step[i].detail);
-		kb_buf_printf(&b, ",\"state\":\"%s\"}",
-			      ki_state_name(inst.step[i].state));
+		kb_buf_printf(&b, ",\"state\":\"%s\",\"weight\":%d}",
+			      ki_state_name(inst.step[i].state),
+			      inst.step[i].weight);
 	}
 	kb_buf_str(&b, "]}");
 	out(&b);

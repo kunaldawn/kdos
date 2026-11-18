@@ -44,6 +44,11 @@ BoxesModule::BoxesModule(QObject *parent, const KPluginMetaData &metaData, const
     , m_profile(new BoxProfile(this))
 {
     setButtons(Help | Apply | Default);
+    /* No box is open until one is chosen, and there is nothing to reset:
+     * KQuickConfigModule starts out not at its defaults, which would offer
+     * a Defaults button that acts on nothing. load() states it again for
+     * the wrapper System Settings puts around the page. */
+    setRepresentsDefaults(true);
 
     /* `systemsettings kcm_kdos_boxes --args <box>` opens that box: the link
      * Discover's "Runs in a box" badge follows. Anything that is not a box
@@ -290,6 +295,15 @@ void BoxesModule::load()
         m_profile->loadFile(m_current);
         loadReport();
     }
+    /* System Settings wraps the page in a KCModuleQml, whose load() sets
+     * its own representsDefaults to false before calling this and copies
+     * the page's value only on representsDefaultsChanged. Setting the value
+     * the page already holds emits nothing, so it is stepped through its
+     * opposite: without the change signal the wrapper keeps false and
+     * enables Defaults with no box to reset. */
+    const bool atDefaults = m_current.isEmpty() || m_profile->isAtDefaults();
+    setRepresentsDefaults(!atDefaults);
+    setRepresentsDefaults(atDefaults);
 }
 
 void BoxesModule::save()
@@ -491,7 +505,11 @@ void BoxesModule::removeBox()
     if (m_currentRow.value(u"running"_s).toBool()) {
         steps.append({u"kdos-box"_s, {u"stop"_s, name}});
     }
-    steps.append({u"kdos-box"_s, {u"remove"_s, name}});
+    QStringList remove{u"remove"_s, name};
+    if (!created) {
+        remove << u"--purge"_s;
+    }
+    steps.append({u"kdos-box"_s, remove});
 
     runLifecycle(steps, i18nc("@info:progress", "Removing %1…", name), [this, name, created](int code, int, const QString &last) {
         if (code != 0) {

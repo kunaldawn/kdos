@@ -8,7 +8,7 @@ _kdos() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "help theme phosphor desk tiling status doctor version app share remind notify toggle settings menu panel places trash thumb verify hey appid privacy checklist backup speech timezone hostname locale keymap in-vm update firmware cve why explain persist restarts" -- "$cur"))
+        COMPREPLY=($(compgen -W "help theme phosphor desk tiling status doctor version app share remind notify toggle settings menu panel places trash thumb verify hey appid privacy checklist backup speech timezone hostname locale keymap in-vm update image firmware cve why explain persist restarts sandbox march rebuild clone oracle" -- "$cur"))
         return
     fi
 
@@ -82,7 +82,25 @@ _kdos() {
         help)     COMPREPLY=($(compgen -W "--keys --pager" -- "$cur")) ;;
         remind)   COMPREPLY=($(compgen -W "in at tomorrow ls clear --ask" -- "$cur")) ;;
         notify)   COMPREPLY=($(compgen -W "--time --battery --dnd" -- "$cur")) ;;
-        update)   COMPREPLY=($(compgen -W "check fetch apply install notes" -- "$cur")) ;;
+        update)
+            case "$prev" in
+                update) COMPREPLY=($(compgen -W "check fetch apply install groups notes theme" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        app)
+            case "$prev" in
+                app) COMPREPLY=($(compgen -W "list search info groups install launch remove export import tui" -- "$cur")) ;;
+                list) COMPREPLY=($(compgen -W "--all" -- "$cur")) ;;
+                install) COMPREPLY=($(compgen -W "--dry-run --pending" -- "$cur")) ;;
+                tui) COMPREPLY=($(compgen -W "add rm ls" -- "$cur")) ;;
+                export|import) COMPREPLY=($(compgen -f -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        image)
+            case "$prev" in
+                image) COMPREPLY=($(compgen -W "make verify unpack carry" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -d -- "$cur")) ;;
+            esac ;;
         firmware)
             case "$prev" in
                 firmware) COMPREPLY=($(compgen -W "sync" -- "$cur")) ;;

@@ -210,6 +210,10 @@ static uint32_t vt_bright(const KcolScheme *sc, uint32_t c, int pct)
  * read as a second colour makes `\e[1;32m` a hue the scheme never chose. */
 #define VT_LIGHT	33
 
+/* Slot 8 is kcol_muted, as kcol_ansi's bright black, never `dim`: htop's
+ * figures, ls's and vim's de-emphasised text land there, and `dim` is a fill
+ * that reads at about 1.7:1 on the ground. */
+
 /* Slot 15 is the console's "brightest thing on screen" and is asked for by
  * name — a ramp step from `text` lands it on `text` and the emphasis is
  * lost. */
@@ -223,7 +227,7 @@ int kcol_vtrgb(const KcolScheme *sc, char *buf, size_t cap)
 	const uint32_t slot[16] = {
 		sc->deep, sc->urgent, sc->primary, sc->secondary,
 		VT_BLUE, VT_MAGENTA, VT_CYAN, sc->text,
-		sc->dim,
+		kcol_muted(sc),
 		vt_bright(sc, sc->urgent, VT_LIGHT),
 		vt_bright(sc, sc->primary, VT_LIGHT),
 		vt_bright(sc, sc->secondary, VT_LIGHT),

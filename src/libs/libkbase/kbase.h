@@ -314,6 +314,11 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n);
  * it silently raises nothing, which is what a machine with no notification
  * daemon should do. gdbus's output and its errors both go to /dev/null, so a
  * refused toast prints nothing on the caller's terminal.
+ *
+ * The sender is always kdos.notifyrc's Name, "KDOS Tools", with the hint
+ * x-kde-appname=kdos, and `app` is ignored: Plasma heads the toast and files
+ * its history under the sender, so another name would split one application
+ * into two history groups.
  */
 void kb_notify(const char *app, const char *summary, const char *body);
 /* Same, unbounded: stdout is appended to a growing buffer, NUL terminated,

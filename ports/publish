@@ -124,7 +124,14 @@
 #               hashes, since git cannot rewrite them without changing the tag.
 #   --release   put the system release <tag> on $KDOS_REPO: the tag must be on
 #               origin at the same commit, no branch on origin may share its
-#               name, and every source it names must be archived.
+#               name, every source it names must be archived, the tag must
+#               carry ports/RELEASE of at most 16 KiB (the notes `kdos update
+#               notes` and What's New show, which read no more), and the ISO must be the tag's own image: the
+#               /ports/TREE inside its system.sfs (read with xorriso and
+#               unsquashfs) names the tag's commit and `version <tag>`, and
+#               its /ports/RELEASE is there. An ISO whose tree names no
+#               release installs machines that never find this release's
+#               prebuilt packages, so it is refused.
 #               It uploads the ISO (--iso, default build/iso-build/kdos.iso) as
 #               kdos-<tag>.iso, or in parts kdos-<tag>.iso.partNN when it is
 #               larger than $SRC_PART_SIZE bytes; sources.sha256; the tag's
@@ -158,12 +165,22 @@
 #               (src/system/kdos-tools/relidx.c). A directory without a
 #               kdos-update.idx publishes no lane, and the run says so.
 #               The recipe tree's TREE carries `version <tag>`, which is how a
-#               machine finds this release's index again.
+#               machine finds this release's index again, and RELEASE beside
+#               it carries the tag's ports/RELEASE.
+#               THE NOTES, build/release/<tag>/notes.md and the draft's body,
+#               lead with ports/RELEASE, then name the ISO, what a machine
+#               needs (x86-64, UEFI or BIOS, Secure Boot off, 4 GB of memory),
+#               the live account, the disk two slots need (worked out from the
+#               ISO's system.sfs and the tag's kinstall-core figures, the
+#               default swap among them), links to
+#               the tag's getting-started and installation guides, and how to
+#               check SHA256SUMS.sig with OpenSSL before KDOS runs.
 #               The release is a DRAFT until --publish makes it public and
 #               Latest, which is then confirmed by an anonymous query. Assets
 #               are append-only here too: a same-name asset with other bytes
-#               stops the run with exit 2. --dry-run prints the plan with no
-#               network and no token.
+#               stops the run with exit 2. --dry-run prints the plan and
+#               writes notes.md, with no network and no token; a refusal the
+#               real run would make is printed as FAILED and exits 1.
 #
 # EXIT: 0 everything is archived, 1 something is missing or failed, 2 a name
 # or asset holds bytes other than the ones asked for and could not be
@@ -318,7 +335,14 @@ trap 'exit 143' TERM
 RC=0
 fail()     { echo "  FAILED   $*" >&2; [ "$RC" = 2 ] || RC=1; }
 conflict() { echo "  CONFLICT $*" >&2; RC=2; }
-human()    { numfmt --to=iec --suffix=B "$1"; }
+# Binary units, two decimals and a space: 1649758208 is "1.54 GiB"; under
+# 1 KiB it is "<n> B".
+human() {
+    local v
+    [ "$1" -ge 1024 ] || { echo "$1 B"; return; }
+    v=$(numfmt --to=iec-i --format=%.2f "$1")
+    echo "${v%%[KMGTPE]i} ${v##*[0-9]}B"
+}
 
 # ── what git carries ──────────────────────────────────────────────────────
 #
@@ -1634,7 +1658,10 @@ fi
 # `kdos update groups` and the installer naming none), src/, docs/ and script/book beside them, and a
 # TREE stamp naming the commit and its time, which `kdos update fetch` orders
 # two trees by, and the release <tag>, under which a machine holding the tree
-# finds the release index of its binhost.
+# finds the release index of its binhost; and RELEASE, the commit's
+# ports/RELEASE, which `kdos update notes` and What's New read from the
+# fetched tree (a tree without it shows no notes); and buildonly, which
+# `kdos update` reads to keep build-only ports out of a prebuilt plan.
 # script/book is there because kdos-kfs's `book` link (../../../script/book)
 # points into it: the recipe hash follows that link, and with the link
 # dangling the fetched tree hashes kdos-kfs differently from the tree its
@@ -1645,9 +1672,10 @@ fi
 release_tree() {
     local c=$1 out=$2 tag=$3 d=$TMP/tree t
     rm -rf "$d"; mkdir -p "$d/raw" "$d/ports/script"
-    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx ports/groups src docs script/book |
-        tar -x -C "$d/raw" || return 1
-    mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/raw/ports/groups" "$d/ports/" || return 1
+    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx ports/groups ports/RELEASE ports/buildonly \
+        src docs script/book | tar -x -C "$d/raw" || return 1
+    mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/raw/ports/groups" \
+        "$d/raw/ports/RELEASE" "$d/raw/ports/buildonly" "$d/ports/" || return 1
     mv "$d/raw/src" "$d/ports/src" || return 1
     mv "$d/raw/docs" "$d/ports/docs" || return 1
     mv "$d/raw/script/book" "$d/ports/script/book" || return 1
@@ -1749,6 +1777,210 @@ lane_upload() {
     done
 }
 
+# ── the ISO a release ships ───────────────────────────────────────────────
+#
+# iso_sfs_offset <iso> — the byte offset of /system.sfs inside the ISO, which
+# unsquashfs reads in place with -o: the 1.5 GiB root is never copied out.
+# Empty when the ISO has no /system.sfs.
+iso_sfs_offset() {
+    xorriso -indev "$1" -find /system.sfs -exec report_lba -- 2>/dev/null |
+        awk -F' *, *' '/^File data lba:/ { print $2 * 2048; exit }'
+}
+
+# iso_check <iso> <offset> <tag> <commit> — every reason the ISO is not the
+# image of <tag>, each through fail(). Its /ports/TREE must name <commit> (an
+# image records the short hash, so either may be the other's prefix) and
+# `version <tag>`: `kdos update` finds a release's binhost only by that
+# version, so an image without it installs machines on which no prebuilt
+# package, group or firmware ever installs, and nothing on them repairs it.
+# Its /ports/RELEASE must be there too, or the medium and every install from
+# it show no release notes.
+iso_check() {
+    local iso=$1 off=$2 tag=$3 c=$4 tree v tc
+    if ! tree=$(unsquashfs -o "$off" -cat "$iso" ports/TREE 2>/dev/null); then
+        fail "$iso carries no /ports/TREE: it was built without a commit and names no release"
+        return
+    fi
+    v=$(awk '$1 == "version" { print $2; exit }' <<< "$tree")
+    tc=$(awk '$1 == "commit" { print $2; exit }' <<< "$tree")
+    if [ -z "$tc" ] || { [ "${c#"$tc"}" = "$c" ] && [ "${tc#"$c"}" = "$tc" ]; }; then
+        fail "$iso is the image of commit ${tc:-(none)}, not $tag ($c)"
+    fi
+    if [ -z "$v" ]; then
+        fail "$iso's /ports/TREE names no release: machines installed from it never find the binhost of $tag"
+    elif [ "$v" != "$tag" ]; then
+        fail "$iso's /ports/TREE names release $v, not $tag"
+    fi
+    unsquashfs -o "$off" -cat "$iso" ports/RELEASE >/dev/null 2>&1 ||
+        fail "$iso carries no /ports/RELEASE: \`kdos update notes\` and What's New would show nothing"
+}
+
+# ab_need <iso> <offset> <commit> — "<MiB with the default swap> <MiB with no
+# swap> <MiB for one root> <default swap MiB>": the least disk the installer's
+# erase plan lays out two slots on for this image, and the least it installs
+# on at all. It is ki_ab_need_mb() of src/system/kinstall-core/conf.c plus the
+# ESP and the BIOS boot partition, with every figure read from kinstall-core
+# at <commit>: the limits of kinstall-core.h, KI_DISK_MARGIN in its
+# "(<n>ULL << 20)" form, and conf.c's KI_VOLUME_META_MB and default
+# cfg.swap_mb. A figure not found in that form fails the whole sum rather than
+# publishing a guess. The install's size is taken from system.sfs: every
+# regular file, the live account's
+# home left out but for its syntax cache, the box store left out as the
+# installer's default does. The slot grows with the disk (KI_SLOT_SHARE
+# percent of it), so the least disk is the fixed point of need(disk), reached
+# from below; need rises at most 0.6 MiB a MiB, so it converges.
+ab_need() {
+    local iso=$1 off=$2 c=$3 h cf k payload swap d n lim margin meta swap_mb
+    local KI_ESP_MB KI_BIOS_BOOT_MB KI_SLOT_MIN_MB KI_SLOT_SHARE KI_HOME_MIN_MB
+    h=$(git -C "$REPO_ROOT" show "$c:src/system/kinstall-core/kinstall-core.h") || return 1
+    cf=$(git -C "$REPO_ROOT" show "$c:src/system/kinstall-core/conf.c") || return 1
+    for k in KI_ESP_MB KI_BIOS_BOOT_MB KI_SLOT_MIN_MB KI_SLOT_SHARE KI_HOME_MIN_MB; do
+        lim=$(awk -v k="$k" '$1 == "#define" && $2 == k && $3 ~ /^[0-9]+$/ { print $3; exit }' <<< "$h")
+        [ -n "$lim" ] || return 1
+        printf -v "$k" '%s' "$lim"
+    done
+    margin=$(sed -n 's/^#define[[:space:]]\{1,\}KI_DISK_MARGIN[[:space:]]\{1,\}(\([0-9]\{1,\}\)U\{0,1\}L\{0,2\}[[:space:]]*<<[[:space:]]*20)[[:space:]]*$/\1/p' <<< "$h")
+    meta=$(sed -n 's/^#define[[:space:]]\{1,\}KI_VOLUME_META_MB[[:space:]]\{1,\}\([0-9]\{1,\}\)U\{0,1\}L\{0,2\}[[:space:]]*$/\1/p' <<< "$cf")
+    swap_mb=$(sed -n 's/^[[:space:]]*cfg\.swap_mb[[:space:]]*=[[:space:]]*\([0-9]\{1,\}\);.*$/\1/p' <<< "$cf")
+    for k in margin meta swap_mb; do
+        [ "$(wc -l <<< "${!k}")" = 1 ] && [ -n "${!k}" ] || return 1
+    done
+    payload=$(unsquashfs -o "$off" -lln "$iso" 2>/dev/null | awk '
+        $1 ~ /^-/ {
+            p = $0; sub(/^([^ ]+ +){5}/, "", p); sub(/^squashfs-root/, "", p)
+            if (index(p, "/home/kdos/") == 1 && index(p, "/home/kdos/.cache/bat/") != 1) next
+            s += $3
+        }
+        END { printf "%d\n", s / 1048576 }') || return 1
+    [ "${payload:-0}" -gt 0 ] || return 1
+    need_at() {  # <disk MiB> <swap MiB>
+        local room=$(( $1 - KI_ESP_MB - KI_BIOS_BOOT_MB )) taken=$(( meta + $2 )) slot share
+        slot=$(( payload + payload / 2 ))
+        share=0; [ "$room" -le "$taken" ] || share=$(( (room - taken) * KI_SLOT_SHARE / 100 ))
+        [ "$slot" -ge "$share" ] || slot=$share
+        [ "$slot" -ge "$KI_SLOT_MIN_MB" ] || slot=$KI_SLOT_MIN_MB
+        slot=$(( (slot + 1023) / 1024 * 1024 ))
+        echo $(( meta + 2 * slot + $2 + KI_HOME_MIN_MB + KI_ESP_MB + KI_BIOS_BOOT_MB ))
+    }
+    for swap in "$swap_mb" 0; do
+        d=0
+        for _ in $(seq 1 64); do
+            n=$(need_at "$d" "$swap")
+            [ "$n" -gt "$d" ] || break
+            d=$n
+        done
+        printf '%s ' "$d"
+    done
+    echo "$(( payload + margin )) $swap_mb"
+}
+
+# gib <MiB> — one decimal, the way the notes give a disk.
+gib() { awk -v m="$1" 'BEGIN { printf "%.1f GiB", m / 1024 }'; }
+# gib_round <MiB> — a whole number of GiB when it is one ("4 GiB"), else gib.
+gib_round() { if [ $(( $1 % 1024 )) = 0 ]; then echo "$(( $1 / 1024 )) GiB"; else gib "$1"; fi; }
+
+# pub_keyid <kdos-release.pub> — the key id `kpkg sign` names: the first 16
+# hex digits of the SHA-256 of the raw Ed25519 public key.
+pub_keyid() { cut -d' ' -f2 "$1" | xxd -r -p | sha256sum | cut -c1-16; }
+
+# release_notes — the release page's body, from the --release run's state.
+# It leads with the tag's ports/RELEASE, the same text `kdos update notes`
+# and What's New show on a machine running the release, under "About this
+# release" with each of its headings one level down, so its sections sit
+# inside that one. When RELEASE has a "What it needs" section, that section
+# is the release's requirements: the script's own sentence about the machine
+# is left out and its measured lines (the medium the ISO fits, the disk two
+# slots need) go under Download, so the page states its requirements once.
+release_notes() {
+    local medium needs=0 blob="https://github.com/$KDOS_REPO/blob/$tag/docs/kdos/02-user-guide"
+    echo "KDOS $tag, built from commit $commit."
+    echo
+    if git -C "$REPO_ROOT" cat-file -e "$commit:ports/RELEASE" 2>/dev/null; then
+        echo "## About this release"
+        echo
+        git -C "$REPO_ROOT" show "$commit:ports/RELEASE" | awk '
+            /^(```|~~~)/ { fence = !fence }
+            !fence && /^#/ { print "#" $0; next }
+            { print }'
+        echo
+        git -C "$REPO_ROOT" show "$commit:ports/RELEASE" |
+            grep -qiE '^#+[[:space:]]*What it needs' && needs=1
+    fi
+    echo "## Download"
+    echo
+    if [ "$nparts" = 1 ]; then
+        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, logged in as \`kdos\` (password \`kdos\`, also root's), and installs KDOS from there."
+    else
+        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, logged in as \`kdos\` (password \`kdos\`, also root's), and installs KDOS from there. GitHub holds no file of 2 GiB or more, so it is stored in $nparts parts; download every \`$iso_name.partNN\` and join them in order:"
+        echo
+        echo '```'
+        echo "cat $iso_name.part* > $iso_name"
+        echo '```'
+    fi
+    echo
+    if [ "$needs" = 0 ]; then
+        echo "## What it needs"
+        echo
+    fi
+    # 4,700,372,992 bytes is a single-layer DVD.
+    if [ "$iso_size" -le 4700372992 ]; then
+        medium="a USB stick or a DVD of at least $(human "$iso_size")"
+    else
+        medium="a USB stick of at least $(human "$iso_size"), or a BD-R for optical boot (it does not fit a DVD)"
+    fi
+    if [ "$needs" = 0 ]; then
+        echo "An x86-64 machine with UEFI or BIOS firmware and 4 GB of memory. Secure Boot must be off: the boot loader is unsigned and KDOS enrols no keys, so a machine with Secure Boot on does not start the stick."
+        echo
+    fi
+    echo "The image carries the base system; the desktop applications, games, language packs and the rest install prebuilt from this release's packages, by name or as a group, from the installer or later with \`kdos update install\`. Write it to $medium."
+    echo
+    if [ -n "$need_ab" ]; then
+        echo "Installing needs a disk of about $(gib "$need_ab") or more for the two system slots that updates switch between, with the default $(gib_round "$need_swap") swap (about $(gib "$need_noswap") with no swap). A smaller disk gets one slot and no rollback, and one smaller than about $(gib "$need_one") is refused."
+        echo
+    fi
+    echo "See [Getting started]($blob/getting-started.md) and [Installation]($blob/installation.md)."
+    echo
+    echo "## Check"
+    echo
+    echo "Download \`SHA256SUMS\` beside the image and run:"
+    echo
+    echo '```'
+    echo "sha256sum -c SHA256SUMS --ignore-missing"
+    echo '```'
+    echo
+    if [ "$UNSIGNED" = 0 ]; then
+        echo "\`SHA256SUMS.sig\` is an Ed25519 signature over \`SHA256SUMS\` by key \`$keyid\`, whose public half is \`kdos-release.pub\`. With OpenSSL 3 and \`xxd\`, on any system, before KDOS runs:"
+        echo
+        echo '```'
+        echo "{ printf 302a300506032b6570032100; cut -d' ' -f2 kdos-release.pub; } | xxd -r -p > kdos-release.der"
+        echo "awk '\$2==\"$keyid\"{print \$3}' SHA256SUMS.sig | xxd -r -p > SHA256SUMS.sig.bin"
+        echo "openssl pkeyutl -verify -pubin -keyform DER -inkey kdos-release.der -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig.bin"
+        echo '```'
+        echo
+        echo "It prints \`Signature Verified Successfully\`. The key id is the first 16 hex digits of the key's SHA-256: \`cut -d' ' -f2 kdos-release.pub | xxd -r -p | sha256sum | cut -c1-16\` prints \`$keyid\`. On a KDOS system, with that key in a directory of its own:"
+        echo
+        echo '```'
+        echo "KPKG_KEYRING=<dir holding kdos-release.pub> kpkg verify-pkg SHA256SUMS"
+        echo '```'
+        echo
+        echo "A key downloaded beside the file it vouches for proves only that the two agree; compare the key id with one you obtained another way."
+        echo
+    fi
+    echo "## Updating an installed system"
+    echo
+    echo "\`kdos-ports.tar.xz\` is the recipe tree at $tag: every recipe, patch and program of our own, and no source. \`kdos update fetch\` downloads it from the latest release, checks \`kdos-ports.tar.xz.sig\` against the keys in \`/etc/kdos/keys/tree\` and installs it as \`/ports\`."
+    echo
+    if [ "${#LANES[@]}" -gt 0 ]; then
+        echo "\`kdos-update.idx\` says where every file of this release's updates is and what it hashes to: the prebuilt packages in the pre-releases \`binhost-$safe-NN\` and the slot image in \`image-$safe\`, whichever this release carries. \`kdos update\` reads it, checked against \`kdos-update.idx.sig\` and the keys in \`/etc/kdos/keys\`, and takes no file it does not name. \`kdos update apply\` writes the slot image into the inactive slot, or else installs the prebuilt packages there; \`kdos update apply --source\` builds what is behind on the machine instead."
+    else
+        echo "This release publishes no prebuilt packages and no slot image: \`kdos update apply --source\` builds what is behind on the machine."
+    fi
+    echo
+    echo "## Sources"
+    echo
+    echo "\`sources.sha256\` lists every upstream source file the recipes at $tag name, as \`<sha256>  <port>/<file>\`. Each is kept in the numbered \`sources-N\` pre-releases of this repository, and \`ports/fetch\` finds it through \`ports/sources.idx\`."
+}
+
 # ── --release ─────────────────────────────────────────────────────────────
 #
 # A system release is the GitHub release of a KDOS tag: the ISO (in parts
@@ -1797,9 +2029,35 @@ if [ -n "$RELEASE" ]; then
     iso=${ISO:-$REPO_ROOT/build/iso-build/kdos.iso}
     [ -f "$iso" ] || die "no ISO at $iso (build one, or pass --iso <path>)"
     iso_name="kdos-$safe.iso"
-    iso_size=$(stat -c %s "$iso")
+    iso_size=$(stat -L -c %s "$iso")
     nparts=1
     [ "$iso_size" -lt "$SRC_PART_SIZE" ] || nparts=$(( (iso_size + SRC_PART_SIZE - 1) / SRC_PART_SIZE ))
+
+    # The ISO and the tag are checked against each other before anything is
+    # hashed or sent; --dry-run reports what the real run refuses.
+    for t in xorriso unsquashfs xxd; do
+        command -v "$t" >/dev/null 2>&1 || die "$t is not installed; --release reads the ISO's /ports with xorriso and unsquashfs, and the key id with xxd"
+    done
+    if ! git -C "$REPO_ROOT" cat-file -e "$commit:ports/RELEASE" 2>/dev/null; then
+        fail "$tag has no ports/RELEASE: the release would carry no notes for \`kdos update notes\` and What's New"
+    elif [ "$(git -C "$REPO_ROOT" cat-file -s "$commit:ports/RELEASE")" -gt 16384 ]; then
+        fail "$tag's ports/RELEASE is over 16 KiB: \`kdos update notes\` shows only the first 16 KiB"
+    fi
+    sfs_off=$(iso_sfs_offset "$iso")
+    need_ab="" need_noswap="" need_one="" need_swap=""
+    if [ -z "$sfs_off" ]; then
+        fail "$iso has no /system.sfs: it is not a KDOS live image"
+    else
+        iso_check "$iso" "$sfs_off" "$tag" "$commit"
+        if read -r need_ab need_noswap need_one need_swap < <(ab_need "$iso" "$sfs_off" "$commit") && [ -n "$need_swap" ]; then
+            echo "==> two slots need $(gib "$need_ab") ($(gib "$need_noswap") with no swap); one root $(gib "$need_one")"
+        else
+            need_ab="" need_noswap="" need_one="" need_swap=""
+            fail "cannot work out the disk two slots need from $iso and src/system/kinstall-core at $tag"
+        fi
+    fi
+    [ "$RC" = 0 ] || [ "$DRY" = 1 ] ||
+        die "$iso is not a release image of $tag; build the ISO from a clean checkout of the tag, then run again"
 
     key="" pub=""
     if [ "$UNSIGNED" = 0 ]; then
@@ -1838,7 +2096,9 @@ if [ -n "$RELEASE" ]; then
             done
         fi
         printf '  asset    %-28s %s\n' sources.sha256 "$(human "$(stat -c %s "$FREEZE_FILE")")"
-        printf '  asset    %-28s the recipe tree at %s\n' kdos-ports.tar.xz "$tag"
+        printf '  asset    %-28s the recipe tree at %s, its TREE naming version %s%s\n' \
+            kdos-ports.tar.xz "$tag" "$tag" \
+            "$(git -C "$REPO_ROOT" cat-file -e "$commit:ports/RELEASE" 2>/dev/null && echo ", with RELEASE")"
         for l in "${LANES[@]}"; do
             echo "  $l: $(wc -l < "$TMP/plan.$l") files"
             lane_print "$l"
@@ -1860,6 +2120,11 @@ if [ -n "$RELEASE" ]; then
             echo "  signing key ${key#"$REPO_ROOT"/} or its .pub is missing; the real run would refuse"
             RC=1
         fi
+        keyid="(key id)"
+        [ "$UNSIGNED" = 1 ] || [ ! -f "$pub" ] || keyid=$(pub_keyid "$pub")
+        mkdir -p "$out"
+        release_notes > "$out/notes.md"
+        echo "==> the release notes would be ${out#"$REPO_ROOT"/}/notes.md"
         exit "$RC"
     fi
 
@@ -1965,62 +2230,7 @@ if [ -n "$RELEASE" ]; then
         echo "==> SHA256SUMS signed with key $keyid"
     fi
 
-    { echo "KDOS $tag, built from commit $commit."
-      echo
-      echo "## Download"
-      echo
-      if [ "$nparts" = 1 ]; then
-          echo "The installer image is \`$iso_name\` ($(human "$iso_size"))."
-      else
-          echo "The installer image is \`$iso_name\` ($(human "$iso_size")). GitHub holds no file of 2 GiB or more, so it is stored in $nparts parts; download every \`$iso_name.partNN\` and join them in order:"
-          echo
-          echo '```'
-          echo "cat $iso_name.part* > $iso_name"
-          echo '```'
-      fi
-      echo
-      echo "## What it needs"
-      echo
-      # 4,700,372,992 bytes is a single-layer DVD.
-      if [ "$iso_size" -le 4700372992 ]; then
-          medium="a USB stick or a DVD of at least $(human "$iso_size")"
-      else
-          medium="a USB stick of at least $(human "$iso_size"), or a BD-R for optical boot (it does not fit a DVD)"
-      fi
-      echo "The image carries the base system; the desktop applications, games, language packs and the rest install prebuilt from this release's packages, by name or as a group, from the installer or later with \`kdos update install\`. Write it to $medium. Installing needs a disk of about 21 GiB or more for the two system slots that updates switch between; a smaller disk gets one slot, and one smaller than the install plus 768 MiB is refused. See \`docs/kdos/02-user-guide/getting-started.md\` and \`installation.md\`."
-      echo
-      echo "## Check"
-      echo
-      echo "Download \`SHA256SUMS\` beside the image and run:"
-      echo
-      echo '```'
-      echo "sha256sum -c SHA256SUMS --ignore-missing"
-      echo '```'
-      echo
-      if [ "$UNSIGNED" = 0 ]; then
-          echo "\`SHA256SUMS.sig\` is an Ed25519 signature over \`SHA256SUMS\` by key \`$keyid\`, whose public half is \`kdos-release.pub\`. On a KDOS system, with that key in a directory of its own:"
-          echo
-          echo '```'
-          echo "KPKG_KEYRING=<dir holding kdos-release.pub> kpkg verify-pkg SHA256SUMS"
-          echo '```'
-          echo
-          echo "A key downloaded beside the file it vouches for proves only that the two agree; compare the key id with one you obtained another way."
-          echo
-      fi
-      echo "## Updating an installed system"
-      echo
-      echo "\`kdos-ports.tar.xz\` is the recipe tree at $tag: every recipe, patch and program of our own, and no source. \`kdos update fetch\` downloads it from the latest release, checks \`kdos-ports.tar.xz.sig\` against the keys in \`/etc/kdos/keys/tree\` and installs it as \`/ports\`."
-      echo
-      if [ "${#LANES[@]}" -gt 0 ]; then
-          echo "\`kdos-update.idx\` says where every file of this release's updates is and what it hashes to: the prebuilt packages in the pre-releases \`binhost-$safe-NN\` and the slot image in \`image-$safe\`, whichever this release carries. \`kdos update\` reads it, checked against \`kdos-update.idx.sig\` and the keys in \`/etc/kdos/keys\`, and takes no file it does not name. \`kdos update apply\` writes the slot image into the inactive slot, or else installs the prebuilt packages there; \`kdos update apply --source\` builds what is behind on the machine instead."
-      else
-          echo "This release publishes no prebuilt packages and no slot image: \`kdos update apply --source\` builds what is behind on the machine."
-      fi
-      echo
-      echo "## Sources"
-      echo
-      echo "\`sources.sha256\` lists every upstream source file the recipes at $tag name, as \`<sha256>  <port>/<file>\`. Each is kept in the numbered \`sources-N\` pre-releases of this repository, and \`ports/fetch\` finds it through \`ports/sources.idx\`."
-    } > "$out/notes.md"
+    release_notes > "$out/notes.md"
 
     [ -s "$TMP/auth" ] || load_token
     printf '{"tag_name":"%s","target_commitish":"%s","name":"KDOS %s","draft":true,"prerelease":false,"body":%s}' \

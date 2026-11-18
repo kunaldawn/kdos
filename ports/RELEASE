@@ -1,0 +1,41 @@
+KDOS is a KDE Plasma desktop on a small, signed base system. The image
+carries the base; applications, games, language packs and firmware install
+prebuilt from this release's packages, by name or as a group, in Discover, in
+the installer or with `kdos update install`.
+
+## What it needs
+
+- A 64-bit UEFI or BIOS machine with Secure Boot turned off: the boot loader
+  on the medium is not signed for Secure Boot.
+- 4 GB of memory or more. The live session keeps everything it installs in
+  memory.
+- For an install, about 24.5 GiB of disk for the two system slots updates
+  switch between, with the default 4 GiB swap (20.5 GiB with none). A smaller
+  disk gets one slot and no rollback.
+
+The live session logs in as `kdos`. The password of `kdos` and of `root` on
+the live medium is `kdos`; an installed system has the accounts and passwords
+you choose in the installer.
+
+## Installing software
+
+`kdos update install <name>` installs a program and what it needs from the
+release's binary host, checking every package against the release key the
+image carries. `kdos update groups` names the groups. Programs that
+KDOS does not package run in boxes, from Discover or with `kdos-appbox`.
+
+## Updating and going back
+
+`kdos update check` says whether a newer release is published.
+
+On a machine with two system slots, an update is written to the other slot
+and started on the next boot; if that boot does not reach the desktop, the
+machine starts the previous slot again. After an update, System Settings →
+System Versions starts the previous version.
+
+On a machine with one slot, `sudo kdos update fetch` and then
+`sudo kdos update apply` write the update over the running system, which
+uses it from the next restart. There is no previous version to go back to.
+
+`kdos update notes` prints these notes, and What's New shows them after the
+first login on a new version.

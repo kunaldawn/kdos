@@ -12,6 +12,7 @@
 patch -p1 -i "$PORT_SRC/locales.patch"
 patch -p1 -i "$PORT_SRC/kdos-bootctl-entry.patch"
 patch -p1 -i "$PORT_SRC/sandbox-badge.patch"
+patch -p1 -i "$PORT_SRC/notifications-group-expander.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

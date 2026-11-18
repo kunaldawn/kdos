@@ -25,7 +25,12 @@
  *               with an active link — KWin's screen casts, whether Spectacle or the portal
  *               asked for them — and every other Video/Source with one,
  *               named by the stream that reads it. Another program's video
- *               output stream is not listed.
+ *               output stream is not listed, nor a KWin stream that
+ *               the shell reads: that is a task manager's thumbnail. The
+ *               shell is the reader whose PipeWire client the server
+ *               credits to a process running /usr/bin/plasmashell itself
+ *               (pipewire.sec.pid), outside every box; a name the reader
+ *               gives itself never hides a capture.
  *
  * Each is named with the box it runs in, from its cgroup scope or the
  * KDOS_BOX its box's container sets (kdt_box_of_pid), because "Firefox
@@ -293,6 +298,46 @@ static Entry *list_add(List *l)
 	return &l->e[l->n++];
 }
 
+/* Whether a node, or its client, says it is the program `name`: by the
+ * binary PipeWire's client library records, or by the application name.
+ * Both are the client's own claim, so this may only decide something whose
+ * forgery adds an entry to a list, never one that takes an entry away. */
+static int is_app(const PwMap *m, const KjNode *o, const char *name)
+{
+	const char *bin = app_prop(m, o, "application.process.binary");
+	const char *an = app_prop(m, o, "application.name");
+
+	return (bin && !strcmp(bin, name)) || (an && !strcmp(an, name));
+}
+
+/* Whether a node's reader is the Plasma shell, by what no client can set:
+ * the node's client.id and its client's pipewire.sec.pid are the server's,
+ * and that process must run the shell's own binary, the same file as
+ * /usr/bin/plasmashell (KDOS_PRIVACY_SHELL names another for the selftest),
+ * so a box's own plasmashell is another file. A process in a box is refused
+ * as well. Anything unreadable is not the shell, and the capture stays
+ * listed. */
+static int is_shell(const PwMap *m, const KjNode *node)
+{
+	const char *bin = getenv("KDOS_PRIVACY_SHELL");
+	long cid = prop_num(node, "client.id"), pid;
+	const KjNode *c = cid >= 0 ? find(m, cid) : NULL;
+	char exe[64], box[64];
+	struct stat a, b;
+
+	if (!c || strcmp(type_of(c), "PipeWire:Interface:Client"))
+		return 0;
+	pid = prop_num(c, "pipewire.sec.pid");
+	if (pid <= 0)
+		return 0;
+	snprintf(exe, sizeof(exe), "/proc/%ld/exe", pid);
+	if (stat(exe, &a) != 0 ||
+	    stat(bin && *bin ? bin : "/usr/bin/plasmashell", &b) != 0 ||
+	    a.st_dev != b.st_dev || a.st_ino != b.st_ino)
+		return 0;
+	return kdt_box_of_pid(pid, box, sizeof(box)) != 0;
+}
+
 /* ── the three lists ───────────────────────────────────────────────────── */
 
 static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
@@ -320,15 +365,9 @@ static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
 		/* Only KWin's video output streams are screen casts. Any other
 		 * program's (a pipewiresink, a box's own video output) is
 		 * neither a capture nor ours to end for every reader. */
-		if (!strcmp(cls, "Stream/Output/Video")) {
-			const char *bin = app_prop(m, o,
-						   "application.process.binary");
-			const char *an = app_prop(m, o, "application.name");
-
-			if (!(bin && !strcmp(bin, "kwin_wayland")) &&
-			    !(an && !strcmp(an, "kwin_wayland")))
-				continue;
-		}
+		if (!strcmp(cls, "Stream/Output/Video") &&
+		    !is_app(m, o, "kwin_wayland"))
+			continue;
 		/* A source with readers: each active link out of it is one
 		 * capture, named by the stream it feeds.
 		 *
@@ -338,7 +377,13 @@ static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
 		 * recorder or the portal client learns the capture is over.
 		 * Destroying only the link stops the frames and tells nobody:
 		 * the recorder goes on saying it records. Any other source, a
-		 * camera above all, is shared, so only its link is destroyed. */
+		 * camera above all, is shared, so only its link is destroyed.
+		 *
+		 * A KWin stream the shell reads (is_shell) is a task manager's
+		 * window thumbnail, which KWin casts for as long as the tooltip
+		 * shows: it is not listed, or every hover over a task entry
+		 * would light the screen lamp and offer to stop the shell's own
+		 * preview. */
 		{
 			const char *api = prop(o, "device.api");
 			int camera = api && (!strcmp(api, "v4l2") ||
@@ -360,6 +405,8 @@ static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
 				peer = find(m, (long)kj_num(info,
 							    "input-node-id",
 							    -1));
+				if (own && peer && is_shell(m, peer))
+					continue;
 				e = list_add(camera ? cam : scr);
 				snprintf(e->id, sizeof(e->id), "pw:%ld:%ld",
 					 m->o[i].id, m->o[j].id);

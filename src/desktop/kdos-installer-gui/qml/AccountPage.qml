@@ -13,6 +13,10 @@
  * only on an encrypted disk, where the passphrase at every start already
  * asks who is at the machine; anywhere else the login screen is that
  * question and is never skipped.
+ *
+ * Each password, the account's and root's, has the same strength line
+ * under it, as wide as its field and shown once something is typed, and
+ * its second field says it wants the password again.
  */
 
 import QtQuick
@@ -29,8 +33,11 @@ WizardPage {
     property bool userEdited: false
 
     readonly property string accountProblem: {
+        if (answers.hostname.length === 0) {
+            return i18n("Give the computer a name.");
+        }
         if (!answers.hostnameOk(answers.hostname)) {
-            return i18n("The computer's name may hold letters, digits and dashes.");
+            return i18n("The computer's name may hold letters, digits and dashes, and not start or end with a dash.");
         }
         if (!answers.rootLocked && (rootPass.text.length === 0 || rootPass.text !== rootAgain.text)) {
             return i18n("Give root a password, typed twice the same, or lock root.");
@@ -48,7 +55,7 @@ WizardPage {
             return i18n("Your name cannot hold a colon.");
         }
         if (!answers.usernameOk(answers.username)) {
-            return i18n("The user name may hold lowercase letters, digits, - and _, and not start with a digit.");
+            return i18n("The user name may hold lowercase letters, digits, - and _, and start with a letter or _.");
         }
         if (answers.usernameReserved(answers.username)) {
             return i18n("That user name belongs to the system; choose another.");
@@ -126,18 +133,24 @@ WizardPage {
             visible: !page.answers.oem
             Layout.fillWidth: true
             Accessible.name: i18nc("@label:textbox", "Password")
+            /* Tab goes to the second field, past this field's reveal
+             * button, so what is typed after one Tab is the confirmation;
+             * Shift+Tab from the second field reaches the reveal button. */
+            KeyNavigation.tab: again
             onTextChanged: page.answers.password = text
         }
         StrengthLabel {
             visible: !page.answers.oem && pass.text.length > 0
             secret: pass.text
+            field: pass
             passphrase: false
         }
         Kirigami.PasswordField {
             id: again
-            Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
+            Kirigami.FormData.label: i18nc("@label:textbox", "Password, again:")
             visible: !page.answers.oem
             Layout.fillWidth: true
+            placeholderText: i18nc("@info:placeholder", "Password, again")
             Accessible.name: i18nc("@label:textbox", "Password, again")
         }
         QQC2.CheckBox {
@@ -199,13 +212,21 @@ WizardPage {
             visible: !page.answers.rootLocked
             Layout.fillWidth: true
             Accessible.name: i18nc("@label:textbox", "Root's password")
+            KeyNavigation.tab: rootAgain
             onTextChanged: page.answers.rootPassword = text
+        }
+        StrengthLabel {
+            visible: !page.answers.rootLocked && rootPass.text.length > 0
+            secret: rootPass.text
+            field: rootPass
+            passphrase: false
         }
         Kirigami.PasswordField {
             id: rootAgain
             Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
             visible: !page.answers.rootLocked
             Layout.fillWidth: true
+            placeholderText: i18nc("@info:placeholder", "Password, again")
             Accessible.name: i18nc("@label:textbox", "Root's password, again")
         }
     }

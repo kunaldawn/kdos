@@ -253,13 +253,37 @@ struct SlotsState {
     QString trying;
     QString runningVersion;
     QString otherVersion;
+    // State's `phase` and the version it is about ("armed" and the armed
+    // slot's version); bootctl's document has neither.
+    QString phase;
+    QString phaseVersion;
 };
 
 // State's own keys win (`rebootRequired`, `jobDone`, `jobTotal`); a document
-// without them is bootctl's, read by `trying` against `running`.
+// without them is bootctl's, read by `trying` against `running`, and its
+// `slots` give the two versions. State names no running version: that is
+// io.kdos.Slots1's ListSlots, read by readSlotList.
 SlotsState readSlotsState(const QVariantMap &state);
 
-// A restart is pending: readSlotsState(state).rebootRequired.
+// ListSlots' two dictionaries into `state`: the version of the slot whose
+// `running` is true, and the other one's. A reply without a running slot
+// leaves both as they were.
+void readSlotList(const QList<QVariantMap> &slotList, SlotsState *state);
+
+// The version the armed slot holds: State's `version` while its `phase` is
+// "armed", else the slot that is not running; "" while nothing is armed or
+// the version is not recorded.
+QString armedVersion(const SlotsState &state);
+
+// A restart that installs an update: a slot is armed, and the version it
+// holds is newer than the running one by compareVersions. Arming a slot of
+// the same or an older version is a switch between versions, which System
+// Versions and kdos-notice's trial notice speak for; Discover's "Restart is
+// required … for the updates to take effect" is for this alone. False when
+// either version is unknown.
+bool stagedUpdate(const SlotsState &state);
+
+// A slot is armed and not booted: readSlotsState(state).rebootRequired.
 bool slotArmed(const QVariantMap &state);
 
 // ── small rules ─────────────────────────────────────────────────────────

@@ -93,6 +93,41 @@ They say where an entry launches, not what a running window is; the title-bar gl
 compositor's security context, is the authority on that. Proposed upstream with the KWin,
 KDecoration and Breeze halves.
 
+`notifications-group-expander.patch` makes a notification group in the history hide its oldest
+entries and always offer the "Show %1 More" and "Show Fewer" button for them, with the count it
+hides. Every KDOS Tools notification is in one group: `kdos`, `kdos-notice` and `kdos-runner` send
+`x-kde-appname` and no `desktop-entry`. It changes four files.
+
+The history model in `applets/notifications/main.qml` sets `expandUnread: false`. Upstream sets
+it true, and `NotificationGroupCollapsingProxyModel::filterAcceptsRow` then keeps every unread
+child newer than `lastRead` as well as the newest `groupLimit` (two), so a collapsed group hides
+an entry from its middle, and which one depends on what has been read. Off, a collapsed group shows
+its newest two and hides exactly the older ones.
+
+The button's count is `GroupChildrenCountRole` less `ExpandedGroupChildrenCountRole`, both read on
+the group's last visible row, and the delegate reads each again only when the model announces it.
+Both are re-announced to every child row of a group when a row joins or leaves it.
+`libnotificationmanager/notificationgroupingproxymodel.cpp` announces `GroupChildrenCountRole`, the
+group's size, on all of a group's children when `tryToGroup` adds one, and on all remaining
+children, by the group's own child count, when one is removed; upstream announces it on none when
+a row joins, so the rows already shown keep the old size.
+`libnotificationmanager/notificationgroupcollapsingproxymodel.cpp` re-announces
+`ExpandedGroupChildrenCountRole`, the proxy's row count under the group, and `IsGroupExpandedRole`
+after a source row is inserted or removed and after a `ReadRole` change. Without either, a group of
+four shows three rows and no button, or a group of eight offers "Show 4 More" when five are hidden,
+and an entry is never reachable.
+
+`applets/notifications/FullRepresentation.qml` draws the button on the row followed by a top-level
+row or by none. Upstream draws it on the row whose `ListView.nextSection` differs from its section,
+the sender's desktop entry. A sender that names no desktop entry has an empty section, and
+`nextSection` is empty past the list's last row, so a group of such a sender at the bottom of the
+history, or followed by another one, draws no button. The next row is read from the model, which
+QML does not track, so the list keeps a revision that the model's layout change, move, insertion,
+removal and reset signals bump, and the binding reads it; without it a group re-sorted in place
+would leave the button on a row that is no longer its last.
+
+It is to be offered upstream.
+
 ## Notes
 
 `build.sh` builds the two generated headers `shell/qwayland-plasma-shell.h` and

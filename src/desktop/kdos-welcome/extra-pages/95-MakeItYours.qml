@@ -6,7 +6,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   95-MakeItYours.qml — whole sets of programs, prebuilt, the tour's last page
+ *   95-MakeItYours.qml — whole sets of programs, prebuilt, the last KDOS page of the tour
  *
  * The base system carries the desktop and a few applications; everything
  * else KDOS ports is in the release's binhost. This page lists the groups of
@@ -24,8 +24,8 @@
  * binhost index is not in /var/lib/kdos/binhost, or when some package of the
  * group is not prebuilt, and a prebuilt install refuses both. Fetching the
  * index needs root and this page has no root path but the helper's, so with
- * no index at all the page says to connect and press Check for Updates in
- * Discover, which fetches it, and offers to look again. A group that is not
+ * no index at all the page says to connect and press Refresh on Discover's
+ * Updates page, which fetches it, and offers to look again. A group that is not
  * all prebuilt is left to Discover, which can build it here.
  *
  * On the live medium an install goes into the session's memory and is gone
@@ -146,7 +146,7 @@ Welcome.ScrollablePage {
             Layout.fillWidth: true
             type: Kirigami.MessageType.Warning
             visible: page.loaded && page.noIndex
-            text: i18ndc("kdos-welcome", "@info", "This computer does not have the list of ready-made packages yet. Connect to the internet, open Discover and press Check for Updates, then look again here.")
+            text: i18ndc("kdos-welcome", "@info", "This computer does not have the list of ready-made packages yet. Connect to the internet, open Discover, press Refresh on its Updates page, then look again here.")
             actions: [
                 Kirigami.Action {
                     text: i18ndc("kdos-welcome", "@action:button", "Open Discover")

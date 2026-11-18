@@ -54,7 +54,7 @@ a boot are explained in
 `rcS` is the `sysinit` entry. After mounting the filesystems it runs every numbered service script,
 and this is the loop that does it:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=147-186 pin=403936cc08ac -->
+<!-- kfs:include fs/etc/init.d/rcS lines=154-193 pin=403936cc08ac -->
 
 ### /etc/init.d/rcK
 

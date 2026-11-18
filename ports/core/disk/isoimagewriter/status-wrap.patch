@@ -1,0 +1,30 @@
+Subject: Wrap the status line beside the Create button
+
+The status label under the USB drive field holds a whole sentence, such
+as "Could not find the key to verify the ISO image", in a row it shares
+with the Create button. Without word wrap the sentence is cut where the
+button begins at the window's default width. Wrap it, give it the row's
+stretch so the button keeps its own width on the right, and reserve two
+lines of height so a wrapped sentence is not cut at the bottom of a row
+sized for the button.
+
+--- a/isoimagewriter/mainwindow.cpp
++++ b/isoimagewriter/mainwindow.cpp
+@@ -125,6 +125,8 @@
+     connect(m_createButton, &QPushButton::clicked, this, &MainWindow::showConfirmMessage);
+ 
+     m_busyLabel = new QLabel;
++    m_busyLabel->setWordWrap(true);
++    m_busyLabel->setMinimumHeight(2 * m_busyLabel->fontMetrics().lineSpacing());
+     m_busyWidget = new QWidget;
+     m_busySpinner = new KPixmapSequenceOverlayPainter(this);
+     m_busySpinner->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+@@ -133,7 +135,7 @@
+ 
+     QHBoxLayout *footerBoxLayout = new QHBoxLayout;
+     footerBoxLayout->addWidget(m_busyWidget);
+-    footerBoxLayout->addWidget(m_busyLabel);
++    footerBoxLayout->addWidget(m_busyLabel, 1);
+     footerBoxLayout->addWidget(m_createButton, 0, Qt::AlignRight);
+ 
+     QHBoxLayout *isoImageLayout = new QHBoxLayout;

@@ -39,14 +39,17 @@ from KDOS medium" or "Install from Debian, built in a box".
 The KDOS backend is Discover's default for an application install when more than one source could
 take it (`[ResourcesModel] currentApplicationBackend=kdos-backend` in
 `/usr/share/kdos/xdg/discoverrc`). The same file sets `[DiscoverUI] appsListPageSorting=256`, sort by
-name, for a category or a search: Discover's own default sorts by the number of reviews, and no
-KDOS source has reviews.
+name, for a category: Discover's own default sorts by the number of reviews, and no KDOS source has
+reviews. A search lists by relevance whatever that key says, because Discover sets that order for
+every search and never stores it, and the Installed page sorts by `installedPageSorting`, which
+Discover's own default leaves at name.
 
 No source on KDOS has ratings or reviews, and the `discover` port's `ratings-need-reviews.patch`
 shows an application's rating row and its Reviews section, with Write a Review, only for a
 resource whose backend has a reviews backend. The same patch leaves the Home page's Highest-Rated
 Games and Highest-Rated Developer Tools rows empty when the current application backend has none,
-so on KDOS the Home page is Editor's Choice: the entries of `featured.json`. The build of the `discover` port fails unless
+so on KDOS the Home page is Editor's Choice: the entries of `featured.json`, seven catalogue
+applications (Scribus, Hugin, Xournal++, KStars, MeshLab, VSCodium and GNOME Chess). The build of the `discover` port fails unless
 `/usr/lib/qt6/plugins/discover/` holds exactly the fwupd and sysupdate1 backends, so a stock
 backend that appears or goes missing stops the build instead of changing what Discover offers.
 
@@ -70,7 +73,7 @@ desktop entry that opens both in Discover.
 ### Where each answer comes from
 
 The backend keeps no database of its own. Every answer comes from the tool that owns it, asked at
-each refresh, and Discover's Check for Updates button is the same refresh:
+each refresh, and **Refresh** on Discover's Updates page is the same refresh:
 
 | Question | Asked of |
 |---|---|
@@ -78,7 +81,7 @@ each refresh, and Discover's Check for Updates button is the same refresh:
 | What each box is made of | `kdos-box list --json`, a JSON array |
 | What the pack store and the medium hold | the [kdos-packd](daemons.md#kdos-packd) socket |
 | Which ports are installed | `kpkg list --json`, with `kdos-ports.xml` |
-| Which ports the binary host offers | `/var/lib/kdos/binhost/swcatalog/xml/kdos-binhost.xml` |
+| Which ports the binary host offers | `/var/lib/kdos/binhost/swcatalog/xml/kdos-binhost.xml`, read again at every refresh |
 | What the installer was asked for and could not install | `/var/lib/kdos/apps-pending` |
 | What a box is allowed | `kdos-box profile <box>`, asked only when its page opens |
 | A Debian application's description and categories | the DEP-11 catalogue, through libappstream |
@@ -127,6 +130,13 @@ yet, as `kdos-appbox catalogue --chain` reports them. A set counts each such row
 of its applications sit on it. The notice says the size is an estimate that counts those rows.
 A size nobody knows, such as an installed host port's, is not shown.
 
+When an install or a removal fails, the application's page shows an error notice, "<Name> was not
+installed: <reason>" or "<Name> was not removed: <reason>", which stays through the refresh after
+it until the next install or removal of that resource starts. Discover's own dialog says only
+"Please try again later", with the same reason behind See Technical Details. An install that needs the
+network while the computer is offline gives the reason "it needs a network connection, and this
+computer is offline".
+
 Removing an application that runs in a box stops the box first and then removes it, because a box
 stays up for a while after its application's last window closes and `kdos-box remove` refuses a
 running one. How a box is built and launched is in [kdos-appbox](kdos-appbox.md), and the pack store in
@@ -147,19 +157,30 @@ snapshot of Debian trixie's `main`. The catalogue holds thousands of application
 made for one only when a search or a category asks for it, or when its box exists. Installing one
 runs `kdos-appbox install deb:<package>`, which builds a box named `deb.<package>` (each `+` in the
 package name spelled `_`); the backend reads that name back to tell the application is installed.
-A Debian application whose component id a host port already has is never offered in a box, and
+A Debian application whose component id or desktop-id launchable matches any component of the
+installed ports' catalogue `kdos-ports.xml` or of the binary host's
+`/var/lib/kdos/binhost/swcatalog/xml/kdos-binhost.xml`, compared without a trailing `.desktop`, is
+never offered in a box, by a search, a category or an `appstream://` link, so with the binary-host
+index fetched LibreOffice and Filelight are offered only natively; and
 neither is one whose package `/usr/share/kdos/discover/debian-exclude` names: one package a line,
 each a program that cannot do its job from a box on KWin's Wayland session, such as KMag and
 KMouseTool, which work only on an X server's own screen, and firewall front ends such as Firewall
 Configuration and Gufw, which configure a firewall daemon the host does not run (the host's packet
-filter is set from the [Firewall](kdos-settings.md#firewall) page). A box already made for one
+filter is set from the [Firewall](kdos-settings.md#firewall) page), or a program whose job is a
+Debian system's: Synaptic and GNOME Software, which manage its packages, and Install Debian
+(Calamares), Configure-Debian, GkDebconf, G Alternatives, Debian Reference and reportbug's window,
+which install, reconfigure, document it and report bugs against it. A
+box already made for one
 stays listed, so it can be removed. The image build also writes
 `/usr/share/swcatalog/xml/kdos-debian-exclude.xml`, a `remove-component` merge for each of them
 whose id no host port has (a merge removes every component of its id, so Discover, GParted and
 Disks, which the host ships, keep theirs), which takes them out of every AppStream pool: KRunner's software results read the pool directly,
 and without it would offer, as "Get …", an application this lane refuses. Debian's icons and screenshots are not installed, so a Debian application
 shows its stock icon when the host's icon theme has it, otherwise the icon of its category, and no
-screenshot.
+screenshot; KRunner's and Kickoff's "Get …" results, which take the pool's cached icon, show none.
+A catalogue application with no AppStream icon shows its category's icon too: every catalogue
+category is a main desktop-entry category (AudioVideo, Development, Education, Game, Graphics,
+Network, Office, Science, Settings, System or Utility), and each has one.
 
 ### Host software
 
@@ -173,6 +194,40 @@ hash it gives, a port that catalogue lists can be installed, by either of two or
 |---|---|---|---|
 | `kdos-ports` | KDOS system | `kdos-ports-helper install <port>`, which runs `kdos update install --prebuilt <port>` | `io.kdos.ports.install`: an administrator's password, kept for a while |
 | `kdos-ports-source` | KDOS, built on this computer | `kdos-ports-builder install <port>`, which runs `kdos update install --source <port>` | `io.kdos.ports.build`: an administrator's password, asked every time |
+
+A port is one resource per package, listed by its best component: a desktop application before a
+console application before any other kind, then one from the package's own metainfo (with a
+description and a project licence) before one read from a bare desktop entry, then one with an
+icon, then the shortest name, then the first in the catalogue. A suite is named by its face: when
+the package's shortest-named application is a bare desktop entry whose name begins the chosen
+component's, as LibreOffice's start centre "LibreOffice" begins "LibreOffice Base", the port takes
+that entry's name, icon and launchable, the chosen metainfo's licence, developer, categories and
+links, and a description of the suite: "The suite holds:" and each of the package's metainfo
+applications in catalogue order by its name less the suite's and its summary ("Writer: …",
+"Calc: …"), since any one application's description would describe that application under the
+suite's name. The entry's own summary is not repeated in it: Discover shows the summary as the
+heading above the description. LibreOffice is therefore listed as "LibreOffice", with The Document Foundation,
+MPL-2.0 and a page that lists each application the package ships metainfo for (Writer, Calc,
+Impress, Draw and Base), not as one of its
+applications; any other bare entry leaves
+the chosen component as it is, so a package's minor tool never names it. An `appstream://` link to another of
+its components, such as LibreOffice Writer, opens the same port, and a search finds the port by the
+name or a keyword of any of its package's components, so "writer" lists LibreOffice. The
+catalogue writer, `kdos-discover-catalog`, takes a metainfo component with no desktop-id
+launchable to launch `usr/share/applications/<id>` (or `<id>.desktop`) when its package owns that
+entry, and writes it with that launchable and, where the metainfo names none, the entry's icon and
+categories; the entry is not written again as a component of its own. The component's AppStream
+kind sets where Discover lists the port: `addon` under Add-ons, `desktop-application` (or no kind)
+under Applications, and a console application or any other kind under Application Support, as a
+technical package. A desktop application with no category at all is filed under Other, so the All
+Applications page, which matches by category, lists it and finds it in a search. A port whose icon
+the theme does not have, as for one whose only copy of its icon is in its own uninstalled package,
+shows `utilities-terminal` for a console application, `preferences-plugin` for an add-on, its first
+category's icon for an application, and for any other kind its category's icon or, with no
+category, one of its kind: `application-x-sharedlib` for a generic component such as libfprint or
+pcscd, `preferences-system-services` for a service, `hwinfo` for a driver or firmware,
+`preferences-desktop-font` for a font. The Graphics category's icon is `image-x-generic`, not
+Breeze's `applications-graphics`, whose blue sphere reads as a missing icon in a list.
 
 Each port the binary host holds and the machine has not installed is two resources with one
 AppStream id, `kdos-backend://port/<id>` and `kdos-backend://port-source/<id>`, so Discover lists
@@ -205,7 +260,8 @@ Both routes download, and each resource says so.
 **Discover says what an install will do before it asks for the password.** Install first runs
 `kdos update install --dry-run --prebuilt <port>` (or `--source`) as the user, which needs no
 root, and its `total` line becomes the question of Discover's confirmation dialog, "Install
-<name>?": "Downloads N packages (size)." for the prebuilt route, and for the built one "Builds N
+<name>?": "Downloads N packages (size)." for the prebuilt route, the number and unit of the size
+never split across lines, and for the built one "Builds N
 packages here, downloads M (size); building can take hours.", with the packages built here named.
 Proceed runs the helper through `pkexec`, which asks for the password; Cancel, or closing the
 dialog, ends the install with nothing run. A dry run that refuses, such as a prebuilt install the
@@ -241,8 +297,8 @@ Opening Discover reaches no server. Each of Discover's own paths to the network 
 | KNewStuff add-ons from `store.kde.org` | The KNewStuff backend is not built, and `ghns=false` in `kdeglobals` turns off every Get New download: the settings pages show no Get New button, the wallpaper dialog's Get New Plugins is greyed, and Add Widgets' Get New menu holds only Install Widget From Local File |
 
 What does reach the network is what a person starts: a store-lane box, a host port from the binary
-host or the sources of one built here, a firmware install, a system update, and a system update check made with Check for Updates
-([below](#checking-for-an-update)). [Principles](../01-philosophy/principles.md#offline-by-construction)
+host or the sources of one built here, a firmware install, a system update, and a system update check made with
+**Refresh** on the Updates page ([below](#checking-for-an-update)). [Principles](../01-philosophy/principles.md#offline-by-construction)
 states the rule.
 
 ## System updates
@@ -251,8 +307,8 @@ An operating-system update on KDOS is a whole release written into the root slot
 running and booted on trial; the running system is never changed. Discover shows it through its
 SystemdSysupdate backend, built with `-DBUILD_SystemdSysupdateBackend=ON` and carrying
 `sysupdate-errors.patch`, which talks to `org.freedesktop.sysupdate1` on the system bus. With the
-patch an error reply to `GetVersion` or `CheckNew`, such as a check polkit refused, is shown as a
-message and lists no update, where upstream would list an update to a version named after the
+patch an error reply to `GetVersion` or `CheckNew`, such as a daemon that cannot be reached, is
+shown as a message and lists no update, where upstream would list an update to a version named after the
 error. `kdos-sysupdated` owns that name. The update
 itself, and the three ways a slot can be filled, are described in
 [Packaging](../03-architecture/packaging.md#updating-a-machine); this section is how Discover drives
@@ -286,6 +342,14 @@ bus keeps answering. `kdos update` and `kdos-bootctl` are in
 | Update, the short part | `Install`: `kdos update apply --arm --mount --progress 3`, then a restart is offered |
 | Cancel | `Job.Cancel` on an acquire, which stops its child before the slot is armed; an install is the short arm of a slot already filled and is not cancelled |
 
+Before its first write into the slot, every lane runs `kdos-bootctl unfill <slot>`, and only the
+arm's `deploy` clears that mark. A slot an acquire stopped writing, cancelled or failed, is
+therefore incomplete in the boot state: `kdos-bootctl try` refuses it ("slot <x> is incomplete — an
+update stopped while writing it; `kdos update apply` writes it again"), and the boot menu has no
+entry for it until an update writes it again. `kdos-sysupdated`'s `ListSlots` reports it as
+`incomplete`, and [System Versions](kdos-settings.md#system-versions) shows it as incomplete with
+no Start This Version Next Time button.
+
 Discover shows progress only for `Acquire`, so all the work is there: the download, writing or
 installing into the inactive slot, and checking it. `Install` is the quick part: it carries this
 machine's configuration into the slot, records its version, puts its kernel on the ESP and runs
@@ -310,17 +374,26 @@ and exit statuses, and how it is started are in [The daemons](daemons.md#kdos-sy
 
 The nightly timer runs `kdos update check --out /var/lib/kdos/update.json`, which reads only the
 recipe tree, binary-host index and image manifest already on the machine. `CheckNew`, which
-Discover calls when a person presses Check for Updates, fetches the signed tree and the release
+Discover calls when a person presses **Refresh** on its Updates page, fetches the signed tree and the release
 index, and through that index the binary-host index and image manifest, at most once an hour, then
 answers from the document. A document belongs to the
 root that wrote it, because `/var/lib/kdos` is in each slot: one whose `installed` version is not
 the running one offers nothing, and the daemon rewrites it at start without downloading.
 
-A machine with no second root slot is never checked: `CheckNew` answers empty without fetching,
-because there is no slot to install an update into, and Discover reports the system up to date.
-An installed machine with one root is updated with `kdos update apply` at a shell. The live medium
-has no slot either and is not updated at all; the system entry Discover shows describes it as the
-live session, and installing KDOS gives a system that is.
+On a machine with no second root slot, the live medium or an install with one root, `CheckNew`
+runs `kdos update fetch --binhost-only` instead, at most once per `--refresh-after` (an hour),
+which fetches only the release's signed binary-host index into `/var/lib/kdos/binhost`, and answers
+empty when it ends: there is no slot to install a system update into, so Discover reports the
+system up to date. The index is what the ports and the native groups are installed from, so
+Refresh is also how a live session or a one-root machine gets them without a terminal. The hour is
+counted from the `binhost` line of `/var/lib/kdos/update.state`, and a fetch that ended
+`no-network` or `fetch-failed` does not count, so Refresh after connecting asks again at once. The
+KDOS backend reads the fetched catalogue at its next refresh; one that started before the fetch
+ended reads the catalogue from before it, so the new ports are listed after a second Refresh.
+`Acquire` and `Install` there are refused with the live-medium or no-slot reason, even while that
+fetch runs, never with "try again". An installed machine with one root is updated with `kdos
+update apply` at a shell. The live medium is not updated at all; the system entry Discover shows
+describes it as the live session, and installing KDOS gives a system that is.
 
 What `kdos update check` offers is exactly what `apply` will take: a newer signed slot image when
 the release publishes one, or else the release's packages, only when the signed binary host holds
@@ -335,13 +408,43 @@ not match is told so before any slot is touched.
 ### What the update page says
 
 The AppStream file on `/run` is regenerated whenever `update.json` changes; the copy in
-`/usr/share/kdos/update/` is the fallback, which names the system and offers nothing. Its text,
-which Discover shows above the release notes, names whether the update is the signed system image
-or the release's packages, the fingerprint of the key that signed it, the packages it changes and
-the size still to download. The offered release carries the same size as the download size of an
+`/usr/share/kdos/update/` is the fallback, which names the system and offers nothing. The
+`discover` port's `sysupdate-appstream-after-check.patch` makes the backend ask `GetVersion` and
+`CheckNew` before it fetches a target's AppStream, and fetch it only for a target that offers a
+version, so the file it reads is the one the check behind that offer wrote, and the first session
+that finds an update already shows its size, the signed text and the release notes. A target that
+offers nothing, or whose `GetVersion` or `CheckNew` failed, has its AppStream left unread. The
+text, which Discover shows above the release notes, begins "Signed by <key> (ed25519 …), verified on
+this machine", then names whether the update is the signed system image or the release's packages,
+the packages it changes and its size, "to copy" when that lane's origin is a directory or a
+`file://` URL, such as a stick, and "to download" otherwise. The origin is the update document's
+`image` for the image and its `binhost` for packages, set by the `image =` and `binhost =` lines of
+`/etc/kdos/update.conf`, else the release's https defaults; the tree's channel does not decide it.
+The release notes after it are the new tree's `RELEASE`, turned from its Markdown into AppStream's
+description markup: a `#` heading is a paragraph of its own, a run of `- ` items a bulleted list,
+and backticks are dropped, so no Markdown mark reaches the page. The component carries
+`<project_license>MIT</project_license>` beside its CC0-1.0 metadata licence, which More Info's
+Licenses field shows as MIT through the `discover` port's `sysupdate-licenses.patch`; upstream's
+sysupdate resource hands the page bare strings it shows as nothing. The offered release carries the same size as the download size of an
 artifact, which the patched backend reads, so the Updates list and its total show it; only an
 update document with no size leaves the field out of the page, since `127.0.0.1:3129`, the size
 service Discover asks then, has nothing listening.
+
+When the update document records a problem, the KDOS backend puts a warning above the Updates
+page's list that names where updates come from (the document's `channel`) and adds what failed (its
+`detail`), such as "Updates could not be fetched from file:///mnt/bh.
+(file:///mnt/bh/kdos-ports.tar.xz could not be downloaded)". Each code `kdos update check` reports
+has its sentence: the fetch's `no-network`, `fetch-failed` and `no-key`; the binary-host index's
+and the slot image's `binhost-` and `image-` codes (`no-network`, `fetch-failed`, `no-key`,
+`unverified`), each naming the package index or the system image; and the last apply's
+`unverified`, `build-failed` and `needs-source`, said as an update that installed nothing. A bare
+`no-network` or `fetch-failed` may be the fetch's or the apply's, so its sentence fits either.
+`no-tree` is not said: with no tree nothing can be behind. Nor is the fetch's `fetch-failed` whose
+detail is "the published tree … is older than this machine's": that machine is ahead of the
+release, not cut off from it, and an image the document offers is listed with no warning beside it.
+The backend knows the refusal by those words, as `kdos update`'s own binary-host fallback does. Without the warning the page would say
+"Up to date" about a release nothing could read. The next check with no problem takes it away; the
+backend reads the document at each refresh, and a change to `/var/lib/kdos` starts one.
 
 ### Restart, trial and confirmation
 
@@ -373,12 +476,48 @@ none, so `KdosNotifier.so` is what puts a system update in the tray. It has thre
 |---|---|
 | An update is available | `io.kdos.Slots1`'s `State` field `offer`; `update.json`'s `offer` when the daemon does not answer |
 | It is a security update | The offer closes at least one finding of `kdos cve --json`: the finding's port is among the update's packages, at or past its fixed version |
-| A restart is needed | `State`'s `rebootRequired`, a slot armed and not yet booted; `kdos-bootctl status --json` when the daemon does not answer |
+| A restart is needed | A staged update: `State`'s `rebootRequired`, a slot armed and not yet booted, holding a version newer than the running one (`State`'s `version` while its `phase` is `armed`, against the running slot's version from `ListSlots`), followed both ways; `kdos-bootctl status --json` and its `slots` when the daemon does not answer |
 
-It never calls `CheckNew`, which may fetch, so the tray never reaches the network. While an update
-is being acquired the notifier keeps a job in the notification area ("Preparing the system update",
-N of M), because Discover does not reattach to a job it did not start. A boot on trial is not the
+It never calls `CheckNew`, which may fetch, so the tray never reaches the network. `State` reports
+a job only for an update the daemon runs, one a sysupdate1 client asked for; `kdos update apply`
+at a shell runs in place and reports none. A job that begins while `org.kde.discover` is not on the
+session bus, such as one started by unattended updates or one Discover was closed on before it
+began, gets a job of the notifier's in the notification area ("Preparing the system update", N of
+M), since no Discover window reports it. One that begins while Discover is running is taken for
+Discover's own, reported by Discover's transaction, so the notifier posts none. The answer is taken
+when the job begins and kept for its length, and one update leaves one entry in the notification
+history. `State` does not say which client started a job, so one another sysupdate1 client starts
+while a Discover window stands idle has no progress entry. A boot on trial is not the
 tray's to say: `kdos-notice` posts that notice ([The Plasma shell](plasma-shell.md#kdos-notice)).
+
+A slot armed at the running version or an older one, as "Start This Version Next Time" on the
+System Versions page arms it, is a switch between versions and no pending restart here: Discover
+would answer it with "The system needs to be restarted for the updates to take effect" and "Update
+and Restart", for an update there is none of. System Versions and `kdos-notice`'s trial notice speak
+for that switch.
+
+When an update arms a slot, Discover's notifier posts the persistent "Restart is
+required" notification, the `UpdateRestart` event of the `discoverabstractnotifier` component,
+once. It is shown, and sent once, only through the `discover` port's
+`notifyrc-update-restart.patch`: upstream builds it with `KNotification::event()`, which queues a
+send of its own before Discover sends it again, posts it as a default event, which KNotification
+looks up in `plasma_workspace`, whose notifyrc has no such event, and its own notifyrc misspells the
+event's group; KNotification shows nothing for an event its component does not declare.
+The notifier says when the staged update comes or goes, and the `discover` port's
+`notifier-reboot-clears.patch` makes Discover follow it both ways. An open Discover window's
+sysupdate1 backend reads `io.kdos.Slots1`'s `State` when it starts and follows it both ways after.
+An armed slot newer than the version the target's `GetVersion` answers, less the `(slot A)` that
+answer carries, puts the restart prompt on its Updates page, so an update applied from a terminal
+(`kdos update apply --mount`) is shown waiting for its restart rather than "Up to date". A disarmed
+slot takes it away, so a trial cancelled from System Versions ("Keep KDOS <version> (slot A)")
+withdraws the restart within the session: the tray, asking every backend notifier again, drops its
+restart title, tooltip and icon and its "Install Updates and Restart…" and "Install Updates and
+Shut Down…" entries, and closes the restart notification; the open window's backend drops "Restart
+and Install Updates" from its Updates page and lists the targets again, so the update the disarmed
+slot held is offered there once more. With
+that update still offered, the tray shows "Updates available" again at once rather than after
+`RequiredNotificationInterval`, since it showed the update before the install. Arming again posts
+one fresh notification, never a second copy.
 
 `/usr/share/kdos/xdg/PlasmaDiscoverUpdates` sets `UseUnattendedUpdates=false` and
 `RequiredNotificationInterval=86400`: an update is never installed unasked, and the "updates

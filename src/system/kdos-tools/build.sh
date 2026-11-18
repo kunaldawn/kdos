@@ -70,3 +70,6 @@ Categories=System;Documentation;
 Keywords=help;keys;keybinds;cheatsheet;kdos;
 EOF
 chmod 644 "$PKG/usr/share/applications/kdos-help.desktop"
+
+install -Dm644 "$PORT_SRC/kdos.notifyrc" \
+	"$PKG/usr/share/knotifications6/kdos.notifyrc"

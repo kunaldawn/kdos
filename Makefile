@@ -188,11 +188,27 @@ KDOS_ISO_GATE ?= 1
 # 110_iso.sh's.
 KDOS_ISO_BLOCK ?=
 
+# The release this image is: empty takes the one release tag on HEAD, a tag
+# named `v<digit>…` (`v0.2`, `v0.2.1`); the archive tags `ports/publish` makes
+# (`sources-N`, `src-*`, `packs-*`) never name a release. HEAD with several
+# release tags needs KDOS_GIT_TAG=<one of them>, which must be a release tag
+# on HEAD and a name `ports/publish --release` accepts, and KDOS_GIT_TAG=none
+# builds a tagged commit as an unreleased one. A clean checkout's image writes
+# the release as `version` into /ports/TREE and into build/binhost's index,
+# the name `kdos update` finds the release's binhost by; publish refuses an
+# ISO that names another release.
+KDOS_GIT_TAG ?=
+kdos_head_tags = $(shell git tag --points-at HEAD --list 'v[0-9]*' 2>/dev/null)
+kdos_tag = $(if $(filter none,$(KDOS_GIT_TAG)),,$(if $(KDOS_GIT_TAG),$(KDOS_GIT_TAG),$(kdos_head_tags)))
+
 build: check-iso-free ## build everything in the container (BUILD_ARGS narrows it)
 	@case "$(KDOS_IMAGE)" in base|full) ;; *) echo "KDOS_IMAGE must be base or full, got '$(KDOS_IMAGE)'" >&2; exit 1;; esac
 	@case "$(KDOS_JOBS)" in *[!0-9]*|0*) echo "KDOS_JOBS must be a positive integer, got '$(KDOS_JOBS)'" >&2; exit 1;; esac
 	@case "$(KDOS_ISO_GATE)" in 0|1) ;; *) echo "KDOS_ISO_GATE must be 0 or 1, got '$(KDOS_ISO_GATE)'" >&2; exit 1;; esac
 	@case "$(KDOS_ISO_MAX)" in ''|*[!0-9]*|0*) echo "KDOS_ISO_MAX must be a positive number of bytes, got '$(KDOS_ISO_MAX)'" >&2; exit 1;; esac
+	@set -- $(kdos_tag); [ $$# -le 1 ] || { echo "HEAD carries several release tags ($(kdos_tag)): name the release with KDOS_GIT_TAG=<tag>, or KDOS_GIT_TAG=none for none" >&2; exit 1; }
+	@t='$(kdos_tag)'; [ -z "$$t" ] || case " $(kdos_head_tags) " in *" $$t "*) ;; *) echo "KDOS_GIT_TAG=$$t is not a release tag (v<digit>…) on HEAD" >&2; exit 1;; esac
+	@t='$(kdos_tag)'; [ -z "$$t" ] || printf '%s\n' "$$t" | grep -Eqx '[A-Za-z0-9_+~][A-Za-z0-9._+~-]{0,39}' || { echo "tag '$$t' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40" >&2; exit 1; }
 	mkdir -p build
 	docker build -t os-dev .
 	docker run --network none --cpu-shares=$(KDOS_CPU_SHARES) \
@@ -203,6 +219,7 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_GIT_DATE="$$(git log -1 --format=%cs 2>/dev/null)" \
 		-e KDOS_GIT_TIME="$$(git log -1 --format=%ct 2>/dev/null)" \
+		-e KDOS_GIT_TAG="$(kdos_tag)" \
 		-e KDOS_ISO_SOURCES="$(KDOS_ISO_SOURCES)" \
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \

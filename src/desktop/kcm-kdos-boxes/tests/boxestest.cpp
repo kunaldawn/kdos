@@ -188,20 +188,77 @@ private Q_SLOTS:
         module();
         QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"unconfined"_s);
         QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementTextRole).toString(), u"Not confined"_s);
-        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), u"kdos-boxsock did not answer within 1 s"_s);
+        /* The reason follows the verdict's full stop as a sentence of its
+         * own; a program name keeps its spelling. */
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), u"kdos-boxsock did not answer within 1 s."_s);
         QCOMPARE(row(u"dev"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
         QVERIFY(row(u"app.gimp"_s, Kdos::BoxListModel::SubtitleRole).toString().contains(u"Not confined"_s));
 
         /* The page's own view of the box carries the reason too. */
         open(u"app.gimp"_s);
         QCOMPARE(m_kcm->current().value(u"confinement"_s).toString(), u"unconfined"_s);
-        QCOMPARE(m_kcm->current().value(u"confinementReason"_s).toString(), u"kdos-boxsock did not answer within 1 s"_s);
+        QCOMPARE(m_kcm->current().value(u"confinementReason"_s).toString(), u"kdos-boxsock did not answer within 1 s."_s);
+
+        /* A reason written as a clause starts with a capital. */
+        put(u"run/kdos/boxes/app.gimp.state"_s,
+            u"confinement = tagged\nreason      = the box shares the session's runtime directory, so the session's own Wayland socket and bus are in reach\n"_s);
+        m_kcm->boxes()->refresh();
+        QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"tagged"_s);
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(),
+                 u"The box shares the session's runtime directory, so the session's own Wayland socket and bus are in reach."_s);
+
+        /* A reason that opens with a profile key keeps the key's spelling. */
+        put(u"run/kdos/boxes/app.gimp.state"_s,
+            u"confinement = unconfined\nreason      = wayland = no, and the box shares the session's runtime directory\n"_s);
+        m_kcm->boxes()->refresh();
+        QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"unconfined"_s);
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(),
+                 u"wayland = no, and the box shares the session's runtime directory."_s);
 
         /* A confined box has nothing to explain, whatever the file says. */
         put(u"run/kdos/boxes/app.gimp.state"_s, u"confinement = confined\nreason = stale\n"_s);
         m_kcm->boxes()->refresh();
         QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"confined"_s);
         QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), QString());
+    }
+
+    /* A distrobox that is not kdos-box's (kdos-fetch-app's, with no
+     * profile, entered with `distrobox enter`) has no record, and shares
+     * everything a distrobox shares: it reads as not confined, and says
+     * why. kdos-box's own boxes carry the same label and have a profile:
+     * with no record they stay unknown. A record still wins over the
+     * label. */
+    void distroboxWithoutRecordIsNotConfined()
+    {
+        put(u"fake/podman.state"_s,
+            u"container app.gimp running\n"
+            "container kdos-debian running distrobox\n"
+            "container t4 running distrobox\n"
+            "container t5 running distrobox\n"_s);
+        put(u"home/.config/kdos/boxes/t4.conf"_s, u"base=image:docker.io/library/debian:trixie\n"_s);
+        put(u"home/.config/kdos/boxes/t5.conf"_s, u"base=image:docker.io/library/debian:trixie\nhome=private\nnetwork=none\n"_s);
+        put(u"run/kdos/boxes/t4.state"_s, u"confinement = tagged\nreason = the box shares the session's runtime directory\n"_s);
+        module();
+        QTRY_COMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"unconfined"_s);
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementTextRole).toString(), u"Not confined"_s);
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(),
+                 u"It is a distrobox, which shares your home and the session's runtime directory, display and bus."_s);
+        QCOMPARE(row(u"kdos-debian"_s, Qt::DisplayRole).toString(), u"kdos-debian"_s);
+        QCOMPARE(row(u"t4"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"tagged"_s);
+        QCOMPARE(row(u"t4"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), u"The box shares the session's runtime directory."_s);
+        /* A box with no label and no record still cannot be told, nor can
+         * one of kdos-box's that distrobox made and no launch recorded. */
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
+        QCOMPARE(row(u"t5"_s, Kdos::BoxListModel::StateRole).toString(), u"running"_s);
+        QCOMPARE(row(u"t5"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
+        QCOMPARE(row(u"t5"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), QString());
+
+        /* Stopped, it claims nothing. */
+        put(u"fake/podman.state"_s, u"container kdos-debian exited distrobox\n"_s);
+        m_kcm->boxes()->refresh();
+        QTRY_COMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::StateRole).toString(), u"exited"_s);
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), QString());
     }
 
     void confinementRecord()
@@ -247,8 +304,12 @@ private Q_SLOTS:
         const auto rows = Kdos::BoxListModel::parseListing(
             u"[{\"name\":\"app.x\",\"base\":\"pack:app.x\",\"state\":\"running\",\"persistence\":\"persistent\",\"accent\":\"ice\",\"disk\":1024,\"created\":1790000000},"
             "{\"name\":\"later\",\"base\":\"\",\"state\":\"not created\",\"persistence\":\"ephemeral\",\"accent\":\"session\",\"disk\":0,\"created\":0},"
-            "{\"name\":\"../evil\",\"state\":\"running\"}]"_s);
-        QCOMPARE(rows.size(), 2);
+            "{\"name\":\"../evil\",\"state\":\"running\"},"
+            "{\"name\":\"kdos-debian\",\"base\":\"\",\"state\":\"running\",\"manager\":\"distrobox\"}]"_s);
+        QCOMPARE(rows.size(), 3);
+        QCOMPARE(rows.at(0).confinement, QString());
+        QCOMPARE(rows.at(2).confinement, u"unconfined"_s);
+        QVERIFY(rows.at(2).confinementReason.startsWith(u"It is a distrobox"_s));
         QCOMPARE(rows.at(0).accent, u"ice"_s);
         QCOMPARE(rows.at(0).created.toSecsSinceEpoch(), 1790000000);
         QCOMPARE(rows.at(0).diskBytes, 1024);

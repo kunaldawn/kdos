@@ -97,6 +97,9 @@ QString slotLabel(const QString &state)
     if (state == QLatin1String("failed")) {
         return i18nc("@info state of a system slot", "failed to start");
     }
+    if (state == QLatin1String("incomplete")) {
+        return i18nc("@info state of a system slot", "incomplete: an update stopped while writing it");
+    }
     if (state == QLatin1String("empty")) {
         return i18nc("@info state of a system slot", "empty");
     }

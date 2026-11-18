@@ -44,7 +44,7 @@ An application row and its description, as an example:
 
 <!-- kfs:include src/system/kdos-appbox/catalogue lines=327-327 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=530-530 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=537-537 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -181,10 +181,11 @@ kdos-box remove app.hugin              # the profile and ~/.local/share/kdos/box
 
 `kdos-box list` prints one row per box under `BOX BASE STATE PERSIST DISK ACCENT`; a box whose
 profile exists and whose container does not is `not created`, and a box with no accent shows
-`none`. `kdos-box stop` does not use `podman stop`, which signals nothing in a box that shares the
-host's process table and has no cgroup of its own, as every store box does: it signals the
-applications the box's launches started and the box's init itself, and an application that ignores
-SIGTERM is killed after ten seconds. See
+`none`. `kdos-box stop` does not use `podman stop`, which in a box that shares the host's process
+table and has no cgroup of its own, as every store box does, signals the box's init and its
+descendants and leaves its applications running: it signals the applications the box's launches
+started, every launch still waiting for the box, and the box's init itself, and an application
+that ignores SIGTERM is killed after ten seconds. See
 [kdos-box](../../kdos/04-programs/kdos-appbox.md#kdos-box).
 
 `remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
@@ -196,7 +197,11 @@ container and go with it. When podman refuses, podman's own error is printed, th
 running box needs `kdos-box stop` first, and `kdos-box remove` exits with podman's status;
 the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
 it. `--force` (`kdos-box remove app.hugin --force`) runs `kdos-box stop`'s sequence first and adds
-`-f` to `podman rm`, so a running box goes with it. A box with no container, such as one whose `create` failed, has its profile deleted
+`-f` to `podman rm`, so a running box goes with it. `--purge` deletes the profile too. A
+profile a remove kept carries that remove's mark, and a later remove that finds no container keeps
+it and answers ``<name> has no container; its profile is kept in …; `kdos-box remove <name>
+--purge` deletes it``, exit 0. A box with no container and an unmarked profile, such as one whose
+`create` failed, has its profile deleted
 and any composed stack released, answers `<name> had no container — its profile is removed` and
 exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
 and exits 1, after releasing any composed stack the same way.
@@ -314,7 +319,8 @@ A box made from a container image is a working environment, not tied to an appli
    nothing for an image, such as Alpine's, that has none. `export` starts the box and reads the
    entry's `Exec`, `Name`, `Icon` and `StartupWMClass`, so an id that is not itself a program,
    such as `org.gnome.TextEditor`, runs the program its entry names; a word that names no entry
-   is taken as the command itself. It writes
+   is taken as the command itself, refused when the box has no such command, and exported as a
+   terminal launcher with the terminal's icon. It writes
    `~/.local/share/applications/<desktop-id>.scratch.desktop`, whose command is
    `kdos-box run scratch` followed by the entry's command, and a shim
    `~/.local/bin/<command>@scratch`, named after the program in that command, which splits its

@@ -7,8 +7,8 @@
  * ---------------------------------
  *   kdos-discover — the one line a KDOS resource needs said first
  *
- * Where an install will come from, whether it needs the network, and what a
- * signature check answered. The text and its kind are the resource's own
+ * Where an install will come from, whether it needs the network, what a
+ * signature check answered, and why the last install or removal failed. The text and its kind are the resource's own
  * kdosNotice and kdosNoticeType, whose values are Kirigami.MessageType's.
  * ---------------------------------
  */

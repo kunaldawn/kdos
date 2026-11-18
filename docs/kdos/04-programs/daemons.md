@@ -918,8 +918,11 @@ by calling three interfaces systemd defined, `org.freedesktop.hostname1`,
 `org.freedesktop.timedate1` and `org.freedesktop.locale1`, rather than by writing files. The Date &
 Time page of System Settings saves through timedate1 and nothing else; plasma-setup uses all three
 on an OEM first boot; the login screen's compositor runs `kwin_wayland --locale1` and takes its
-keyboard layout from locale1, following it when it changes; startplasma copies that layout into
-each session; System Monitor's OS sensors read hostname1. KDOS has no systemd, so this daemon
+keyboard layout from locale1, following it when it changes; startplasma puts locale1's layout
+into each session's environment (`XKB_DEFAULT_*`), and KWin uses it only when the account's
+`kxkbrc`, its own or the `/etc/xdg/kxkbrc` the installer writes, names no layout, so an account
+whose `kxkbrc` names one keeps it and a later change through locale1 reaches the login screen and
+not that session; System Monitor's OS sensors read hostname1. KDOS has no systemd, so this daemon
 answers for them, with every method and property systemd's three interfaces have except
 hostname1's `Describe`, which nothing on the system calls. It is C on `basu` and `libkbase` and
 links no glib and no Qt. What a person sees of it, page by page, is in
@@ -1077,15 +1080,23 @@ acquired at that moment is refused, and nothing other than the version that was 
 
 **A trial boot is offered nothing.** While this boot is the trial of the other slot, the slot an
 update would fill is the confirmed way back, so `CheckNew` answers empty and `Acquire` is refused
-until the trial is confirmed or rolled back. A machine with no second root slot is never checked:
-`CheckNew` answers empty without fetching, so Discover reports the system up to date, and `Acquire`
-is refused with a reply that names `kdos update apply`, which updates it in place at a shell. The
-live medium has no slot either, and its refusal says instead that nothing installed there survives
-a restart and that KDOS is to be installed; the AppStream file names it as the live session.
+until the trial is confirmed or rolled back. A machine with no second root slot is offered no
+system update. Its `CheckNew` runs `kdos update fetch --binhost-only` as root, at most once per
+`--refresh-after`, which fetches the signed binhost index of the release the tree in place is into
+`/var/lib/kdos/binhost`, and answers empty when that ends, so Discover reports the system up to
+date and a session with no terminal still gets the prebuilt programs and the group sizes Make It
+Yours shows. The time of the last such fetch is the `binhost` line of
+`/var/lib/kdos/update.state`; a line whose code is `no-network` or `fetch-failed` counts as no
+fetch, so the next `CheckNew` after connecting tries again at once. Such a machine never runs
+`kdos update check --fetch`. Its `Acquire` and `Install` are refused before any busy check, even
+while that fetch runs, so the reply never says to try again: on a single-root install it names
+`kdos update apply`, which updates it in place at a shell, and on the live medium it says that
+nothing installed there survives a restart and that KDOS is to be installed. The AppStream file
+names the live medium as the live session.
 
-**The update document belongs to the root that wrote it.** `CheckNew` reads
-`/var/lib/kdos/update.json` and, at most once an hour (`--refresh-after`), runs
-`kdos update check --fetch` to fetch the signed tree and release index, and through that index the
+**The update document belongs to the root that wrote it.** On a machine with slots `CheckNew`
+reads `/var/lib/kdos/update.json` and, at most once an hour (`--refresh-after`, judged by the
+`fetch` line of `/var/lib/kdos/update.state`), runs `kdos update check --fetch` to fetch the signed tree and release index, and through that index the
 binhost index and slot image manifest, so what it offers is only what the index named. The
 document is in each
 slot, so the first boot of a slot, or the boot a rollback returns to, finds one written before
@@ -1095,10 +1106,19 @@ nothing. The daemon watches `/var/lib/kdos` and regenerates the AppStream file w
 document changes, so a check typed at a shell reaches Discover too.
 
 **The AppStream file lives on `/run`.** `/run/kdos/sysupdate/io.kdos.system.metainfo.xml` carries
-the release notes and, in its text, whether the update is the signed system image or the release's
+the release notes, turned from the Markdown subset `ports/RELEASE` is written in into AppStream's
+description markup (a `#` heading is a paragraph of its text, a run of `- ` items one list, and
+backticks are dropped, since Discover shows a paragraph's text as it is), and, in its text, whether the update is the signed system image or the release's
 packages (the document's `lane`), the signer's fingerprint, the packages it changes and the size
-still to download, and gives the offered release an artifact whose download size is that size,
-which the `discover` port's `sysupdate-size.patch` reads for the Updates list; the copy in
+still to fetch, and gives the offered release an artifact whose download size is that size,
+which the `discover` port's `sysupdate-size.patch` reads for the Updates list. The size reads
+"to copy" when the offered lane's origin is a directory or a `file://` URL, and "to download"
+otherwise; the origin is the document's `image` field for the image lane and its `binhost` field
+for the packages, which is where `kdos update` fetches the bytes from (update.conf's `image =` and
+`binhost =` lines, `$KDOS_UPDATE_IMAGE` and `$KDOS_UPDATE_BINHOST`, else the release's https
+defaults), and the tree's `channel` does not decide it. The component carries
+`<project_license>MIT</project_license>` beside its `CC0-1.0` metadata licence, which More Info's
+Licenses field shows through the `discover` port's `sysupdate-licenses.patch`. The copy in
 `/usr/share/kdos/update/` is the fallback that names the system and offers nothing.
 
 ### io.kdos.Slots1
@@ -1116,6 +1136,12 @@ takes when no flag names one and the route of what a source install lacks: each 
 update` does with it. `SetInstallRoute(ss install, deps)` writes both lines, every other line of
 the file kept as it was, and answers `InvalidArgs` for any word but those two; `PropertiesChanged`
 announces both properties.
+
+`SetChannel(s)` writes the `tree =` line of `update.conf`, or removes it for `""`. It takes an
+absolute directory, an `https://` URL or a `file:///` URL, and answers `InvalidArgs` "not an update channel: <value>" for
+anything else, `http://` among them, writing nothing: `kdos update` fetches with curl's
+`--proto =https,file`. The channel names where the tree comes from; the binhost and the image keep
+their own lines.
 
 ### Confirming a boot
 
@@ -1151,6 +1177,14 @@ Root is answered without asking polkit, and the bus policy lets only root own th
 | `io.kdos.slots.install-route` | `SetInstallRoute` | `auth_admin_keep` | `auth_admin` |
 | `io.kdos.slots.bless` | `Bless`, never interactive | `yes` | `no` |
 
+A `CheckNew` polkit does not allow, denied or answered with a challenge nobody takes up, is not an
+error: it is answered from the update document with no fetch, after any check already running
+has rewritten it, as an allowed caller is. The offer is the document's, which
+every account reads, so the action guards only the network fetch; an error would be an "Update
+Issue" sheet in Discover for a caller outside the active session, such as a program started from
+the live medium's console, that a quiet answer loses nothing by. Every other method's refusal is
+the call's error.
+
 ### Running and testing it
 
 ```text
@@ -1165,7 +1199,7 @@ kdos-sysupdated [--session] [--root DIR] [--proc DIR]
 | `--proc DIR` | `/proc` | Read processes from another tree |
 | `--bless-after` | 60 | Seconds the greeter must stay up to earn the graphical mark |
 | `--tick` | 5 | Seconds between checks of the boot state |
-| `--refresh-after` | 3600 | Seconds between fetches by `CheckNew`; `0` never fetches |
+| `--refresh-after` | 3600 | Seconds between fetches by `CheckNew` (the tree and indexes, or the binhost index alone on a machine with no second slot); `0` never fetches |
 
 `--session --root` together is how the whole flow runs without root. Without `--session` the
 daemon refuses to start unless it is root. It exits 1 when its bus goes away, for the supervisor to

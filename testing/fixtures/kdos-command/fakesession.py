@@ -10,6 +10,8 @@
 #   FAKE_LOAD        loadEffect("kdos_crt"), 1 or 0 (default 1)
 #   FAKE_PROFILE     the tab's profile name (default "KDOS Bone")
 #   FAKE_NO_KWIN     set: org.kde.KWin is not claimed at all
+#   FAKE_PANELS      a file whose contents answer `kdos desk`'s panels
+#                    description, read at each call (default: empty)
 #
 # Night Light's `enabled` is [NightColor] Active in $XDG_CONFIG_HOME/kwinrc,
 # read at every Get as KWin's watcher would have; Toggle Night Color flips
@@ -147,6 +149,10 @@ class Shell(dbus.service.Object):
     @dbus.service.method('org.kde.PlasmaShell', in_signature='s', out_signature='s')
     def evaluateScript(self, js):
         log('evaluateScript', js)
+        panels = os.environ.get('FAKE_PANELS', '')
+        if js.startswith('let lost') and panels and os.path.exists(panels):
+            with open(panels) as f:
+                return f.read()
         return ''
 
 class Notifications(dbus.service.Object):
@@ -156,6 +162,8 @@ class Notifications(dbus.service.Object):
                          in_signature='susssasa{sv}i', out_signature='u')
     def Notify(self, app, rid, icon, summary, body, actions, hints, timeout):
         log('Notify', summary, '|', body)
+        log('NotifyAppname', hints.get('x-kde-appname', '-'))
+        log('NotifySender', app)
         return dbus.UInt32(7)
 
 class Runner(dbus.service.Object):

@@ -76,6 +76,13 @@ typedef struct {
 	char table[8];		/* gpt, dos, -                             */
 	Part part[MAX_PARTS];
 	int nparts;
+	/* A disk with no partitions may still hold a signature on the whole
+	 * device: a physical volume pvcreate wrote there, a filesystem, a
+	 * LUKS container. Its type as blkid names it, and for a physical
+	 * volume its group where that can be read ("" otherwise), so a front
+	 * end never calls such a disk empty. */
+	char fstype[16];
+	char vg[64];
 } Disk;
 
 typedef struct {
@@ -98,6 +105,11 @@ typedef struct {
 	int live;		/* booted from the squashfs overlay        */
 	unsigned long long payload_kb;	/* what an install will copy       */
 	unsigned long long appbox_kb;	/* of which, the alien app store   */
+	/* The bytes of every name of a hard-linked file after its first, which
+	 * rsync -H counts in its percentage and never copies; payload_kb counts
+	 * each name's blocks. */
+	unsigned long long link_extra_bytes;
+	unsigned long long link_extra_appbox_bytes;	/* of which, the store */
 } SysInfo;
 
 /*
@@ -136,7 +148,8 @@ extern int ki_nlv;
 
 void probe_system(void);
 /* The size of the tree an install copies, into ki_sys.payload_kb and
- * appbox_kb: a walk of the whole root filesystem, the one slow probe, and so
+ * appbox_kb, and its extra hard-link names into link_extra_bytes and
+ * link_extra_appbox_bytes: a walk of the whole root filesystem, the one slow probe, and so
  * called on its own. */
 void probe_payload(void);
 /* Also activates every volume group, once per process and only as root, then
@@ -150,7 +163,9 @@ int ki_dm_split(const char *name, char *vg, size_t vcap, char *lv, size_t lcap);
  * of containers and volume groups, on the disk named `disk` (sda). */
 int ki_dev_on_disk(const char *dev, const char *disk);
 /* Whether volume group `vg` has a physical volume anywhere but on `disk`,
- * whether or not any of its volumes is active. Runs `lvm pvs`. */
+ * whether or not any of its volumes is active. Runs `lvm pvs`. Active
+ * volumes are also read from /sys/block/dm-*, which needs no privilege, so
+ * an unprivileged plan refuses the same clash. */
 int ki_vg_off_disk(const char *vg, const char *disk);
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -237,7 +252,10 @@ void ki_apps_collect(void);
 typedef struct {
 	char id[64];
 	char title[128];
-	int  nports;	/* members, as the groups file names them        */
+	/* What the group installs, counted by port: a member that is a meta
+	 * port (a recipe with no `source =`) counts as the ports it depends
+	 * on, so a group of one Gear set counts that set's applications. */
+	int  nports;
 	int  chosen;
 	/* What in the answers points at this group, "the Japanese
 	 * keyboard", or "" for nothing. */
@@ -263,6 +281,11 @@ void ki_groups_collect(void);
 int  ki_groups_chosen(void);
 
 void probe_part(const char *path, Part *p);
+/* The whole-device signature of a disk with no partitions into d->fstype,
+ * and a physical volume's group into d->vg: from the active volumes'
+ * `slaves` in /sys/block, which needs no privilege, then `lvm pvs` as
+ * root. probe_disks() calls it for every disk it lists without partitions. */
+void ki_disk_signature(Disk *d);
 Disk *disk_by_path(const char *path);
 /* A disk's size in bytes. /sys/block reports `size` in 512-byte units
  * whatever the drive's logical sector is, so multiplying by sector_size
@@ -554,11 +577,19 @@ int ki_disk_check(const Disk *d, char *err, size_t n);
  * be FAT; the root may not be an LVM physical volume, a device something
  * holds open, or smaller than the install; and a machine started in legacy
  * BIOS mode needs a disk it can start from. Needs probe_disks() and, for the
- * sizes, probe_payload(). Asked after ki_answers_check() by the wizard's
+ * sizes, probe_payload(). On the erase plan without two slots, the swap
+ * partition or file must fit beside the install: ki_disk_check()'s rule plus
+ * the swap and, on LVM or LUKS, KI_VOLUME_META_MB of volume metadata; on the
+ * reuse plan a swap file counts against the root. Asked after
+ * ki_answers_check() by the wizard's
  * pages, `--dump plan`'s `refused`, `--events` and the Prepare step, so
  * every route into an install refuses the same targets.
  */
 int ki_target_check(char *err, size_t n);
+/* The swap part of ki_target_check() alone, for the chosen disk: non-zero,
+ * with the refusal, when the erase plan's swap does not fit beside the
+ * install. A front end shows it where the swap is chosen. */
+int ki_swap_check(char *err, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Install engine
@@ -567,6 +598,53 @@ int ki_target_check(char *err, size_t n);
  * a pipe, so the sequential shape of an install stays sequential code and
  * a front end stays a single-threaded loop.
  * ──────────────────────────────────────────────────────────────────────── */
+
+/* What a copy's progress lines have said so far, zeroed when a copy
+ * starts: the last file counts (`to-chk=left/total`), the samples the time
+ * left is fitted on — seconds, bytes and files done, thinned to at most
+ * KI_COPY_SAMPLES spread over the whole copy — whether the samples have
+ * given an estimate yet, and the time left last shown with the progress it
+ * was shown at. */
+#define KI_COPY_SAMPLES 64
+
+typedef struct {
+	long left, total;
+	int n;
+	double step;
+	double el[KI_COPY_SAMPLES], bytes[KI_COPY_SAMPLES],
+		files[KI_COPY_SAMPLES];
+	int shown_ok, fitted;
+	double shown, shown_bytes, shown_files;
+	/* Since when every estimate has stood more than KI_COPY_RISE times
+	 * the time shown. */
+	int over;
+	double over_t;
+} KiCopyFiles;
+
+/* The time left shown rises only once every estimate for KI_COPY_RISE_S
+ * seconds has stood more than KI_COPY_RISE times it. */
+#define KI_COPY_RISE 1.25
+#define KI_COPY_RISE_S 3.0
+/* The floors of the seconds a file and a byte cost, which hold the cost the
+ * samples cannot yet tell apart from the other: about half of each cost on
+ * the live medium's copy onto a virtual disk, so that a faster machine is
+ * seldom shown more time than it takes. */
+#define KI_COPY_FILE_S 100e-6
+#define KI_COPY_BYTE_S 2e-9
+
+/*
+ * One rsync --info=progress2 line, `el` seconds into a copy of `total`
+ * bytes (0 when not measured), of which `links` are names of hard-linked
+ * files after their first, which rsync counts and never copies, as the Copy
+ * step's note: "364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15 left", and its
+ * fraction of the bytes it copies done into *frac. `files`
+ * carries the file counts, the samples the time left is fitted on and the
+ * time last shown from line to line; NULL reads the counts from this line
+ * alone and fits nothing. 0 for a line that is not a progress line.
+ */
+int ki_copy_note(const char *line, double el, unsigned long long total,
+		 unsigned long long links, KiCopyFiles *files, double *frac,
+		 char *note, size_t n);
 
 #define MAX_STEPS 16
 #define LOG_LINES 4096
@@ -580,6 +658,9 @@ typedef struct {
 	int state;
 	double t0, t1;
 	double frac;		/* -1 when indeterminate                   */
+	/* Its share of the whole install against a short step's 1: see THE
+	 * STEPS' WEIGHTS in install.c. */
+	int weight;
 	char note[96];
 } StepUi;
 
@@ -655,5 +736,10 @@ int ki_write_keyboard(const char *root, char *err, size_t n);
  * ──────────────────────────────────────────────────────────────────────── */
 
 int ki_dump(const char *what, int json);
+/* The payload and box store a front end measured as root, in KiB, for every
+ * later dump to take instead of its own walk (`--payload-kb`, `--appbox-kb`):
+ * a walk as another user reads less of the tree. */
+void ki_dump_payload_set(unsigned long long payload_kb,
+			 unsigned long long appbox_kb);
 
 #endif /* KINSTALL_CORE_H */

@@ -48,7 +48,7 @@ The file belongs to the package: an upgrade of chrony installs it again over an 
 nothing is there at boot, as on every boot of the live medium, `rcS` links UTC, from
 `fs/etc/init.d/rcS`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=123-129 pin=c9969d56d2ea -->
+<!-- kfs:include fs/etc/init.d/rcS lines=130-136 pin=c9969d56d2ea -->
 
 **[`/etc/profile.d/20-timezone.sh`]{.idx}** sets `TZ` for every login shell. It is not in the tree: the
 installer writes it, and kdos-settingsd writes it on every zone change, so the live medium has

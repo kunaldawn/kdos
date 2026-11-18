@@ -105,18 +105,20 @@ bool Answers::fitsAnswerFile(const QString &value)
     return value.isEmpty() || (!value.front().isSpace() && !value.back().isSpace());
 }
 
-/* conf.c's ki_name_ok: lowercase letters, digits, `-` and `_`, no leading
- * digit, at most 32. */
+/* conf.c's ki_name_ok: lowercase letters, digits, `-` and `_`, starting
+ * with a letter or `_`, at most 32. A leading `-` would be read as an option
+ * by every tool the name is handed to. */
 bool Answers::usernameOk(const QString &name)
 {
-    static const QRegularExpression re(QStringLiteral("^[a-z_-][a-z0-9_-]{0,31}$"));
+    static const QRegularExpression re(QStringLiteral("^[a-z_][a-z0-9_-]{0,31}$"));
     return re.match(name).hasMatch();
 }
 
-/* conf.c's ki_host_ok: letters, digits and `-`, not starting with `-`. */
+/* conf.c's ki_host_ok: an RFC 1123 label, letters, digits and `-`, neither
+ * starting nor ending with `-`, at most 63. */
 bool Answers::hostnameOk(const QString &name)
 {
-    static const QRegularExpression re(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9-]{0,62}$"));
+    static const QRegularExpression re(QStringLiteral("^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"));
     return re.match(name).hasMatch();
 }
 
@@ -144,7 +146,8 @@ bool Answers::fullnameOk(const QString &name)
 }
 
 /* The first word of a full name, folded to what usernameOk accepts: "Ann
- * Lee" is `ann`, "José" is `jose`. Empty when nothing usable is left. */
+ * Lee" is `ann`, "José" is `jose`, "2pac" is `pac`. Empty when nothing
+ * usable is left. */
 QString Answers::suggestUsername(const QString &fullname)
 {
     const QString first = fullname.trimmed().section(QLatin1Char(' '), 0, 0, QString::SectionSkipEmpty);
@@ -156,7 +159,7 @@ QString Answers::suggestUsername(const QString &fullname)
             out += l;
         }
     }
-    while (!out.isEmpty() && out.front().isDigit()) {
+    while (!out.isEmpty() && (out.front().isDigit() || out.front() == QLatin1Char('-'))) {
         out.remove(0, 1);
     }
     out.truncate(32);

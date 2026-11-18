@@ -46,15 +46,6 @@ var favorites = [
     "org.kde.discover.desktop",
 ];
 
-// The clock wears the fixed-width face in force when the desk is laid out,
-// read from kdeglobals rather than named here, so the desk never pins a face
-// the global theme did not set. A manual font is a manual weight too: the
-// applet's own default, 50, is Qt 5's scale and draws the thinnest cut.
-function fixedFamily() {
-    var fixed = String(ConfigFile("kdeglobals", "General").readEntry("fixed") || "");
-    return fixed.split(",")[0];
-}
-
 // A meter's total sensor is what its button speaks: the applet's tooltip
 // subtext is "<sensor name>: <value>" of the first total sensor and empty
 // without one, and a screen reader reads the panel button as "Open " and
@@ -148,16 +139,13 @@ for (var s = 0; s < screenCount; s++) {
 
     addTray(panel);
 
+    // No font keys: the applet's own font fits the panel's height and the
+    // font in force, so it grows with the display scale and larger fonts. A
+    // manual font is sized against the screen's pixel density, which the
+    // scale cancels, and stays the same size at 200%.
     var clock = panel.addWidget("org.kde.plasma.digitalclock");
     clock.currentConfigGroup = ["Appearance"];
     clock.writeConfig("showDate", true);
-    var family = fixedFamily();
-    if (family.length > 0) {
-        clock.writeConfig("autoFontAndSize", false);
-        clock.writeConfig("fontFamily", family);
-        clock.writeConfig("fontSize", 10);
-        clock.writeConfig("fontWeight", 400);
-    }
 
     panel.addWidget("org.kde.plasma.showdesktop");
 }

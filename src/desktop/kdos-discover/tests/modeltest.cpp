@@ -299,6 +299,38 @@ void ModelTest::trayRules()
     contradicts.insert(u"rebootRequired"_s, false);
     QVERIFY(!readSlotsState(contradicts).rebootRequired);
 
+    // Discover's restart is for a staged update alone: the armed slot holds a
+    // version newer than the running one. State's `version` names the armed
+    // slot's; the running one is ListSlots', and bootctl's `slots` carry both.
+    QCOMPARE(armedVersion(s), u"0.2.14"_s);
+    QVERIFY(!stagedUpdate(s)); // the running version is not known yet
+    SlotsState listed = s;
+    readSlotList({QVariantMap{{u"id"_s, u"a"_s}, {u"running"_s, true}, {u"version"_s, u"0.2.13"_s}},
+                  QVariantMap{{u"id"_s, u"b"_s}, {u"running"_s, false}, {u"version"_s, u"0.2.14"_s}}},
+                 &listed);
+    QCOMPARE(listed.runningVersion, u"0.2.13"_s);
+    QCOMPARE(listed.otherVersion, u"0.2.14"_s);
+    QVERIFY(stagedUpdate(listed));
+    SlotsState sameVersion = listed;
+    sameVersion.phaseVersion = u"0.2.13"_s; // a switch to a slot of the running version
+    QVERIFY(!stagedUpdate(sameVersion));
+    SlotsState older = listed;
+    older.phaseVersion = u"0.2.9"_s; // back to an older version
+    QVERIFY(!stagedUpdate(older));
+    SlotsState newerByVercmp = listed;
+    newerByVercmp.runningVersion = u"0.2.9"_s;
+    newerByVercmp.phaseVersion = u"0.2.10"_s; // 0.2.10 is newer than 0.2.9
+    QVERIFY(stagedUpdate(newerByVercmp));
+    SlotsState unlisted = listed;
+    readSlotList({QVariantMap{{u"id"_s, u"a"_s}, {u"version"_s, u"9"_s}}}, &unlisted); // no running slot: kept
+    QCOMPARE(unlisted.runningVersion, u"0.2.13"_s);
+    QVERIFY(stagedUpdate(readSlotsState(armed))); // bootctl: b 0.2.15 armed over a 0.2.13
+    QVERIFY(!stagedUpdate(readSlotsState(trial))); // booted into the trial
+    QVariantMap switchOnly = armed;
+    switchOnly.insert(u"slots"_s, QVariantMap{{u"a"_s, QVariantMap{{u"version"_s, u"0.2.13"_s}}}, {u"b"_s, QVariantMap{{u"version"_s, u"0.2.13"_s}}}});
+    QVERIFY(!stagedUpdate(readSlotsState(switchOnly)));
+    QVERIFY(!stagedUpdate(readSlotsState(contradicts))); // nothing armed
+
     const SlotsState acquiring = readSlotsState(QJsonDocument::fromJson(fixture("slots-state-acquiring.json")).object().toVariantMap());
     QCOMPARE(acquiring.offer, u"0.2.14"_s);
     QCOMPARE(acquiring.job, u"acquire"_s);
@@ -581,7 +613,7 @@ void ModelTest::plansRemove()
     Plan p = removePlan(e, ctx);
     QCOMPARE(p.steps.size(), 4);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"app.scribus"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"app.scribus"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"app.scribus"_s, u"--purge"_s}));
     QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove app.scribus"_s}));
     QCOMPARE(argvOf(p.steps[3]), (QStringList{u"kdos-appbox"_s, u"genlaunchers"_s, u"--packs"_s, u"--user"_s}));
 
@@ -598,7 +630,7 @@ void ModelTest::plansRemove()
     box.id = u"work"_s;
     p = removePlan(box, ctx);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
 
     Entry pack;
     pack.lane = Lane::Pack;
@@ -607,7 +639,7 @@ void ModelTest::plansRemove()
     pack.packOrigin = u"store"_s;
     p = removePlan(pack, ctx);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
     QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove box.work"_s}));
 
     Entry port;

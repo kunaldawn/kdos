@@ -86,9 +86,9 @@ packages.
 
 ## How make build starts the container
 
-This is the whole of the `make build` target:
+This is the whole of the `make build` target, with the release tag it works out first:
 
-<!-- kfs:include Makefile lines=191-226 pin=abbc60f9118e -->
+<!-- kfs:include Makefile lines=191-243 pin=4af3b4998aa9 -->
 
 ### The meaning of the switches
 
@@ -103,6 +103,16 @@ The four `case` lines
     whole number, a `KDOS_ISO_GATE` that is not `0` or `1` and a `KDOS_ISO_MAX` that is not a
     positive number of bytes, before anything else runs. An empty `KDOS_JOBS`, the default,
     passes.
+
+The three tag lines
+:   Work out the release this image is. `KDOS_GIT_TAG`, empty by default, takes the one release
+    tag on `HEAD`, a tag named `v<digit>…` (`git tag --points-at HEAD --list 'v[0-9]*'`,
+    lightweight or annotated); the archive tags `sources-N`, `src-*` and `packs-*` never name a
+    release, and `HEAD` with no release tag gives an empty name, as does `KDOS_GIT_TAG=none`. The
+    build stops before anything runs when `HEAD` carries several release tags and no
+    `KDOS_GIT_TAG` names one, when the name is not a release tag on `HEAD`, or when it is not a
+    name `ports/publish --release` accepts; each message is in
+    [The release tag](../../kdos/05-developer/build-system.md#the-release-tag).
 
 `--network none`
 :   The container has no network interface but loopback. The build is a function of the sources
@@ -140,10 +150,13 @@ The four `case` lines
 :   The job count every phase uses for make, `cmake --build`, ninja and cargo. Empty, it is computed
     inside the build from the machine's threads and memory.
 
-`-e KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE`, `KDOS_GIT_TIME`
-:   The current commit, whether the working tree has uncommitted changes, and the commit's date and
-    time. The container cannot ask git, so they are passed in; kdosbuild records them in each
-    snapshot, and the image phase stamps them into `/etc/os-release` and `/ports/TREE`.
+`-e KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE`, `KDOS_GIT_TIME`, `KDOS_GIT_TAG`
+:   The current commit, whether the working tree has changes (untracked files count), the
+    commit's date and time, and the release tag worked out above. The container cannot ask git,
+    so they are passed in; kdosbuild records them in each snapshot, and the image phase stamps
+    the commit into `/etc/os-release` and `/ports/TREE`, and the tag into `/ports/TREE` only when
+    the tree is clean (see
+    [The recipe tree](../15-image/105-ports.md#the-stamp-and-the-key)).
 
 `-e KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST`, `KDOS_ISO_COMP`, `KDOS_ISO_BLOCK`, `KDOS_ISO_MAX`, `KDOS_ISO_GATE`, `KDOS_IMAGE`
 :   Switches that change what the image phase produces. All are off or at their defaults unless you

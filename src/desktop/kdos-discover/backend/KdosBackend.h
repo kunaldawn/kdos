@@ -141,7 +141,7 @@ private:
     QHash<QString, AppStream::Component> m_debianByPackage;
     QHash<QString, AppStream::Component> m_portsByPackage;
     QHash<QString, AppStream::Component> m_binhostByPackage;
-    QSet<QString> m_hostIds; // component ids of the installed host ports
+    QSet<QString> m_hostIds; // every component id and desktop-id launchable of the kdos-ports and kdos-binhost catalogues, without a trailing .desktop
     std::unique_ptr<AppStream::Pool> m_pool;
     bool m_poolReady = false;
     bool m_valid = false;

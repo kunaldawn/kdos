@@ -18,7 +18,8 @@ five things:
   Debian archive and says so before it starts.
 - **`KdosNotifier.so`**, in `discover-notifier/`, the plugin that puts the A/B system update in
   Discover's tray. It reads kdos-sysupdated's io.kdos.Slots1 State for the offered version, the
-  update job in progress and a slot armed and waiting for a restart, `kdos cve --json` for the
+  update job in progress and a slot armed with a newer version and waiting for a restart, with
+  the running slot's version from its ListSlots, `kdos cve --json` for the
   known vulnerabilities an update closes, and, when kdos-sysupdated does not answer,
   `/var/lib/kdos/update.json` and `kdos-bootctl status --json` in its place; it fetches nothing.
 - **`kdos-discover-catalog`**, which writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the

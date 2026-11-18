@@ -531,10 +531,12 @@ mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 # fbcon defers taking the framebuffer until a glyph is printed on a virtual
 # terminal. /dev/console is the last console=: ttyS0 on the quiet live entries,
 # so none of these messages reach the screen; tty0 on the live verbose entry and
-# on an installed machine, where the echo above has ended the deferral and
-# fbcon draws them. \`kdos-splash run\` draws only on a command line with
-# \`quiet\`: without it it exits at once, every call below is a no-op, and the
-# messages are the whole of what the screen shows.
+# on an installed machine, where the echo above has ended the deferral. A
+# drawing splash puts the VT in graphics mode, so on a quiet boot the messages
+# go to the VT's buffer and not over the picture. \`kdos-splash run\` draws
+# only on a command line with \`quiet\`: without it it exits at once, every
+# call below is a no-op, and the messages are the whole of what the screen
+# shows.
 if [ -x /bin/kdos-splash ]; then
     /bin/kdos-splash run </dev/null >/dev/null 2>&1 &
 fi
@@ -557,33 +559,46 @@ sp_release() {
 # EVERY FAILURE ENDS HERE, AND SAYS WHY WHERE SOMEBODY IS LOOKING. /dev/console
 # is the last console= on the command line, which on the quiet live entries is
 # the serial port: a shell there alone leaves a laptop showing the splash's fail
-# state and nothing else. The reason goes to the splash as a detail line,
-# which is the last thing it draws before it hands the screen back, and then
-# to tty1, where fbcon takes the framebuffer over at the first write and the
-# keyboard is. A shell is opened on tty1 in its own session with tty1 as its
-# controlling terminal, and this process becomes the shell on /dev/console,
-# so the serial line keeps its shell and the log it has been reading. When
-# /dev/console is itself a virtual terminal there is one screen and one
-# shell. PID 1 must never return from here: a shell that exits on
-# /dev/console panics the kernel with "Attempted to kill init".
+# state and nothing else. The reason goes to the splash as a detail line, held
+# on the screen for RESCUE_HOLD seconds before the splash fades out (a quit
+# straight after the detail shows it only during the fade, too dark to read),
+# and then to tty1, where fbcon takes the framebuffer over at the first write
+# and the keyboard is. Both screens say that Ctrl+Alt+Del restarts: the kernel
+# reboots on it at once until init disables it, and nothing here does. That
+# restart is immediate and syncs nothing, and a failure after the root is
+# mounted (a missing /sbin/init, a persistent live upper) leaves a disk mounted
+# read-write, so the boot's own writes are synced before the shell opens and
+# the screens tell whoever changes a disk to run sync first. A shell is opened
+# on tty1 in its own session with tty1 as its controlling terminal, and this
+# process becomes the shell on /dev/console, so the serial line keeps its
+# shell and the log it has been reading. When /dev/console is itself a
+# virtual terminal there is one screen and one shell, and the reason is
+# printed on it once: an echo before the branch and the printf in it would
+# both land on that one screen. PID 1 must never return from here: a shell
+# that exits on /dev/console panics the kernel with "Attempted to kill init".
+RESCUE_HOLD=4
 rescue() {
     local con
-    echo "\$1"
     if [ -x /bin/kdos-splash ]; then
         /bin/kdos-splash detail "\$1" 2>/dev/null
+        [ -n "\$SPLASH_QUIET" ] && sleep "\$RESCUE_HOLD"
         /bin/kdos-splash quit 2>/dev/null
     fi
+    sync
     con=\$(cat /sys/class/tty/console/active 2>/dev/null)
     con=\${con##* }
     case "\$con" in
     tty[0-9]*)
         printf '\n%s\nKDOS cannot boot. This is a rescue shell.\n' "\$1"
+        echo "Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk."
         exec /bin/sh
         ;;
     esac
+    echo "\$1"
     {
         printf '\n%s\n' "\$1"
         echo "KDOS cannot boot. This is a rescue shell; the boot log is on the serial console."
+        echo "Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk."
     } > /dev/tty1 2>/dev/null
     setsid -f -c /bin/sh -i < /dev/tty1 > /dev/tty1 2>&1
     echo "A rescue shell is also open on tty1."
@@ -602,6 +617,18 @@ udevadm trigger --type=subsystems --action=add
 udevadm trigger --type=devices --action=add
 udevadm settle
 sp_ok
+
+# THIS udevd ENDS BEFORE switch_root, ON EVERY PATH THAT TAKES IT. Left
+# running it survives the switch with the initramfs's /bin/udevd and libraries
+# deleted under it, so the root's 01_udev starts a second one beside it and
+# \`kdos restarts\` reports it on every boot as running replaced code from
+# packages nobody updated. It is called before /dev moves: settle drains the
+# events still queued, and --exit waits for udevd to answer on its control
+# socket in /run.
+udev_release() {
+    udevadm settle 2>/dev/null || true
+    udevadm control --exit 2>/dev/null || true
+}
 
 #
 # ASSEMBLE ANY SOFTWARE RAID BEFORE ANYTHING LOOKS FOR A ROOT. An array's
@@ -689,9 +716,15 @@ done
 # prompts a serial port nobody is looking at while the screen shows a splash
 # that appears to have frozen. On a boot without \`quiet\` (the verbose and
 # single-user entries) no splash draws, and the prompt and its outcome are
-# printed on PASS_TTY instead. Never both: text written to tty1 under a
-# drawing splash ends fbcon's deferral and is drawn over the picture. The
-# keystrokes are read from /dev/tty1, which is where the keyboard actually is.
+# printed on PASS_TTY instead. Never both: tty1 under a drawing splash is in
+# graphics mode, so a prompt written there is not seen until the splash has
+# quit. The keystrokes are read from /dev/tty1, which is where the keyboard
+# actually is.
+#
+# The prompt says DISK PASSPHRASE and never the mapper name, which is an
+# internal device name nobody chose. A cryptdevice= that cannot be used returns
+# 1; three wrong passphrases return 2, which the caller tells apart so the
+# rescue screen can say a restart gives three more tries.
 #
 # There is no per-keystroke feedback: the splash owns the framebuffer and bash
 # owns the terminal, and a passphrase field that echoed dots would mean moving
@@ -739,9 +772,9 @@ unlock_root() {
     while [ \$tries -lt 3 ]; do
         tries=\$((tries + 1))
         [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
-            "PASSPHRASE FOR \$name (attempt \$tries of 3)" 2>/dev/null
-        [ -n "\$tty_say" ] && printf 'Passphrase for %s (attempt %d of 3): ' \
-            "\$name" "\$tries" >>"\$PASS_TTY" 2>/dev/null
+            "DISK PASSPHRASE (attempt \$tries of 3)" 2>/dev/null
+        [ -n "\$tty_say" ] && printf 'Disk passphrase (attempt %d of 3): ' \
+            "\$tries" >>"\$PASS_TTY" 2>/dev/null
         # -s: never echo the passphrase. Read from tty1 because the keyboard
         # is there, whatever /dev/console is.
         PASS=""
@@ -760,7 +793,7 @@ unlock_root() {
             "WRONG PASSPHRASE" 2>/dev/null
         [ -n "\$tty_say" ] && printf '\nWrong passphrase.\n' >>"\$PASS_TTY" 2>/dev/null
     done
-    return 1
+    return 2
 }
 
 #
@@ -896,12 +929,17 @@ if [ -n "\$CRYPTDEV" ]; then
     # the total is additive, and only this branch knows there is an unlock.
     sp_total 1
     sp_step "UNLOCKING"
-    if unlock_root "\$CRYPTDEV"; then
+    unlock_root "\$CRYPTDEV"
+    UNLOCK_RC=\$?
+    if [ \$UNLOCK_RC -eq 0 ]; then
         sp_ok
         # The filesystem inside the container has only just appeared, so the
         # udev pass that ran before the unlock never saw it.
         udevadm settle 2>/dev/null || true
         activate_lvm
+    elif [ \$UNLOCK_RC -eq 2 ]; then
+        sp_fail
+        rescue "Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again."
     else
         sp_fail
         rescue "Failed to unlock \$CRYPTDEV"
@@ -960,6 +998,7 @@ if [ -n "\$ROOT_UUID" ]; then
             sp_step "SWITCHING ROOT"
             sp_ok
             sp_release
+            udev_release
             # Move Mountpoints
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
@@ -1321,6 +1360,7 @@ if [ "\$FOUND" == "1" ]; then
             rmdir /mnt/system /mnt/overlay 2>/dev/null
             sp_ok
             sp_release
+            udev_release
             # Move pseudo-filesystems under the new root (standard; Alpine mkinitfs does this)
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
@@ -1358,8 +1398,6 @@ if [ "\$FOUND" == "1" ]; then
 
             # Switch Root
             echo "Switching to new root..."
-            # Stop udevd
-            udevadm control --exit
             # Unless sp_release stopped it, the splash runs on: switch_root
             # deletes the old rootfs but not its processes, and the FIFO is
             # on devtmpfs, which has just been moved into the new root.

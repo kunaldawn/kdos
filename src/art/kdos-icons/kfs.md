@@ -70,4 +70,7 @@ filled badge, and a copy of the emblem in `KDOS` would answer `checkmark` and
 
 Adwaita comes after Breeze in both themes' `Inherits` for the symbolic names only Adwaita draws,
 such as `sidebar-show-right-symbolic`, which GTK programs ask for; without it they draw the
-missing-image icon.
+missing-image icon, and every KDE program logs `Icon theme "Adwaita" not found`. The recipe does
+not name `adwaita-icon-theme` in `depends`: this port builds in `41_system`, and Adwaita's `gtk3`
+puts it in a later phase, so `phaseclosure` would refuse the edge. `ports/base` names
+`adwaita-icon-theme` instead, which is what puts it on every image beside these themes.

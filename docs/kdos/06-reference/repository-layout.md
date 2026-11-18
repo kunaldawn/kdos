@@ -58,6 +58,8 @@ kdos/
 │   ├── buildonly              ports the medium's closure does not follow a dependency into
 │   ├── groups                 the native application groups `kdos update install` and the
 │   │                          installer offer; staged into the image as /ports/groups
+│   ├── RELEASE                the release notes of the version being built, at most 16 KiB;
+│   │                          staged as /ports/RELEASE for `kdos update notes` and What's New
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
@@ -94,9 +96,9 @@ kdos/
 │   │   │   └── catalogue          every installable application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
 │   │   ├── kdos-boxsock/      one tagged Wayland socket per box launcher
-│   │   ├── kdos-doc/          this book on the image; `kdos` and `screenshots` link to docs/
-│   │   ├── kdos-kfs/          KDOS from Scratch on the image; `docs` links to docs/kfs,
-│   │   │                      `book` to script/book
+│   │   ├── kdos-doc/          this book, on the image; `kdos` and `screenshots` link to docs/
+│   │   ├── kdos-kfs/          KDOS from Scratch, installed with `sudo kdos update install kdos-kfs`;
+│   │   │                      `docs` links to docs/kfs, `book` to script/book
 │   │   ├── kdos-pack/         build, sign, index and diff packs
 │   │   └── kdos-tools/        one binary: the kdos command, the ksvc supervisor, kdos-getty,
 │   │                          kdos-bootctl and the other small system tools
@@ -258,7 +260,7 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
 | `ports/core/` | Upstream software: somebody else's source, Plasma, Frameworks and Gear among it | about 2,400 | `<shelf>/<name>/`, on 102 shelves |
-| `src/system/` | The package manager, the `kdos` command and its services, packs, boxes and the box socket, the installer, and the two books on the image (`kdos-doc`, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 8 | `<name>/` |
+| `src/system/` | The package manager, the `kdos` command and its services, packs, boxes and the box socket, the installer, and the two books (`kdos-doc`, the KDOS book the image carries, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, *KDOS from Scratch*, which `sudo kdos update install kdos-kfs` adds, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 8 | `<name>/` |
 | `src/art/` | The identity generators and what they make: icons, wallpapers, sounds, the login theme, the add-ons; the boot splash; the demo | 8 | `<name>/` |
 | `src/desktop/` | KDOS's parts of the Plasma desktop, in Qt and QML (and two in C): settings pages, widgets, KWin effects and scripts, the Discover backend, the runner, the graphical installer | 21 | `<name>/` |
 | `src/daemons/` | Root daemons whose client is the desktop account | 6 | `<name>/` |
@@ -442,8 +444,9 @@ once the stamp is rewritten. `110_iso.sh` also copies both onto a medium made wi
 `KDOS_ISO_SOURCES=1`. `testing/` is
 mounted for the tree gates `70_image` runs (`087_gates.sh`): they can stop a build, and nothing in
 `testing/` is installed.
-`docs/` is mounted for two ports, `kdos-doc` and `kdos-kfs`, which render the two books onto the
-image; an edit to `docs/kdos` rebuilds the first and no other port, and an edit to `docs/kfs` the
+`docs/` is mounted for two ports, `kdos-doc` and `kdos-kfs`, which render the two books into
+packages: `kdos-doc`'s is on the image, and `kdos-kfs` is installed with
+`sudo kdos update install kdos-kfs`; an edit to `docs/kdos` rebuilds the first and no other port, and an edit to `docs/kfs` the
 second. The build writes only under `build/`; `build/fs/` is the target root
 filesystem it grows phase by phase.
 

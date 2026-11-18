@@ -44,7 +44,7 @@ tzdata's `zone.tab`, which gives each zone one country.
 
 The installer writes it from the zone chosen on its *Time* page:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2079-2087 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2516-2524 pin=5a0dbdc98892 -->
 
 kdos-settingsd writes it whenever the time zone is changed later, and runs `iw reg set` so the
 running radio follows at once; for a zone with no country, such as `UTC`, it runs `iw reg set 00`,

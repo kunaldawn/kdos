@@ -48,7 +48,7 @@ ColumnLayout {
         visible: (view.checklist?.ready ?? false) && view.checklist.total > 0
         text: !view.checklist ? ""
             : view.checklist.finished ? i18ndc("kdos-plasmoid-checklist", "@info", "Everything on the list is done.")
-            : i18ndcp("kdos-plasmoid-checklist", "@info %1 items left of %2", "%1 thing left to do of %2.", "%1 things left to do of %2.",
+            : i18ndcp("kdos-plasmoid-checklist", "@info %1 items left of %2", "%1 of %2 left to do.", "%1 of %2 left to do.",
                       view.checklist.remaining, view.checklist.total)
         wrapMode: Text.WordWrap
     }

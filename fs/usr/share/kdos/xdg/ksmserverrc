@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What a restored session leaves out.
+#
+# At a logout plasma-fallback-session-save records the desktop entry of every
+# open Wayland window in ~/.local/state/plasmasessionrestorestaterc, and at the
+# next login plasma-fallback-session-restore starts each one with no
+# arguments. Welcome opened at one page would come back as the whole tour, so
+# it is never recorded. The fallback compares the entry's storage id, with
+# `.desktop` and case and all, so `org.kde.plasma-welcome` alone matches
+# nothing; ksmserver's X11 restore compares the program's file name in lower
+# case, which is the second name. kdos-appbox's box restore reads the same
+# list. Setting the list in System Settings replaces this one.
+# ---------------------------------
+
+[General]
+excludeApps=org.kde.plasma-welcome.desktop,plasma-welcome

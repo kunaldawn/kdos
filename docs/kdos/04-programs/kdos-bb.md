@@ -63,6 +63,12 @@ Left alone, the closing text turns its own pages and fades out when the scroll i
 [The closing text turns a page at a time](#the-closing-text-turns-a-page-at-a-time)), and the
 program exits.
 
+Resizing or maximising the terminal window is followed at the next scene change: the demo calls
+`aa_resize()` as each scene starts, and the KDOS build of AAlib's curses driver reads the
+terminal's size there with `TIOCGWINSZ`, resizes curses in place and repaints the whole screen
+(the port's `curses-resize.patch`). The scene already running keeps the size it started with. A
+resize is not a key press, so it neither skips nor quits.
+
 ## Synopsis
 
 ```
@@ -631,6 +637,10 @@ two on an installed system; see [the kdos command](kdos-command.md#kdos-why-and-
 - **Cap the frame rate in the program.** AAlib does no pacing: its flush writes whatever is in the text buffer
   every time it is called, and nothing in it knows what a screen refresh is. A program that states
   no cap writes at whatever rate its own arithmetic happens to run.
+- **Call `aa_resize()` where the picture may change size.** Through the curses driver it reads the
+  terminal's new size and repaints, and it sends no key event, so a program that quits on any key
+  keeps running. Nothing calls it for you: a program that never calls it draws at its starting size
+  for its whole run.
 
 ## Audio on a bare console
 

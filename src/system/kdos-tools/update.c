@@ -67,6 +67,9 @@
  * it (kdt_image_carry), copies the tree into it unless an image brought its
  * own, records its version, puts its kernel on the ESP and asks kdos-bootctl
  * to try it. `apply` with neither does both, which is what a person types.
+ * The acquire marks the slot with `kdos-bootctl unfill` before its first
+ * write and the arm's `deploy` clears it, so a slot an acquire did not
+ * finish is never tried.
  *
  * EVERY DOWNLOAD IS NAMED BY THE RELEASE INDEX. A published binhost and slot
  * image are flat assets spread over releases of at most 1,000 assets each,
@@ -97,6 +100,7 @@
 #include <unistd.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 
 #include "kdos-tools.h"
@@ -360,7 +364,8 @@ static int version_ok(const char *v)
 
 /*
  * The version a tree is offered under: its TREE `version` line, which a
- * published release's tree carries, else the first twelve characters of its
+ * published release's tree and an image built from a clean tagged commit
+ * carry, else the first twelve characters of its
  * commit. `named` says which; only a named release has a binhost to find by
  * name. "" when the tree has no stamp at all.
  */
@@ -589,10 +594,34 @@ static int prog_open(const char *arg)
 }
 
 /*
- * SIGTERM STOPS AN APPLY BETWEEN PACKAGES. kdos-sysupdated's Job.Cancel sends
- * it to this process alone, so the package being installed finishes — a
- * package interrupted halfway is a root with half of it — and the next one
- * is never started. The slot stays untried either way.
+ * SIGTERM, SIGINT AND SIGHUP STOP AN APPLY BETWEEN PACKAGES, OR PARTWAY
+ * THROUGH AN IMAGE FILL. kdos-sysupdated's Job.Cancel sends SIGTERM to this
+ * process alone, so the package being installed finishes — a package
+ * interrupted halfway is a root with half of it — and the next one is never
+ * started; kdt_image_fill reads g_stop itself and returns between files. A
+ * SIGINT or SIGHUP sent to this process alone does the same. Ctrl-C at a
+ * terminal, a closed terminal and `timeout -s INT` signal the whole process
+ * group, and the children kb_run starts (kpkg install, kdos-bootctl) are in
+ * it with default handlers, so the package in flight dies with them: the
+ * child fails, and the run ends through fail() and apply_end all the same.
+ * An image fill whose download dies with the group sees g_stop set as it
+ * fails, and a stop before anything was written has no child at all, so a
+ * group signal ends both through cancelled(). Either way the slot
+ * --mount mounted at /run/kdos/slot-<x> is unmounted, which a run killed by
+ * a signal's default action would never do. Every stop leaves the slot
+ * marked incomplete (slot_unfill) once its first byte was written, and
+ * untried; an --in-place run stopped by a group signal leaves the running
+ * root with part of the package that was in flight.
+ *
+ * A STOP AFTER THE FILL IS HONOURED UNTIL `kdos-bootctl try`. cmd_apply reads
+ * g_stop once the lane returns and after `kpkg check`, and arm_slot before
+ * the configuration is carried, before and after the kernel deploy, and when
+ * the try fails during a stop: each ends the run through cancelled() with
+ * the slot written but not armed, and a stop past the deploy marks the slot
+ * incomplete again (stop_deployed). The try is the point of no return — once
+ * the boot state names the slot the candidate a stop cannot be honoured, so
+ * it is said and recorded rather than dropped, and Discover's Job.Cancel in
+ * the last seconds of an apply never passes without a word.
  */
 static volatile sig_atomic_t g_stop;
 
@@ -609,6 +638,8 @@ static void stop_on_term(void)
 	sa.sa_handler = on_term;
 	sigemptyset(&sa.sa_mask);
 	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGHUP, &sa, NULL);
 }
 
 /* ── what is behind ────────────────────────────────────────────────────── */
@@ -950,6 +981,11 @@ typedef struct {
 	char bhash[65];
 	char ehash[65];
 	char from[256];		/* set on a delta: the package it applies to */
+	/* `N:`, the build-only ports (ports/buildonly) the package's recorded
+	 * run-time needs are met by, space-separated; `measured` says the
+	 * stanza carries the line at all, which an empty one still does. */
+	char needs_bo[512];
+	int measured;
 	long long size;
 } BhStanza;
 
@@ -1026,6 +1062,10 @@ static int bh_parse(const char *data, BhIndex *ix)
 		case 'B': kb_strlcpy(cur.bhash, v, sizeof(cur.bhash)); break;
 		case 'E': kb_strlcpy(cur.ehash, v, sizeof(cur.ehash)); break;
 		case 'O': kb_strlcpy(cur.from, v, sizeof(cur.from)); break;
+		case 'N':
+			kb_strlcpy(cur.needs_bo, v, sizeof(cur.needs_bo));
+			cur.measured = 1;
+			break;
 		default: break;
 		}
 	}
@@ -1233,6 +1273,28 @@ static long long release_time(const char *root)
 	return t;
 }
 
+/* The tree commit this root's /etc/kdos-release records, "" for none. */
+static void release_tree(const char *root, char *out, size_t cap)
+{
+	char p[1024];
+	snprintf(p, sizeof(p), "%s%s", strcmp(root, "/") ? root : "",
+		 RELEASE_FILE);
+	char *d = kb_read_all(p, NULL);
+	out[0] = 0;
+	for (char *l = d; l && *l;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		if (!strncmp(l, "TREE=", 5)) {
+			const char *v = l + 5 + (l[5] == '"');
+			kb_strlcpy(out, v, cap);
+			out[strcspn(out, "\"")] = 0;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(d);
+}
+
 /* Where the cached image manifest was fetched from, or "". */
 static void image_origin(char *out, size_t cap)
 {
@@ -1308,15 +1370,23 @@ static KdtImage *image_offer(char *why, size_t wcap)
 	if (strcmp(kdt_image_arch(m), arch)) {
 		snprintf(why, wcap, "the slot image is built for %s",
 			 kdt_image_arch(m));
-	} else if (!strcmp(kdt_image_version(m), inst) ||
-		   (it && kdt_image_time(m) && kdt_image_time(m) <= it) ||
+	} else if (!strcmp(kdt_image_version(m), inst)) {
+		snprintf(why, wcap, "this system already runs %s",
+			 kdt_image_version(m));
+	} else if ((it && kdt_image_time(m) && kdt_image_time(m) <= it) ||
 		   ((!it || !kdt_image_time(m)) &&
 		    (!inst[0] || kp_vercmp(kdt_image_version(m), inst) <= 0))) {
 		/* With no time on either side the names decide, and a name
 		 * that is not newer is refused: an older release's manifest
-		 * is signed too, and offering it would be a downgrade. */
-		snprintf(why, wcap, "this system already runs %s or newer",
-			 kdt_image_version(m));
+		 * is signed too, and offering it would be a downgrade. Both
+		 * trees are named, since two builds of one version differ
+		 * only there. */
+		char mine[64];
+		release_tree(sys_root(), mine, sizeof(mine));
+		snprintf(why, wcap, "the fetched image %s (tree %.9s) is not "
+			 "newer than this machine's %s%s%.9s", kdt_image_version(m),
+			 kdt_image_tree(m)[0] ? kdt_image_tree(m) : "unknown",
+			 mine[0] ? "tree " : "", mine[0] ? "" : inst, mine);
 	} else {
 		return m;
 	}
@@ -1562,30 +1632,44 @@ static int check_json(const KpConf *c, FILE *o)
  * half a document parses as nothing behind — a machine that is out of date
  * reporting that it is not. The document is written whatever the answer, a
  * missing tree included, so the reader shows the problem rather than nothing.
+ *
+ * EACH WRITER HAS A TEMP FILE OF ITS OWN (`<path>.XXXXXX`, mkstemp, in the
+ * same directory so the rename stays on one filesystem). kdos-sysupdated's
+ * refresh (`kdos update check --out`) and a `kdos update fetch` run at boot
+ * write the document at the same moment, and with one shared temp name one rename takes the other's
+ * file away and the second fails with ENOENT. Mode 0644, as the document
+ * is read by sessions too.
  */
 static int check_json_to(const KpConf *c, const char *path)
 {
 	char tmp[512];
 	FILE *o;
-	int rc;
+	int rc, fd;
 
-	if (snprintf(tmp, sizeof(tmp), "%s.new", path) >= (int)sizeof(tmp)) {
+	if (snprintf(tmp, sizeof(tmp), "%s.XXXXXX", path) >= (int)sizeof(tmp)) {
 		fprintf(stderr, "kdos update: path too long\n");
 		return 2;
 	}
-	o = fopen(tmp, "w");
+	fd = mkstemp(tmp);
+	o = fd >= 0 ? fdopen(fd, "w") : NULL;
 	if (!o) {
 		fprintf(stderr, "kdos update: cannot write %s: %s\n", tmp,
 			strerror(errno));
+		if (fd >= 0) {
+			close(fd);
+			remove(tmp);
+		}
 		return 2;
 	}
+	fchmod(fd, 0644);
 	rc = check_json(c, o);
 	fflush(o);
 	fsync(fileno(o));
 	if (fclose(o) != 0 || rename(tmp, path) != 0) {
+		int e = errno;
 		remove(tmp);
 		fprintf(stderr, "kdos update: cannot write %s: %s\n", path,
-			strerror(errno));
+			strerror(e));
 		return 2;
 	}
 	return rc;
@@ -1607,6 +1691,9 @@ static void doc_refresh(void)
 	kp_conf_load(&c);
 	check_json_to(&c, UPDATE_DOC);
 }
+
+static int live_medium(void);
+static const char *binhost_step(const KpConf *c);
 
 static int cmd_check_human(const KpConf *c)
 {
@@ -1656,7 +1743,8 @@ static int cmd_check_human(const KpConf *c)
 
 	printf("  %d behind, %d with no recipe on this machine\n", n, orphans);
 	ports_root(c, root, sizeof(root));
-	tree_version(root, ver, sizeof(ver), NULL);
+	int named = 0;
+	tree_version(root, ver, sizeof(ver), &named);
 	bootctl_root_version(sys_root(), inst, sizeof(inst));
 	if (inst[0])
 		printf("  %sthis system is %s%s\n", D, inst, O);
@@ -1666,16 +1754,24 @@ static int cmd_check_human(const KpConf *c)
 		struct tm tm;
 		if (t > 0 && gmtime_r(&tt, &tm))
 			strftime(day, sizeof(day), "%Y-%m-%d", &tm);
-		printf("  %stree %s (%s)%s%s at %s%s\n", D, commit, ver,
-		       day[0] ? ", " : "", day, root, O);
+		if (named)
+			printf("  %stree %s (%s)%s%s at %s%s\n", D, commit,
+			       ver, day[0] ? ", " : "", day, root, O);
+		else
+			printf("  %stree %s%s%s at %s%s\n", D, commit,
+			       day[0] ? ", " : "", day, root, O);
 	} else {
 		printf("  %s%s carries no TREE stamp — `kdos update fetch` "
 		       "cannot tell an older tree from a newer one%s\n", W,
 		       root, O);
 	}
-	if (!have_ix)
+	/* A source build is advice only where there is something behind and
+	 * a slot to build into: the live medium has none to keep. */
+	if (!have_ix && n && !live_medium())
 		printf("  %sbinhost: %s — `kdos update apply --source` builds "
 		       "what is behind%s\n", D, why, O);
+	else if (!have_ix)
+		printf("  %sbinhost: %s — %s%s\n", D, why, binhost_step(c), O);
 	else if (n && covered == n)
 		printf("  binhost: all %d prebuilt, signed by %s (key %s); "
 		       "offered as %s\n", n,
@@ -1887,12 +1983,16 @@ static int tree_fetch(const KpConf *c, const char *from, int quiet)
 	/* The signature first: it is small, and the cheapest way to learn the
 	 * network is down. A signature byte for byte the one the installed tree
 	 * came with is the same tree, so a check downloads a few hundred bytes
-	 * and not the whole tree when nothing was released. */
+	 * and not the whole tree when nothing was released — unless the
+	 * installed tree names no release, when only the published one can
+	 * give it the name its binhost is found by. */
 	snprintf(url, sizeof(url), "%s/%s.sig", base, TREE_FILE);
 	int got = download(url, sig, quiet);
-	char ic[64];
+	char ic[64], iver[64];
 	long long it;
-	if (got == GOT_OK && same_as_last_sig(sig) &&
+	int inamed = 0;
+	tree_version(root, iver, sizeof(iver), &inamed);
+	if (got == GOT_OK && inamed && same_as_last_sig(sig) &&
 	    tree_read(root, ic, sizeof(ic), &it) == 0) {
 		kb_rmtree(stage);
 		state_set("fetch", "ok", "tree current");
@@ -1941,8 +2041,15 @@ static int tree_fetch(const KpConf *c, const char *from, int quiet)
 		return fetch_fail("fetch-failed", stage, "the signed archive "
 				  "is not a ports tree (no TREE, core/ or "
 				  "sources.idx)");
+	/* The same commit is the same recipes, kept, unless the published
+	 * stamp names a release the installed one does not: an image built
+	 * from a clean tagged commit names its release in its tree, any other
+	 * image stamps the commit alone, and an unnamed tree has no binhost. */
+	char nver[64];
+	int nnamed = 0;
+	tree_version(tree, nver, sizeof(nver), &nnamed);
 	if (tree_read(root, ocommit, sizeof(ocommit), &ot) == 0) {
-		if (same_commit(ncommit, ocommit)) {
+		if (same_commit(ncommit, ocommit) && (inamed || !nnamed)) {
 			keep_sig(sig);
 			kb_rmtree(stage);
 			state_set("fetch", "ok", "tree current");
@@ -1951,6 +2058,7 @@ static int tree_fetch(const KpConf *c, const char *from, int quiet)
 				       ocommit);
 			return 0;
 		}
+		/* published_older() knows this refusal by its words. */
 		if (nt < ot)
 			return fetch_fail("fetch-failed", stage, "the published "
 					  "tree %.12s is older than this "
@@ -1995,6 +2103,40 @@ static int binhost_base(const char *version, int named, char *out, size_t cap)
 		rc = -1;
 	free(conf);
 	return rc;
+}
+
+/* 1 when the last tree fetch refused the published tree as older than this
+ * machine's: that tree is never taken, so a fetch is no way to a binhost. */
+static int published_older(void)
+{
+	char code[32], det[256];
+	return state_get("fetch", code, sizeof(code), det, sizeof(det)) &&
+	       strstr(det, "is older than this machine's") != NULL;
+}
+
+/* What takes the signed index the tree in place has none of: a fetch of the
+ * index alone once update.conf, $KDOS_UPDATE_BINHOST or a named TREE names
+ * a binhost, a fetch of the published tree otherwise — the index alone then
+ * finds none, so advising it sends the reader round a loop — and, when the
+ * published tree is older than this machine's, `binhost =` alone, for the
+ * same reason. */
+static const char *binhost_step(const KpConf *c)
+{
+	char root[512], ver[64] = "", base[1024];
+	int named = 0;
+
+	ports_root(c, root, sizeof(root));
+	tree_version(root, ver, sizeof(ver), &named);
+	if (binhost_base(ver, named, base, sizeof(base)) == 0)
+		return "`sudo kdos update fetch --binhost-only` takes this "
+		       "release's signed index";
+	if (published_older())
+		return "this tree names no release, and the published tree is "
+		       "older than this machine's; name one with `binhost =` "
+		       "in " UPDATE_CONF;
+	return "this tree names no release and " UPDATE_CONF " has no "
+	       "`binhost =` line; `sudo kdos update fetch` takes a published "
+	       "tree that names its release";
 }
 
 /* The cache keeps the two indexes, the packages the CURRENT index names and
@@ -2094,6 +2236,46 @@ static int binhost_refuse(const char *stage, const char *code, const char *msg)
 	state_set("binhost", code, msg);
 	if (!strcmp(code, "unverified"))
 		fprintf(stderr, "kdos update: %s — it was not kept\n", msg);
+	return 1;
+}
+
+/* 1 when the last binhost step found no binhost, after saying why: for a
+ * tree that names no release, what would name one — or, when update.conf
+ * or $KDOS_UPDATE_BINHOST has named one since, the fetch that takes it;
+ * else where none was published. A published tree the last fetch refused as
+ * older than this machine's is never taken, so `sudo kdos update fetch` is
+ * not offered for it and `binhost =` is the one way named: offering the
+ * fetch would send a person round the same refusal again. */
+static int binhost_absent_hint(const KpConf *c)
+{
+	char code[32], det[256], root[512], ver[64] = "", base[1024];
+	int named = 0;
+	if (!state_get("binhost", code, sizeof(code), det, sizeof(det)) ||
+	    strcmp(code, "absent"))
+		return 0;
+	ports_root(c, root, sizeof(root));
+	tree_version(root, ver, sizeof(ver), &named);
+	int older = published_older();
+	if (!strcmp(det, "no binhost is named for this tree") &&
+	    binhost_base(ver, named, base, sizeof(base)) == 0)
+		fprintf(stderr, "kdos update: %s names a binhost the last fetch "
+				"did not see; `sudo kdos update fetch "
+				"--binhost-only` takes its signed index\n",
+			base);
+	else if (!strcmp(det, "no binhost is named for this tree") && older)
+		fprintf(stderr, "kdos update: no binhost is named: %s/TREE "
+				"names no release, and the published tree is "
+				"older than this machine's; name one with "
+				"`binhost =` in " UPDATE_CONF "\n", root);
+	else if (!strcmp(det, "no binhost is named for this tree"))
+		fprintf(stderr, "kdos update: no binhost is named: %s/TREE "
+				"names no release and " UPDATE_CONF " has no "
+				"`binhost =` line; `sudo kdos update fetch` "
+				"takes a published tree that names its "
+				"release\n", root);
+	else
+		fprintf(stderr, "kdos update: %s\n", det[0] ? det
+						       : "no binhost is published");
 	return 1;
 }
 
@@ -2328,6 +2510,10 @@ static int cmd_fetch(const KpConf *c, int argc, char **argv)
 	 * packages are built against a newer base than this one runs. */
 	if (only_bh) {
 		int brc = binhost_fetch(c, 0) != 0;
+		/* Asked for the binhost alone, finding none is the failure,
+		 * not the quiet success it is beside a tree fetch. */
+		if (!brc && binhost_absent_hint(c))
+			brc = 1;
 		close(lock);
 		doc_refresh();
 		return brc;
@@ -2338,6 +2524,8 @@ static int cmd_fetch(const KpConf *c, int argc, char **argv)
 		kp_conf_load(&fresh);
 		if (binhost_fetch(&fresh, 0) != 0 && rc == 0)
 			rc = 1;
+		else
+			binhost_absent_hint(&fresh);
 	}
 	if (image_fetch(from, 0) != 0 && rc == 0)
 		rc = 1;
@@ -2476,6 +2664,14 @@ static int bootctl_layout(Layout *L)
 	return L->uuid[0] != 0;
 }
 
+/* 1 when this boot is the live medium, which has no slot to keep. */
+static int live_medium(void)
+{
+	Layout L;
+	bootctl_layout(&L);
+	return L.live;
+}
+
 /*
  * AN ARMED SLOT IS DISARMED BEFORE ITS FIRST BYTE IS REWRITTEN. A trial armed
  * by an earlier Install still points the next boot at that slot; a restart
@@ -2491,6 +2687,24 @@ static int slot_disarm(const Layout *L)
 	KbArgv a = {0};
 	kb_argv_add(&a, "kdos-bootctl");
 	kb_argv_add(&a, "cancel");
+	kb_argv_end(&a);
+	return kb_run_tty(&a) == 0 ? 0 : -1;
+}
+
+/*
+ * A SLOT IS MARKED INCOMPLETE BEFORE ITS FIRST BYTE IS REWRITTEN, after the
+ * disarm: `kdos-bootctl unfill` records it in the boot state, `try` refuses
+ * it from then on, and the `deploy` of the arm clears it. A run that stops
+ * half way — a cancel, a failed download, a power cut — leaves a slot that
+ * still has its old ESP record and kernel but is never offered or tried as
+ * that version. 0 when it is marked.
+ */
+static int slot_unfill(const Layout *L)
+{
+	KbArgv a = {0};
+	kb_argv_add(&a, "kdos-bootctl");
+	kb_argv_add(&a, "unfill");
+	kb_argv_add(&a, L->slot);
 	kb_argv_end(&a);
 	return kb_run_tty(&a) == 0 ? 0 : -1;
 }
@@ -2843,12 +3057,19 @@ static int fail(Apply *ap, const char *code, const char *why)
 	return AP_FAIL;
 }
 
-static int cancelled(Apply *ap)
+/* `stage` is where the run stopped, as the message and update.state say it:
+ * "stopped between packages" for a package run, "stopped while writing the
+ * slot from the image" for a slot image, "stopped before anything was
+ * written" for a stop that came while the target was being found, and
+ * STOP_UNARMED for one that came after the fill and before the try. */
+#define STOP_UNARMED "stopped after the slot was written, before it was armed"
+
+static int cancelled(Apply *ap, const char *stage)
 {
-	fprintf(stderr, "kdos update: stopped between packages — the slot "
-			"will not be booted\n");
+	fprintf(stderr, "kdos update: %s — the slot will not be booted\n",
+		stage);
 	prog("error cancelled");
-	state_set("apply", "cancelled", "stopped between packages");
+	state_set("apply", "cancelled", stage);
 	apply_end(ap);
 	doc_refresh();
 	return AP_CANCELLED;
@@ -2874,7 +3095,9 @@ static int nothing_behind(Apply *ap)
  * refused rather than silently done, and --in-place is the way to say you
  * meant it. The live medium is refused the same way: its root is an overlay
  * in RAM, and what an update installs there is gone at the next restart
- * unless a persistence store holds it.
+ * unless a persistence store holds it. AP_OK to go on, another AP_ code to
+ * stop with it, or -1 when a dry run has said all it can (the slot is not
+ * mounted and --mount would mount it): the run then ends with AP_OK.
  */
 static int apply_target(Apply *ap, const KpConf *c)
 {
@@ -2890,6 +3113,16 @@ static int apply_target(Apply *ap, const KpConf *c)
 				      "an update is installed once it is "
 				      "confirmed or rolled back", ap->L.slot);
 		ap->mnt = slot_mountpoint(ap->L.uuid);
+		/* A dry run mounts nothing, so with no slot to read it says
+		 * what --mount would do and stops there, having succeeded. */
+		if (!ap->mnt && ap->mount && ap->dry) {
+			printf("dry run: slot %s (%s) is not mounted; without "
+			       "--dry-run, --mount mounts it at " SLOT_MNT "%s "
+			       "and installs the candidate there\n", ap->L.slot,
+			       ap->L.uuid, ap->L.slot);
+			apply_end(ap);
+			return -1;
+		}
 		if (!ap->mnt && ap->mount && !ap->dry) {
 			ap->mnt = slot_mount(&ap->L, why, sizeof(why));
 			if (!ap->mnt)
@@ -3481,12 +3714,19 @@ static int fill_image(Apply *ap)
 			 "and could not be disarmed", ap->L.slot);
 		return fail(ap, "build-failed", why);
 	}
+	if (ap->ab && slot_unfill(&ap->L) != 0) {
+		kdt_relidx_free(rel);
+		snprintf(why, sizeof(why), "slot %s could not be marked as "
+			 "being written", ap->L.slot);
+		return fail(ap, "build-failed", why);
+	}
 	int frc = kdt_image_fill(ap->img, rel, ap->root, sys_root(), image_tick,
 				 NULL, &g_stop, why, sizeof(why));
 	kdt_relidx_free(rel);
 	if (frc != 0) {
 		if (g_stop)
-			return cancelled(ap);
+			return cancelled(ap, "stopped while writing the slot "
+					     "from the image");
 		return fail(ap, strstr(why, "could not be read") ? "fetch-failed"
 								 : "build-failed",
 			    why);
@@ -3623,9 +3863,9 @@ static int dev_restore(const KpConf *c, const BhIndex *ix, int have_ix,
 	}
 	if (st < 0) {
 		snprintf(p->bad, sizeof(p->bad), "the development files of %s "
-			 "cannot be restored: %s", name,
-			 have_ix ? w : "there is no binhost index here; `kdos "
-			 "update fetch --binhost-only` takes this release's");
+			 "cannot be restored: %s%s%s", name,
+			 have_ix ? w : "there is no binhost index here",
+			 have_ix ? "" : " — ", have_ix ? "" : binhost_step(c));
 		return -1;
 	}
 	dev_push(p, name, DEV_RESTORE, st, 0, ix);
@@ -4083,6 +4323,10 @@ static int bh_fill(Apply *ap, int after_image)
 			snprintf(msg, sizeof(msg), "slot %s is armed for the next "
 				 "boot and could not be disarmed", ap->L.slot);
 			rc = AP_FAIL;
+		} else if (slot_unfill(&ap->L) != 0) {
+			snprintf(msg, sizeof(msg), "slot %s could not be marked "
+				 "as being written", ap->L.slot);
+			rc = AP_FAIL;
 		} else if (!after_image && slot_forget_image(ap) != 0) {
 			snprintf(msg, sizeof(msg), "slot %s's image record could "
 				 "not be removed", ap->L.slot);
@@ -4164,7 +4408,7 @@ static int bh_fill(Apply *ap, int after_image)
 	if (have_ix)
 		bh_free(&ix);
 	if (rc == AP_CANCELLED)
-		return cancelled(ap);
+		return cancelled(ap, "stopped between packages");
 	if (rc != AP_OK)
 		return fail(ap, msg[0] && strstr(msg, "fetched") ? "fetch-failed"
 							       : "build-failed",
@@ -4333,6 +4577,13 @@ static int fill_source(Apply *ap)
 			return fail(ap, "build-failed", "the slot is armed for the "
 				    "next boot and could not be disarmed");
 		}
+		if (slot_unfill(&ap->L) != 0) {
+			dev_free(&dp);
+			free(bad);
+			free(v);
+			return fail(ap, "build-failed", "the slot could not be "
+				    "marked as being written");
+		}
 		if (slot_forget_image(ap) != 0) {
 			dev_free(&dp);
 			free(bad);
@@ -4400,7 +4651,7 @@ static int fill_source(Apply *ap)
 	free(bad);
 	free(v);
 	if (stopped)
-		return cancelled(ap);
+		return cancelled(ap, "stopped between packages");
 	if (why[0])
 		return fail(ap, "build-failed", why);
 	if (!ap->ab) {
@@ -4444,6 +4695,8 @@ static int check_slot(Apply *ap)
 	int rc = kb_run_tty(&k);
 	if (bound && umount2(store, 0) != 0)
 		umount2(store, MNT_DETACH);
+	if (rc != 0 && g_stop)
+		return cancelled(ap, STOP_UNARMED);
 	if (rc != 0) {
 		char why[128];
 		snprintf(why, sizeof(why), "slot %s failed `kpkg check`",
@@ -4451,6 +4704,20 @@ static int check_slot(Apply *ap)
 		return fail(ap, "build-failed", why);
 	}
 	return AP_OK;
+}
+
+/*
+ * A STOP AFTER THE DEPLOY MARKS THE SLOT INCOMPLETE AGAIN. The deploy cleared
+ * the mark the acquire set, so a slot cancelled past it would otherwise be
+ * complete, deployed and untried, and System Versions or `kdos-bootctl try`
+ * could still start a version update.state calls cancelled.
+ */
+static int stop_deployed(Apply *ap)
+{
+	if (slot_unfill(&ap->L) != 0)
+		fprintf(stderr, "kdos update: slot %s could not be marked "
+			"incomplete\n", ap->L.slot);
+	return cancelled(ap, STOP_UNARMED);
 }
 
 /*
@@ -4487,6 +4754,8 @@ static int arm_slot(Apply *ap, const char *how, int check_acquired)
 	 * full apply said `verified` when its fill began. */
 	if (check_acquired)
 		prog("verified - %s 0 0", ap->version);
+	if (g_stop)
+		return cancelled(ap, STOP_UNARMED);
 	/* An image brought the tree it was built from; packages did not. */
 	if (!ap->from_image && tree_into_slot(ap->tree, ap->root) != 0) {
 		snprintf(why, sizeof(why), "the ports tree could not be copied "
@@ -4515,6 +4784,8 @@ static int arm_slot(Apply *ap, const char *how, int check_acquired)
 			 "not be written", ap->L.slot);
 		return fail(ap, "build-failed", why);
 	}
+	if (g_stop)
+		return cancelled(ap, STOP_UNARMED);
 	KbArgv d = {0};
 	kb_argv_add(&d, "kdos-bootctl");
 	kb_argv_add(&d, "deploy");
@@ -4522,16 +4793,30 @@ static int arm_slot(Apply *ap, const char *how, int check_acquired)
 	kb_argv_add(&d, ap->L.slot);
 	kb_argv_end(&d);
 	if (kb_run_tty(&d) != 0) {
+		if (g_stop)
+			return stop_deployed(ap);
 		snprintf(why, sizeof(why), "slot %s's kernel could not be put "
 			 "on the ESP", ap->L.slot);
 		return fail(ap, "build-failed", why);
 	}
+	if (g_stop)
+		return stop_deployed(ap);
 	KbArgv t = {0};
 	kb_argv_add(&t, "kdos-bootctl");
 	kb_argv_add(&t, "try");
 	kb_argv_add(&t, ap->L.slot);
 	kb_argv_end(&t);
-	if (kb_run_tty(&t) != 0) {
+	int tried = kb_run_tty(&t) == 0;
+	if (!tried && g_stop) {
+		/* A group signal kills the try with this run: the boot state
+		 * says whether it got as far as naming the slot the
+		 * candidate, which is past the point of no return. */
+		Layout now;
+		tried = bootctl_layout(&now) && !strcmp(now.trying, ap->L.slot);
+		if (!tried)
+			return stop_deployed(ap);
+	}
+	if (!tried) {
 		snprintf(why, sizeof(why), "slot %s could not be marked as the "
 			 "candidate", ap->L.slot);
 		return fail(ap, "build-failed", why);
@@ -4539,7 +4824,19 @@ static int arm_slot(Apply *ap, const char *how, int check_acquired)
 	printf("slot %s is the candidate: a boot that does not confirm it "
 	       "rolls back\n", ap->L.slot);
 	prog("armed %s %s", ap->L.slot, ap->version);
-	state_set("apply", "ok", want);
+	if (g_stop) {
+		/* Past the try: the update stands, and the stop is said so in
+		 * update.state's detail, which still names the armed slot. */
+		char late[256];
+		snprintf(late, sizeof(late), "the stop came after slot %s was "
+			 "armed; the update stands", ap->L.slot);
+		fprintf(stderr, "kdos update: %s\n", late);
+		snprintf(late, sizeof(late), "%s; a stop came after it was "
+			 "armed", want);
+		state_set("apply", "ok", late);
+	} else {
+		state_set("apply", "ok", want);
+	}
 	apply_end(ap);
 	doc_refresh();
 	return AP_OK;
@@ -4625,7 +4922,7 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 
 	int rc = apply_target(&ap, c);
 	if (rc != AP_OK)
-		return rc;
+		return rc < 0 ? AP_OK : rc;
 
 	if (ap.arm) {
 		/* Which lane filled the slot: an image leaves its record there,
@@ -4655,6 +4952,13 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 		if (!ap.img && ap.want_image)
 			return refuse(&ap, NULL, "no slot image is on offer: %s",
 				      iwhy);
+		/* A fetched image this run does not take is named, so the
+		 * binhost lane's own refusal is not the only thing said. */
+		char idir[1024], iman[1100];
+		image_dir(idir, sizeof(idir));
+		snprintf(iman, sizeof(iman), "%s/MANIFEST", idir);
+		if (!ap.img && kb_path_exists(iman))
+			printf("%s, so apply looks for packages\n", iwhy);
 		if (ap.img) {
 			ap.from_image = 1;
 			kb_strlcpy(ap.version, kdt_image_version(ap.img),
@@ -4665,10 +4969,16 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 		}
 	}
 
+	/* A stop that came while the target was found and mounted ends here,
+	 * before the lane writes anything. */
+	if (g_stop && !ap.dry)
+		return cancelled(&ap, "stopped before anything was written");
 	rc = ap.source ? fill_source(&ap)
 	     : ap.img ? fill_image(&ap) : fill_binhost(&ap);
 	if (rc != AP_OK || ap.dry || ap.lock < 0)
 		return rc;
+	if (ap.ab && g_stop)
+		return cancelled(&ap, STOP_UNARMED);
 
 	if (!ap.ab) {
 		/* In place, or --root: the root now holds this tree's packages
@@ -4690,6 +5000,8 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 	}
 	if ((rc = check_slot(&ap)) != AP_OK)
 		return rc;
+	if (g_stop)
+		return cancelled(&ap, STOP_UNARMED);
 	if (ap.acquire) {
 		char got[160];
 		snprintf(got, sizeof(got), "slot %s %s", ap.L.slot, ap.version);
@@ -4710,18 +5022,136 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 
 void bootctl_other_version(char *out, size_t n);
 
+/* Slot `letter`'s object in `kdos-bootctl status --json`, into out (its
+ * fields are flat, so the object ends at its first `}`); 0 when found. */
+static int status_slot(const char *doc, const char *letter, char *out,
+		       size_t cap)
+{
+	char k[32];
+	snprintf(k, sizeof(k), "\"%s\": {\"state\"", letter);
+	const char *p = strstr(doc, k);
+	out[0] = 0;
+	if (!p)
+		return -1;
+	size_t n = strcspn(p, "}");
+	if (n >= cap)
+		n = cap - 1;
+	memcpy(out, p, n);
+	out[n] = 0;
+	return 0;
+}
+
+static long long json_num(const char *doc, const char *key)
+{
+	char k[64];
+	snprintf(k, sizeof(k), "\"%s\": ", key);
+	const char *p = strstr(doc, k);
+	return p ? atoll(p + strlen(k)) : 0;
+}
+
+/*
+ * WHAT THE OTHER SLOT IS TO THIS BOOT, from `kdos-bootctl status --json` (the
+ * copy root publishes in /run, for a session that cannot open the ESP):
+ *
+ *   - WENT BACK FROM A FAILED TRIAL: its state is `failed` — the boot
+ *     state's `failed`, which the rollback in `select` sets when a trial ends
+ *     unconfirmed and a confirmation clears — and it names a version other
+ *     than this one. Asked before the tree is compared: a release rebuilt
+ *     from the commit this slot runs carries the same tree, and its failed
+ *     trial is still a way back. `prev` is that version, 1 into *back.
+ *   - NOT WHERE THIS BOOT CAME FROM: it holds this very version or tree,
+ *     which is every fresh install, since the installer writes both slots'
+ *     records alike; or it is `armed`, `incomplete` or `empty`, so its record
+ *     names an update that has not run yet or stopped half way. `prev` is
+ *     cleared.
+ *   - WENT BACK BY HAND: its tree is later than this slot's, a newer version
+ *     left by picking this one by hand. A record with no tree time (bootctl
+ *     prints 0) is ordered by version name instead, so a hand rollback
+ *     between such records is not shown as an update from the newer one.
+ *     1 into *back.
+ *   - otherwise the version this boot was updated from, kept in `prev`.
+ *
+ * No status to read (no slots, the live medium, no published copy) leaves
+ * `prev` as bootctl_other_version found it and *back 0; 1 into *live when
+ * the status says this boot is the live medium, which has no slots at all.
+ */
+static void notes_previous(const char *run, char *prev, size_t pcap,
+			   int *back, int *live)
+{
+	char mine[8], other[2], so[1024], sm[1024], v[64], t[64], tm[64];
+	KbBuf out = {0};
+
+	*back = 0;
+	*live = 0;
+	if (!kb_have_prog("kdos-bootctl"))
+		return;
+	KbArgv a = {0};
+	kb_argv_add(&a, "kdos-bootctl");
+	kb_argv_add(&a, "status");
+	kb_argv_add(&a, "--json");
+	kb_argv_end(&a);
+	int rc = kb_run_capture_buf(&a, &out);
+	/* The live medium's status exits 1 with `"live": true`: read it first. */
+	if (out.p && strstr(out.p, "\"live\": true"))
+		*live = 1;
+	if (rc != 0 || !out.p || !strstr(out.p, "\"configured\": true") ||
+	    json_field(out.p, "running", mine, sizeof(mine)) != 0 ||
+	    (strcmp(mine, "a") && strcmp(mine, "b"))) {
+		kb_buf_free(&out);
+		return;
+	}
+	other[0] = mine[0] == 'a' ? 'b' : 'a';
+	other[1] = 0;
+	if (status_slot(out.p, other, so, sizeof(so)) != 0 ||
+	    status_slot(out.p, mine, sm, sizeof(sm)) != 0) {
+		kb_buf_free(&out);
+		return;
+	}
+	kb_buf_free(&out);
+	char state[24];
+	json_field(so, "state", state, sizeof(state));
+	json_field(so, "version", v, sizeof(v));
+	json_field(so, "tree", t, sizeof(t));
+	json_field(sm, "tree", tm, sizeof(tm));
+	long long ot = json_num(so, "tree_time"), mt = json_num(sm, "tree_time");
+	if (!strcmp(state, "failed") && v[0] && strcmp(v, run)) {
+		kb_strlcpy(prev, v, pcap);
+		*back = 1;
+		return;
+	}
+	if (!strcmp(state, "armed") || !strcmp(state, "incomplete") ||
+	    !strcmp(state, "empty") || (v[0] && !strcmp(v, run)) ||
+	    (t[0] && tm[0] && !strcmp(t, tm))) {
+		prev[0] = 0;
+		return;
+	}
+	if (v[0])
+		kb_strlcpy(prev, v, pcap);
+	if (!prev[0])
+		return;
+	if (ot > 0 && mt > 0)
+		*back = ot > mt;
+	else
+		*back = kp_vercmp(prev, run) > 0;
+}
+
 /*
  * `kdos update notes --json`: the release notes of the slot this boot runs,
- * for the What's New page plasma-welcome shows after a confirmed switch. One
- * object, {"version", "previous", "notes"}: the version running (the name
- * `check` calls "installed"), the version the other slot holds ("" when none
- * is recorded), and the RELEASE file of the tree this slot carries, as
- * Markdown. 1 with no document when the slot
- * carries no notes, which the page shows as such.
+ * for the What's New page plasma-welcome shows whenever the running version
+ * changes. One object, {"version", "previous", "went_back", "live",
+ * "notes"}: the version running (the name `check` calls "installed"); the
+ * version the other slot holds when this boot came from it or went back from
+ * it, "" when it is neither (notes_previous above: a fresh install, the live
+ * medium, a slot not yet booted); true in went_back when this slot is the
+ * older one and the later version in the other slot did not start or was not
+ * kept; true in live on the live medium, which has no slots and so no other
+ * version to name; and the RELEASE file of the tree this slot carries, as
+ * Markdown. 1 with no document when the slot carries no notes, which the
+ * page shows as such.
  */
 static int cmd_notes(const KpConf *c, int argc, char **argv)
 {
-	int json = 0;
+	int json = 0, back = 0, live = 0;
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--json")) {
 			json = 1;
@@ -4740,9 +5170,15 @@ static int cmd_notes(const KpConf *c, int argc, char **argv)
 	}
 	bootctl_root_version(sys_root(), run, sizeof(run));
 	bootctl_other_version(prev, sizeof(prev));
+	if (!strcmp(prev, run))
+		prev[0] = 0;
+	notes_previous(run, prev, sizeof(prev), &back, &live);
+	if (live)
+		prev[0] = 0;
 	if (!json) {
 		printf("%sKDOS %s%s%s%s\n\n%s", A, run, O,
-		       prev[0] ? ", updated from " : "", prev, notes);
+		       !prev[0] ? "" : back ? ", went back from "
+					    : ", updated from ", prev, notes);
 		free(notes);
 		return 0;
 	}
@@ -4751,6 +5187,8 @@ static int cmd_notes(const KpConf *c, int argc, char **argv)
 	kb_json_str(&b, run);
 	kb_buf_str(&b, ",\"previous\":");
 	kb_json_str(&b, prev);
+	kb_buf_printf(&b, ",\"went_back\":%s", back ? "true" : "false");
+	kb_buf_printf(&b, ",\"live\":%s", live ? "true" : "false");
 	kb_buf_str(&b, ",\"notes\":");
 	kb_json_str(&b, notes);
 	kb_buf_str(&b, "}\n");
@@ -5031,8 +5469,8 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 	} else if (!ng) {
 		printf("this tree names no groups\n");
 	} else if (!have_ix) {
-		printf("no binhost index here, so no sizes: `kdos update fetch "
-		       "--binhost-only` takes this release's\n");
+		printf("no binhost index here, so no sizes: %s\n",
+		       binhost_step(c));
 	}
 	kb_buf_free(&b);
 	if (have_ix)
@@ -5238,14 +5676,156 @@ static int conf_route(const char *key)
 }
 
 /*
+ * 0 when the filesystem the binhost cache is on has room for `need` bytes of
+ * downloads; -1 with the reason in `why` when it has not. Measured at the
+ * cache, or the nearest directory above it that exists, before the first
+ * download: a download that fills the disk refuses only at the package that
+ * did not fit, with the cache left holding the rest.
+ */
+static int cache_room(long long need, char *why, size_t cap)
+{
+	char d[1024];
+	struct statvfs sv;
+	kb_strlcpy(d, cache_dir(), sizeof(d));
+	while (statvfs(d, &sv) != 0) {
+		char *sl = strrchr(d, '/');
+		if (!sl || sl == d)
+			return 0;
+		*sl = 0;
+	}
+	unsigned long long avail = (unsigned long long)sv.f_bavail * sv.f_frsize;
+	if (need <= 0 || (unsigned long long)need <= avail)
+		return 0;
+	snprintf(why, cap, "the packages to download take %s and %s has %s "
+		 "free", kb_human_size((unsigned long long)need), cache_dir(),
+		 kb_human_size(avail));
+	return -1;
+}
+
+/* The words of <tree>/buildonly, NULL-terminated (kb_strv_free); an empty
+ * list when the tree carries none. '#' starts a comment. */
+static char **buildonly_load(const KpConf *c)
+{
+	char root[512], p[600];
+	ports_root(c, root, sizeof(root));
+	snprintf(p, sizeof(p), "%s/buildonly", root);
+	char *data = kb_read_all(p, NULL);
+	int n = 0, cap = 16;
+	char **v = kb_calloc((size_t)cap + 1, sizeof(*v));
+	for (char *l = data; l && *l;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		char *h = strchr(l, '#');
+		if (h)
+			*h = 0;
+		for (char *w = strtok(l, " \t\r"); w; w = strtok(NULL, " \t\r")) {
+			if (n == cap) {
+				cap *= 2;
+				v = kb_realloc(v, ((size_t)cap + 1) * sizeof(*v));
+			}
+			v[n++] = kb_strdup(w);
+			v[n] = NULL;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return v;
+}
+
+/* 1 when the whole-package stanza of `name` names `dep` on its `N:` line, or
+ * carries no `N:` line at all: an unmeasured package keeps every edge. */
+static int bh_runtime_edge(const BhIndex *ix, const char *name, const char *dep)
+{
+	for (int i = 0; i < ix->n; i++) {
+		const BhStanza *st = &ix->st[i];
+		if (st->from[0] || strcmp(st->name, name))
+			continue;
+		if (!st->measured)
+			return 1;
+		char v[sizeof(st->needs_bo)];
+		kb_strlcpy(v, st->needs_bo, sizeof(v));
+		for (char *w = strtok(v, " \t"); w; w = strtok(NULL, " \t"))
+			if (!strcmp(w, dep))
+				return 1;
+		return 0;
+	}
+	return 1;
+}
+
+/* `name` and what it reaches over `depends =`, into seen[0..*n), entering a
+ * port of `skip` only where bh_runtime_edge says the package needs it. A
+ * name is marked before its dependencies are walked, so a cycle ends at the
+ * back edge. */
+static void runtime_walk(const KpConf *c, const BhIndex *ix, const char *name,
+			 char *const *skip, char (*seen)[128], int *n, int cap)
+{
+	for (int i = 0; i < *n; i++)
+		if (!strcmp(seen[i], name))
+			return;
+	if (*n == cap)
+		return;
+	kb_strlcpy(seen[(*n)++], name, sizeof(seen[0]));
+	char *pd = kp_port_dir(c, name);
+	if (!pd)
+		return;
+	char (*dep)[128] = kb_calloc(KP_MAX_DEPS, sizeof(*dep));
+	int nd = kp_depends(pd, dep, KP_MAX_DEPS);
+	free(pd);
+	for (int i = 0; i < nd; i++)
+		if (!strv_has(skip, dep[i]) || bh_runtime_edge(ix, name, dep[i]))
+			runtime_walk(c, ix, dep[i], skip, seen, n, cap);
+	free(dep);
+}
+
+/*
+ * A PREBUILT INSTALL TAKES WHAT THE PORT RUNS WITH, NOT WHAT IT WAS BUILT
+ * WITH. `depends =` names both, and ports/buildonly (/ports/buildonly) lists
+ * the ports a build needs and a running system mostly does not, the list the
+ * image's own closure honours. The binhost index says per package which of
+ * them it does need (`N:`, from the run-time needs `kpkg needs` recorded
+ * where it was built: wesnoth loads boost, kcharselect loads no cmake), so
+ * an edge into a listed port is followed only when the package's stanza
+ * names it, and every package of `ord` reached only through edges not
+ * followed is dropped from the order. `name` itself stays. A package whose
+ * stanza carries no `N:` line was not measured and keeps every edge, and a
+ * tree without the list drops nothing.
+ */
+static void order_runtime(const KpConf *c, const BhIndex *ix, const char *name,
+			  KpOrder *ord)
+{
+	char **skip = buildonly_load(c);
+	if (!skip[0]) {
+		kb_strv_free(skip);
+		return;
+	}
+	char (*seen)[128] = kb_calloc(KP_MAX_ORDER, sizeof(*seen));
+	int ns = 0;
+	runtime_walk(c, ix, name, skip, seen, &ns, KP_MAX_ORDER);
+	int w = 0;
+	for (int i = 0; i < ord->n; i++) {
+		int keep = 0;
+		for (int k = 0; k < ns && !keep; k++)
+			keep = !strcmp(seen[k], ord->order[i]);
+		if (keep && w != i)
+			memcpy(ord->order[w], ord->order[i], sizeof(ord->order[0]));
+		w += keep;
+	}
+	ord->n = w;
+	free(seen);
+	kb_strv_free(skip);
+}
+
+/*
  * `kdos update install [--dry-run] [--prebuilt | --source]
  *  [--build-deps=prebuilt|source] <port>`: one port, and every package it
  * lacks, into the RUNNING root. Discover's ports helper runs it as root
  * through pkexec.
  *
- * THE ROUTE. --prebuilt takes the port and everything it lacks from the
- * release binhost `kdos update fetch` keeps in /var/lib/kdos/binhost, and a
- * package the signed index does not cover refuses the whole install: an
+ * THE ROUTE. --prebuilt takes the port and everything it lacks to run from
+ * the release binhost `kdos update fetch` keeps in /var/lib/kdos/binhost —
+ * not a build-only port the package was only built with (order_runtime) —
+ * and a package the signed index does not cover refuses the whole install: an
  * install button that starts an hours-long compile is not the button that
  * was pressed. --source builds the port here from its recipe, and each
  * package it lacks comes from the binhost (--build-deps=prebuilt, a package
@@ -5267,7 +5847,10 @@ static int conf_route(const char *key)
  * the newer one; the system update comes first. Every package file and every
  * source is fetched and checked before anything is installed, and a prebuilt
  * package goes in through `kpkg binhost` under KPKG_REQUIRE_SIG with the
- * keyring copied into the cache. Each package records its route in the origin
+ * keyring copied into the cache. The bytes to download are measured against
+ * the free space where the cache is before the first one, and an install
+ * they would not fit is refused, dry run included, naming both. Each package
+ * records its route in the origin
  * file as it is installed, so an install stopped half way keeps what
  * finished; the port joins the world set only after everything installed.
  *
@@ -5426,9 +6009,11 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			have_ix = bh_load(&ix, why, sizeof(why)) == 0;
 	}
 	if (!have_ix && deps == ROUTE_PREBUILT) {
-		fprintf(stderr, "kdos update: %s; `sudo kdos update fetch "
-				"--binhost-only` fetches the release's signed "
-				"index\n", why);
+		fprintf(stderr, "kdos update: %s\n", why);
+		if (!binhost_absent_hint(c))
+			fprintf(stderr, "kdos update: `sudo kdos update fetch "
+					"--binhost-only` fetches the release's "
+					"signed index\n");
 		if (lock >= 0)
 			close(lock);
 		return 1;
@@ -5458,6 +6043,8 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	ord = kb_calloc(1, sizeof(*ord));
 	char *one[1] = { (char *)name };
 	kp_resolve(c, one, 1, ord);
+	if (mode == ROUTE_PREBUILT && have_ix)
+		order_runtime(c, &ix, name, ord);
 	/* kp_resolve passes over a root that is installed and current; one
 	 * installed by the other route goes in again, alone. */
 	if (kp_installed(c, name) && origin_of(name) != mode &&
@@ -5548,6 +6135,8 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		}
 		need += dp.n;
 	}
+	char room[256] = "";
+	int roomy = cache_room(bytes + dp.bytes, room, sizeof(room)) == 0;
 	if (dry) {
 		dev_print(c, &ix, &dp);
 		npre += dp.npre;
@@ -5575,6 +6164,15 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		if (!need)
 			printf("%s is already installed\n", name);
 		rc = 0;
+		if (!roomy) {
+			fprintf(stderr, "kdos update: %s\n", room);
+			rc = 1;
+		}
+		goto out;
+	}
+	if (need && !roomy) {
+		fprintf(stderr, "kdos update: %s; nothing was downloaded\n",
+			room);
 		goto out;
 	}
 	if (!need) {
@@ -5630,6 +6228,11 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		fprintf(stderr, "kdos update: %s\n", why);
 		rc = 1;
 	}
+	/* THE LIVE MEDIUM KEEPS NO PACKAGE IT INSTALLED: its cache is in the
+	 * same RAM overlay as the root the package was unpacked into, so a
+	 * kept file holds that memory twice, and no later update on the
+	 * medium reads it as a delta's base. */
+	int drop = npre && !root && live_medium();
 	for (int i = 0; i < ord->n && rc == 0; i++) {
 		if (route[i] < 0)
 			continue;
@@ -5656,6 +6259,14 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			fprintf(stderr, "kdos update: %s is installed and its "
 					"route could not be recorded in %s\n",
 				ord->order[i], ORIGIN_FILE);
+		}
+		if (ir == 0 && drop && route[i] == ROUTE_PREBUILT) {
+			char pf[1024], ps[1100];
+			snprintf(pf, sizeof(pf), "%s/%s", cache_dir(),
+				 ix.st[st[i]].file);
+			snprintf(ps, sizeof(ps), "%s.sig", pf);
+			unlink(pf);
+			unlink(ps);
 		}
 	}
 	unsetenv("KPKG_REQUIRE_SIG");

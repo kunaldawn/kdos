@@ -49,7 +49,7 @@
 
     <!-- Where `kdos update` takes a newer tree from: "" for the KDOS
          releases, else the `tree =` value of /etc/kdos/update.conf, an
-         absolute directory (a medium, a share) or an http, https or file
+         absolute directory (a medium, a share) or an https or file
          URL. What arrives from any of them is verified against
          /etc/kdos/keys/tree, so the channel chooses a place, never a key. -->
     <property name="Channel" type="s" access="read"/>
@@ -106,10 +106,12 @@
            confirmed  b  it is ActiveSlot
            trial      b  it is TrySlot
            failed     b  its last trial was abandoned (State.rolledBack)
+           incomplete b  an update began writing the slot and did not
+                         finish (the boot state's unfilled)
            bootable   b  Try(id) would be accepted now
            reason     s  why it is not bootable, "" when it is
-           state      s  "trial", "failed", "confirmed", "installed" or
-                         "empty", first match in that order
+           state      s  "trial", "incomplete", "failed", "confirmed",
+                         "installed" or "empty", first match in that order
          A slot whose root cannot be read (not mounted, unreadable) is
          present with an empty version, never left out. -->
     <method name="ListSlots">
@@ -137,7 +139,8 @@
     <!-- Writes `tree = <channel>` into /etc/kdos/update.conf, or removes
          the line for "". polkit io.kdos.slots.channel, interactive.
          org.freedesktop.DBus.Error.InvalidArgs for anything but "", an
-         absolute path or an http, https or file URL. -->
+         absolute path or an https or file URL; http is refused, since
+         `kdos update` lets curl fetch only https and file URLs. -->
     <method name="SetChannel">
       <arg name="channel" type="s" direction="in"/>
     </method>

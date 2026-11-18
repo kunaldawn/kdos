@@ -48,6 +48,9 @@
  * to its end. Non-NULL is "an update is running". */
 static Child *job_child;
 
+/* What bus_refresh runs; main.c's start-up check is CHECK_LOCAL, 0. */
+enum { CHECK_LOCAL, CHECK_FETCH, CHECK_BINHOST };
+
 /* ── helpers ───────────────────────────────────────────────────────────── */
 
 static int reply_error(sd_bus_message *m, const char *name, const char *fmt,
@@ -270,21 +273,31 @@ static void reply_waiters(void)
 }
 
 /*
- * `kdos update check --out`, rewriting the update document; with `fetch`,
- * `--fetch` first, which downloads the signed tree and the release's signed
- * index, and through that index alone the binhost index and the slot image
- * manifest, and nothing else; a file the index does not name, or names with
- * another hash, is refused there and offers nothing. One check at a time: a
- * fetch asked for while a local check runs follows it, so the CheckNew that
- * asked is answered from the network as it asked. 0 when a check is running, -1 when none could be started.
+ * The update check, one at a time; `how` is one of:
+ *
+ *   CHECK_LOCAL    `kdos update check --out`, rewriting the update document
+ *                  from what is on this machine
+ *   CHECK_FETCH    the same with `--fetch` first, which downloads the signed
+ *                  tree and the release's signed index, and through that
+ *                  index alone the binhost index and the slot image
+ *                  manifest, and nothing else; a file the index does not
+ *                  name, or names with another hash, is refused there and
+ *                  offers nothing
+ *   CHECK_BINHOST  `kdos update fetch --binhost-only`: the signed binhost
+ *                  index of the release this tree is, which is what a
+ *                  machine with no second slot installs programs from
+ *
+ * A fetch asked for while a local check runs follows it, so the CheckNew
+ * that asked is answered from the network as it asked. 0 when a check is
+ * running, -1 when none could be started.
  */
-int bus_refresh(int fetch)
+int bus_refresh(int how)
 {
 	char doc[1024];
 
 	if (su.refresh) {
-		if (fetch && !su.refresh_fetch)
-			su.refetch = 1;
+		if (how != CHECK_LOCAL && !su.refresh_fetch)
+			su.refetch = how;
 		return 0;
 	}
 	su_path("/var/lib/kdos/update.json", doc, sizeof(doc));
@@ -292,8 +305,12 @@ int bus_refresh(int fetch)
 				     NULL };
 	const char *argv_fetch[] = { "kdos", "update", "check", "--fetch",
 				     "--out", doc, NULL };
-	su.refresh = child_spawn(fetch ? argv_fetch : argv_local, 0, CH_CHECK);
-	su.refresh_fetch = fetch && su.refresh;
+	const char *argv_binhost[] = { "kdos", "update", "fetch",
+				       "--binhost-only", NULL };
+	su.refresh = child_spawn(how == CHECK_BINHOST ? argv_binhost
+				 : how == CHECK_FETCH ? argv_fetch : argv_local,
+				 0, CH_CHECK);
+	su.refresh_fetch = su.refresh ? how : CHECK_LOCAL;
 	return su.refresh ? 0 : -1;
 }
 
@@ -306,8 +323,9 @@ void bus_child_done(Child *c)
 			       c->status);
 		state_reload_doc();
 		if (su.refetch) {
+			int how = su.refetch;
 			su.refetch = 0;
-			if (!job_child && bus_refresh(1) == 0)
+			if (!job_child && bus_refresh(how) == 0)
 				return;
 		}
 		reply_waiters();
@@ -427,32 +445,54 @@ static void cont_checknew(sd_bus_message *m, void *ud, int allowed,
 			  const char *en, const char *em)
 {
 	(void)ud;
-	if (!allowed) {
-		auth_denied(m, en, em);
-		return;
-	}
+	(void)en;
 	state_reload_boot();
-	/* No second slot, the live medium among them: nothing is fetched and
-	 * nothing offered, since Acquire would refuse whatever was. */
-	if (!state_slots_ok()) {
-		sd_bus_reply_method_return(m, "s", "");
+	/*
+	 * A CALLER POLKIT DOES NOT ALLOW TO CHECK IS ANSWERED FROM THE DOCUMENT,
+	 * with no fetch. The offer is the update document's, which every
+	 * account reads, so the check guards only the network fetch below; an
+	 * error here would be a sheet Discover raises on every start for a
+	 * check that lost nothing, as one started outside the active session
+	 * (a challenge with nobody to answer it) would see. A check already
+	 * running is waited for, as below, so this answer is never the
+	 * document that check is replacing either.
+	 */
+	if (!allowed) {
+		su_log("CheckNew answered from the update document: %s",
+		       em ? em : "not authorized");
+		if (su.refresh) {
+			su.waiters = kb_realloc(su.waiters,
+						(size_t)(su.nwaiters + 1) *
+						sizeof(*su.waiters));
+			su.waiters[su.nwaiters++] = sd_bus_message_ref(m);
+			return;
+		}
+		sd_bus_reply_method_return(m, "s", state_current_offer());
 		return;
 	}
 	/*
 	 * A FETCH AT MOST EVERY --refresh-after SECONDS (0: never), and only of
-	 * the signed tree and the indexes: `kdos update check --fetch` downloads
-	 * no package and no source, and what CheckNew then offers is what the
-	 * release index named and the host keyring verified. Discover asks on every start and on every
-	 * "Check for updates"; the first after an hour asks the network, and
-	 * the others are answered from the document. Never while an update is
-	 * running, which holds the lock the fetch would take. A check already
-	 * running — the one that makes the document this root's — is waited
-	 * for, so the answer is never the document it is replacing.
+	 * signed indexes: `kdos update check --fetch` downloads no package and
+	 * no source, and what CheckNew then offers is what the release index
+	 * named and the host keyring verified. Discover asks on every start
+	 * and on every "Check for updates"; the first after an hour asks the
+	 * network, and the others are answered from the document. Never while
+	 * an update is running, which holds the lock the fetch would take. A
+	 * check already running — the one that makes the document this root's
+	 * — is waited for, so the answer is never the document it is
+	 * replacing.
+	 *
+	 * NO SECOND SLOT, THE LIVE MEDIUM AMONG THEM: the fetch is the binhost
+	 * index alone, which is how a session with no terminal gets programs
+	 * to install and the sizes Make It Yours shows, and the answer is ""
+	 * once it ends, since Acquire would refuse whatever was offered.
 	 */
+	int slots = state_slots_ok();
 	long long last = state_fetch_time();
 	int fetch = su.refresh_after > 0 && !job_child &&
 		    (long long)time(NULL) - last >= su.refresh_after;
-	if ((fetch || su.refresh) && bus_refresh(fetch) == 0) {
+	int how = !fetch ? CHECK_LOCAL : slots ? CHECK_FETCH : CHECK_BINHOST;
+	if ((fetch || su.refresh) && bus_refresh(how) == 0) {
 		su.waiters = kb_realloc(su.waiters, (size_t)(su.nwaiters + 1) *
 						    sizeof(*su.waiters));
 		su.waiters[su.nwaiters++] = sd_bus_message_ref(m);
@@ -608,10 +648,9 @@ static int t_start(sd_bus_message *m, int kind)
 		return reply_error(m, SD_BUS_ERROR_INVALID_ARGS, "expected st");
 	if (job_child)
 		return reply_error(m, ERR_BUSY, "an update is already running");
-	/* A fetch holds the update lock the apply would take. */
-	if (su.refresh && su.refresh_fetch)
-		return reply_error(m, ERR_BUSY, "the update check is still "
-				   "running; try again when it has finished");
+	/* A machine with no slot is refused before the busy check: its
+	 * binhost fetch would otherwise answer "try again" to a request no
+	 * retry can satisfy. */
 	state_reload_boot();
 	if (!state_slots_ok() && state_live())
 		return reply_error(m, ERR_NO_SLOTS, "this is the live medium: "
@@ -621,6 +660,10 @@ static int t_start(sd_bus_message *m, int kind)
 		return reply_error(m, ERR_NO_SLOTS, "this machine has no second "
 				   "root slot to install an update into; "
 				   "`kdos update apply` updates it in place");
+	/* A fetch holds the update lock the apply would take. */
+	if (su.refresh && su.refresh_fetch)
+		return reply_error(m, ERR_BUSY, "the update check is still "
+				   "running; try again when it has finished");
 	if (state_on_trial())
 		return reply_error(m, ERR_REFUSED, "this boot is the trial of "
 				   "slot %c; an update is installed once it is "
@@ -734,8 +777,9 @@ static int sl_get(sd_bus *bus, const char *path, const char *iface,
 }
 
 /*
- * One slot, in the contract's keys. What it holds comes from `kdos-bootctl
- * status --json`'s `slots`; whether it may be tried is decided here by the
+ * One slot, in the contract's keys. What it holds, and whether an update
+ * stopped while writing it (the slot's `state` "incomplete"), comes from
+ * `kdos-bootctl status --json`'s `slots`; whether it may be tried is decided here by the
  * rule kdos-bootctl's `try` applies, so the page greys out exactly what the
  * call would refuse.
  */
@@ -744,6 +788,7 @@ static int append_slot(sd_bus_message *r, int i)
 	const char *id = i ? "b" : "a";
 	const char *o = su.slots_json ? json_get(su.slots_json, id) : NULL;
 	char title[200] = "", version[64] = "", tree[64] = "", kernel[128] = "";
+	char bstate[16] = "";
 	const char *v;
 	long long when = 0;
 
@@ -757,18 +802,25 @@ static int append_slot(sd_bus_message *r, int i)
 		json_string(v, kernel, sizeof(kernel));
 	if (o && (v = json_get(o, "tree_time")))
 		when = json_number(v);
+	if (o && (v = json_get(o, "state")))
+		json_string(v, bstate, sizeof(bstate));
 
 	int present = su.uuid[i][0] != 0;
 	int confirmed = su.active[0] == id[0];
 	int trial = su.trying[0] == id[0];
 	int failed = su.failed[0] == id[0];
+	int incomplete = present && !strcmp(bstate, "incomplete");
 	const char *reason = !present ? "This slot has no system in it."
+			   : incomplete ? "An update stopped while writing "
+					  "this slot. The next update writes "
+					  "it again."
 			   : confirmed ? "This is already the version the "
 					 "computer starts."
 			   : !kernel[0] ? "Its kernel is not on the boot "
 					  "partition."
 			   : "";
-	const char *state = trial ? "trial" : failed ? "failed"
+	const char *state = trial ? "trial" : incomplete ? "incomplete"
+			  : failed ? "failed"
 			  : confirmed ? "confirmed" : present ? "installed"
 			  : "empty";
 	if (!present) {
@@ -795,6 +847,7 @@ static int append_slot(sd_bus_message *r, int i)
 	KV("confirmed", "b", confirmed);
 	KV("trial", "b", trial);
 	KV("failed", "b", failed);
+	KV("incomplete", "b", incomplete);
 	KV("bootable", "b", !reason[0] && !trial);
 	KV("reason", "s", reason);
 	KV("state", "s", state);

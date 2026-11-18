@@ -9,6 +9,8 @@
  * ---------------------------------
  */
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -406,6 +408,9 @@ static void usage(void)
 	       "  --dump apps       the application groups, ticked as answered\n"
 	       "  --dump look       the accents and desks the answers may name\n"
 	       "  --json            render --dump as JSON instead of text\n"
+	       "  --payload-kb N    with --dump: take N KiB as the size of the\n"
+	       "                    tree an install copies, instead of measuring\n"
+	       "  --appbox-kb N     with --payload-kb: of which the box store\n"
 	       "  --theme NAME      phosphor | amber | ice | bone | norton | borland |\n"
 	       "                    perfect | paper\n"
 	       "  --no-mouse        keyboard only\n"
@@ -416,15 +421,37 @@ static void usage(void)
 	       KI_VERSION);
 }
 
+/* A whole number of KiB, digits only: strtoull alone takes a sign and
+ * leading space, and wraps a negative number to a huge one. */
+static int parse_kib(const char *s, unsigned long long *out)
+{
+	char *end;
+
+	if (!isdigit((unsigned char)s[0]))
+		return -1;
+	errno = 0;
+	*out = strtoull(s, &end, 10);
+	return errno || *end ? -1 : 0;
+}
+
 int main(int argc, char **argv)
 {
 	int want_mouse = 1, unattended = 0, json = 0, events = 0;
 	const char *save_to = NULL, *dump = NULL;
+	const char *payload_kb = NULL, *appbox_kb = NULL;
 
 	/* An allocation failure has to drop the terminal before it prints, or
 	 * the message lands in the alternate screen and dies with it. */
 	kb_set_progname("kinstall");
 	kb_set_oom_handler(ktui_term_shutdown);
+
+	/* ONE PATH, WHOEVER STARTED IT. pkexec hands the graphical installer a
+	 * PATH without /usr/local, where `kdos` lives, and sudo's secure_path
+	 * one with it. Every program the install runs is looked up by name, so
+	 * without this the groups and the firmware steps find no `kdos` under
+	 * pkexec and are recorded for later. */
+	setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+		       "/sbin:/bin", 1);
 
 	conf_defaults();
 
@@ -448,6 +475,10 @@ int main(int argc, char **argv)
 			dump = argv[++i];
 		} else if (!strcmp(a, "--json")) {
 			json = 1;
+		} else if (!strcmp(a, "--payload-kb") && i + 1 < argc) {
+			payload_kb = argv[++i];
+		} else if (!strcmp(a, "--appbox-kb") && i + 1 < argc) {
+			appbox_kb = argv[++i];
 		} else if (!strcmp(a, "--unattended")) {
 			unattended = 1;
 		} else if (!strcmp(a, "--events") && i + 1 < argc) {
@@ -474,6 +505,27 @@ int main(int argc, char **argv)
 
 	if (save_to)
 		return conf_save(save_to) == 0 ? 0 : 1;
+
+	/* A front end's own measurement, for a dump alone: an install that took
+	 * a size it did not measure would check the disk against a number
+	 * nobody vouches for. */
+	if (payload_kb || appbox_kb) {
+		unsigned long long pk, ak = 0;
+
+		if (!dump || !payload_kb) {
+			fprintf(stderr, "kinstall: --payload-kb and --appbox-kb "
+					"are for --dump, and --appbox-kb needs "
+					"--payload-kb\n");
+			return 1;
+		}
+		if (parse_kib(payload_kb, &pk) ||
+		    (appbox_kb && parse_kib(appbox_kb, &ak))) {
+			fprintf(stderr, "kinstall: --payload-kb and --appbox-kb "
+					"take a whole number of KiB\n");
+			return 1;
+		}
+		ki_dump_payload_set(pk, ak);
+	}
 
 	/* Before the terminal, before the probe's own progress line: a dump is
 	 * stdout and only stdout. */

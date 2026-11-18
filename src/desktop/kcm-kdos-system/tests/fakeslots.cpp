@@ -316,10 +316,16 @@ QVariantMap FakeSlots::slotMap(const Boot &b, int i) const
     const bool confirmed = b.active == i;
     const bool trial = b.trying == i;
     const bool failed = readFile(u"rolledback"_s).trimmed() == id;
+    /* The boot state's `unfilled`: an update began writing this slot and
+     * did not finish. The fixture keeps it in a file of its own, so a
+     * rewritten boot state cannot drop it. */
+    const bool incomplete = present && readFile(u"unfilled"_s).trimmed() == id;
 
     QString reason;
     if (!present) {
         reason = u"This slot has no system in it."_s;
+    } else if (incomplete) {
+        reason = u"An update stopped while writing this slot. The next update writes it again."_s;
     } else if (confirmed) {
         reason = u"This is already the version the computer starts."_s;
     } else if (kernel.isEmpty()) {
@@ -329,6 +335,8 @@ QVariantMap FakeSlots::slotMap(const Boot &b, int i) const
     QString state = u"empty"_s;
     if (trial) {
         state = u"trial"_s;
+    } else if (incomplete) {
+        state = u"incomplete"_s;
     } else if (failed) {
         state = u"failed"_s;
     } else if (confirmed) {
@@ -351,6 +359,7 @@ QVariantMap FakeSlots::slotMap(const Boot &b, int i) const
     m.insert(u"confirmed"_s, confirmed);
     m.insert(u"trial"_s, trial);
     m.insert(u"failed"_s, failed);
+    m.insert(u"incomplete"_s, incomplete);
     m.insert(u"bootable"_s, reason.isEmpty() && !trial);
     m.insert(u"reason"_s, reason);
     m.insert(u"state"_s, state);
@@ -387,6 +396,10 @@ void FakeSlots::Try(const QString &slot)
     }
     if (i == b.active) {
         sendErrorReply(Refused, u"bootctl: slot %1 is already active"_s.arg(letter(i)));
+        return;
+    }
+    if (readFile(u"unfilled"_s).trimmed() == letter(i)) {
+        sendErrorReply(Refused, u"bootctl: slot %1 is incomplete: an update stopped while writing it"_s.arg(letter(i)));
         return;
     }
     if (readFile(u"kernel-"_s + letter(i)).trimmed().isEmpty()) {
@@ -437,7 +450,7 @@ void FakeSlots::SetChannel(const QString &channel)
         const QUrl url(channel, QUrl::StrictMode);
         const QString scheme = url.scheme();
         const bool path = channel.startsWith(u'/');
-        const bool web = url.isValid() && (scheme == "https"_L1 || scheme == "http"_L1 || scheme == "file"_L1);
+        const bool web = url.isValid() && (scheme == "https"_L1 || scheme == "file"_L1);
         static const QRegularExpression space(u"\\s"_s);
         if ((!path && !web) || channel.contains(space)) {
             sendErrorReply(u"org.freedesktop.DBus.Error.InvalidArgs"_s, u"not an update channel: %1"_s.arg(channel));

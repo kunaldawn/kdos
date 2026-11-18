@@ -147,6 +147,7 @@ FT=$(idof "Fail theme"); [ -n "$FT" ] || fail "no fail.theme row"
 call /runner Run string:"$FT" string:
 i=0; while ! grep -q 'kdos theme: broken is not an accent' "$D/monitor" && [ $i -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
 grep -q 'string "kdos theme: broken is not an accent"' "$D/monitor" || { OUTF=$D/monitor; fail "a failing verb's error was not posted"; }
+grep -q 'string "KDOS Tools"' "$D/monitor" || { OUTF=$D/monitor; fail "a failing verb's notification is not sent as KDOS Tools"; }
 ok "a failing kdos verb posts its error as a notification"
 
 ( dbus-send --session --print-reply --reply-timeout=5000 --dest=io.kdos.Runner /library \

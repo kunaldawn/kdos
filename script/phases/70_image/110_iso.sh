@@ -331,6 +331,10 @@ fi
 # kdos-splash draws nothing on a command line without it — a splash there
 # would cover the text this entry exists to show. `loglevel=7` holds for the
 # whole boot: 20_dmesg.sh leaves a level the command line set alone.
+#
+# Every entry names the serial console's speed: a bare `console=ttyS0` runs it
+# at 9600 baud, and the kernel writes each message to the UART at that rate,
+# which holds the verbose boot's screen black for half a minute.
 BOOT_THEME=$(kdos-bootctl theme --print "$KDOS_ACCENT")
 
 cat > $ISO_ROOT/boot/limine/limine.conf <<EOF
@@ -346,21 +350,21 @@ $FONT_LINES
     protocol: linux
     path: boot():/boot/vmlinuz
     module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3
+    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0,115200n8 quiet loglevel=3
 
 /KDOS Live (clean session)
     comment: Ignore the persistence store and start fresh
     protocol: linux
     path: boot():/boot/vmlinuz
     module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3 nopersist
+    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0,115200n8 quiet loglevel=3 nopersist
 
 /KDOS Live (verbose)
     comment: Every kernel and boot message on the screen, no splash
     protocol: linux
     path: boot():/boot/vmlinuz
     module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=ttyS0 console=tty0 loglevel=7
+    cmdline: root=/dev/ram0 rw console=ttyS0,115200n8 console=tty0 loglevel=7
 EOF
 
 # 3b. memtest86+, and it is a MENU ENTRY rather than a program because bad RAM

@@ -15,8 +15,10 @@
 #   $SU_FIX/version    the version the tree in place is
 #   $SU_FIX/acquire    ok (default), refuse, fail or slow
 #   $SU_FIX/next.json  the document a `check` writes
-#   $SU_FIX/checkdelay seconds a `check` takes
+#   $SU_FIX/checkdelay seconds a `check` or a `fetch` takes
 #   $SU_FIX/calls      every argument vector, one per line
+#
+# `update fetch --binhost-only` records a `binhost ok` line and nothing else.
 set -u
 printf '%s\n' "$*" >> "$SU_FIX/calls"
 now=$(date +%s)
@@ -42,6 +44,13 @@ check)
         cp "$SU_FIX/next.json" "$out.new" && mv "$out.new" "$out"
     fi
     exit 1
+    ;;
+fetch)
+    # Only --binhost-only is driven: the binhost line the real one writes.
+    [ "${3:-}" = --binhost-only ] || exit 2
+    [ -f "$SU_FIX/checkdelay" ] && sleep "$(cat "$SU_FIX/checkdelay")"
+    setline binhost ok "binhost index of the release"
+    exit 0
     ;;
 apply)
     mode=acquire

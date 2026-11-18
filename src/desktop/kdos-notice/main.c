@@ -143,7 +143,7 @@ static void post(const KnPost *p)
 	r = sd_bus_message_new_method_call(g_bus, &call, NOTIFY_DEST,
 					   NOTIFY_PATH, NOTIFY_DEST, "Notify");
 	if (r >= 0)
-		r = sd_bus_message_append(call, "susss", "KDOS",
+		r = sd_bus_message_append(call, "susss", "KDOS Tools",
 					  (uint32_t)g_state.id[p->kind],
 					  p->icon ? p->icon : "", p->summary,
 					  p->body);
@@ -164,6 +164,14 @@ static void post(const KnPost *p)
 	if (r >= 0)
 		r = sd_bus_message_append(call, "{sv}", "x-kdos-notice", "s",
 					  kn_kind_name(p->kind));
+	/* kdos-tools' kdos.notifyrc: Plasma's KDOS mark and Configure button
+	 * on the notice, and a place in the history, which a notification
+	 * with no notifyrc and no shown application entry is kept out of.
+	 * The sender above is that notifyrc's Name: any other would head a
+	 * history group of its own beside the one every kdos command fills. */
+	if (r >= 0)
+		r = sd_bus_message_append(call, "{sv}", "x-kde-appname", "s",
+					  "kdos");
 	if (r >= 0)
 		r = sd_bus_message_close_container(call);
 	if (r >= 0)

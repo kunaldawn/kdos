@@ -45,6 +45,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,10 +60,13 @@ static void usage(void)
 {
 	printf("kpkg version %s - Minimal package manager for KDOS\n"
 	       "\n"
-	       "Usage: kpkg <command> [options]\n"
+	       "Usage: kpkg [--root <path>] <command> [options]\n"
 	       "\n"
 	       "Options:\n"
-	       "  --root <path>      Operate on a different root directory\n"
+	       "  --root <path>      Operate on a different root directory,\n"
+	       "                     before the command or among its options;\n"
+	       "                     for install, remove, list, info, check,\n"
+	       "                     facets, needs and binhost\n"
 	       "  --keep-cache       Keep cached packages after installation\n"
 	       "  -f, --force        Rebuild the named packages\n"
 	       "  --build-only       (install) Build exactly the named ports into\n"
@@ -1064,6 +1068,26 @@ static int cmd_verify(const KpConf *c, const char *name, int repro)
  */
 static int cmd_list(const KpConf *c, int json)
 {
+	/* A root with no database is a fresh sysroot and lists nothing; a root
+	 * that is not a directory at all is a mistyped path, and listing it as
+	 * empty would pass the typo off as an empty system. A root that cannot
+	 * be reached for another reason (a component the caller cannot search)
+	 * may exist, so it is reported with its errno, not as missing. */
+	struct stat rst;
+	if (c->root[0]) {
+		if (stat(c->root, &rst) != 0) {
+			int e = errno;
+			if (e == ENOENT || e == ENOTDIR)
+				kp_err("no such directory: %s", c->root);
+			else
+				kp_err("cannot read %s: %s", c->root, strerror(e));
+			return 1;
+		}
+		if (!S_ISDIR(rst.st_mode)) {
+			kp_err("no such directory: %s", c->root);
+			return 1;
+		}
+	}
 	char *db = kp_db_dir(c);
 	char **v = kb_listdir(db, NULL);
 	/* A dot-name is not a package: `.recipe/` holds sidecars and `.lock` is
@@ -1241,17 +1265,110 @@ int front_main(int argc, char **argv)
 		return 1;
 	}
 
-	const char *cmd = argv[1];
-	int rest = argc - 2;
-	char **restv = argv + 2;
+	/* The options before the command word are the ones the usage lists
+	 * under Options. --root is applied to the configuration every command
+	 * reads, and the install-only ones are handed to install's parser
+	 * ahead of its own words; a command's own --root still wins, being
+	 * parsed after. Any other leading '-' word is an unknown option, not
+	 * an unknown command. gopt holds every leading word, so none of them
+	 * is dropped however many are given. */
+	int at = 1;
+	const char *groot = NULL;
+	char **gopt = calloc((size_t)argc, sizeof(*gopt));
+	int ngopt = 0;
+	if (!gopt) {
+		kp_err("out of memory");
+		return 1;
+	}
+	while (at < argc && argv[at][0] == '-' && argv[at][1]) {
+		const char *o = argv[at];
+		if (!strcmp(o, "--help") || !strcmp(o, "-h"))
+			break;
+		if (!strcmp(o, "--root")) {
+			if (at + 1 >= argc) {
+				fprintf(stderr, "kpkg: option '--root' needs a "
+						"path — try: kpkg help\n");
+				free(gopt);
+				return 1;
+			}
+			groot = argv[at + 1];
+			kb_strlcpy(c.root, groot, sizeof(c.root));
+			at += 2;
+			continue;
+		}
+		if (!strcmp(o, "-f") || !strcmp(o, "--force") ||
+		    !strcmp(o, "--keep-cache") || !strcmp(o, "--build-only") ||
+		    !strcmp(o, "--commit")) {
+			gopt[ngopt++] = argv[at];
+			at++;
+			continue;
+		}
+		fprintf(stderr, "kpkg: unknown option '%s' — try: kpkg help\n", o);
+		free(gopt);
+		return 1;
+	}
+	if (at >= argc) {
+		free(gopt);
+		usage();
+		return 1;
+	}
 
-	if (!strcmp(cmd, "install") || !strcmp(cmd, "i"))
-		return cmd_install(&c, rest, restv);
+	const char *cmd = argv[at];
+	int rest = argc - at - 1;
+	char **restv = argv + at + 1;
+
+	if (!strcmp(cmd, "install") || !strcmp(cmd, "i")) {
+		if (!ngopt) {
+			free(gopt);
+			return cmd_install(&c, rest, restv);
+		}
+		char **iv = calloc((size_t)(ngopt + rest + 1), sizeof(*iv));
+		if (!iv) {
+			kp_err("out of memory");
+			free(gopt);
+			return 1;
+		}
+		for (int i = 0; i < ngopt; i++)
+			iv[i] = gopt[i];
+		for (int i = 0; i < rest; i++)
+			iv[ngopt + i] = restv[i];
+		int r = cmd_install(&c, ngopt + rest, iv);
+		free(iv);
+		free(gopt);
+		return r;
+	}
+	if (ngopt) {
+		fprintf(stderr, "kpkg: option '%s' is for install only — try: "
+				"kpkg help\n", gopt[0]);
+		free(gopt);
+		return 1;
+	}
+	free(gopt);
+
+	/* A leading --root before a command that reads no root is refused:
+	 * that command would run against the host and say nothing of it. */
+	static const char *const rootless[] = {
+		"meta", "fetch", "keygen", "sign", "index", "delta",
+		"apply-delta", "verify-pkg", "verify-index", "store", "verify",
+	};
+	if (groot) {
+		for (size_t i = 0; i < sizeof(rootless) / sizeof(*rootless); i++) {
+			if (!strcmp(cmd, rootless[i])) {
+				fprintf(stderr, "kpkg: option '--root' is not for "
+						"'%s' — try: kpkg help\n", cmd);
+				return 1;
+			}
+		}
+	}
 
 	if (!strcmp(cmd, "remove") || !strcmp(cmd, "r")) {
 		char *args[KP_MAX_ORDER + 4];
 		int n = 0;
 		args[n++] = (char *)"kpkgdel";
+		if (groot) {
+			args[n++] = (char *)"--root";
+			args[n++] = (char *)groot;
+		}
 		for (int i = 0; i < rest && n < KP_MAX_ORDER; i++)
 			args[n++] = restv[i];
 		args[n] = NULL;
@@ -1345,6 +1462,8 @@ int front_main(int argc, char **argv)
 		return 0;
 	}
 
-	usage();
+	/* One line on stderr, not the usage: sixty lines of it bury the one
+	 * that says the word was not a command. */
+	fprintf(stderr, "kpkg: unknown command '%s' — try: kpkg help\n", cmd);
 	return 1;
 }

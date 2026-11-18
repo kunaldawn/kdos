@@ -21,8 +21,8 @@
  *   trial      "Running KDOS 0.2.14 on trial"         timed, once per boot
  *   rollback   "Your last update didn't start"        timed, once per slot
  *   oom        "Firefox was closed to free memory"    timed, per kill
- *   pending    "3 applications chosen during install  persistent: install
- *              are not installed yet"
+ *   pending    "Software chosen during install is     persistent: install
+ *              not installed yet"
  *   firmware   "This computer's hardware needs        persistent: install
  *              firmware-nvidia"
  *
@@ -440,11 +440,12 @@ int kn_decide_oom(const KnOom *o, int prev, KnPost *out)
 
 /*
  * THE INSTALLER'S CHOICES THAT ARE STILL WAITING. When kinstall can neither
- * import nor build an application it was asked for, it records the id in
+ * import nor build a selection it was asked for, it records the id in
  * /var/lib/kdos/apps-pending, and Discover's KDOS backend shows those under
  * "Selected during install". The notice says so once per content of the
  * file and is withdrawn when the file names nothing, which is when Discover
- * has installed them all.
+ * has installed them all. A line is a selection, an application or a group
+ * of ports, so the summary names neither and the body counts selections.
  */
 void kn_parse_pending(const char *text, KnPending *out)
 {
@@ -487,16 +488,17 @@ int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 	out->icon = "plasmadiscover";
 	out->urgency = 1;
 	out->persistent = 1;
+	kb_strlcpy(out->summary, "Software chosen during install is not "
+		   "installed yet", sizeof(out->summary));
 	if (pd->n == 1)
-		kb_strlcpy(out->summary, "An application chosen during install "
-			   "is not installed yet", sizeof(out->summary));
+		kb_strlcpy(out->body, "1 selection is waiting: Discover lists "
+			   "it under Selected during install, and installs it "
+			   "from there.", sizeof(out->body));
 	else
-		snprintf(out->summary, sizeof(out->summary),
-			 "%d applications chosen during install are not "
-			 "installed yet", pd->n);
-	kb_strlcpy(out->body, "Discover lists them under Selected during "
-		   "install, and installs them from there.",
-		   sizeof(out->body));
+		snprintf(out->body, sizeof(out->body),
+			 "%d selections are waiting: Discover lists them under "
+			 "Selected during install, and installs them from "
+			 "there.", pd->n);
 	out->actions[0] = KN_ACT_DETAILS;
 	out->actions[1] = "Open Discover";
 	return 1;

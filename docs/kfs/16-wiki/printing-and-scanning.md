@@ -34,7 +34,7 @@ The live medium starts all three. The installer turns CUPS off on an installed s
 turn it on: in its list of service choices, the last field of each entry is whether it starts
 ticked:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=9a2600b3e3b2 -->
 
 The installer's choice writes [`/etc/service.disabled/cups`]{.idx} and nothing else, so `81_cups-browsed`
 and `82_ipp-usb` still start at boot.

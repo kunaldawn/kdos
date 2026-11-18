@@ -69,6 +69,32 @@ Kirigami.ApplicationWindow {
             go(current + 1);
         }
     }
+    /* A disk as the Disk page lists it: model, size and node, so the
+     * dialog names the one disk among others of its size. */
+    function diskName(path) {
+        const ds = Backend.probe.disks || [];
+        for (let i = 0; i < ds.length; i++) {
+            if (ds[i].path === path) {
+                return i18nc("@info %1 model %2 size %3 device", "%1, %2 (%3)",
+                             ds[i].model || i18nc("@item a disk with no model name", "Disk"),
+                             Backend.formatSize(ds[i].bytes !== undefined ? ds[i].bytes : ds[i].sectors * 512), path);
+            }
+        }
+        return path;
+    }
+    /* What the erase also destroys when the disk is an LVM physical
+     * volume with no partition table: its group's volumes. */
+    function diskPv(path) {
+        const ds = Backend.probe.disks || [];
+        for (let i = 0; i < ds.length; i++) {
+            if (ds[i].path !== path || ds[i].fstype !== "LVM2_member")
+                continue;
+            return ds[i].vg
+                ? i18n(" It is an LVM physical volume of the volume group %1, whose volumes are destroyed.", ds[i].vg)
+                : i18n(" It is an LVM physical volume, whose volumes are destroyed.");
+        }
+        return "";
+    }
     function indexOf(id) {
         for (let i = 0; i < steps.length; i++) {
             if (steps[i].id === id) {
@@ -105,8 +131,21 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    /* Both prompts dim the page under them, in the window's own background
+     * colour, so the page's text does not read through at the sheet's edges. */
     Kirigami.PromptDialog {
         id: quitDialog
+        QQC2.Overlay.modal: Rectangle {
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+
+            /* The popup sets the dim's opacity as it opens and closes. */
+            Behavior on opacity {
+                OpacityAnimator {
+                    duration: Kirigami.Units.longDuration
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
         readonly property bool started: Backend.events.started
         title: started ? i18nc("@title:dialog", "The install is still running")
                        : i18nc("@title:dialog", "The install is waiting for permission")
@@ -136,9 +175,20 @@ Kirigami.ApplicationWindow {
 
     Kirigami.PromptDialog {
         id: eraseDialog
+        QQC2.Overlay.modal: Rectangle {
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+
+            /* The popup sets the dim's opacity as it opens and closes. */
+            Behavior on opacity {
+                OpacityAnimator {
+                    duration: Kirigami.Units.longDuration
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
         title: i18nc("@title:dialog", "Start the install?")
         subtitle: Backend.answers.plan === "wipe"
-            ? i18n("Everything on %1 will be erased. There is no undo after this.", Backend.answers.disk)
+            ? i18n("Everything on %1 will be erased.", root.diskName(Backend.answers.disk)) + root.diskPv(Backend.answers.disk) + i18n(" There is no undo after this.")
             : i18n("The root partition %1 will be formatted. Other partitions are kept.", Backend.answers.root)
         standardButtons: Kirigami.Dialog.Cancel
         customFooterActions: [

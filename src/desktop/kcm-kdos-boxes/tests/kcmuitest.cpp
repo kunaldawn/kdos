@@ -18,6 +18,8 @@
  * A control is anything a person can press, type into or choose from.
  */
 
+#include <KCModule>
+#include <KCModuleLoader>
 #include <KPluginMetaData>
 #include <KQuickConfigModule>
 #include <KQuickConfigModuleLoader>
@@ -169,6 +171,59 @@ private Q_SLOTS:
         put(r + u"/state/kcm_kdos_boxesstaterc"_s, u"[app.gimp]\nPendingKeys=network\nSince=1\n"_s);
     }
 
+    /* Opened without a box: the column beside the list has a title of its
+     * own, and Defaults is not offered, since there is nothing to reset. */
+    void opensWithNoBoxChosen()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        QVERIFY2(md.isValid(), KCM_PLUGIN_PATH);
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QTRY_COMPARE(kcm->depth(), 2);
+        QCOMPARE(kcm->property("currentBox").toString(), QString());
+        QVERIFY(kcm->representsDefaults());
+        QVERIFY(!kcm->needsSave());
+
+        QQuickItem *placeholder = kcm->subPage(0);
+        QVERIFY(placeholder);
+        QCOMPARE(placeholder->objectName(), u"boxPlaceholder"_s);
+        const QString mainTitle = ui->property("title").toString();
+        const QString sideTitle = placeholder->property("title").toString();
+        QCOMPARE(sideTitle, u"Box Settings"_s);
+        QVERIFY2(sideTitle != mainTitle, qPrintable(mainTitle));
+    }
+
+    /* The same, as System Settings opens it: KCModuleLoader wraps the page
+     * in a KCModuleQml, whose load() sets the wrapper's own
+     * representsDefaults to false before it loads the page, and copies the
+     * page's value only when the page reports a change. The wrapper's value
+     * is what enables the Defaults button. */
+    void wrapperOpensWithNoBoxChosen()
+    {
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        QVERIFY2(md.isValid(), KCM_PLUGIN_PATH);
+        auto engine = std::make_shared<QQmlEngine>();
+        std::unique_ptr<KCModule> module(KCModuleLoader::loadModule(md, nullptr, {}, engine));
+        QVERIFY(module);
+        QVERIFY2(module->inherits("KCModuleQml"), module->metaObject()->className());
+        module->load();
+        QVERIFY(module->representsDefaults());
+        QVERIFY(!module->needsSave());
+        QVERIFY(module->buttons() & KAbstractConfigModule::Default);
+
+        /* A second load, as Reset makes, leaves it disabled too. */
+        module->load();
+        QVERIFY(module->representsDefaults());
+    }
+
     void pagesLoadAndNameEveryControl()
     {
         /* A QML error at run time (a binding on an undefined property, a
@@ -218,9 +273,10 @@ private Q_SLOTS:
         QTRY_VERIFY(profile->property("notesLoaded").toBool());
         QTest::qWait(300);
 
-        /* The honest indicator: the verdict and the launch's own reason. */
+        /* The honest indicator: the verdict and the launch's own reason,
+         * set as a sentence of its own after the verdict's. */
         QVERIFY(shows(window.contentItem(), u"Tagged. KWin limits"_s));
-        QVERIFY(shows(window.contentItem(), u"its bus is not filtered"_s));
+        QVERIFY(shows(window.contentItem(), u"reach past that. Its bus is not filtered."_s));
 
         QStringList missing;
         int controls = 0;

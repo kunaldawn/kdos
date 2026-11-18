@@ -201,8 +201,8 @@ KCM.SimpleKCM {
             font: Kirigami.Theme.smallFont
             color: Kirigami.Theme.disabledTextColor
             text: root.controller.bootMenu
-                ? i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens, the splash and the boot menu at once. Each accent is also a Global Theme and a color scheme on their own pages.")
-                : i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens and the splash at once. Each accent is also a Global Theme and a color scheme on their own pages.")
+                ? i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals and the lock screen at once. The login screen and the text console change the next time they show, and the splash and the boot menu at the next boot. Each accent is also a Global Theme and a color scheme on their own pages.")
+                : i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals and the lock screen at once. The login screen and the text console change the next time they show, and the splash at the next boot. Each accent is also a Global Theme and a color scheme on their own pages.")
         }
 
         Kirigami.Separator {

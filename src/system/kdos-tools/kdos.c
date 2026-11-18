@@ -125,7 +125,7 @@ static void help_body(FILE *o)
 	 */
 	fprintf(o, "%sWHERE THINGS LIVE%s\n", C_A, C_0);
 	fprintf(o, "  %-24s %s\n", "the host",
-		"kpkg — compiled here from source, against musl");
+		"kdos update install — prebuilt, or built here");
 	fprintf(o, "  %-24s %s\n", "applications",
 		"kdos app — a box over a pack, or built here online");
 	fprintf(o, "  %-24s %s\n", "environments",
@@ -177,7 +177,7 @@ static void help_body(FILE *o)
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot (elogind)" },
 		{ "kdos-energy", "which app is spending the battery" },
-		{ "kdos-doc [page]", "the KDOS book, in the Help Center" },
+		{ "kdos-doc [page]", "the KDOS book, in the Help Center or the browser" },
 		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
@@ -1092,7 +1092,10 @@ static void check_packs(void)
 		      (unsigned)getuid());
 
 	/* An overlay upper cannot live on overlayfs, and a live session's
-	 * $HOME does. The fallback is tmpfs and it is not silent. */
+	 * $HOME does, so a box's upper falls back to tmpfs. That is the live
+	 * medium working as made, so it is a skip: a warning would put a red
+	 * row on the Health page that asks for a remedy nothing in the session
+	 * has. */
 	{
 		struct statfs st;
 		const char *home = kb_home_dir();
@@ -1101,10 +1104,9 @@ static void check_packs(void)
 			skip_("cannot stat %s to say where a box's writes would "
 			      "go", home);
 		else if ((unsigned long)st.f_type == 0x794c7630UL)
-			warn_("$HOME is on overlayfs (a live session), so a "
-			      "persistent box cannot exist — its upper falls "
-			      "back to tmpfs and its changes end with the "
-			      "session");
+			skip_("$HOME is on overlayfs (a live session): a "
+			      "box's writes end with the session, and an "
+			      "installed system keeps them");
 		else
 			ok("$HOME can hold an overlay upper — a persistent box "
 			   "keeps what you write");
@@ -2322,13 +2324,18 @@ static int notify_send(const char *summary, const char *body)
 	}
 	/* sound-name is the freedesktop sound theme's event: a raw Notify
 	 * names no notifyrc event, so without it Plasma plays nothing. Do Not
-	 * Disturb and the Notifications page's sound switch still apply. */
+	 * Disturb and the Notifications page's sound switch still apply.
+	 * x-kde-appname names kdos.notifyrc, which keeps it in the history
+	 * (kb_notify() in libkbase says why), and the sender is that
+	 * notifyrc's Name, "KDOS Tools", so the toast's header, the history
+	 * group and the Notifications page all read one name. */
 	rc = kdt_bus_call(b, "org.freedesktop.Notifications",
 			  "/org/freedesktop/Notifications",
 			  "org.freedesktop.Notifications", "Notify", &r, err,
-			  sizeof(err), "susssasa{sv}i", "kdos", 0u,
-			  "dialog-information", summary, body, 0, 1,
-			  "sound-name", "s", "message-new-instant", -1);
+			  sizeof(err), "susssasa{sv}i", "KDOS Tools", 0u,
+			  "dialog-information", summary, body, 0, 2,
+			  "sound-name", "s", "message-new-instant",
+			  "x-kde-appname", "s", "kdos", -1);
 	kdt_bus_free(b, r);
 	kdt_bus_close(b);
 	if (rc != 0) {
@@ -2429,11 +2436,87 @@ static int cmd_notify(int argc, char **argv)
 	return notify_send(argv[0], argc > 1 ? argv[1] : "");
 }
 
+/*
+ * `kdos <verb> -h` AND `kdos <verb> --help` ANSWER THE SAME WAY FOR EVERY
+ * VERB: its usage on stdout, and 0. Asking for help is not a usage error, and
+ * a script that tests `kdos x --help` for a verb's presence reads the status.
+ *
+ * Most verbs print a usage message of their own when the first argument is
+ * -h or --help, many on stderr and with 2, because it is the same message a
+ * wrong argument earns. Those are run as they are, with stderr on stdout,
+ * and answer 0 whatever they returned. The verbs below have no usage message that
+ * --help reaches — `why` would look up a port named --help, `toggle` a
+ * toggle, `settings` would open System Settings — and print their line from
+ * here instead, without being run at all. A verb added to kdos_main()
+ * belongs in this table unless its first-argument --help prints its usage
+ * and does nothing else; testing/selftest.sh asks every verb.
+ */
+static const struct {
+	const char *verb, *usage;
+} USAGE[] = {
+	{ "status", "usage: kdos status [--bar]\n" },
+	{ "toggle", "usage: kdos toggle [<name> [on|off]]\n"
+		    "       names: stay-awake, night-light, dnd, "
+		    "reduced-motion\n" },
+	{ "why", "usage: kdos why <path|port>\n" },
+	{ "explain", "usage: kdos explain [topic]\n" },
+	{ "oracle", "usage: kdos oracle [--plain]\n" },
+	{ "version", "usage: kdos version\n" },
+	{ "settings", "usage: kdos settings [page|kcm_id]\n" },
+};
+
+static int is_help_arg(const char *a)
+{
+	return !strcmp(a, "-h") || !strcmp(a, "--help");
+}
+
+/* kdos_dispatch()'s answer for a verb it does not have: above any exit
+ * status, so no verb's own can be taken for it. */
+#define KDOS_UNKNOWN_VERB 256
+
+static int kdos_dispatch(const char *cmd, int argc, char **argv);
+
 int kdos_main(int argc, char **argv)
 {
 	colours();
 
 	const char *cmd = argc > 1 ? argv[1] : "help";
+	int rc;
+
+	if (argc > 2 && is_help_arg(argv[2]) && strcmp(cmd, "help") &&
+	    !is_help_arg(cmd)) {
+		int saved;
+
+		for (size_t i = 0; i < sizeof(USAGE) / sizeof(USAGE[0]); i++)
+			if (!strcmp(cmd, USAGE[i].verb)) {
+				fputs(USAGE[i].usage, stdout);
+				return 0;
+			}
+		fflush(stdout);
+		fflush(stderr);
+		saved = dup(STDERR_FILENO);
+		dup2(STDOUT_FILENO, STDERR_FILENO);
+		rc = kdos_dispatch(cmd, argc, argv);
+		fflush(stdout);
+		fflush(stderr);
+		if (saved >= 0) {
+			dup2(saved, STDERR_FILENO);
+			close(saved);
+		}
+		if (rc != KDOS_UNKNOWN_VERB)
+			return 0;
+	} else {
+		rc = kdos_dispatch(cmd, argc, argv);
+		if (rc != KDOS_UNKNOWN_VERB)
+			return rc;
+	}
+	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
+		C_0, cmd);
+	return 1;
+}
+
+static int kdos_dispatch(const char *cmd, int argc, char **argv)
+{
 	int rest = argc - 2;
 	char **restv = argv + 2;
 
@@ -2528,8 +2611,5 @@ int kdos_main(int argc, char **argv)
 		return share_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "remind"))
 		return remind_main(argc - 1, argv + 1);
-
-	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
-		C_0, cmd);
-	return 1;
+	return KDOS_UNKNOWN_VERB;
 }

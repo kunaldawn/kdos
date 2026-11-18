@@ -53,7 +53,11 @@ service disable <name>        # do not start it at boot
 
 `service` is a link to `ksvc`, so `ksvc status sshd` and `service status sshd` do the same thing.
 `ksvc check <name>` asks the supervisor directly whether the process it started under that name is
-alive, which is how a single periodic job is checked (see [Periodic jobs](#periodic-jobs)).
+alive, which is how a single periodic job is checked (see [Periodic jobs](#periodic-jobs)). Any
+account can run `service list`, `service status` and `ksvc check`, and each reports whether a
+service is up or down exactly as it does for root. What a service's own script reports runs as the
+caller, so some of it needs `sudo` (see [Services with no daemon](#services-with-no-daemon));
+starting, stopping, enabling and disabling a system service needs `sudo` too.
 
 A supervised service is `[ OK ]` only while its daemon runs. A daemon that keeps exiting is not:
 the supervisor stays up and restarts it every five seconds, and `service status` reports
@@ -78,8 +82,11 @@ enables it. The installer writes markers for the services you turn off, and turn
 by default (see [Installation](installation.md)).
 
 **Your own services.** `service --user` manages the services turnstile starts for you at your first
-login and stops at your last: `dbus` (your session bus, which Plasma and every box use), `pipewire`,
-`wireplumber`, `pipewire-pulse`, `mpd`, `timers` (your periodic jobs) and `boxes`. They live in
+login and stops at your last: `dbus` (your session bus, which Plasma and every box use),
+`ssh-agent` (one agent for every login, at `$XDG_RUNTIME_DIR/ssh-agent.socket`, so `ssh-add` asks
+for a passphrase once), `pipewire`, `wireplumber`, `pipewire-pulse`, `timers` (your periodic jobs)
+and `boxes`. `mpd` is among them too, and starts nothing until the music daemon is installed
+(`sudo kdos update install mpd`) and a configuration file exists for it. They live in
 `/etc/kdos/user-services`, and their output is in `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log`.
 
 ```sh
@@ -95,7 +102,9 @@ console, so the first thing to read about a service that failed at boot is that 
 `/run`, a tmpfs, and is gone after the next reboot.
 
 The scripts that ship, in boot order. Scripts marked *(package)* come with the package named and
-are absent if that package is removed. The login screen is not among them: `/etc/inittab` starts it
+are absent if that package is removed. A few scripts ship with the base although the program they
+start does not: each says which port to install, and until it is installed the script prints
+`[SKIP] <name>: <program> not found` at boot and `service list` shows it enabled and down. The login screen is not among them: `/etc/inittab` starts it
 on `tty1` once `rcS` has run every script (see [The login screen](#the-login-screen)).
 
 | Script | What it starts |
@@ -125,7 +134,7 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `44_accounts` | AccountsService: the accounts as System Settings' Users page, the first-start wizard and the login screen see them, with each account's picture |
 | `44_switcheroo-control` *(switcheroo-control)* | `net.hadess.SwitcherooControl` on the system bus, which tells a launcher which GPU is discrete and what environment starts a program on it; KIO's "run on the discrete GPU" and `switcherooctl launch` read it. Skipped when the machine has fewer than two GPUs |
 | `45_avahi` | mDNS: finding printers and other machines on the local network by name |
-| `46_hostapd` | A wireless access point, only when `/etc/hostapd/hostapd.conf` exists — see [An access point with hostapd](#an-access-point-with-hostapd) |
+| `46_hostapd` | A wireless access point. `hostapd` comes with `sudo kdos update install hostapd`, and starts only when `/etc/hostapd/hostapd.conf` exists — see [An access point with hostapd](#an-access-point-with-hostapd) |
 | `46_sysupdated` | `kdos-sysupdated`: the system update Discover shows, the slots System Versions lists, and the confirmation of a booted update once a session has run; see [Keeping it current](#keeping-it-current) |
 | `47_pcscd` | Smart cards and security keys: the PC/SC daemon, with readers arriving through udev |
 | `48_iio-sensor-proxy` | The accelerometer and light sensor, for screen rotation and automatic brightness. Skipped on a machine with no sensor its rules recognise |
@@ -134,7 +143,7 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `51_lsmd` *(libstoragemgmt)* | The libstoragemgmt plugin daemon, which udisks2's LSM module and `lsmcli` reach over `/run/lsm/ipc`; plugins that do not need root run as the `libstoragemgmt` account |
 | `52_smartd` | Disk health: `smartd` polls every disk that answers SMART every half hour and logs a failing health check, bad sectors, drive errors and failed self-tests. Where no disk answers SMART — any virtual machine — it logs why and stops |
 | `53_xfs_healer` | One `xfs_healer` per XFS filesystem mounted at boot. It logs the metadata damage the kernel reports and, where the filesystem's `autofsck` property asks for it, has it repaired online. A filesystem is skipped when the kernel has no XFS health monitor or its `autofsck` property is `none`, and an XFS stick mounted after boot gets no healer |
-| `54_thermald` | Intel thermal management |
+| `54_thermald` | Intel thermal management. `thermald` comes with `sudo kdos update install thermald` |
 | `55_powerd` | `kdos-powerd`: the firewall's named services, and the accent of the boot menu, the splash, the consoles and the login screen, for the `kdos` command and System Settings |
 | `55_tlp` | Laptop power management: `tlp init start` at boot and `tlp init stop` at shutdown, which apply the startup and shutdown radio settings in `/etc/tlp.d`. elogind runs TLP's sleep hook around a suspend |
 | `56_energyd` | Per-application energy use |
@@ -169,9 +178,9 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `84_minidlna` *(minidlna)* | MiniDLNA, the media server for televisions and players on the LAN, skipped until a non-empty `/etc/minidlna.conf` exists; the template is in `/usr/share/doc/minidlna`. Open the `dlna` firewall name for other machines |
 | `85_crond` | cronie, for each user's own crontab (`crontab -e`, or System Settings' Task Scheduler). The jobs the system ships are not cron's; see [Periodic jobs](#periodic-jobs) |
 | `85_gnuhealth` *(gnuhealth)* | The GNU Health server (`trytond`), as the `gnuhealth` account, skipped until `/etc/gnuhealth/trytond.conf` names a database `uri`. Open the `tryton` firewall name for other machines |
-| `86_kiwix-serve` | The offline library on `127.0.0.1:8080`, skipped until `/var/lib/kiwix/library.xml` lists an archive — see [The local servers](../03-architecture/boot-and-init.md#the-local-servers) |
-| `87_kolibri` | Kolibri, the offline curriculum, on `127.0.0.1:8081`, skipped until a channel is installed |
-| `88_llama-server` | The local language-model server on `127.0.0.1:8082`, skipped until a `.gguf` model is under `/usr/share/llama.cpp/models` |
+| `86_kiwix-serve` | The offline library on `127.0.0.1:8080`. `kiwix-serve` comes with `sudo kdos update install kiwix-tools`; the script skips until it is installed and `/var/lib/kiwix/library.xml` lists an archive — see [The local servers](../03-architecture/boot-and-init.md#the-local-servers) |
+| `87_kolibri` | Kolibri, the offline curriculum, on `127.0.0.1:8081`. It comes with `sudo kdos update install kolibri`; the script skips until it is installed and a channel is in it |
+| `88_llama-server` | The local language-model server on `127.0.0.1:8082`. `llama-server` comes with `sudo kdos update install llama.cpp`; the script skips until it is installed and a `.gguf` model is under `/usr/share/llama.cpp/models` |
 | `89_step-ca` *(step-ca)* | The step-ca certificate authority, as root, from `/etc/step-ca`. Skipped until `/etc/step-ca/config/ca.json` (from `sudo STEPPATH=/etc/step-ca step-cli ca init`) and `/etc/step-ca/password.txt` (the CA password, mode 600) both exist. Open the `https` firewall name for other machines when the CA listens on 443 |
 
 ### Shutdown
@@ -198,7 +207,7 @@ skip because of the machine:
 | `44_switcheroo-control` | Fewer than two GPUs under `/sys/class/drm` |
 | `51_mdmonitor` | `/proc/mdstat` lists no md array |
 | `53_xfs_healer` | Per filesystem, when `xfs_healer --supported` refuses it: no XFS health monitor in the kernel, or `autofsck` is `none`. When no filesystem is left, the line is `no XFS filesystem to watch` |
-| `54_thermald` | The processor is not Intel |
+| `54_thermald` | `thermald` is not installed, or the processor is not Intel |
 | `48_iio-sensor-proxy` | No sensor its udev rule recognises |
 | `56_energyd` | No readable CPU energy counter (`/sys/class/powercap/*/energy_uj`) |
 | `57_oomd` | `/proc/pressure/memory` is not writable (pressure stall information is off) |
@@ -224,10 +233,27 @@ Several scripts leave nothing for the supervisor to watch: `01_udev`, `02_module
 `50_alsa`, `55_tlp`, `62_plasma-setup` and `63_live-installer`. Most apply a setting and exit;
 `25_nftables` and `12_zram` hand their result to the kernel, which keeps it. For these,
 `service status` reports what the script applied rather than a running process: `sysctl: applied`,
-the zram device and its nominal size, whether a firewall ruleset is loaded, the logical volumes
-(`lvs`), or TLP's own summary (`tlp-stat -s`). A script with nothing to report prints nothing, and
-`service list` shows `—` for it. Two report a
-process after all:
+the zram device and its nominal size, or whether a firewall ruleset is loaded. A script with
+nothing to report prints nothing, and `service list` shows `—` for it.
+
+The `STATUS` cell of `service list` shows the first line that is not blank, then ` (+N more)` for
+the lines after it, cut with `…` to the width of the terminal. The logical volumes and TLP put a
+one-line summary first for that reason:
+
+| Service | First line | Then |
+|---|---|---|
+| `lvm` | `lvm: A of N logical volumes active`, or `lvm: no logical volumes` | The full `lvs` table |
+| `lvm`, without `sudo` | `lvm: needs root to list volumes` | Nothing; `lvs` reads the volume groups only as root |
+| `lvm`, when `lvs` fails | `lvm: lvs could not list volumes` | Nothing |
+| `nftables` | `nftables: ruleset loaded`, or `nftables: no ruleset loaded` | Nothing |
+| `nftables`, without `sudo` | `nftables: needs root to read the ruleset` | Nothing; the kernel hands the ruleset only to root |
+| `tlp` | `tlp: enabled, profile performance/AC, power source AC` (the state, the TLP profile and the power source) | The whole of `tlp-stat -s` |
+| `tlp`, without `sudo` | `tlp: Error: missing root privilege.`, TLP's own refusal | The whole of `tlp-stat -s`, its refusal included |
+
+So `sudo service list` shows a cell such as `lvm: 1 of 1 logical volumes active (+2 more)`, and
+`sudo service status lvm` or `sudo service status tlp` prints the summary with everything under it.
+
+Two report a process after all:
 `service status boltd` says whether the bus has `boltd` running, and `service status udev` says
 whether `udevd` is running, because `udevd` runs on its own once the script has started it.
 
@@ -287,8 +313,8 @@ The jobs that ship in the system table:
 | `10-update-check.timer` | `kdos update check --out /var/lib/kdos/update.json` | 04:17, slack 8 h | Compares the installed packages with the ports tree and the release information already on the machine, for Discover and the update tray. It downloads nothing; not at midnight, because it reads the whole ports tree |
 | `20-fstrim.timer` | `fstrim -a` | 12:47, slack 20 h | See below |
 
-No shipped job reaches the network. A newer release is fetched only when someone asks: Discover's
-**Check for updates**, or `kdos update fetch` at a prompt. The firmware metadata comes with each
+No shipped job reaches the network. A newer release is fetched only when someone asks:
+**Refresh** on Discover's Updates page, or `kdos update fetch` at a prompt. The firmware metadata comes with each
 release (see [Firmware updates](#thunderbolt-phones-smart-cards-and-firmware-updates)).
 
 `fstrim` tells an SSD which blocks are free. The installer mounts ext4 and XFS without the
@@ -612,8 +638,9 @@ The network applet's hotspot is the quick way to share a connection, and needs n
 for a machine that *is* the network — an access point that stays up across reboots, with or without
 an uplink:
 
-1. Write `/etc/hostapd/hostapd.conf`, starting from `hostapd.conf.example` beside it. `46_hostapd`
-   starts `hostapd` at boot only when that file exists.
+1. Install it, `sudo kdos update install hostapd`, then write `/etc/hostapd/hostapd.conf`,
+   starting from `hostapd.conf.example` beside it. `46_hostapd` starts `hostapd` at boot only when
+   the program and that file both exist.
 2. Tell NetworkManager to leave the wireless card alone, or both will try to drive it: create a file
    in `/etc/NetworkManager/conf.d` containing
 
@@ -739,8 +766,11 @@ kdos-power firewall ssh off
 | `rdp` | TCP 3389 (this desktop over RDP, with krdp) |
 | `xonotic` | UDP 26000 (hosting a Xonotic game) |
 
-Turning a name on or off needs an administrator: a member of `wheel` is let through, and anyone else
-is asked by polkit. The Firewall page holds its switches until **Apply**. The meaning of each name
+Turning a name on or off needs an administrator. At a prompt, `kdos-power firewall <name> on`
+works for root and for a member of `wheel` with no password, and is refused for anyone else. The
+Firewall page holds its switches until **Apply**, and Apply asks for an administrator's password;
+polkit keeps it for a few minutes for that window, and asks again after that or once the page is
+opened again. The meaning of each name
 is fixed inside `kdos-powerd`, not in the page you click, so no client can open a port that is not
 on this list.
 
@@ -1090,11 +1120,12 @@ OpenGL through EGL otherwise. An external subtitle in a legacy encoding — CP12
 is detected by `uchardet` and converted, and `libass` breaks long subtitle lines where Unicode
 allows (through `libunibreak`), not only at spaces. The `mpv-mpris` plugin, loaded from
 `/etc/mpv/scripts` for every user, puts mpv on the session bus, so the media keys and Plasma's
-media controller control it. `mpd` reaches the same controller through `kdos-mpctl mpris`, which
-the session starts.
+media controller control it. `mpd`, installed with `sudo kdos update install mpd`, reaches the
+same controller through `kdos-mpctl mpris`, which the session starts.
 
 **Optical discs.** `mpv` opens `dvd://`, `bd://` and `cdda://`, and plays a DVD's titles and
-chapters without its menus. `mpd` and `cmus` play audio CDs; `cd-paranoia` rips one with verified
+chapters without its menus. `mpd` and `cmus` play audio CDs once installed
+(`sudo kdos update install mpd cmus`); `cd-paranoia` rips one with verified
 reads, and `ffmpeg -f dvdvideo -i /dev/sr0` rips a DVD title with its chapters. GStreamer has
 `cdiocddasrc`, `dvdreadsrc` and `rsndvdbin`, and `rsndvdbin` plays DVD menus. A CSS-encrypted DVD
 opens through `libdvdcss`, which `libdvdread` links. AACS-encrypted Blu-rays do not open, and
@@ -1148,7 +1179,7 @@ up, is rolled back by itself, and the previous version stays one restart away (s
 
 **From the desktop.** Discover is where an update is found and installed:
 
-1. **Check for updates** on Discover's Updates page fetches the newest signed release
+1. **Refresh** on Discover's Updates page fetches the newest signed release
    information, at most once an hour. The update tray in the panel says when one is ready, and how
    many known vulnerabilities in the installed packages it closes. On its own, nothing reaches the
    network: the nightly job only compares what is already on the machine (see
@@ -1158,6 +1189,13 @@ up, is rolled back by itself, and the previous version stays one restart away (s
 3. **Restart** starts the new version, on trial. Once the boot scripts have finished and a Plasma
    session has run for a minute, it is confirmed; a version that never gets that far is rolled back
    at the next start, and a notification says so.
+
+An update that stops while it is writing the other slot (cancelled, or ended by a full disk or a
+power cut) leaves that slot *incomplete*, so a half-written system is never started: the boot
+menu has no entry for it, `kdos-bootctl status` reports `unfilled b: an update stopped while
+writing it; it is not tried until an update writes it again`, and starting it next time is
+refused, from System Versions or with `sudo kdos-bootctl try b`. The next update writes it
+again.
 
 System Settings → System Versions lists both slots, with the version, build date, tree and kernel
 each holds, and its one button, **Start This Version Next Time**, boots the other slot once: the
@@ -1173,7 +1211,7 @@ this computer, and whether a build also builds what the program needs (see
 kdos cve                   # which installed versions have known vulnerabilities, offline
 kdos update check          # what is behind, what is offered, and the last problem
 sudo kdos update fetch     # the newest signed ports tree, then the release index and what it names
-sudo kdos update apply     # write the next release into the other slot and arm it
+sudo kdos update apply --mount   # write the next release into the other slot and arm it
 kdos update notes          # the release notes of the version running
 sudo kdos update install <port>   # one more port, or a group; see Installing host software
 ```
@@ -1182,7 +1220,7 @@ sudo kdos update install <port>   # one more port, or a group; see Installing ho
 |---|---|
 | `kdos update fetch` | Downloads the latest release's ports tree, checks its signature against `/etc/kdos/keys/tree` and installs it as `/ports`; beside it, the release's signed index of where every update file is, `kdos-update.idx`, and through it alone the signed binary-package index into `/var/lib/kdos/binhost` and the signed slot-image manifest into `/var/lib/kdos/image/offer`, each checked against `/etc/kdos/keys` and against the size and hash the index gives before it is kept. A tree older than the installed one is refused. `--from URL` or `--from DIR` (a stick holding the release's files) reads it from elsewhere |
 | `kdos update check` | Lists installed packages whose version and release are older than the ports tree's, which of them the signed binary index covers, whether a newer signed slot image exists, what is offered, and the last problem: no tree, no network, a fetch, a signature or an apply that failed. `--json` prints JSON and `--out PATH` writes it to a file, for Discover and the update tray. `--fetch` runs `fetch` first |
-| `kdos update apply` | Writes the next release into the inactive slot and arms it, by one of three lanes (below). `--acquire` and `--arm` run its two halves separately, as Discover does; `--dry-run` says what would happen; `--in-place` updates the running root of a machine with one slot, and gives up the rollback |
+| `kdos update apply` | Writes the next release into the inactive slot and arms it, by one of three lanes (below). `--mount` mounts the inactive slot at `/run/kdos/slot-<x>` for the run; without it, a slot nobody has mounted (as on a fresh install) is refused with `slot b … is not mounted, so there is nowhere to install the candidate`. `--acquire` and `--arm` run its two halves separately, as Discover does; `--dry-run` says what would happen, and with `--mount` says which slot it would mount and stops there; `--in-place` updates the running root of a machine with one slot, and gives up the rollback |
 | `kdos update install <port\|group>` | Installs one port, or every member of a group, and every package it lacks, into the running system: prebuilt from the release's signed binaries, or built here with `--source`. Discover's host-software installs run it |
 | `kdos update groups` | Lists every native group, whether it is installed, the members missing, and its download size from the cached index |
 | `kdos update theme` | Re-runs the theme generators for your home directory after an artwork upgrade |
@@ -1200,15 +1238,16 @@ or `--source` names one:
 | `--source` | Every source the newer recipes name, then every package that is behind, compiled here | Every changed source; a large set takes hours to build |
 
 Whatever the lane, arming a slot carries this machine's own state into it: a configuration file you
-edited keeps your copy, with the release's new default beside it as `<file>.kdos-new`; one you did
-not edit takes the new default; the account databases are merged by name; and the machine's
+edited keeps your copy, with the release's new default beside it as `<file>.kdos-new`, or as the
+hidden `.<file>.kdos-new` inside a directory whose name ends in `.d`, where every other file is
+read as configuration; one you did not edit takes the new default; the account databases are merged by name; and the machine's
 network connections, Bluetooth pairings, crontabs, the login screen's state, the packages you added
 with `kdos update install` (the world set, `/var/lib/kdos/world`, and the way each package came,
 `/var/lib/kdos/origin`) and the paths named by `carry =` lines in `/etc/kdos/update.conf` follow.
 The new slot's own `fstab` keeps its own root. The pack store and every home are on the shared
 volume and are not in either slot, and so is the record of which data packs are grafted: the slot
 that boots grafts every one it names into its own `/usr/share`. `tree =`, `binhost =` and
-`image =` in the same file set where each comes from instead of the latest release: `binhost =`
+`image =` in `/etc/kdos/update.conf` set where each comes from instead of the latest release: `binhost =`
 and `image =` name a place holding a `kdos-update.idx`, such as a copy of a build's
 `build/binhost` on a stick.
 
@@ -1266,7 +1305,9 @@ sudo kdos update install --root /mnt/other gimp   # into a root that is not runn
 sudo kdos update install --dev zlib           # zlib again whole: its headers, libz.a and manuals
 ```
 
-`/etc/kdos/update.conf` names the route a terminal install takes when no flag does:
+`/etc/kdos/update.conf` names the route a terminal install takes when no flag does. The image
+ships no such file: System Settings › System Versions writes it, or create it yourself with one
+`key = value` line per setting.
 
 | Key | Values | Decides |
 |---|---|---|
@@ -1359,7 +1400,7 @@ memory rather than disk. Emergency messages are also written to every logged-in 
 `syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
 that a plain `grep` reads; only ASCII control characters are rewritten, as `^x`.
 
-Four more places hold what the system log does not, or what it missed while `syslogd` was not
+Eight more places hold what the system log does not, or what it missed while `syslogd` was not
 running:
 
 | Where | Holds |
@@ -1709,21 +1750,34 @@ there is no other language for a program to switch to. `/etc/locale.conf` ships
 no `LANG`: American English, with dates such as `11/9/26` and the dollar sign. Setting `LANG` or
 `LC_MESSAGES` to another language changes no program's menus or messages.
 
-Writing in another language is unaffected. The fonts cover every script, the keyboard layout is
-yours to choose on System Settings → Keyboard, and the input methods below type Chinese, Japanese
-and Korean. System Settings → Region & Language sets the formats, dates, numbers, currency and
+Writing in another language is unaffected. The base's Noto fonts cover the alphabetic scripts, and
+the Chinese, Japanese and Korean fonts come with that language's group (below); the keyboard
+layout is yours to choose on System Settings → Keyboard, and the input methods below type Chinese,
+Japanese and Korean once their group is installed. System Settings → Region & Language sets the formats, dates, numbers, currency and
 paper size, by region, which every KDE program follows. What is missing is
 listed in [Known gaps](../06-reference/known-gaps.md#every-program-speaks-english).
 
 ## Input methods
 
-`fcitx5` is the input method engine, for typing languages that need more than a keyboard layout:
-Chinese (pinyin, shuangpin and the table methods), Japanese (Anthy) and Korean (Hangul). KWin starts
+`fcitx5` is the input method framework, for typing languages that need more than a keyboard
+layout. The base carries the framework and its settings page; each language's engine and its CJK
+fonts are a group:
+
+```sh
+sudo kdos update install lang-zh   # Chinese: pinyin, shuangpin and the table methods, and Noto CJK
+sudo kdos update install lang-ja   # Japanese: Anthy, and Noto CJK
+sudo kdos update install lang-ko   # Korean: Hangul, and Noto CJK
+```
+
+Once a group is installed, log out and back in so fcitx5 restarts, then add the engine on System
+Settings → Input Method: **Add Input Method…**, then the language's engine (Pinyin, Anthy or
+Hangul). fcitx5 keeps in its list only the engines that are installed, so an engine installed
+later is always added there by hand. KWin starts
 it as the session's input method and restarts it if it dies, as `[Wayland] InputMethod` in
 `kwinrc` names; System Settings → Keyboard → Virtual Keyboard chooses another, such as the
 on-screen keyboard. Qt 6, GTK 3 and GTK 4 programs reach it through KWin's text input, each
 toolkit choosing by itself, so no `QT_IM_MODULE` or `GTK_IM_MODULE` is set; fcitx5's own GTK
-module serves a GTK program under Xwayland ([Input methods](../03-architecture/session.md#input-methods)). System Settings → Input Method adds and orders the input methods.
+module, which each language group brings, serves a GTK program under Xwayland ([Input methods](../03-architecture/session.md#input-methods)). System Settings → Input Method adds and orders the input methods.
 
 `Ctrl+Space` turns the input method on and off, between the keyboard layout and the method used
 last; that is fcitx5's own binding. Pressed again with `Ctrl` still held, the second `Space` turns

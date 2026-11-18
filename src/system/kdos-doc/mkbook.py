@@ -67,6 +67,28 @@ OURS = {"kpkg", "kpkgadd", "kpkgdel", "kpkgbuild", "kpkgdepends", "ksvc",
         "service", "kinstall", "xdg-terminal-exec"}
 HTAG_RE = re.compile(r'<h([1-6])(?:\s+id="[^"]*")?>')
 DOC_RE = re.compile(r'^\[[^\]]*\]\(([^)#]+)(#[^)]*)?\)$')
+# What a NAME line must not leave to lowdown. The line is plain text taken
+# out of a table cell, and lowdown reads it as markdown: `$XDG_RUNTIME_DIR`
+# would lose its underscores to emphasis and `[ARGS]` could open a link.
+MD_SPECIAL_RE = re.compile(r'([\\`*_{}\[\]<>()#!|&~^])')
+# A NAME line is the whatis line apropos prints in whatever locale it runs
+# in, a root console's C locale among them, where a typographic character
+# prints as question marks; it is held to ASCII.
+ASCII_OF = {"\u2026": "...", "\u2014": "--", "\u2013": "-", "\u2018": "'",
+            "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2192": "->",
+            "\u00b7": "-"}
+# Manual pages are rendered without lowdown's smart typography: a page is
+# read for what to type, and the filter turns `--json` into an en dash and
+# straight quotes into curly ones.
+MAN_ARGS = ["-s", "-tman", "--out-no-smarty"]
+# apropos and whatis print the description makewhatis stored, and makewhatis
+# keeps only the first 150 bytes of the NAME line's roff after the dash,
+# every escape counted as written: lowdown writes " ^ ` ~ as a four-byte
+# \(xx escape and a backslash as \e, every other character as its UTF-8. A
+# longer line prints cut mid-word, so name_line ends one within the limit.
+WHATIS_MAX = 150
+ROFF_LEN = {'"': 4, "^": 4, "`": 4, "~": 4, "\\": 2}
+CLAUSE_RE = re.compile(r"[,;:](?=\s)|\s(?=\()|\s(?=--\s)")
 
 
 def lowdown(args, text):
@@ -312,16 +334,47 @@ def commands(docs):
     return out
 
 
+def roff_len(text):
+    """The bytes lowdown writes for an ASCII NAME description."""
+    return sum(ROFF_LEN.get(c, len(c.encode())) for c in text)
+
+
+def whatis(desc):
+    """An ASCII description that makewhatis stores whole: unchanged when it
+    fits WHATIS_MAX, else ended before the last clause separator that fits,
+    or at the last space when no clause does, with no bracket left open; a
+    description with neither is cut at the limit."""
+    if roff_len(desc) <= WHATIS_MAX:
+        return desc
+    fit = 0
+    while roff_len(desc[:fit + 1]) <= WHATIS_MAX:
+        fit += 1
+    ends = [m.start() for m in CLAUSE_RE.finditer(desc) if m.start() <= fit]
+    cut = ends[-1] if ends else desc.rfind(" ", 0, fit + 1)
+    head = desc[:max(cut, 0)]
+    for o, c in ("()", "[]"):
+        while head.count(o) > head.count(c):
+            head = head[:head.rfind(o)]
+    return head.rstrip(" ,;:-") or desc[:fit]
+
+
+def name_line(desc):
+    """A row's description as the markdown of a NAME line: ASCII, short
+    enough for apropos to print whole, and every character lowdown would
+    read as markup escaped."""
+    desc = whatis("".join(ASCII_OF.get(c, c) for c in desc))
+    return MD_SPECIAL_RE.sub(r"\\\1", desc)
+
+
 def man_page(name, sec, desc, body, chapter, date):
-    md = (f"# NAME\n\n{name} \\- {desc}\n\n"
+    md = (f"# NAME\n\n{name} \\- {name_line(desc)}\n\n"
           f"# DESCRIPTION\n\n{body}\n"
           f"# SEE ALSO\n\n**kdos**(7), and the chapter this page is taken "
           f"from, *{DOCROOT}/{chapter}*.\n")
-    return lowdown(["-s", "-tman",
-                    "-M", "title=" + name.upper(),
-                    "-M", "section=" + sec,
-                    "-M", "date=" + date,
-                    "-M", "source=KDOS"], md)
+    return lowdown(MAN_ARGS + ["-M", "title=" + name.upper(),
+                               "-M", "section=" + sec,
+                               "-M", "date=" + date,
+                               "-M", "source=KDOS"], md)
 
 
 def write(path, text):
@@ -376,8 +429,9 @@ def main():
           "of the book that documents it.\n\n## Chapters\n\n" + toc + "\n\n"
           "# SEE ALSO\n\n" + cmds + "\n")
     write(os.path.join(dest, "usr/share/man/man7/kdos.7"),
-          lowdown(["-s", "-tman", "-M", "title=KDOS", "-M", "section=7",
-                   "-M", "date=" + date, "-M", "source=KDOS"], md))
+          lowdown(MAN_ARGS + ["-M", "title=KDOS", "-M", "section=7",
+                              "-M", "date=" + date, "-M", "source=KDOS"],
+                  md))
     print(f"mkbook: {len(chapters)} chapters, {len(made)} command pages")
 
 

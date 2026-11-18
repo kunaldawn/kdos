@@ -14,6 +14,10 @@ patch -p1 -i "$PORT_SRC/sysupdate-errors.patch"
 patch -p1 -i "$PORT_SRC/ratings-need-reviews.patch"
 patch -p1 -i "$PORT_SRC/sysupdate-size.patch"
 patch -p1 -i "$PORT_SRC/update-failed-stays-listed.patch"
+patch -p1 -i "$PORT_SRC/sysupdate-appstream-after-check.patch"
+patch -p1 -i "$PORT_SRC/notifier-reboot-clears.patch"
+patch -p1 -i "$PORT_SRC/sysupdate-licenses.patch"
+patch -p1 -i "$PORT_SRC/notifyrc-update-restart.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

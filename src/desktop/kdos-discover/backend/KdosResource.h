@@ -100,8 +100,27 @@ public:
     QString verifiedMessage() const override;
     QString verifiedIconName() const override;
 
+    // What a search finds the resource by besides its name, package and
+    // summary: the names and keywords of the other components of a host
+    // port's package. Kept apart from the Entry, and set again at every
+    // refresh that lists the port.
+    void setSearchTerms(const QStringList &terms)
+    {
+        m_searchTerms = terms;
+    }
+    const QStringList &searchTerms() const
+    {
+        return m_searchTerms;
+    }
+
+    // The page's notice: why the last install or removal failed, while that
+    // is set, else what the lane says before an install.
     QString kdosNotice() const;
     int kdosNoticeType() const;
+    // "<name> was not installed: <why>", from the transaction that failed;
+    // the next transaction of this resource clears it. It is kept apart from
+    // the Entry, which every refresh replaces.
+    void setFailure(const QString &said);
     QString boxName() const
     {
         return m_entry.box;
@@ -153,6 +172,8 @@ private:
     KdosBackend *kdosBackend() const;
 
     Entry m_entry;
+    QString m_failure;
+    QStringList m_searchTerms;
     QVariantList m_grants;
     QStringList m_grantWarnings;
 };

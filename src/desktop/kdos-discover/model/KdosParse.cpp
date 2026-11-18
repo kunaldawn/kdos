@@ -608,6 +608,8 @@ SlotsState readSlotsState(const QVariantMap &state)
         s.runningVersion = slots.value(s.running).toMap().value(u"version"_s).toString();
         s.otherVersion = slots.value(other).toMap().value(u"version"_s).toString();
     }
+    s.phase = state.value(u"phase"_s).toString();
+    s.phaseVersion = state.value(u"version"_s).toString();
     s.job = state.value(u"job"_s).toString();
     s.jobDone = state.value(state.contains(u"jobDone"_s) ? u"jobDone"_s : u"job_done"_s).toULongLong();
     s.jobTotal = state.value(state.contains(u"jobTotal"_s) ? u"jobTotal"_s : u"job_total"_s).toULongLong();
@@ -617,6 +619,39 @@ SlotsState readSlotsState(const QVariantMap &state)
 bool slotArmed(const QVariantMap &state)
 {
     return readSlotsState(state).rebootRequired;
+}
+
+void readSlotList(const QList<QVariantMap> &slotList, SlotsState *state)
+{
+    QString running, other;
+    bool found = false;
+    for (const QVariantMap &slot : slotList) {
+        if (slot.value(u"running"_s).toBool()) {
+            running = slot.value(u"version"_s).toString();
+            found = true;
+        } else {
+            other = slot.value(u"version"_s).toString();
+        }
+    }
+    if (!found)
+        return;
+    state->runningVersion = running;
+    state->otherVersion = other;
+}
+
+QString armedVersion(const SlotsState &state)
+{
+    if (!state.rebootRequired)
+        return QString();
+    if (state.phase == "armed"_L1 && !state.phaseVersion.isEmpty())
+        return state.phaseVersion;
+    return state.otherVersion;
+}
+
+bool stagedUpdate(const SlotsState &state)
+{
+    const QString armed = armedVersion(state);
+    return !armed.isEmpty() && !state.runningVersion.isEmpty() && compareVersions(armed, state.runningVersion) > 0;
 }
 
 // ── small rules ─────────────────────────────────────────────────────────

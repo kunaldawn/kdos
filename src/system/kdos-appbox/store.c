@@ -661,10 +661,12 @@ static int still_wanted(const char *img_id, const char *dropped)
  * A box outlives its application's last window — it stops on its own later —
  * and `kdos-box remove` refuses a running one, so the stop sequence runs
  * first, and an uninstall right after quitting the app goes through. A box
- * installed and never started has a profile and no container; `kdos-box
- * remove` deletes that profile, without which `kdos-box list` keeps listing
- * the box as `not created` after its app is gone. Returns 0 when the box is
- * gone; otherwise it has said why, and the uninstall stops.
+ * installed and never started, or one an earlier `kdos-box remove` took the
+ * container of, has a profile and no container; `kdos-box remove --purge`
+ * deletes that profile, kept or not, without which `kdos-box list` keeps
+ * listing the box as `not created` after its app is gone. A box with a
+ * container keeps its profile, as `kdos-box remove` does. Returns 0 when the
+ * box is gone; otherwise it has said why, and the uninstall stops.
  */
 static int drop_box(const char *box, int exists)
 {
@@ -684,6 +686,8 @@ static int drop_box(const char *box, int exists)
 	kb_argv_add(&a, "kdos-box");
 	kb_argv_add(&a, "remove");
 	kb_argv_add(&a, box);
+	if (exists == 1)
+		kb_argv_add(&a, "--purge");
 	kb_argv_end(&a);
 	return kb_run_tty(&a) != 0;
 }
@@ -710,6 +714,24 @@ int store_uninstall(const char *id)
 			"has a container (podman container exists exited %d); "
 			"%s was not uninstalled\n", id, rc, id);
 		return rc;
+	}
+	/* Nothing to remove is said as such: no container and no image of the
+	 * application's own is an id that is not installed, and "removed"
+	 * there would report work that was never done. The profile does not
+	 * count: `kdos-box remove` keeps it on purpose, so an application
+	 * removed once still has one, and a second removal would otherwise
+	 * delete that kept profile and report the application removed again.
+	 * The profile is left as it is. It is not a failure: a group's removal
+	 * names every member, installed or not, and the outcome asked for —
+	 * the application absent — holds. */
+	if (rc == 1) {
+		char img[CAT_ID_MAX + sizeof(STORE_IMG_PREFIX)];
+
+		snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, id);
+		if (!image_exists(img)) {
+			printf("==> %s is not installed\n", id);
+			return 0;
+		}
 	}
 	if (drop_box(id, rc) != 0) {
 		fprintf(stderr, "kdos-appbox: %s was not uninstalled\n", id);
@@ -884,6 +906,17 @@ int store_deb_uninstall(const char *spec)
 		fprintf(stderr, "kdos-appbox: podman could not say whether %s "
 			"has a container; %s was not uninstalled\n", box, spec);
 		return 1;
+	}
+	/* Installed is a container or the package's own image, never the kept
+	 * profile, as in store_uninstall. */
+	if (rc == 1) {
+		char img[sizeof(box) + sizeof(STORE_IMG_PREFIX)];
+
+		snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, box);
+		if (!image_exists(img)) {
+			printf("==> %s is not installed\n", spec);
+			return 0;
+		}
 	}
 	if (drop_box(box, rc) != 0) {
 		fprintf(stderr, "kdos-appbox: %s was not uninstalled\n", spec);

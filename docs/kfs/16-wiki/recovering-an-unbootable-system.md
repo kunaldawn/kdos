@@ -45,7 +45,7 @@ sudo passwd root
 The service scripts are run by this loop in `rcS`, which writes each script's output to a log and
 skips any script with a marker under `/etc/service.disabled/`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=147-186 pin=403936cc08ac -->
+<!-- kfs:include fs/etc/init.d/rcS lines=154-193 pin=403936cc08ac -->
 
 ## Usage
 

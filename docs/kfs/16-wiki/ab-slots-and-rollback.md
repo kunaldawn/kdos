@@ -31,8 +31,8 @@ plan under LVM gives a disk with room for it: one volume group, `kdos`, holding 
 `root_b`, a `swap` volume when swap was asked for, and `home`, the rest, which both slots mount at
 `/home`. Each slot is at least 8 GiB, the size of the install and half as much again; the home is
 at least 4 GiB. The installer fills slot B with a copy of slot A as it stands at the end of the
-install, accounts and accent included, gives slot B its own kernel pair under `EFI/kdos/b/`, and
-records both slots in the boot state. A disk too small for two slots gets `root_a` alone, holding
+install, accounts and accent included, gives slot B its own kernel pair under `EFI/kdos/b/`,
+writes each slot's `release` record beside its kernel, and records both slots in the boot state. A disk too small for two slots gets `root_a` alone, holding
 the home as well, and no second slot.
 
 The two halves of a boot's decision run at set points of every boot: `select` in the initramfs,
@@ -50,14 +50,15 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2813-2825 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3286-3298 pin=d5c38affc180 -->
 
 `slot_b` is empty unless the installer made the A/B layout. `kdos-bootctl` writes every later
 version, under a header of its own
 (`Written by kdos-bootctl; the initramfs reads it before it mounts a root filesystem.`), and adds
-three keys: `bootnext`, which is empty except during a UEFI trial, when it reads `yes`; `armed`, the
-kernel's boot id of the boot that armed the trial; and `failed`, the slot whose last trial ended
-without being confirmed, until the next `try` or confirmation clears it:
+four keys: `bootnext`, which is empty except during a UEFI trial, when it reads `yes`; `armed`, the
+kernel's boot id of the boot that armed the trial; `failed`, the slot whose last trial ended
+without being confirmed, until the next `try` or confirmation clears it; and `unfilled`, the slot
+an update has begun writing and not yet deployed, until `kdos-bootctl deploy` into it clears it:
 
 ```text
 slot_a   = c55c90d8-b72a-4e05-b729-bbd60388a06a
@@ -70,6 +71,7 @@ attempts = 1
 bootnext = yes
 armed    = 1b0e4c52-6c8f-4b8e-9a51-2f1d7b0c9e3a
 failed   =
+unfilled =
 ```
 
 The keys are described in
@@ -84,7 +86,7 @@ boots the `root=` of the menu entry.
 |---|---|---|
 | `EFI/kdos/a/vmlinuz`, `EFI/kdos/a/initramfs.cpio.gz` | Slot A's kernel and initramfs | [`kinstall`]{.idx}, then `kdos-bootctl deploy` |
 | `EFI/kdos/b/…` | Slot B's | `kinstall` on the A/B layout, then `kdos-bootctl deploy` |
-| `EFI/kdos/<slot>/release` | The identity of the root that slot holds: its `/etc/kdos-release`, else its `os-release`. The other slot is not mounted when a session asks what it holds, so System Versions and the rollback notice read this file | `kdos-bootctl deploy` |
+| `EFI/kdos/<slot>/release` | The identity of the root that slot holds: `VERSION`, `BUILD_ID`, `BUILD_DATE`, `TREE` and `TREE_TIME` from its `/etc/kdos-release`. The other slot is not mounted when a session asks what it holds, so `kdos-bootctl status`, System Versions and the rollback notice read this file | `kinstall` for each slot it fills, then `kdos-bootctl deploy` |
 | `EFI/kdos/bootstate` | The boot state | `kinstall`, then `kdos-bootctl` |
 | `limine.conf` | The menu; its `/KDOS` entries follow the state | `kinstall`, then `kdos-bootctl` |
 | `EFI/kdos/trial/` | A copy of the ESP's `BOOTX64.EFI` (`BOOTIA32.EFI` on 32-bit firmware) and a trial `limine.conf`, during a UEFI trial only; removed when the trial ends | `kdos-bootctl try` |
@@ -99,12 +101,12 @@ In the initramfs, the `BOOT SLOT` stage mounts the ESP, asks `select` for the ro
 that root's container, and unmounts it again. The `\$` in this excerpt is the generator's escaping:
 the init is written by a heredoc, and the generated script has a plain `$`.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=789-844 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=822-877 pin=75069784095f -->
 
 A boot is confirmed by two marks, both root's files under `/run/kdos/bless/`. The end of `rcS`,
 after every service script has run, writes the first:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=190-214 pin=de5053d13197 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=197-221 pin=de5053d13197 -->
 
 The second, `graphical`, is written by kdos-sysupdated when a Plasma session has answered for a
 minute: `/etc/xdg/autostart/kdos-session-good.desktop` runs `kdos-notice --bless` in the last
@@ -135,8 +137,11 @@ sudo kdos-bootctl status --json
 ```
 
 The text form starts with one `slot <x>` line for each slot that has a root: the version it
-holds and its state, one of `running`, `confirmed`, `armed`, `trial`, `failed` or `inactive`. A
-`failed` line follows when a trial ended without being confirmed. Then come the active slot and its
+holds and its state, one of `running`, `confirmed`, `armed`, `trial`, `incomplete`, `failed` or
+`inactive`. A `failed` line follows when a trial ended without being confirmed, and
+`unfilled <x>: an update stopped while writing it; it is not tried until an update writes it again`
+when an update began writing a slot and did not finish; that slot's state is `incomplete`, whatever
+else is recorded for it. Then come the active slot and its
 filesystem UUID, the other slot, the [LUKS]{.idx} container of each when it has one, the kernel
 version each slot boots from the ESP, and the trial in progress, if any, ending with
 `trying   nothing — this slot is confirmed good` when there is none. On a machine installed with
@@ -148,7 +153,8 @@ kdos-bootctl list --json        # the boot entries, one per slot, in the shape `
 
 The same state is on the System Versions page in System Settings, which lists both slots with the
 version, build date, tree commit and kernel each holds. The JSON form carries the same state as one object, starting
-`{"configured": true, "active": "a", "trying": null, "attempts": 0, "bootnext": false, …}`. With
+`{"configured": true, "active": "a", "trying": null, "attempts": 0, "bootnext": false, …}`, with
+`"unfilled"` naming the incomplete slot or `null`. With
 no boot state, the text form prints
 `no boot state at /boot/efi/EFI/kdos/bootstate — this machine has one root and no rollback`, the
 JSON form prints `{"configured": false}`, and both exit 1. On the live medium, where `/` is an
@@ -212,14 +218,21 @@ Discover shows a KDOS update beside the applications' and installs it into the i
 
 1. Fetch and see what is offered: `sudo kdos update fetch`, then `kdos update check`.
 2. Run `sudo kdos update apply --mount`. `--mount` mounts the inactive slot at
-   `/run/kdos/slot-<x>` for this run; without it, `apply` uses the slot where it is already
+   `/run/kdos/slot-<x>` for this run and unmounts it when the run ends, Ctrl-C included; without
+   it, `apply` uses the slot where it is already
    mounted and refuses when it is not. `apply` writes the slot by one of three lanes: the signed
    **slot image** of the newer release when one is published, the prebuilt packages of the signed
    **binhost** otherwise, or with `--source` a **build** on this machine. It then checks the slot
    with `kpkg check --all`, carries this machine's configuration into it (below), records its
    version, runs `kdos-bootctl deploy` for its kernel and `kdos-bootctl try` for the slot. When
    nothing is behind it prints `nothing to take: everything installed matches the ports tree` and
-   puts nothing on trial.
+   puts nothing on trial. Before any lane writes the slot, `apply` cancels a trial armed on it and
+   runs `kdos-bootctl unfill <x>`, so a slot left half-written by a power cut or a cancel is
+   recorded as `incomplete`, loses its boot menu entry and is refused by `try` until an update
+   writes it again; when that mark cannot be written, `apply` stops with
+   `slot <x> could not be marked as being written` and records `build-failed`.
+   `kdos update apply --dry-run --mount` on an unmounted slot says what it would do, without
+   mounting it.
 3. Reboot. The candidate boots; once the boot is confirmed, `mark-good` makes it the active slot.
 4. Check the outcome: `sudo kdos-bootctl status`.
 
@@ -230,9 +243,9 @@ carries the running root's configuration into it, file by file under `/etc`:
 | The file in the running root | What the slot gets |
 |---|---|
 | Installed by a package and never edited | The slot's own copy, which is the newer default |
-| Edited, or owned by no package (hostname, machine ID, host keys, network profiles) | The running root's copy; a different copy the slot held is kept beside it as `<file>.kdos-new` |
+| Edited, or owned by no package (hostname, machine ID, host keys, network profiles) | The running root's copy; a different copy the slot held is kept beside it as `<file>.kdos-new`, or as the hidden `.<file>.kdos-new` inside a directory whose name ends in `.d`, since a program that reads such a directory whole, as SDDM reads `sddm.conf.d`, would read a visible copy as configuration too |
 | `passwd`, `group`, `shadow`, `gshadow`, `subuid`, `subgid` | Merged by name: every running entry, then every entry only the slot has |
-| `fstab` | The running root's, with the slot's own root line |
+| `fstab` | The running root's, with the slot's own root line; every absolute mount point it names, `/boot/efi` among them, is created in the slot where it is missing (mode 0755, owned by root), so the slot mounts the ESP and can confirm its boot |
 | `kdos-release`, `mtab`, `ld.so.cache`, `udev/hwdb.bin` | The slot's own, never carried |
 
 Machine state under `/var` follows as whole trees: the world set, the origin of each package
@@ -245,8 +258,8 @@ it starts in (see [Packs](packs.md)).
 
 `kdos update apply --in-place` updates the running root instead and gives up the rollback. The
 whole update procedure, its tree and its keys are on [Updating](updating.md#applying-an-update).
-The update path has not been run against a published tree
-([Known gaps](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)).
+No published release's update has yet been applied to an installed machine
+([Known gaps](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)).
 
 ### Putting a slot on trial by hand
 
@@ -276,7 +289,9 @@ entry is then commented `Try the update in slot b`, and `status` counts down
 `trying   b, 3 attempt(s) left`.
 
 `try` refuses the active slot (`bootctl: slot a is already active`), a slot with no root
-(`bootctl: slot b has no root filesystem`), and a slot with no kernel on the ESP; each exits 1.
+(`bootctl: slot b has no root filesystem`), a slot with no kernel on the ESP, and an incomplete
+slot (``bootctl: slot b is incomplete — an update stopped while writing it; `kdos update apply`
+writes it again``); each exits 1.
 
 `sudo kdos-bootctl cancel` forgets a trial that has not had its boot yet, firmware one-shot first,
 so the next boot starts the confirmed slot. A trial the running boot is part of is not cancelled:
@@ -308,7 +323,7 @@ trial: `sudo kdos-bootctl try a`.
 
 Pick `KDOS (slot <x>)` with no trial in progress. Its comment reads
 `The other root, for one boot: nothing is confirmed`; no attempt is spent and the active slot
-does not change.
+does not change. A slot recorded as `unfilled` has no such entry until an update writes it again.
 
 ## Tips
 
@@ -347,12 +362,23 @@ kdos-sysupdated has not run; see `service status sysupdated`.
 **A trial is rolled back although the system worked.** The boot was not confirmed. The session
 must stay up for a minute with `kdos-session-good.desktop` in `/etc/xdg/autostart`, and
 kdos-sysupdated must be running; `/run/kdos/bless/` after a minute shows which mark is missing.
+The ESP must be mounted too: with `bootstate=` on the command line and no readable state,
+`kdos-bootctl mark-good` exits 1 with
+`bootctl: the command line names a boot state and <path> cannot be read — is the ESP mounted?`,
+and `findmnt /boot/efi` shows whether it is.
+
+**A slot reads `incomplete`.** An update began writing it and did not finish. Run
+`sudo kdos update apply --mount` again; the next lane to write the slot clears the mark when it
+deploys the kernel.
 
 **`try` refuses: slot has no kernel on the ESP.** Run `sudo kdos-bootctl deploy <its root> <slot>`
 with the slot's root mounted, then `try` again.
 
 **An update was rolled back.** `sudo kdos-bootctl status` shows
-`trying   nothing — this slot is confirmed good` with the old slot active. Mount the candidate and read its logs from that boot only if it reached its own root:
+`trying   nothing — this slot is confirmed good` with the old slot active, and the candidate
+`failed`. `kdos update notes` then begins `KDOS <old>, went back from <new>`, and What's New, at
+the next login, says `KDOS went back to <old>; <new>, in the other slot, did not start or was not
+kept.` Mount the candidate and read its logs from that boot only if it reached its own root:
 `/run` is a tmpfs, so the `/run/kdos-init.<name>.log` files of that boot are gone; its system log
 is in `<mount>/var/log/messages`. A boot that never reached the root left nothing on disk; boot the
 candidate's `KDOS (slot <x>)` entry and watch the splash, or use the verbose entry, to see where it
@@ -370,7 +396,7 @@ or the live medium, and record it again with both UUIDs:
 ## Known gaps
 
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
-- [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
+- [No published release's update has been applied to an installed machine](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)
 - [A root filesystem on LVM has been booted in one shape only](../../kdos/06-reference/known-gaps.md#a-root-filesystem-on-lvm-has-been-booted-in-one-shape-only)
 - [A disk-encryption key is typed, not sealed in the TPM](../../kdos/06-reference/known-gaps.md#a-disk-encryption-key-is-typed-not-sealed-in-the-tpm)
 

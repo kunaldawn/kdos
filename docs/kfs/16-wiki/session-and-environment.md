@@ -43,7 +43,7 @@ unless the medium has a persistence store; see [Live persistence](live-persisten
 SDDM reads `/etc/sddm.conf.d/00-kdos.conf`. Its `[Wayland]` group names the greeter's compositor
 and the command a session is started with, and its `[X11]` group offers no X session at all:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=37-55 pin=4e0a28063e89 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=42-60 pin=4e0a28063e89 -->
 
 SDDM runs `kdos-session-wrapper` as the user, after PAM has opened the session, with the
 `Exec=` line of `plasma.desktop` as its one argument. The wrapper re-runs itself as a login shell
@@ -88,16 +88,17 @@ The order is set in two places, so a session started by SDDM and a shell started
 agree: `kdos_session_xdg_dirs` in `/usr/local/lib/kdos/session-common.sh`, which also adds the two
 overlays, and every login shell's profile, from `fs/etc/profile.d/10-wayland.sh`:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=60-63 pin=1a5ef55bd582 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=64-67 pin=1a5ef55bd582 -->
 
 ### The environment every program inherits
 
 `/etc/profile.d/10-wayland.sh` runs for every login shell, the session wrapper's included. It
 fills in `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` for a shell no PAM session started (an
-`su` without `-l`), names the desktop for a shell outside the session so files opened from a
-console open in the desktop's applications, and chooses the toolkits' back ends:
+`su` without `-l`), names the desktop and its Plasma release (`KDE_SESSION_VERSION=6`, which
+xdg-utils compares as a number) for a shell outside the session so files opened from a console
+open in the desktop's applications, and chooses the toolkits' back ends:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-106 pin=8c3778ce8934 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=82-110 pin=8c3778ce8934 -->
 
 `/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh` is the environment script Plasma itself
 reads. `startplasma` sources every `plasma-workspace/env/*.sh` along `XDG_CONFIG_DIRS`, the

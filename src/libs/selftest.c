@@ -135,6 +135,36 @@ static void test_colour(void)
 			  "own slots");
 	}
 
+	/* The console's bright black is text, as the terminal's is: htop and
+	 * ls write figures in slot 8, so it has to read on slot 0. */
+	{
+		int vt8 = 1;
+
+		for (int i = 0; i < kcol_nscheme; i++) {
+			const KcolScheme *sc = &kcol_schemes[i];
+			char vt[256];
+			unsigned rgb[3][16];
+
+			if (kcol_vtrgb(sc, vt, sizeof(vt)) >= (int)sizeof(vt)) {
+				vt8 = 0;
+				continue;
+			}
+			const char *p = vt;
+			for (int ch = 0; ch < 3; ch++)
+				for (int k = 0; k < 16; k++) {
+					rgb[ch][k] = (unsigned)strtoul(p, (char **)&p, 10);
+					p++;
+				}
+			uint32_t s0 = rgb[0][0] << 16 | rgb[1][0] << 8 | rgb[2][0];
+			uint32_t s8 = rgb[0][8] << 16 | rgb[1][8] << 8 | rgb[2][8];
+
+			if (s8 != kcol_muted(sc) || kcol_contrast(s8, s0) < 450)
+				vt8 = 0;
+		}
+		ok(vt8, "every scheme's console slot 8 is kcol_muted, at 4.5:1 "
+			"on slot 0");
+	}
+
 	/*
 	 * EVERY SCHEME CLEARS THE SAME TWO FLOORS. A palette is judged by eye
 	 * at the bright end and the dark end of this one is compressed enough
@@ -300,11 +330,23 @@ static void test_colour(void)
 	{
 		char got[8][512], dir[512], store[600];
 		char *cwd = getcwd(NULL, 0);
-		int n;
+		int n, made = 0;
 
-		snprintf(dir, sizeof(dir), "%s/recent-write",
-			 getenv("KDOS_SELFTEST_OUT") ? getenv("KDOS_SELFTEST_OUT")
-						    : "/tmp");
+		/* A store of this run's own: two runs sharing one would each
+		 * read the other's entries. Without KDOS_SELFTEST_OUT it is a
+		 * fresh directory under $TMPDIR. */
+		if (getenv("KDOS_SELFTEST_OUT"))
+			snprintf(dir, sizeof(dir), "%s/recent-write",
+				 getenv("KDOS_SELFTEST_OUT"));
+		else {
+			snprintf(dir, sizeof(dir), "%s/kdos-recent.XXXXXX",
+				 getenv("TMPDIR") && *getenv("TMPDIR")
+					 ? getenv("TMPDIR") : "/tmp");
+			if (mkdtemp(dir))
+				made = 1;
+			else
+				snprintf(dir, sizeof(dir), "/nonexistent");
+		}
 		kb_mkdir_p(dir);
 		snprintf(store, sizeof(store), "%s/recently-used.xbel", dir);
 		unlink(store);
@@ -330,6 +372,8 @@ static void test_colour(void)
 		       "to whatever reads the store next");
 
 		unlink(store);
+		if (made)
+			kb_rmtree(dir);
 		unsetenv("XDG_DATA_HOME");
 		free(cwd);
 	}

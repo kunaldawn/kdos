@@ -1,0 +1,85 @@
+Subject: SystemdSysupdateBackend: read a target's AppStream after CheckNew
+
+A sysupdate1 service may rewrite the AppStream it serves for a target
+when CheckNew looks for a new version, so that it describes the release
+CheckNew answers. Read before CheckNew, the AppStream describes the
+previous check, and on the first check after a release is published
+anything taken from the offered release, such as its download size, is
+missing until the next refresh. GetVersion and CheckNew now run first,
+and the AppStream is fetched only for a target that offers a version.
+
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
+@@ -145,6 +145,37 @@ QCoro::Task<> SystemdSysupdateBackend::checkForUpdatesAsync()
+ 
+         auto target = new org::freedesktop::sysupdate1::Target(SYSUPDATE1_SERVICE, objectPath.path(), OUR_BUS(), this);
+         target->setInteractiveAuthorizationAllowed(true); // in case Update() needs authentication
++        // An error reply converts to its message as a QString, which would
++        // be taken for a version; an error is reported and skips the target.
++        const QDBusPendingReply<QString> installedReply = co_await target->GetVersion();
++        if (installedReply.isError()) {
++            Q_EMIT passiveMessage(
++                xi18nc("@info:status", "Failed to read the installed version of “%1”.<nl/><nl/>Error message: %2", name, installedReply.error().message()));
++            continue;
++        }
++        const QDBusPendingReply<QString> availableReply = co_await target->CheckNew();
++        if (availableReply.isError()) {
++            Q_EMIT passiveMessage(
++                xi18nc("@info:status", "Failed to check for a new version of “%1”.<nl/><nl/>Error message: %2", name, availableReply.error().message()));
++            continue;
++        }
++        const QString installedVersion = installedReply.value();
++        const QString availableVersion = availableReply.value();
++        qCDebug(SYSTEMDSYSUPDATE_LOG) << "Installed version:" << installedVersion << "Available version:" << availableVersion;
++
++        if (installedVersion.isEmpty()) {
++            qCWarning(SYSTEMDSYSUPDATE_LOG) << "Failed to get installed version for target:" << name;
++            continue;
++        }
++
++        if (availableVersion.isEmpty()) {
++            qCInfo(SYSTEMDSYSUPDATE_LOG) << "No new version available for target:" << name;
++            continue;
++        }
++
++        // The AppStream is read after CheckNew: a service may rewrite it when
++        // it checks, and a copy read before the check describes the previous
++        // one, which need not name the release offered.
+         const auto appStream = co_await target->GetAppStream();
+         if (appStream.isError()) {
+             Q_EMIT passiveMessage(xi18nc("@info:status", "Failed to get appstream data for “%1”.<nl/><nl/>Error message: %2", name, appStream.error().message()));
+@@ -196,34 +227,6 @@ QCoro::Task<> SystemdSysupdateBackend::checkForUpdatesAsync()
+         auto component = metadata.component();
+         qCDebug(SYSTEMDSYSUPDATE_LOG) << "Component:" << component.name() << component.summary() << component.description();
+ 
+-        // An error reply converts to its message as a QString, which would
+-        // be taken for a version; an error is reported and skips the target.
+-        const QDBusPendingReply<QString> installedReply = co_await target->GetVersion();
+-        if (installedReply.isError()) {
+-            Q_EMIT passiveMessage(
+-                xi18nc("@info:status", "Failed to read the installed version of “%1”.<nl/><nl/>Error message: %2", name, installedReply.error().message()));
+-            continue;
+-        }
+-        const QDBusPendingReply<QString> availableReply = co_await target->CheckNew();
+-        if (availableReply.isError()) {
+-            Q_EMIT passiveMessage(
+-                xi18nc("@info:status", "Failed to check for a new version of “%1”.<nl/><nl/>Error message: %2", name, availableReply.error().message()));
+-            continue;
+-        }
+-        const QString installedVersion = installedReply.value();
+-        const QString availableVersion = availableReply.value();
+-        qCDebug(SYSTEMDSYSUPDATE_LOG) << "Installed version:" << installedVersion << "Available version:" << availableVersion;
+-
+-        if (installedVersion.isEmpty()) {
+-            qCWarning(SYSTEMDSYSUPDATE_LOG) << "Failed to get installed version for target:" << name;
+-            continue;
+-        }
+-
+-        if (availableVersion.isEmpty()) {
+-            qCInfo(SYSTEMDSYSUPDATE_LOG) << "No new version available for target:" << name;
+-            continue;
+-        }
+-
+         m_resources << new SystemdSysupdateResource(this, component, {installedVersion, availableVersion}, target);
+     }
+ 

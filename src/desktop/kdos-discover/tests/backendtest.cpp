@@ -34,6 +34,9 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QPointer>
+#include <QRegularExpression>
+#include <QSaveFile>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -54,6 +57,7 @@ private Q_SLOTS:
     void packsAndBoxes();
     void debianLane();
     void hostPorts();
+    void hostCatalogueListing();
     void pendingAndCategories();
     void archiveFile();
     void packFile();
@@ -63,6 +67,8 @@ private Q_SLOTS:
     void refusals();
     void urlBeforeFirstRefresh();
     void boxesCategoryNeedsABox();
+    void failedCheckIsSaid();
+    void shippedExclusions();
 
 private:
     QList<KdosResource *> find(const Filters &filter);
@@ -423,7 +429,7 @@ void BackendTest::debianLane()
     // Debian's stock icons are not installed: an icon the theme lacks gives
     // way to the icon of the application's category.
     if (!QIcon::hasThemeIcon(u"inkscape"_s))
-        QCOMPARE(ink.first()->entry().icon, u"applications-graphics"_s);
+        QCOMPARE(ink.first()->entry().icon, u"image-x-generic"_s);
 
     // A package the exclusion list names is never offered, by search, by
     // category or by link.
@@ -541,6 +547,176 @@ void BackendTest::hostPorts()
     }
     QCOMPARE(kates, 1);
     QCOMPARE(debianKates, 0);
+}
+
+void BackendTest::hostCatalogueListing()
+{
+    // A binhost catalogue as kdos-discover-catalog writes one over a build
+    // tree: a package of several applications and an add-on, a console
+    // program, an add-on alone, and a host port whose legacy id Debian's
+    // DEP-11 spells with ".desktop" where the host's has none.
+    const QString root = m_dir.filePath(u"binhost-listing"_s);
+    QVERIFY(QDir().mkpath(root + u"/swcatalog/xml"_s));
+    QFile cat(root + u"/swcatalog/xml/kdos-binhost.xml"_s);
+    QVERIFY(cat.open(QIODevice::WriteOnly));
+    cat.write(R"(<?xml version="1.0" encoding="utf-8"?>
+<components version="1.0" origin="kdos-binhost">
+  <component type="addon">
+    <id>org.libreoffice.kde</id>
+    <pkgname>libreoffice</pkgname>
+    <name>LibreOffice KDE Integration</name>
+    <custom><value key="KDOS::Version">26.2.0.3-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>libreoffice-writer.desktop</id>
+    <pkgname>libreoffice</pkgname>
+    <name>LibreOffice Writer</name>
+    <summary>Letters &amp; reports</summary>
+    <description><p>A word processor.</p></description>
+    <project_license>MPL-2.0</project_license>
+    <developer id="org.documentfoundation"><name>The Document Foundation</name></developer>
+    <icon type="stock">libreoffice-writer</icon>
+    <keywords><keyword>Letter</keyword></keywords>
+    <launchable type="desktop-id">libreoffice-writer.desktop</launchable>
+    <custom><value key="KDOS::Version">26.2.0.3-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>libreoffice-calc.desktop</id>
+    <pkgname>libreoffice</pkgname>
+    <name>LibreOffice Calc</name>
+    <summary>Tables and charts</summary>
+    <description><p>A spreadsheet.</p></description>
+    <project_license>MPL-2.0</project_license>
+    <developer id="org.documentfoundation"><name>The Document Foundation</name></developer>
+    <icon type="stock">libreoffice-calc</icon>
+    <launchable type="desktop-id">libreoffice-calc.desktop</launchable>
+    <custom><value key="KDOS::Version">26.2.0.3-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>libreoffice-startcenter.desktop</id>
+    <pkgname>libreoffice</pkgname>
+    <name>LibreOffice</name>
+    <summary>The office suite</summary>
+    <icon type="stock">libreoffice-startcenter</icon>
+    <launchable type="desktop-id">libreoffice-startcenter.desktop</launchable>
+    <custom><value key="KDOS::Version">26.2.0.3-1</value></custom>
+  </component>
+  <component type="console-application">
+    <id>org.freedesktop.appstream.cli</id>
+    <pkgname>appstream</pkgname>
+    <name>AppStream CLI</name>
+    <custom><value key="KDOS::Version">1.1.0-1</value></custom>
+  </component>
+  <component type="addon">
+    <id>org.kde.dolphin-plugins</id>
+    <extends>org.kde.dolphin</extends>
+    <pkgname>dolphin-plugins</pkgname>
+    <name>Dolphin Plugins</name>
+    <custom><value key="KDOS::Version">26.08.2-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.inkscape.Inkscape.desktop</id>
+    <pkgname>inkscape</pkgname>
+    <name>Inkscape</name>
+    <custom><value key="KDOS::Version">1.4.2-1</value></custom>
+  </component>
+  <component>
+    <id>org.freedesktop.libfprint</id>
+    <pkgname>libfprint</pkgname>
+    <name>libfprint</name>
+    <description><p>Fingerprint reader support.</p></description>
+    <project_license>LGPL-2.1-or-later</project_license>
+    <custom><value key="KDOS::Version">1.94.9-1</value></custom>
+  </component>
+</components>
+)");
+    cat.close();
+
+    const QByteArray binhost = qgetenv("KDOS_BINHOST_CACHE");
+    qputenv("KDOS_BINHOST_CACHE", root.toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"debian"_s, u"gimp"_s), 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+
+    // One resource per package, never the add-on beside it: a suite is
+    // named by its start centre, the bare desktop entry whose name begins its
+    // applications', described by the list of its applications and
+    // licensed and authored by their metainfo.
+    KdosResource *office = resource(u"port"_s, u"libreoffice"_s);
+    QVERIFY(office);
+    QCOMPARE(office->name(), u"LibreOffice"_s);
+    QCOMPARE(office->appstreamId(), u"libreoffice-startcenter.desktop"_s);
+    QCOMPARE(office->type(), AbstractResource::Application);
+    QCOMPARE(office->author(), u"The Document Foundation"_s);
+    QCOMPARE(office->entry().license, u"MPL-2.0"_s);
+    const QString suite = office->longDescription();
+    // The summary is the page's heading, so the body opens with the list.
+    QCOMPARE(office->comment(), u"The office suite"_s);
+    QVERIFY2(!suite.contains(u"The office suite"_s), qPrintable(suite));
+    QVERIFY2(suite.startsWith(u"<p>The suite holds:</p><ul><li>"_s), qPrintable(suite));
+    QVERIFY2(suite.contains(u"<li>Writer: Letters &amp; reports</li>"_s), qPrintable(suite));
+    QVERIFY2(suite.contains(u"<li>Calc: Tables and charts</li>"_s), qPrintable(suite));
+    QVERIFY2(suite.indexOf(u"Writer"_s) < suite.indexOf(u"Calc"_s), qPrintable(suite));
+    QVERIFY2(!suite.contains(u"A spreadsheet."_s) && !suite.contains(u"A word processor."_s), qPrintable(suite));
+    // The package's other applications find it by their names and keywords.
+    for (const QString &term : {u"writer"_s, u"letter"_s, u"LibreOffice"_s}) {
+        Filters byTerm;
+        byTerm.search = term;
+        bool found = false;
+        for (KdosResource *r : find(byTerm))
+            found |= r->entry().lane == Lane::Port && r->entry().id == "libreoffice"_L1;
+        QVERIFY2(found, qPrintable(term));
+    }
+    // A link to another of its applications opens the package.
+    Filters link;
+    link.resourceUrl = QUrl(u"appstream://libreoffice-calc.desktop"_s);
+    const QList<KdosResource *> byLink = find(link);
+    QVERIFY(!byLink.isEmpty());
+    QCOMPARE(byLink.first()->entry().id, u"libreoffice"_s);
+
+    // A console program and an add-on are not listed as applications, and
+    // with no icon of their own get one of their kind.
+    KdosResource *cli = resource(u"port"_s, u"appstream"_s);
+    QVERIFY(cli);
+    QCOMPARE(cli->type(), AbstractResource::ApplicationSupport);
+    QCOMPARE(cli->entry().icon, u"utilities-terminal"_s);
+    KdosResource *plugins = resource(u"port"_s, u"dolphin-plugins"_s);
+    QVERIFY(plugins);
+    QCOMPARE(plugins->type(), AbstractResource::Addon);
+    QCOMPARE(plugins->entry().icon, u"preferences-plugin"_s);
+    // A generic component with no category gets one of its kind, not the
+    // unknown-category icon.
+    KdosResource *fprint = resource(u"port"_s, u"libfprint"_s);
+    QVERIFY(fprint);
+    QCOMPARE(fprint->entry().icon, u"application-x-sharedlib"_s);
+
+    // An application whose catalogue names no category is still on the
+    // All Applications page, which matches resources by category.
+    KdosResource *inkscape = resource(u"port"_s, u"inkscape"_s);
+    QVERIFY(inkscape);
+    std::shared_ptr<Category> all;
+    for (const auto &c : m_backend->category()) {
+        if (c->name() == u"All Applications"_s)
+            all = c;
+    }
+    QVERIFY(all);
+    QVERIFY(inkscape->categoryMatches(all));
+
+    // What the binhost can add is never offered again in a box, whichever
+    // of the two spellings of an id each catalogue uses.
+    Filters f;
+    f.search = u"inkscape"_s;
+    int ports = 0, debian = 0;
+    for (KdosResource *r : find(f)) {
+        ports += r->entry().lane == Lane::Port || r->entry().lane == Lane::PortSource;
+        debian += r->entry().lane == Lane::Debian;
+    }
+    QVERIFY(ports >= 1);
+    QCOMPARE(debian, 0);
+
+    delete std::exchange(m_backend, shared);
+    qputenv("KDOS_BINHOST_CACHE", binhost);
 }
 
 void BackendTest::pendingAndCategories()
@@ -711,6 +887,15 @@ void BackendTest::installFails()
     qunsetenv("KDOS_TEST_FAIL");
     QCOMPARE(txSaid.count(), 1);
     QVERIFY(txSaid.first().first().toString().contains(u"the image did not build"_s));
+    // Discover shows that message only behind a generic error, so the page's
+    // notice says it, through the refresh the failure caused, until the next
+    // install of the resource starts.
+    QCOMPARE(tess->kdosNoticeType(), int(InlineMessage::Error));
+    QCOMPARE(tess->kdosNotice(), txSaid.first().first().toString());
+    QVERIFY(tess->kdosNotice().startsWith(tess->name() + u" was not installed: "_s));
+    QCOMPARE(runToEnd(m_backend->installApplication(tess)), Transaction::DoneStatus);
+    QVERIFY(!tess->kdosNotice().contains(u"was not installed"_s));
+    QCOMPARE(tess->kdosNoticeType(), int(InlineMessage::Information));
 }
 
 void BackendTest::removeRuns()
@@ -723,13 +908,13 @@ void BackendTest::removeRuns()
 
     clearLog();
     QCOMPARE(runToEnd(m_backend->removeApplication(work)), Transaction::DoneStatus);
-    QVERIFY(toolLog().contains(u"kdos-box remove work"_s));
+    QVERIFY(toolLog().contains(u"kdos-box remove work --purge"_s));
     QVERIFY(m_packdRequests.contains(u"remove box.work"_s));
 
     clearLog();
     QCOMPARE(runToEnd(m_backend->removeApplication(scratch)), Transaction::DoneStatus);
     QCOMPARE(toolLog().filter(u"kdos-box s"_s), QStringList{u"kdos-box stop scratch"_s});
-    QVERIFY(toolLog().contains(u"kdos-box remove scratch"_s));
+    QVERIFY(toolLog().contains(u"kdos-box remove scratch --purge"_s));
 
     clearLog();
     QCOMPARE(runToEnd(m_backend->removeApplication(gimp)), Transaction::DoneStatus);
@@ -746,6 +931,11 @@ void BackendTest::removeRuns()
     QCOMPARE(m_asked.size(), 2);
     QVERIFY(m_asked[0].contains(addons->name()));
     QVERIFY(m_asked[1].startsWith(u"Downloads 3 packages"_s));
+    // The size's number and unit never part at a line break. Discover's
+    // dialog reads the text as Text.StyledText, which collapses a raw U+00A0
+    // with the other white space and keeps only the entity's.
+    QVERIFY(m_asked[1].contains(QRegularExpression(u"\\d&nbsp;[KMG]?i?B"_s)));
+    QVERIFY(!m_asked[1].contains(QChar::Nbsp));
 
     // Built here, the question counts the builds and warns of their length.
     KdosResource *addonsBuilt = resource(u"port-source"_s, u"kdos-addons"_s);
@@ -844,6 +1034,97 @@ void BackendTest::boxesCategoryNeedsABox()
     QVERIFY(!hasBoxesPage(bare->category()));
     delete bare;
     qunsetenv("KDOS_TEST_NOBOXES");
+}
+
+void BackendTest::failedCheckIsSaid()
+{
+    // The last check could not fetch the release tree: the Updates page says
+    // so, with where it looked, above a list that would otherwise read "Up
+    // to date"; a later check with no problem takes the message away.
+    const QString doc = m_dir.filePath(u"update-problem.json"_s);
+    auto write = [&doc](const QByteArray &body) {
+        QSaveFile f(doc);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(body);
+        QVERIFY(f.commit());
+    };
+    write(R"({"problem":"fetch-failed","detail":"file:///mnt/bh/kdos-ports.tar.xz could not be downloaded","channel":"file:///mnt/bh","offer":null})");
+    const QByteArray had = qgetenv("KDOS_UPDATE_DOC");
+    qputenv("KDOS_UPDATE_DOC", doc.toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    m_backend->setName(u"kdos-backend"_s);
+    QSignalSpy said(m_backend, &AbstractResourcesBackend::inlineMessageChanged);
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    auto message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QCOMPARE(message->type, InlineMessage::Warning);
+    QVERIFY(message->message.contains(u"file:///mnt/bh"_s));
+    QVERIFY(message->message.contains(u"could not be downloaded"_s));
+
+    // An offline Refresh and a binhost index that does not verify are said
+    // too, each in its own words.
+    write(R"({"problem":"no-network","detail":"","channel":"https://kdos.example/rel","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QVERIFY(message->message.contains(u"https://kdos.example/rel"_s));
+    QVERIFY(message->message.contains(u"no network"_s));
+
+    write(R"({"problem":"binhost-unverified","detail":"index.sig: no key verifies it","channel":"https://kdos.example/rel","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QVERIFY(message->message.contains(u"package index"_s));
+    QVERIFY(message->message.contains(u"does not verify"_s));
+    QVERIFY(message->message.contains(u"no key verifies it"_s));
+
+    // A machine ahead of the release is not cut off from it: the published
+    // tree older than its own is no warning.
+    write(R"({"problem":"fetch-failed","detail":"the published tree 21b67721d537 is older than this machine's 53a78a241","channel":"file:///mnt/bh","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    QVERIFY(!said.last().at(0).value<QSharedPointer<InlineMessage>>());
+
+    write(R"({"problem":"binhost-unverified","detail":"index.sig: no key verifies it","channel":"https://kdos.example/rel","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+
+    write(R"({"problem":null,"detail":"","channel":"file:///mnt/bh","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    QVERIFY(!said.last().at(0).value<QSharedPointer<InlineMessage>>());
+
+    delete std::exchange(m_backend, shared);
+    if (had.isNull())
+        qunsetenv("KDOS_UPDATE_DOC");
+    else
+        qputenv("KDOS_UPDATE_DOC", had);
+}
+
+void BackendTest::shippedExclusions()
+{
+    // The list the image ships, read as the backend reads it: a Debian
+    // system's own configurators mean nothing on KDOS, and KRunner offers
+    // nothing this list names.
+    const QString path = QFINDTESTDATA("../data/debian-exclude");
+    QVERIFY(!path.isEmpty());
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QSet<QString> names;
+    for (const QByteArray &raw : f.readAll().split('\n')) {
+        const QString line = QString::fromUtf8(raw.left(raw.indexOf('#') < 0 ? raw.size() : raw.indexOf('#'))).trimmed();
+        if (!line.isEmpty())
+            names.insert(line);
+    }
+    for (const QString &name : {u"galternatives"_s, u"synaptic"_s, u"gdebi"_s, u"configure-debian"_s, u"kmag"_s})
+        QVERIFY2(names.contains(name), qPrintable(name));
 }
 
 int main(int argc, char **argv)

@@ -14,8 +14,9 @@
  *                              cannot open the state file itself
  *   /run/kdos-oomd.sock        `status`: how many processes kdos-oomd has
  *                              killed since it started, and the last
- *   /var/lib/kdos/apps-pending the applications the installer was asked
- *                              for and could not install; a file, because
+ *   /var/lib/kdos/apps-pending the selections (applications or groups)
+ *                              the installer was asked for and could not
+ *                              install; a file, because
  *                              it is the installer's record and Discover
  *                              reads the same one ($KDOS_APPS_PENDING
  *                              moves it for both)

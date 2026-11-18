@@ -29,9 +29,11 @@
 # copied to a stick or served as it is, is what `binhost =` in
 # /etc/kdos/update.conf names. `ports/publish --release` puts the same files in
 # the releases binhost-<version>-NN and writes the release's own index over
-# them. Its `version` is the short commit hash the Makefile records, cut to
-# twelve characters, which is what a machine whose /ports carries no release
-# name calls its tree.
+# them. Its `version` is KDOS_GIT_RELEASE, the release tag script/chroot/exec.sh
+# sets only for a clean tagged checkout and 105_ports.sh writes into
+# /ports/TREE, or else the short commit cut to twelve characters, which is what
+# a machine whose /ports carries no release name calls its tree; `kdos update`
+# refuses an index whose version differs from the tree's.
 #
 # THE DIRECTORY ACCUMULATES. Each package is MOVED out of build/fs's package
 # cache, so the cache holds only what the next build makes: under
@@ -93,8 +95,17 @@ echo "[binhost] $added package(s) from this build, $total in $OUT"
 # under /ports/src/<area>, the same files 105_ports.sh copies there, and
 # computes the same hash; with /ports/core alone every src/ package would be
 # indexed with an empty E:, which no machine takes.
+#
+# EACH PACKAGE'S N: LINE NAMES THE BUILD-ONLY PORTS IT NEEDS AT RUN TIME:
+# its run-time needs record in this tree's database (/var/lib/kpkg/db/.needs,
+# written by every `kpkg install`) resolved to the packages that provide
+# them, intersected with ports/buildonly. `kdos update install` follows a
+# dependency into a build-only port only where the line names it, so a
+# prebuilt install of kcharselect takes no cmake; a stanza with no N: keeps
+# every edge, and 087_gates.sh fails a build that leaves one.
 PORT_REPO="/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons" \
-    kpkg index "$OUT" --sign "$KEYDIR/$KEY.key"
+PKGDB_DIR=/var/lib/kpkg/db \
+    kpkg index "$OUT" --sign "$KEYDIR/$KEY.key" --buildonly /ports/buildonly
 # Verified against the one key it was signed with, the way a client that
 # trusts it will read it.
 KPKG_KEYRING="$KEYDIR" kpkg verify-index "$OUT"
@@ -134,7 +145,7 @@ source ports/srclib.sh
 IDX=$OUT/$REL_INDEX_FILE
 rm -f "$IDX" "$IDX.sig"
 version=${KDOS_GIT_COMMIT:-local}
-version=${version:0:12}
+version=${KDOS_GIT_RELEASE:-${version:0:12}}
 declare -A stale=()
 while IFS= read -r f; do
     stale[$f]=1

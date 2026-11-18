@@ -72,10 +72,10 @@ and `/etc/kpkg.conf`, the host package manager's, under
 | `march.ledger` | Measured per-machine optimisation results | `kdos march` |
 | `apps-pending` | Boxed applications chosen in the installer, offered at the first login | `kinstall` |
 | `groups-pending` | Native groups chosen in the installer that did not install, one id per line; `kdos update install --pending` installs them and removes each id that went in, the file with the last. Carried into a slot at the arm, beside `world` and `origin` | `kinstall`, on the new disk |
-| `world` | The packages somebody installed on purpose, one name per line, which every update installs into the new slot as well: the binhost lane keeps them, and the image lane installs them over the image from the same release's binhost | `kdos update install`, a group's install (each member by its own name), and Discover's ports backend |
-| `origin` | How each package an install or an update added arrived, one `<package> prebuilt\|source` line; a package with no line is `prebuilt`, as everything the image brought is. An update takes each package by its route again, building a `source` one in the slot. Carried into a slot at the arm with `world` | `kdos update install` and `apply` |
-| `update.json` | What `kdos update check --json` found, what is offered and the last problem; Discover's update notifier, the System Versions page and `kdos-notice` read it | The update-check timer, nightly at 04:17, and `kdos update fetch` and `apply` when they finish |
-| `update.state` | The outcome of the last `fetch`, of the binhost and image surveys and of the last `apply`, each with a time and a sentence | `kdos update` |
+| `world` | The packages somebody installed on purpose, one name per line, which every update installs into the new slot as well: the binhost lane keeps them, and the image lane installs them over the image from the same release's binhost. `kpkg remove` (`kpkgdel`) drops a removed package's line from the root it removes from; a slot an update has already armed keeps its own copy | `kdos update install`, a group's install (each member by its own name), and Discover's ports backend; `kpkgdel` removes lines |
+| `origin` | How each package an install or an update added arrived, one `<package> prebuilt\|source` line; a package with no line is `prebuilt`, as everything the image brought is. An update takes each package by its route again, building a `source` one in the slot. Carried into a slot at the arm with `world`, and a removed package's line dropped by `kpkgdel` the same way | `kdos update install` and `apply`; `kpkgdel` removes lines |
+| `update.json` | What `kdos update check --json` found, what is offered and the last problem; Discover's update notifier, the System Versions page and `kdos-notice` read it. Its `image` and `binhost` fields are where each lane's bytes come from, and `kdos-sysupdated`'s update text says *to copy* when the offered lane's is a directory or a `file://` URL and *to download* otherwise | The update-check timer, nightly at 04:17, and `kdos update fetch` and `apply` when they finish |
+| `update.state` | The outcome of the last `fetch`, of the binhost and image surveys and of the last `apply`, each with a time and a sentence. On a machine with no second root slot `kdos-sysupdated` fetches the binhost index at most once per `--refresh-after` judged by the `binhost` line, whose `no-network` and `fetch-failed` codes count as no fetch; with slots it judges by the `fetch` line | `kdos update` |
 | `update.state.lock` | The lock `fetch` and `apply` hold, so a tree is never replaced under a build | `kdos update fetch` and `apply` |
 | `update.state.sig` | The signature of the tree last installed; a published signature equal to it is the same tree, and the tree is not downloaded again | `kdos update fetch` |
 | `binhost/` | The signed binhost index of the tree in place, `PACKAGES` and `PACKAGES.sig`, the signed release index it was fetched by, `INDEX` and `INDEX.sig`, with `ORIGIN` (where that came from), and its AppStream catalogue under `swcatalog/` | `kdos update fetch` |
@@ -126,15 +126,16 @@ Where KDOS's Plasma components and artwork install, outside `/usr/share/kdos`:
 | `/usr/share/kwin/scripts/kdos_{runraise,window_memory}/` | Run-or-raise and window memory | `kwin-script-kdos-runraise`, `kwin-script-kdos-window-memory` |
 | `/usr/share/kglobalaccel/org.kdos.*.desktop` | The global shortcuts KDOS's scripts and `kdos tiling` register | `kdos-tools`, `kwin-script-kdos-runraise` |
 | `/usr/share/krunner/dbusplugins/kdos.desktop`, `kdos-library.desktop` | The KDOS runner and the offline library in KRunner | `kdos-runner` |
-| `/usr/share/khelpcenter/plugins/kdos.desktop`, `kfs.desktop` | The two books in the Help Center, where it is installed | `kdos-doc`, `kdos-kfs` |
+| `/usr/share/khelpcenter/plugins/kdos.desktop`, `kfs.desktop` | The books in the Help Center, where it is installed: the Help Center is in the `kde-system` group, not the base | `kdos-doc`, `kdos-kfs` |
 | `/usr/share/plasma/plasma-welcome/extra-pages/` | The KDOS pages of the Welcome Center | `kdos-welcome` |
 | `/usr/share/plasma-systemmonitor/kdos-overview.page`, `/usr/share/plasma-systemmonitor/kdos.page`, `/usr/share/ksysguard/sensorfaces/org.kdos.meters/` | System Monitor's Overview and KDOS pages, and the KDOS Meters face | `ksystemstats-kdos` |
 | `/usr/share/swcatalog/xml/kdos-ports.xml` | The AppStream catalogue of the ports this root has installed, which Discover lists | `70_image`'s `086_swcatalog.sh`, and `kdos-discover-catalog` after every install |
 | `/usr/share/swcatalog/xml/kdos-debian-exclude.xml` | `remove-component` merges that take the Debian applications `debian-exclude` names out of every AppStream pool, KRunner's software results included | `70_image`'s `086_swcatalog.sh` |
 | `/usr/share/kdos/firmware-map` | Which vendor firmware port ships each file of `linux-firmware`: one `<port> <path>` line per file and link, the path as a driver requests it, which `kdos firmware sync` reads | `firmware-map` |
 | `/usr/share/fwupd/remotes.d/kdos-snapshot.conf`, `kdos-snapshot/` | The fwupd remote that reads the firmware metadata snapshot offline, and the snapshot, `firmware.xml.zst` with its signature | `fs/`, and `fwupd-snapshot` |
-| `/usr/share/doc/kdos/`, `/usr/share/doc/kfs/` | The two books as HTML | `kdos-doc`, `kdos-kfs` |
-| `/usr/share/doc/HTML/en/kdos` | A link to `/usr/share/doc/kdos`, through which `help:/kdos/<page>.html` reaches the book | `kdos-doc` |
+| `/usr/share/doc/kdos/`, `/usr/share/doc/kfs/` | The books as HTML. The image carries the KDOS book; *KDOS from Scratch* is there once `sudo kdos update install kdos-kfs` has installed it | `kdos-doc`, `kdos-kfs` |
+| `/usr/share/doc/HTML/en/kdos` | A link to `/usr/share/doc/kdos`, through which `help:/kdos/<page>.html` reaches the book: in the Help Center where it is installed, and otherwise through KGuiAddons' `help:` handler, patched in KDOS, which opens the page in the browser as a `file:` URL with its fragment | `kdos-doc` |
+| `/usr/share/knotifications6/kdos.notifyrc` | The notification application *KDOS Tools* that the hint `x-kde-appname=kdos` names, so KDOS's notifications keep the KDOS mark, stay in the history and are configured on the Notifications page: those of `kb_notify()` callers (`kdos remind`, the toggles, `kdos verify --notify`, `kdos speech`, `kdos-shot`, `kdos-share`), `kdos notify`, `kdos-notice` and a failed runner verb | `kdos-tools` |
 
 ### `/usr/local/bin/` — session commands and application shims
 
@@ -174,8 +175,10 @@ directories, each searched for a port at `<name>/` and one shelf down at `<shelf
 default is the tree every image carries at `/ports`, recipes without their sources: `/ports/core`,
 and `/ports/src/system`, `art`, `desktop` and `daemons` for KDOS's own programs, beside
 `/ports/shelves`, `/ports/sources.idx`, `/ports/groups` (the native application groups
-`kdos update install` and the installer offer) and `/ports/TREE`, which names the commit the tree
-is and that commit's time. The two books are there too, under `/ports/docs`, for the programs that
+`kdos update install` and the installer offer), `/ports/RELEASE`, the release notes `kdos update
+notes` and What's New show, and `/ports/TREE`, which names the commit the tree is and that commit's
+time, and the release, `version <tag>`, when it is a published tree or the image was built from a
+clean checkout of a tagged commit. The two books are there too, under `/ports/docs`, for the programs that
 render them. `kdos update fetch` replaces the whole of `/ports` with a newer signed tree. Every port is listed in
 [The ports catalogue](ports-catalogue.md). No source archive is on the image and `/var/cache` is
 not carried into the installed system, so a build on the machine needs each source it names
@@ -248,7 +251,7 @@ on a machine nobody logs in to. See
 | `/boot/initramfs-kdos.cpio.gz` | The image's initramfs with a newer kernel's modules appended, written when the `linux` package is upgraded |
 | `/boot/efi/EFI/kdos/<slot>/` | Each A/B root slot's `vmlinuz` and `initramfs.cpio.gz`, on the EFI system partition, for slots `a` and `b` |
 | `/boot/efi/EFI/kdos/vmlinuz`, `initramfs.cpio.gz` | A flat pair that boots either slot. Nothing in KDOS writes one (`kinstall` puts slot `a`'s pair in `EFI/kdos/a/`); where one exists, `kdos-bootctl` boots it for a slot with no directory of its own and deletes it once no menu entry names it |
-| `/boot/efi/EFI/kdos/bootstate` | Each slot's root UUID and encrypted container, which slot is active, and whether a trial boot is pending with its attempt count; `kdos-bootctl` owns it |
+| `/boot/efi/EFI/kdos/bootstate` | Each slot's root UUID and encrypted container, which slot is active, whether a trial boot is pending with its attempt count, and `unfilled = <slot>`, always present and empty when no slot is, naming a slot an update began writing and did not finish, which is not tried and has no boot-menu entry until an update writes it again; `kdos-bootctl` owns it |
 | `/boot/efi/EFI/kdos/trial/` | A trial boot's copy of the loader, present only while a trial is pending |
 
 ### Per user
@@ -285,7 +288,7 @@ on a machine nobody logs in to. See
 | `~/.local/state/kdos/kglobalshortcutsrc.seeded` | Present once the KDOS chords have been added to your shortcuts, so a chord you removed stays removed |
 | `~/.local/state/kdos/fwask` | The services the firewall's question has already asked about, per network |
 | `~/.cache/kdos/plocate.db` | This account's file index, built from `$HOME` by `kdos-updatedb` at the first login that finds none and rebuilt nightly; `LOCATE_PATH` names it |
-| `~/.cache/kdos/runner-books` | The KDOS runner's index of the two books, rebuilt when `kdos-doc` or `kdos-kfs` is reinstalled |
+| `~/.cache/kdos/runner-books` | The KDOS runner's index of the books installed, rebuilt when `kdos-doc` or `kdos-kfs` is reinstalled |
 | `~/.cache/kdos/library-owners` | Which pack or package owns each item of the offline library, trusted until kpkg's database changes |
 | `~/.local/share/Trash/` | The freedesktop trash |
 | `~/Mail/` | The account's Maildir |
@@ -467,7 +470,7 @@ about the caller's bus name; the action names are in [The security model](../03-
 | `org.freedesktop.timedate1` | `/org/freedesktop/timedate1` | `kdos-settingsd` | The time zone, the clock, and *Set time automatically*, over `/etc/localtime`, `/etc/profile.d/20-timezone.sh`, the Wi-Fi country and the `chrony` service |
 | `org.freedesktop.locale1` | `/org/freedesktop/locale1` | `kdos-settingsd` | The locale and the console and graphical keyboard layouts, over `/etc/locale.conf`, `/etc/keymap` and `/etc/kdos/xkb.conf` |
 | `org.freedesktop.sysupdate1` | `/org/freedesktop/sysupdate1`, one target `host` | `kdos-sysupdated` | System updates, as Discover's sysupdate backend asks for them: `ListTargets`, then on the target `GetVersion`, `GetAppStream`, `CheckNew`, `List`, `Describe`, `Acquire` (the download and the build, which shows progress), `Install` (arming the inactive slot) and `Vacuum`, with a job object per running operation |
-| `io.kdos.Slots1` | `/io/kdos/Slots1` | `kdos-sysupdated` | The A/B slots for the System Versions page and the update notifier: the properties `Configured`, `Live`, `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel`, `State`, and `InstallRoute` and `BuildDeps` (`prebuilt` or `source`, read from `install =` and `build-deps =` in `update.conf`, `prebuilt` when absent or unknown); `ListSlots`, `Try`, `CancelTry`, `SetChannel`, `SetInstallRoute(ss)` (`io.kdos.slots.install-route`), which writes both keys and refuses any other word with `InvalidArgs`, and `Bless`, the session's half of a trial boot's confirmation; the signal `SlotsChanged` |
+| `io.kdos.Slots1` | `/io/kdos/Slots1` | `kdos-sysupdated` | The A/B slots for the System Versions page and the update notifier: the properties `Configured`, `Live`, `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel`, `State`, and `InstallRoute` and `BuildDeps` (`prebuilt` or `source`, read from `install =` and `build-deps =` in `update.conf`, `prebuilt` when absent or unknown); `ListSlots`, `Try`, `CancelTry`, `SetChannel`, which takes `""`, an absolute directory, an `https://` URL or a `file:///` URL and refuses any other, `http://` among them, with `InvalidArgs` `not an update channel: <value>`, `SetInstallRoute(ss)` (`io.kdos.slots.install-route`), which writes both keys and refuses any other word with `InvalidArgs`, and `Bless`, the session's half of a trial boot's confirmation; the signal `SlotsChanged` |
 | `org.freedesktop.login1` | `/org/freedesktop/login1` | `elogind` | Sessions, seats, power and lid; what Plasma, SDDM and `kdos-power` ask |
 | `org.freedesktop.Accounts` | `/org/freedesktop/Accounts` | `accountsservice` | The accounts System Settings' Users page and SDDM list |
 
@@ -513,7 +516,7 @@ Neither configuration nor storage: these files are how one program tells another
 | `/run/kdos/bless/*` | The end of `rcS` (`userspace`); `kdos-sysupdated` for a session's `Bless` or a greeter that stayed up (`graphical`), and after `mark-good` (`confirmed`) | `kdos-sysupdated` |
 | `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | About this System, and anything else that identifies the system |
 | `/etc/kdos-release` | The build, and `kdos image unpack` with each slot it writes | `kdos update`, `kdos version` and the About page's slot row |
-| `<file>.kdos-new` under `/etc` | `kdos image carry`, when a file you edited has a newer default in the new slot | You: the new default, beside your copy, to compare |
+| `<file>.kdos-new` under `/etc`, `.<file>.kdos-new` inside a directory whose name ends in `.d` | `kdos image carry`, when a file you edited has a newer default in the new slot | You: the new default, beside your copy, to compare. Inside a `.d` directory it is a dotfile, because a program that reads every file of the directory (SDDM's `sddm.conf.d`, `cron.d`) would read the new default after your copy and take it |
 | `/boot/initramfs.modules` | The initramfs build step, one module per line | The `linux` package's post-install, which carries a new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
 | `/boot/initramfs-kdos.cpio.gz` | The `linux` post-install: the image's initramfs with the new kernel's modules appended | `kdos-bootctl deploy` and `kinstall`, which use it in place of `/boot/initramfs.cpio.gz` |
 | `EFI/kdos/<slot>/vmlinuz`, `EFI/kdos/<slot>/initramfs.cpio.gz` on the EFI system partition | `kinstall` for slot `a`, `kdos-bootctl deploy` for either | The boot loader (Limine), through the `/KDOS` menu entries `kdos-bootctl` regenerates on every change of boot state |
@@ -627,17 +630,19 @@ Read by `make build` and the build scripts on the build machine; see
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY` | Recorded in each phase's snapshot manifest as `git_commit` and `git_dirty`, and shown by the snapshot picker, which marks a snapshot stale when either disagrees with the tree. `70_image/045_identity.sh` also stamps them into the image's `/etc/os-release` as `BUILD_ID` |
 | `KDOS_GIT_DATE` | The commit's date, `YYYY-MM-DD`, set by `make build`; stamped into `/etc/os-release` as `KDOS_BUILD_DATE` |
 | `KDOS_GIT_TIME` | The commit's time in Unix seconds, set by `make build`; stamped into `/ports/TREE`, which `kdos update fetch` orders two trees by |
+| `KDOS_GIT_TAG` | The release tag on `HEAD`, set by `make build` from `git tag --points-at HEAD --list 'v[0-9]*'` (a tag named `v<digit>…`; the archive tags `sources-N`, `src-*` and `packs-*` never name a release), or by hand to pick one of several; empty when `HEAD` has none, or with `KDOS_GIT_TAG=none`. `make build` refuses several release tags with none picked, a name that is not a release tag on `HEAD` and one outside `ports/publish --release`'s names; see [The release tag](../05-developer/build-system.md#the-release-tag) |
+| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh`, never by hand: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty. `70_image/105_ports.sh` writes it into `/ports/TREE` as `version <tag>` |
 | `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/phases/<phase>/phase.env`. The orchestrator parses these keys from the file's own text without sourcing it, so it follows none of the file's `source` lines and each `phase.env` sets them itself; the phase's steps source the whole file as shell. Each `KDOS_SNAPSHOT_EXCLUDE` pattern is matched with `fnmatch(3)`, no flags, against an entry's whole path relative to `build/`, so `*` crosses `/`, and an excluded directory is left out whole |
 | `KDOS_RES=WxH` | The virtual screen size for `make run` and its variants; default `1920x1080` |
 
 The build runs its later steps inside a chroot entered with a cleared environment, so a variable a
-chroot step reads must also be named in `script/chroot/exec.sh`. Exactly eighteen are forwarded:
+chroot step reads must also be named in `script/chroot/exec.sh`. Exactly nineteen are forwarded:
 `KDOS_REPLAY`, `KDOS_JOBS`, `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_ISO_COMP`, `KDOS_ISO_BLOCK`,
 `KDOS_ISO_MAX`, `KDOS_ISO_GATE`, `KDOS_IMAGE`, `KDOS_CCACHE`,
 `KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE_SALT`, `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`,
-`KDOS_GIT_DATE`, `KDOS_GIT_TIME` and `KDOS_MAKE_BINHOST`, which also
+`KDOS_GIT_DATE`, `KDOS_GIT_TIME`, `KDOS_GIT_TAG` and `KDOS_MAKE_BINHOST`, which also
 arrives as `KPKG_KEEP_CACHE`; `KDOS_PKG_STORE` also arrives as `KPKG_STORE` and
-`KPKG_STORE_CHECK`. A new one added to the `Makefile` and not
+`KPKG_STORE_CHECK`, and `KDOS_GIT_TAG` as `KDOS_GIT_RELEASE` on a clean checkout. A new one added to the `Makefile` and not
 there reaches every host step and no chroot step; see
 [Entering the chroot](../05-developer/how-kdos-is-built.md#entering-the-chroot).
 

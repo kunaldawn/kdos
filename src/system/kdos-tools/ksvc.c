@@ -288,9 +288,12 @@ static pid_t read_pid(const char *name)
 	return pid > 1 ? pid : 0;
 }
 
+/* Whether `pid` exists. EPERM is an answer, not a failure: it names a process
+ * the caller may not signal, which is every root supervisor to `service list`
+ * run as a user, and taking it for "gone" reports each of them as FAIL. */
 static int alive(pid_t pid)
 {
-	return pid > 1 && kill(pid, 0) == 0;
+	return pid > 1 && (kill(pid, 0) == 0 || errno == EPERM);
 }
 
 /* The real uid `pid` runs as, or -1 when /proc no longer has it. */

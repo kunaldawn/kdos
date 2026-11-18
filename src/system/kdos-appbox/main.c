@@ -1079,10 +1079,22 @@ int cmd_status(void)
 	char state[64], st[4096], sp[MAX_LINE];
 
 	profile_load(&p, g_box);
-	if (packd_ask("status", st, sizeof(st)) == 0)
+	/* A refusal is an answer: kdos-packd answers root and the wheel
+	 * group, and tells any other user `err not permitted`. That is
+	 * printed as the daemon said it — "not answering" would send the
+	 * user looking for a daemon that is running. */
+	switch (packd_ask("status", st, sizeof(st))) {
+	case 0:
 		fputs(st, stdout);
-	else
+		break;
+	case 1:
+		/* packd_ask hands back a bare `err` whole, as the word. */
+		printf("packd : %s\n",
+		       st[0] && strcmp(st, "err") ? st : "refused");
+		break;
+	default:
 		printf("packd : not answering\n");
+	}
 	box_state(g_box, state, sizeof(state));
 	printf("box   : %s (%s)\n",
 	       strcmp(state, "absent") ? "created"

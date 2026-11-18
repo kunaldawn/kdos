@@ -60,7 +60,12 @@ static constexpr int PreviewNames = 12;
 
 QString installPreviewText(const InstallPreview &p)
 {
-    const QString size = QLocale().formattedDataSize(qint64(p.bytes));
+    // Number and unit joined by a no-break space: the dialog wraps its
+    // text, and a break between them leaves the unit alone on a line. The
+    // dialog's label reads the text as Text.StyledText, which collapses a
+    // raw U+00A0 with the other white space, so the text goes out
+    // HTML-escaped and the no-break space as the entity &nbsp;.
+    const QString size = QLocale().formattedDataSize(qint64(p.bytes)).replace(u' ', QChar::Nbsp);
     QString said;
     if (p.builds == 0 && p.downloads == 0) {
         said = i18n("Everything it needs is installed already.");
@@ -76,7 +81,7 @@ QString installPreviewText(const InstallPreview &p)
                                          builds,
                                          size);
     }
-    said = said.toHtmlEscaped();
+    said = said.toHtmlEscaped().replace(QChar::Nbsp, u"&nbsp;"_s);
     if (!p.built.isEmpty()) {
         QStringList names;
         for (const QString &n : p.built.mid(0, PreviewNames))
@@ -265,7 +270,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         const auto pack = ctx.packs.constFind(e.id);
         const bool stored = pack != ctx.packs.constEnd() && pack->origin == "store"_L1;
         if (box != ctx.boxes.constEnd() && box->base.startsWith("pack:"_L1)) {
-            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box->name}) << run(u"kdos-box"_s, {u"remove"_s, box->name});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box->name}) << run(u"kdos-box"_s, {u"remove"_s, box->name, u"--purge"_s});
             if (stored)
                 plan.steps << packd(u"remove"_s, e.id);
             plan.steps << launchers();
@@ -309,7 +314,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         if (e.packOrigin != "store"_L1)
             return refuse(i18n("%1 is on the medium; nothing of it is installed.", e.name));
         if (e.kind == "app"_L1 && ctx.boxes.contains(boxNameForPack(e.id)))
-            plan.steps << run(u"kdos-box"_s, {u"stop"_s, boxNameForPack(e.id)}) << run(u"kdos-box"_s, {u"remove"_s, boxNameForPack(e.id)});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, boxNameForPack(e.id)}) << run(u"kdos-box"_s, {u"remove"_s, boxNameForPack(e.id), u"--purge"_s});
         if (e.kind == "data"_L1)
             plan.steps << packd(u"ungraft"_s, e.id);
         plan.steps << packd(u"remove"_s, e.id);
@@ -321,7 +326,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
     case Lane::Box:
         if (!isSafeId(e.id))
             return refuse(i18n("“%1” is not a box name.", e.id));
-        plan.steps << run(u"kdos-box"_s, {u"stop"_s, e.id}) << run(u"kdos-box"_s, {u"remove"_s, e.id});
+        plan.steps << run(u"kdos-box"_s, {u"stop"_s, e.id}) << run(u"kdos-box"_s, {u"remove"_s, e.id, u"--purge"_s});
         return plan;
 
     case Lane::Port:

@@ -1,0 +1,141 @@
+Subject: Fit the playlist footer: a bare count for an empty playlist, a zero position formatted, a shortest form for a narrow column
+
+The playlist footer took the "%1 tracks, %2 total" branch for an empty
+playlist, whose remainingTracks is -1, and ProgressIndicator left its
+text empty at position 0: it formats only in setPosition(), which
+returns early when the position is unchanged and the position starts at
+0. The footer reads "0 tracks,  total". Give an empty playlist its own
+branch, which reads "0 tracks" through the existing "%1 track" string.
+Format the starting position in the constructor, through the same
+helper setPosition() uses, so every ProgressIndicator bound to 0 reads
+"00:00": the duration slider's labels before anything has played, and a
+playlist whose tracks have no known length.
+
+The footer picks the longest of three forms that fits the label, but
+the shortest, "1/2 tracks, 00:06/00:07 remaining", is wider than the
+playlist column at the window's default size, so it is elided
+mid-word. Add a fourth form without the remaining time, "1/2 tracks,
+00:07 total", for a column too narrow for the third, and measure every
+form in the label's own font rather than its family alone, so a form is
+chosen only when it fits as drawn.
+
+--- a/src/progressindicator.cpp
++++ b/src/progressindicator.cpp
+@@ -10,7 +10,24 @@
+ 
+ using namespace Qt::StringLiterals;
+ 
+-ProgressIndicator::ProgressIndicator(QObject *parent) : QObject(parent)
++static QString formatDuration(int position)
++{
++    int totalNumberOfSeconds = position / 1000;
++    int seconds = totalNumberOfSeconds % 60;
++    int minutes = (totalNumberOfSeconds / 60) % 60;
++    int hours = (totalNumberOfSeconds / 60 / 60);
++
++    QString hoursString = u"%1"_s.arg(hours, 2, 10, '0'_L1);
++    QString minutesString = u"%1"_s.arg(minutes, 2, 10, '0'_L1);
++    QString secondsString = u"%1"_s.arg(seconds, 2, 10, '0'_L1);
++
++    if (hours == 0) {
++        return i18nc("duration formatted as minutes:seconds", "%1:%2", minutesString, secondsString);
++    }
++    return i18nc("duration formatted as hours:minutes:seconds", "%1:%2:%3", hoursString, minutesString, secondsString);
++}
++
++ProgressIndicator::ProgressIndicator(QObject *parent) : QObject(parent), mProgressDuration(formatDuration(mPosition))
+ {
+ }
+ 
+@@ -33,23 +50,7 @@
+         return;
+ 
+     mPosition = position;
+-
+-    int totalNumberOfSeconds = mPosition / 1000;
+-    int seconds = totalNumberOfSeconds % 60;
+-    int minutes = (totalNumberOfSeconds / 60) % 60;
+-    int hours = (totalNumberOfSeconds / 60 / 60);
+-
+-    QString hoursString = u"%1"_s.arg(hours, 2, 10, '0'_L1);
+-    QString minutesString = u"%1"_s.arg(minutes, 2, 10, '0'_L1);
+-    QString secondsString = u"%1"_s.arg(seconds, 2, 10, '0'_L1);
+-
+-    QString duration;
+-    if (hours == 0) {
+-        duration = i18nc("duration formatted as minutes:seconds", "%1:%2", minutesString, secondsString);
+-    } else {
+-        duration = i18nc("duration formatted as hours:minutes:seconds", "%1:%2:%3", hoursString, minutesString, secondsString);
+-    }
+-    mProgressDuration = duration;
++    mProgressDuration = formatDuration(mPosition);
+ 
+     Q_EMIT positionChanged();
+     Q_EMIT progressDurationChanged();
+--- a/src/qml/MediaPlayListView.qml
++++ b/src/qml/MediaPlayListView.qml
+@@ -472,7 +472,7 @@
+             // TODO: Make duration values locale-aware
+             TextMetrics {
+                 id: longText
+-                font.family: durationLabel.font.family
++                font: durationLabel.font
+                 text: {
+                     const nTracks = KI18n.i18ncp("@info:status %2 is always bigger than 1", "%1/%2 tracks remaining", "%1/%2 tracks remaining", ElisaApplication.mediaPlayListProxyModel.remainingTracks, ElisaApplication.mediaPlayListProxyModel.tracksCount)
+                     const nDuration = KI18n.i18nc("@info:status %1 and %2 are formatted like hh:mm:ss or mm:ss", "%1 remaining, %2 total", durationLeftIndicator.progressDuration, totalDurationIndicator.progressDuration);
+@@ -481,7 +481,7 @@
+             }
+             TextMetrics {
+                 id: middleText
+-                font.family: durationLabel.font.family
++                font: durationLabel.font
+                 text: {
+                     const nTracks = KI18n.i18ncp("@info:status %2 is always bigger than 1", "%1/%2 tracks remaining", "%1/%2 tracks remaining", ElisaApplication.mediaPlayListProxyModel.remainingTracks, ElisaApplication.mediaPlayListProxyModel.tracksCount)
+                     const nDuration = KI18n.i18nc("@info:status %1 and %2 are formatted like hh:mm:ss or mm:ss", "%1/%2 remaining", durationLeftIndicator.progressDuration, totalDurationIndicator.progressDuration);
+@@ -490,13 +490,22 @@
+             }
+             TextMetrics {
+                 id: shortText
+-                font.family: durationLabel.font.family
++                font: durationLabel.font
+                 text: {
+                     const nTracks = KI18n.i18ncp("@info:status %2 is always bigger than 1", "%1/%2 tracks", "%1/%2 tracks", ElisaApplication.mediaPlayListProxyModel.remainingTracks, ElisaApplication.mediaPlayListProxyModel.tracksCount)
+                     const nDuration = KI18n.i18nc("@info:status %1 and %2 are formatted like hh:mm:ss or mm:ss", "%1/%2 remaining", durationLeftIndicator.progressDuration, totalDurationIndicator.progressDuration);
+                     return KI18n.i18nc("@info:status %1 is total tracks and tracks remaining. %2 is total time and time remaining", "%1, %2", nTracks, nDuration);
+                 }
+             }
++            TextMetrics {
++                id: shortestText
++                font: durationLabel.font
++                text: {
++                    const nTracks = KI18n.i18ncp("@info:status %2 is always bigger than 1", "%1/%2 tracks", "%1/%2 tracks", ElisaApplication.mediaPlayListProxyModel.remainingTracks, ElisaApplication.mediaPlayListProxyModel.tracksCount)
++                    const nDuration = KI18n.i18nc("@info:status %1 is the total duration formatted like hh:mm:ss or mm:ss", "%1 total", totalDurationIndicator.progressDuration);
++                    return KI18n.i18nc("@info:status %1 is total tracks and tracks remaining. %2 is total time", "%1, %2", nTracks, nDuration);
++                }
++            }
+ 
+             text: {
+                 if (ElisaApplication.mediaPlayListProxyModel.radioCount !== 0) {
+@@ -504,6 +513,9 @@
+                     const nTracks = KI18n.i18ncp("@info:status %1 is the total number of tracks of the playlist", "%1 track", "%1 tracks", ElisaApplication.mediaPlayListProxyModel.tracksCount)
+                     const nRadios = KI18n.i18ncp("@info:status %1 is the total number of radios of the playlist", "%1 radio", "%1 radios", ElisaApplication.mediaPlayListProxyModel.radioCount)
+                     return KI18n.i18nc("@info:status %1 is the translation of tracks, %2 is the translation of total radios", "%1, %2 total", nTracks, nRadios);
++                } else if (ElisaApplication.mediaPlayListProxyModel.tracksCount === 0) {
++                    // empty playlist: there is no duration to show
++                    return KI18n.i18ncp("@info:status %1 is the total number of tracks of the playlist", "%1 track", "%1 tracks", 0);
+                 } else if (ElisaApplication.mediaPlayListProxyModel.remainingTracks === -1) {
+                     // track or playlist is on repeat: only show total tracks and duration, since remaining is infinite
+                     return KI18n.i18ncp("@info:status %1 is the total tracks of the playlist. %2 is the total duration formatted like hh:mm:ss or mm:ss", "%1 track, %2 total","%1 tracks, %2 total", ElisaApplication.mediaPlayListProxyModel.tracksCount, totalDurationIndicator.progressDuration);
+@@ -513,8 +525,11 @@
+                     return longText.text;
+                 } else if (durationLabel.width >= middleText.boundingRect.width) {
+                     return middleText.text;
+-                } else {
++                } else if (durationLabel.width >= shortText.boundingRect.width) {
+                     return shortText.text;
++                } else {
++                    // a narrow column: the remaining time would be cut mid-word, so show the total alone
++                    return shortestText.text;
+                 }
+             }
+             elide: Text.ElideRight

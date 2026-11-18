@@ -8,13 +8,18 @@
  *   appstream.c — the AppStream file GetAppStream names
  *
  * DISCOVER DROPS A TARGET WHOSE APPSTREAM IS EMPTY, and says so in a message:
- * it fetches every URL GetAppStream returns, parses the first component, and
- * only then asks CheckNew. So the file always exists, always holds one
- * `operating-system` component, and is regenerated from the update document
- * every time that changes — the name, the summary and the description of the
- * update Discover shows, and one <release> whose version is the offer, which
- * is where Discover's changelog comes from, with an artifact giving its
- * download size when the update document has one.
+ * it fetches every URL GetAppStream returns and parses the first component.
+ * KDOS's Discover asks GetVersion and CheckNew first and fetches the file
+ * after them (ports/core/kde/discover, sysupdate-appstream-after-check.patch),
+ * so the file it reads is the one the check that made the offer wrote; read
+ * before CheckNew, it would describe the previous check, and the first
+ * session to see a new release would show its size as Unknown. So the file
+ * always exists, always holds one `operating-system` component, and is
+ * regenerated from the update document every time that changes — the name,
+ * the summary and the description of the update Discover shows, the
+ * project's licence for its Licenses field, and one <release> whose version
+ * is the offer, which is where Discover's changelog comes from, with an
+ * artifact giving its download size when the update document has one.
  *
  * THE SIGNATURE IS STATED IN IT. "Signed by <key> (ed25519 ab12…cd34),
  * verified on this machine" is the first paragraph of the release text: the
@@ -22,7 +27,11 @@
  * against /etc/kdos/keys before the offer was made, each fetched through the
  * release index that was verified the same way, and an offer is never made
  * from one that was not. The second paragraph says which of the two the
- * update is (the document's `lane`) and how much it downloads.
+ * update is (the document's `lane`) and how much of it is still to fetch:
+ * "to copy" when that lane's origin (the document's `image` for the image,
+ * `binhost` for packages) is a directory or a file:// URL, such as a stick,
+ * and "to download" otherwise. The tree's `channel` does not decide it: a
+ * tree read from a stick can still name packages fetched over https.
  *
  * THE LIVE MEDIUM IS NAMED AS SUCH. It has no slots, so CheckNew offers it
  * nothing and Discover shows the system as up to date; the summary and the
@@ -92,26 +101,114 @@ static void para_open(KbBuf *b)
 	kb_buf_str(b, "<p>");
 }
 
-/* The release notes the new tree carries, paragraph by paragraph: blank
- * lines separate them, and every other line break is a space. */
+/* The release notes the new tree carries, from the Markdown subset
+ * ports/RELEASE is written in to AppStream's description markup, which has
+ * paragraphs and lists and nothing else: Discover shows the text of a <p>
+ * as it is, so a `#` or a backtick left in it reaches the page verbatim.
+ * Blank lines separate blocks. A `#` or `##` heading is a <p> of its text
+ * alone. A run of `- ` items is one <ul>, each item an <li>, and a line
+ * under an item that starts no new one continues it. Any other line break
+ * is a space, and backticks are dropped. */
+enum { NB_NONE, NB_PARA, NB_ITEM };
+
+static void notes_flush(KbBuf *b, KbBuf *text, int *kind)
+{
+	if (*kind != NB_NONE && text->p && text->p[0]) {
+		if (*kind == NB_ITEM) {
+			kb_buf_str(b, ind);
+			kb_buf_str(b, "  <li>");
+		} else {
+			para_open(b);
+		}
+		xml_text(b, text->p);
+		kb_buf_str(b, *kind == NB_ITEM ? "</li>\n" : "</p>\n");
+	}
+	kb_buf_free(text);
+	*kind = NB_NONE;
+}
+
+static void notes_list_end(KbBuf *b, int *in_list)
+{
+	if (*in_list) {
+		kb_buf_str(b, ind);
+		kb_buf_str(b, "</ul>\n");
+	}
+	*in_list = 0;
+}
+
+/* One line's words onto the block's text, a space between lines and no
+ * backtick. */
+static void notes_words(KbBuf *text, const char *s, size_t n)
+{
+	while (n && (*s == ' ' || *s == '\t')) {
+		s++;
+		n--;
+	}
+	while (n && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r'))
+		n--;
+	if (!n)
+		return;
+	if (text->p && text->p[0])
+		kb_buf_str(text, " ");
+	for (size_t i = 0; i < n; i++)
+		if (s[i] != '`')
+			kb_buf_add(text, s + i, 1);
+}
+
 static void notes_paragraphs(KbBuf *b, const char *notes)
 {
+	KbBuf text = {0};
+	int kind = NB_NONE, in_list = 0;
 	const char *p = notes;
+
 	while (p && *p) {
-		while (*p == '\n' || *p == '\r' || *p == ' ' || *p == '\t')
-			p++;
-		if (!*p)
-			break;
-		const char *end = strstr(p, "\n\n");
-		size_t n = end ? (size_t)(end - p) : strlen(p);
-		char *para = kb_calloc(n + 1, 1);
-		memcpy(para, p, n);
-		para_open(b);
-		xml_text(b, para);
-		kb_buf_str(b, "</p>\n");
-		free(para);
-		p += n;
+		const char *nl = strchr(p, '\n');
+		size_t n = nl ? (size_t)(nl - p) : strlen(p);
+		const char *s = p;
+		size_t m = n;
+
+		p += n + (nl ? 1 : 0);
+		while (m && (*s == ' ' || *s == '\t')) {
+			s++;
+			m--;
+		}
+		if (!m || (m == 1 && *s == '\r')) {
+			notes_flush(b, &text, &kind);
+			notes_list_end(b, &in_list);
+			continue;
+		}
+		if (*s == '#') {
+			size_t h = 0;
+			while (h < m && s[h] == '#')
+				h++;
+			if (h < m && (s[h] == ' ' || s[h] == '\t')) {
+				notes_flush(b, &text, &kind);
+				notes_list_end(b, &in_list);
+				kind = NB_PARA;
+				notes_words(&text, s + h, m - h);
+				notes_flush(b, &text, &kind);
+				continue;
+			}
+		}
+		if (m >= 2 && (*s == '-' || *s == '*') && s[1] == ' ') {
+			notes_flush(b, &text, &kind);
+			if (!in_list) {
+				kb_buf_str(b, ind);
+				kb_buf_str(b, "<ul>\n");
+				in_list = 1;
+			}
+			kind = NB_ITEM;
+			notes_words(&text, s + 2, m - 2);
+			continue;
+		}
+		if (kind == NB_NONE) {
+			notes_list_end(b, &in_list);
+			kind = NB_PARA;
+		}
+		notes_words(&text, s, m);
 	}
+	notes_flush(b, &text, &kind);
+	notes_list_end(b, &in_list);
 }
 
 static void package_sentence(KbBuf *b, const char *slot_letter,
@@ -143,11 +240,14 @@ static void package_sentence(KbBuf *b, const char *slot_letter,
 			xml_text(b, line);
 		}
 	}
-	/* What is still to download, from the update document; the
-	 * release's artifact carries the same number for Discover's list. */
+	/* What is still to fetch, from the update document; the release's
+	 * artifact carries the same number for Discover's list. */
 	if (su.size > 0) {
-		snprintf(line, sizeof(line), "; %s to download",
-			 kb_human_size((unsigned long long)su.size));
+		int local = su.origin[0] == '/' ||
+			    !strncmp(su.origin, "file://", 7);
+		snprintf(line, sizeof(line), "; %s to %s",
+			 kb_human_size((unsigned long long)su.size),
+			 local ? "copy" : "download");
 		xml_text(b, line);
 	}
 	snprintf(line, sizeof(line), ". %s into slot %s, the root this system "
@@ -200,6 +300,7 @@ int appstream_write(void)
 		   "<component type=\"operating-system\">\n"
 		   "  <id>io.kdos.system</id>\n"
 		   "  <metadata_license>CC0-1.0</metadata_license>\n"
+		   "  <project_license>MIT</project_license>\n"
 		   "  <name>KDOS</name>\n"
 		   "  <summary>");
 	kb_buf_str(&b, state_live()

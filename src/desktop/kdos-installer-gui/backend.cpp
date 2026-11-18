@@ -13,6 +13,8 @@
 #include <KColorScheme>
 #include <KConfigGroup>
 #include <KFormat>
+#include <KIO/JobUiDelegateFactory>
+#include <KIO/OpenUrlJob>
 #include <KLocalizedString>
 #include <KSharedConfig>
 
@@ -20,7 +22,6 @@
 #include <QDBusMessage>
 #include <QDBusPendingCall>
 #include <QDateTime>
-#include <QDesktopServices>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -45,6 +46,9 @@ namespace
 const QString KinstallPath = QStringLiteral(KDOS_KINSTALL);
 const QString KinstallLog = QStringLiteral("/var/log/kinstall.log");
 const QString Zone1970 = QStringLiteral("/usr/share/zoneinfo/zone1970.tab");
+const QString Mounts = QStringLiteral("/proc/mounts");
+/* Set on a dump started through pkexec. */
+const char *const RootDumpProperty = "kdosRootDump";
 
 QString capitalised(const QString &id)
 {
@@ -57,6 +61,7 @@ Backend::Backend(QObject *parent)
     , m_answers(new Answers(this))
     , m_events(new EventStream(this))
     , m_keyboards(new KeyboardModel(this))
+    , m_live(liveRoot(Mounts))
 {
     m_keyboards->load();
     m_answers->setProperty("timezone", systemTimeZone());
@@ -77,6 +82,10 @@ Backend::Backend(QObject *parent)
 Backend::~Backend()
 {
     for (QProcess *p : std::as_const(m_dumps)) {
+        if (p->property(RootDumpProperty).toBool()) {
+            orphanRootDump(p);
+            continue;
+        }
         p->kill();
         p->waitForFinished(1000);
     }
@@ -94,30 +103,52 @@ void Backend::setError(const QString &e)
 }
 
 /*
+ * A DUMP RUN THROUGH pkexec IS ROOT'S, and this user's signal cannot reach
+ * it: killing it fails, and destroying a QProcess that is still running
+ * waits up to thirty seconds on this thread for it to end. One that is no
+ * longer wanted is cut loose instead — detached from this object, its answer
+ * never read, deleted when it ends of its own accord.
+ */
+void Backend::orphanRootDump(QProcess *p)
+{
+    p->disconnect(this);
+    p->setParent(nullptr);
+    connect(p, &QProcess::finished, p, &QObject::deleteLater);
+    connect(p, &QProcess::errorOccurred, p, &QObject::deleteLater);
+}
+
+/*
  * ONE DUMP AT A TIME PER KIND. A page that asks again before the last answer
  * came — the plan after every change on the Summary page — supersedes it, and
- * the superseded process is killed, so a slow answer never lands after a
- * newer one. The answers go on standard input (`--config -`), as for the
- * install itself.
+ * the superseded process is killed, or cut loose when it is root's, so a slow
+ * answer never lands after a newer one. The answers go on standard input
+ * (`--config -`), as for the install itself. `asRoot` runs it through pkexec,
+ * and a failure there — pkexec missing, the request refused or dismissed —
+ * runs it again as this user rather than reporting it.
  */
-void Backend::runDump(const QString &what, bool withAnswers, Done done)
+void Backend::runDump(const QString &what, bool withAnswers, Done done, bool asRoot)
 {
+    const QString pkexec = asRoot ? QStandardPaths::findExecutable(QStringLiteral("pkexec")) : QString();
+    if (asRoot && pkexec.isEmpty()) {
+        asRoot = false;
+    }
     if (QProcess *old = m_dumps.take(what)) {
-        old->disconnect(this);
-        old->kill();
-        old->deleteLater();
+        if (old->property(RootDumpProperty).toBool()) {
+            orphanRootDump(old);
+        } else {
+            old->disconnect(this);
+            old->kill();
+            old->deleteLater();
+        }
     }
     auto *p = new QProcess(this);
+    p->setProperty(RootDumpProperty, asRoot);
     p->setProcessChannelMode(QProcess::SeparateChannels);
-    QStringList args;
-    if (withAnswers) {
-        args << QStringLiteral("--config") << QStringLiteral("-");
-    }
-    args << QStringLiteral("--dump") << what << QStringLiteral("--json");
+    const QStringList args = dumpArgs(what, withAnswers, m_rootPayload, asRoot);
     m_dumps.insert(what, p);
     Q_EMIT busyChanged();
 
-    connect(p, &QProcess::finished, this, [this, p, what, done](int code, QProcess::ExitStatus status) {
+    connect(p, &QProcess::finished, this, [this, p, what, withAnswers, done, asRoot](int code, QProcess::ExitStatus status) {
         if (m_dumps.value(what) != p) {
             p->deleteLater();
             return;
@@ -130,39 +161,114 @@ void Backend::runDump(const QString &what, bool withAnswers, Done done)
         QJsonParseError perr;
         const QJsonDocument doc = QJsonDocument::fromJson(out, &perr);
         if (status != QProcess::NormalExit || code != 0 || perr.error != QJsonParseError::NoError || !doc.isObject()) {
+            if (asRoot) {
+                runDump(what, withAnswers, done);
+                return;
+            }
             setError(err.isEmpty() ? i18n("kinstall could not describe this machine (%1).", what) : err);
             return;
         }
         setError(QString());
-        done(doc.object().toVariantMap());
+        const QVariantMap m = doc.object().toVariantMap();
+        if (asRoot && what == QLatin1String("probe") && m.value(QStringLiteral("payload_kb")).toULongLong() > 0) {
+            m_rootPayload = {{QStringLiteral("payload_kb"), m.value(QStringLiteral("payload_kb"))},
+                             {QStringLiteral("appbox_kb"), m.value(QStringLiteral("appbox_kb"))}};
+        }
+        done(m);
     });
-    connect(p, &QProcess::errorOccurred, this, [this, p, what](QProcess::ProcessError e) {
+    connect(p, &QProcess::errorOccurred, this, [this, p, what, withAnswers, done, asRoot](QProcess::ProcessError e) {
         if (e != QProcess::FailedToStart || m_dumps.value(what) != p) {
             return;
         }
         m_dumps.remove(what);
         Q_EMIT busyChanged();
         p->deleteLater();
+        if (asRoot) {
+            runDump(what, withAnswers, done);
+            return;
+        }
         setError(i18n("The installer's backend, %1, is not installed.", KinstallPath));
     });
 
-    p->start(KinstallPath, args);
+    if (asRoot) {
+        p->start(pkexec, QStringList{KinstallPath} + args);
+    } else {
+        p->start(KinstallPath, args);
+    }
     if (withAnswers) {
         p->write(m_answers->toText().toUtf8());
     }
     p->closeWriteChannel();
 }
 
+/*
+ * ROOT'S PAYLOAD FOR EVERY PLAN. The payload walk as this user cannot enter
+ * what only root may, so it measures less than root's, and the Disk page's
+ * plan, run as this user, would offer a swap a mebibyte larger than the
+ * Summary's root plan accepts. The last root probe's figures go to every
+ * plan, root's or not, and to every probe as this user, so both pages
+ * decide on one number. A root probe is given none: it measures again,
+ * which is how Look Again takes in a tree that has grown, and its figures
+ * replace the kept ones. The install measures its own.
+ */
+QStringList Backend::dumpArgs(const QString &what, bool withAnswers, const QVariantMap &rootPayload, bool asRoot)
+{
+    QStringList args;
+    if (withAnswers) {
+        args << QStringLiteral("--config") << QStringLiteral("-");
+    }
+    const qulonglong payload = rootPayload.value(QStringLiteral("payload_kb")).toULongLong();
+    if (payload > 0 && (what == QLatin1String("plan") || (what == QLatin1String("probe") && !asRoot))) {
+        args << QStringLiteral("--payload-kb") << QString::number(payload) << QStringLiteral("--appbox-kb")
+             << QString::number(rootPayload.value(QStringLiteral("appbox_kb")).toULongLong());
+    }
+    args << QStringLiteral("--dump") << what << QStringLiteral("--json");
+    return args;
+}
+
 /* With the answers: whether a disk fits, and holds two slots, depends on
  * the swap and on whether the box store is copied. */
-void Backend::refreshProbe()
+void Backend::runProbe(bool asRoot)
 {
     m_probeTimer.stop();
     m_probeKey = m_answers->probeKey();
-    runDump(QStringLiteral("probe"), true, [this](const QVariantMap &m) {
-        m_probe = m;
-        Q_EMIT probeChanged();
-    });
+    runDump(
+        QStringLiteral("probe"),
+        true,
+        [this](const QVariantMap &m) {
+            m_probe = m;
+            Q_EMIT probeChanged();
+            if (m_probeAgain) {
+                m_probeAgain = false;
+                refreshProbe();
+            }
+        },
+        asRoot);
+}
+
+/*
+ * A ROOT PROBE STILL RUNNING IS LET FINISH. The first probe on the live
+ * medium runs as root, and the Disk page asks again on every visit; a probe
+ * as this user started over it would cut it loose, its payload never kept,
+ * and the two pages would again decide on different figures. The probe
+ * asked for meanwhile runs once the root one has answered.
+ */
+void Backend::refreshProbe()
+{
+    const QProcess *running = m_dumps.value(QStringLiteral("probe"));
+    if (running && running->property(RootDumpProperty).toBool()) {
+        m_probeTimer.stop();
+        m_probeAgain = true;
+        return;
+    }
+    const bool asRoot = m_live && !m_probedAsRoot;
+    m_probedAsRoot = true;
+    runProbe(asRoot);
+}
+
+void Backend::lookAgain()
+{
+    runProbe(m_probe.value(QStringLiteral("live")).toBool());
 }
 
 void Backend::refreshLook()
@@ -210,10 +316,29 @@ void Backend::refreshApps()
 
 void Backend::refreshPlan()
 {
-    runDump(QStringLiteral("plan"), true, [this](const QVariantMap &m) {
-        m_plan = m;
-        Q_EMIT planChanged();
-    });
+    runDump(
+        QStringLiteral("plan"),
+        true,
+        [this](const QVariantMap &m) {
+            m_plan = m;
+            Q_EMIT planChanged();
+        },
+        m_live);
+}
+
+/* As this user once a root probe's payload is kept; on the live medium
+ * before that (the root probe refused or dismissed), as root, the
+ * Summary's route, so the two pages still measure the same way. */
+void Backend::checkPlan()
+{
+    runDump(
+        QStringLiteral("plan"),
+        true,
+        [this](const QVariantMap &m) {
+            m_plan = m;
+            Q_EMIT planChanged();
+        },
+        m_live && m_rootPayload.isEmpty());
 }
 
 /*
@@ -243,6 +368,30 @@ QStringList Backend::readZones(const QString &tabPath)
     out.removeDuplicates();
     out.prepend(QStringLiteral("UTC"));
     return out;
+}
+
+/* The probe's rule, probe_system()'s: any line mounting an overlay at `/`.
+ * Read whole: a /proc file reports no size, so a line loop that asks
+ * atEnd() first reads nothing. */
+bool Backend::liveRoot(const QString &mountsPath)
+{
+    QFile f(mountsPath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QList<QByteArray> lines = f.readAll().split('\n');
+    for (const QByteArray &l : lines) {
+        const QList<QByteArray> cols = l.simplified().split(' ');
+        if (cols.size() >= 3 && cols.at(1) == "/" && cols.at(2) == "overlay") {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString Backend::diskPlan(const QString &plan, int partitions)
+{
+    return partitions > 0 ? plan : QStringLiteral("wipe");
 }
 
 QStringList Backend::timeZones() const
@@ -280,7 +429,9 @@ bool Backend::logReadable() const
 
 void Backend::openLog() const
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(KinstallLog));
+    auto *job = new KIO::OpenUrlJob(QUrl::fromLocalFile(KinstallLog), QStringLiteral("text/plain"));
+    job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, nullptr));
+    job->start();
 }
 
 bool Backend::partitionManagerAvailable() const
@@ -304,6 +455,7 @@ void Backend::openPartitionManager()
         m_partitionManager->deleteLater();
         m_partitionManager = nullptr;
         Q_EMIT partitionManagerRunningChanged();
+        Q_EMIT partitionManagerClosed();
         refreshProbe();
     });
     connect(m_partitionManager, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
@@ -416,9 +568,9 @@ QString Backend::accentPreview(const QString &lookAndFeel) const
     return path.isEmpty() ? QString() : QUrl::fromLocalFile(path).toString();
 }
 
-QString Backend::formatSize(double bytes) const
+QString Backend::formatSize(double bytes, int precision) const
 {
-    return KFormat().formatByteSize(bytes);
+    return KFormat().formatByteSize(bytes, precision);
 }
 
 QString Backend::accentLabel(const QString &accent) const

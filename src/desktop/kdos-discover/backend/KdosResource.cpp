@@ -162,11 +162,17 @@ AbstractResource::Type KdosResource::type() const
     case Lane::Catalogue:
     case Lane::Pack:
         return m_entry.kind.isEmpty() || m_entry.kind == "app"_L1 ? Application : ApplicationSupport;
+    case Lane::Port:
+    case Lane::PortSource:
+        // The AppStream kind of the component the port is listed by: an
+        // add-on is listed with the add-ons, a console program or anything
+        // else no desktop application under Application Support.
+        if (m_entry.kind == "addon"_L1)
+            return Addon;
+        return m_entry.kind.isEmpty() || m_entry.kind == "desktop-application"_L1 ? Application : ApplicationSupport;
     case Lane::Set:
     case Lane::Debian:
     case Lane::Box:
-    case Lane::Port:
-    case Lane::PortSource:
     case Lane::Archive:
     case Lane::PackFile:
         return Application;
@@ -414,8 +420,18 @@ QString KdosResource::verifiedIconName() const
     return signatureVerified(m_entry) ? u"security-high"_s : u"security-medium"_s;
 }
 
+void KdosResource::setFailure(const QString &said)
+{
+    if (m_failure == said)
+        return;
+    m_failure = said;
+    Q_EMIT entryChanged();
+}
+
 QString KdosResource::kdosNotice() const
 {
+    if (!m_failure.isEmpty())
+        return m_failure;
     const Entry &e = m_entry;
     switch (e.lane) {
     case Lane::Catalogue:
@@ -464,6 +480,8 @@ QString KdosResource::kdosNotice() const
 
 int KdosResource::kdosNoticeType() const
 {
+    if (!m_failure.isEmpty())
+        return InlineMessage::Error;
     const Entry &e = m_entry;
     if ((e.lane == Lane::PackFile || e.lane == Lane::Archive) && e.signature == "refused"_L1)
         return InlineMessage::Error;

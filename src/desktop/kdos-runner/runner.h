@@ -166,6 +166,24 @@ int rn_chords(const RnChord **out);
 int rn_desktop_entry(const char *id, char *name, size_t nn, char *icon,
 		     size_t in);
 
+/* An installed kcm_kdos_*.desktop: its id, Name and Icon. */
+#define RN_SETTINGS_MAX 32
+typedef struct {
+	char id[128];
+	char name[128];
+	char icon[128];
+} RnSetting;
+
+/* Up to CAP installed KDOS settings pages with a Name into V; how many. */
+int rn_settings_load(RnSetting *v, int cap);
+
+/* The page of V[0..N) whose Name is TEXT, whole and in any case, or NULL. */
+const RnSetting *rn_settings_find(const RnSetting *v, int n, const char *text);
+
+/* rn_settings_find of the whole query. */
+const RnSetting *rn_settings_title(const RnQuery *q, const RnSetting *v,
+				   int n);
+
 /* Drop every cache, so the next read re-parses: the tests change fixture
  * files faster than a filesystem's timestamp resolution. */
 void rn_sources_reset(void);

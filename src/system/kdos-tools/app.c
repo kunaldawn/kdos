@@ -213,6 +213,88 @@ static int cmd_list(int all)
 	return 0;
 }
 
+/*
+ * THE CHAIN AN INSTALL STILL HAS TO BUILD. `kdos-appbox catalogue --chain`
+ * is every base and runtime row, tab-separated: id, bytes, parent, and
+ * `built` or `absent`. A first install on a base builds the base and its
+ * runtime too, so the size a person is told counts every absent row up the
+ * application's chain — the same sum Discover adds to its estimate. The walk
+ * stops after 16 rows, where kdos-appbox refuses a chain, and at a row the
+ * listing does not name. `names` gets the absent ids, nearest first.
+ */
+#define CHAIN_ROWS 64
+#define CHAIN_DEPTH 16
+
+static unsigned long long chain_unbuilt(const char *parent, char *names,
+					size_t cap)
+{
+	KbArgv a = {0};
+	KbBuf out = {0};
+	char *id[CHAIN_ROWS], *up[CHAIN_ROWS], *line, *save;
+	unsigned long long bytes[CHAIN_ROWS], sum = 0;
+	int built[CHAIN_ROWS], n = 0;
+	size_t used = 0;
+
+	names[0] = 0;
+	kb_argv_add(&a, "kdos-appbox");
+	kb_argv_add(&a, "catalogue");
+	kb_argv_add(&a, "--chain");
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &out) != 0 || !out.p) {
+		kb_buf_free(&out);
+		return 0;
+	}
+	for (line = strtok_r(out.p, "\n", &save); line && n < CHAIN_ROWS;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char *f[4];
+		int k = 0;
+
+		f[k++] = line;
+		for (char *p = line; *p && k < 4; p++)
+			if (*p == '\t') {
+				*p = 0;
+				f[k++] = p + 1;
+			}
+		if (k < 4)
+			continue;
+		id[n] = f[0];
+		bytes[n] = strtoull(f[1], NULL, 10);
+		up[n] = f[2];
+		built[n] = !strcmp(f[3], "built");
+		n++;
+	}
+	for (int depth = 0; depth < CHAIN_DEPTH && strcmp(parent, "-");
+	     depth++) {
+		int r = -1;
+
+		for (int i = 0; i < n && r < 0; i++)
+			if (!strcmp(id[i], parent))
+				r = i;
+		if (r < 0)
+			break;
+		if (!built[r]) {
+			sum += bytes[r];
+			if (used < cap)
+				used += (size_t)snprintf(names + used,
+							 cap - used, "%s%s",
+							 used ? " and " : "",
+							 id[r]);
+		}
+		parent = up[r];
+	}
+	kb_buf_free(&out);
+	return sum;
+}
+
+/* A name `kdos app` does not know may be a port: this catalogue holds the
+ * applications built in a box, and everything native installs through
+ * `kdos update install`. */
+static void port_hint(FILE *o, const char *name)
+{
+	fprintf(o, "  a port by that name: `kdos update install --dry-run %s` "
+		"shows what installing it takes\n", name);
+}
+
 static int cmd_search(const char *q)
 {
 	char *text = catalogue_text(), *line, *save;
@@ -235,6 +317,7 @@ static int cmd_search(const char *q)
 	free(text);
 	if (!n) {
 		printf("  nothing matches '%s'\n", q);
+		port_hint(stdout, q);
 		return 1;
 	}
 	return 0;
@@ -245,6 +328,9 @@ static int cmd_search(const char *q)
  * resolves on the day depends on the snapshot, and shared runtime layers are
  * counted once on disk however many applications name them — a number
  * presented as fact that the install then contradicts is worse than none.
+ * An application not yet installed adds the base and runtime rows its
+ * install would build first, named, because on a fresh machine they are
+ * most of the bytes.
  */
 static int cmd_info(const char *id)
 {
@@ -265,14 +351,26 @@ static int cmd_info(const char *id)
 		printf("  category    %s\n", f[2]);
 		printf("  state       %s\n", f[5]);
 		printf("  built on    %s\n", f[4]);
-		printf("  size        %s (an estimate)\n",
-		       kb_human_size(strtoull(f[3], NULL, 10)));
+		unsigned long long own = strtoull(f[3], NULL, 10), extra = 0;
+		char chain[256];
+
+		if (strcmp(f[5], "installed"))
+			extra = chain_unbuilt(f[4], chain, sizeof(chain));
+		if (extra)
+			printf("  size        %s (an estimate), %s with %s, "
+			       "which this computer has not built\n",
+			       kb_human_size(own), kb_human_size(own + extra),
+			       chain);
+		else
+			printf("  size        %s (an estimate)\n",
+			       kb_human_size(own));
 		if (f[6][0])
 			printf("  %s\n", f[6]);
 	}
 	free(text);
 	if (!found) {
 		fprintf(stderr, "kdos app: %s is not in the catalogue\n", id);
+		port_hint(stderr, id);
 		return 1;
 	}
 	return 0;

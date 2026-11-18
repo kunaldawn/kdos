@@ -841,16 +841,22 @@ and no disc has been read back.
 
 ## Boot and updates
 
-### On an installed machine the boot messages are drawn over the splash
+### A v0.2 machine finds no prebuilt package until `update.conf` names the release
 
-An installed machine's boot entries carry `console=tty0` alone, so `/dev/console` is the screen.
-The initramfs's first line is printed there about a millisecond after `/init` starts, which ends
-the console's deferred takeover of the framebuffer before the splash has started. Every later line
-the initramfs and `rcS` print (`Running: 55_powerd.sh start` and the rest) is then drawn by the
-console on top of the splash animation, until the splash quits. The live medium prints on the
-serial line instead and does not show this. Measured in the rig by booting the medium's own kernel
-and initramfs with `console=tty0`. See
-[The splash](../03-architecture/boot-and-init.md#the-splash).
+The v0.2 image's `/ports/TREE` names its commit and no release, and the `kdos update` it carries
+keeps that tree when it fetches the published one of the same commit. On a v0.2 machine every
+prebuilt install, group, `--pending` list and `kdos firmware sync` therefore refuses with no signed
+binhost index, and `kdos update fetch --binhost-only` fetches nothing. Naming the release in
+`/etc/kdos/update.conf` repairs it:
+
+```
+binhost = https://github.com/kunaldawn/kdos/releases/download/v0.2
+```
+
+then `sudo kdos update fetch --binhost-only`. An image built from a clean checkout of a tagged
+commit names its release, and `kdos update fetch` replaces a same-commit tree that names none with
+the published one that does (see
+[Where the binary host comes from](../04-programs/kdos-command.md#kdos-update)).
 
 ### A disk-encryption key is typed, not sealed in the TPM
 
@@ -864,7 +870,8 @@ when a firmware update changes the measurements, none of which is decided.
 The installer lays a disk out for A/B updates when it erases the disk onto LVM and the disk holds
 two slots, the swap and a home of their own: it makes `root_a` and `root_b`, copies the finished
 system into slot B, and records both. Two slots need each slot's 1.5 times the install or 30% of the room
-past the swap, at least 8 GiB, the swap and a 4 GiB home, about 21 GiB for the 4 GB base. A disk
+past the swap, at least 8 GiB, the swap and a 4 GiB home: about 24.5 GiB with the default 4 GiB
+swap, and 20.5 GiB with none, for the 4.7 GiB base. A disk
 too small for two slots, and every manual layout, get slot A only, and a second slot there is made,
 filled and recorded with
 `kdos-bootctl set-slot b <uuid> [<luks-uuid>]` by hand; the steps are in
@@ -888,23 +895,22 @@ compile for hours. Discover's progress for it is the lines `kpkg` prints, with n
 time left and no count of the packages still to build, so a long build and a stuck one look the
 same until it ends.
 
-### The update path has not been run against a published tree
+<a id="the-update-path-has-not-been-run-against-a-published-tree"></a>
+
+### No published release's update has been applied to an installed machine
 
 `kdos update fetch` takes the signed ports tree and the signed release index from the latest
-release, and the binhost index and slot image manifest through that index. `ports/publish
---release` publishes all of them (see
-[Publishing a release](../03-architecture/packaging.md#publishing-a-release)), but its uploads have
-run only as `--dry-run`, and no release carries them yet; until one does `fetch` reports
-`fetch-failed`, and Discover offers no system update. An image built without a release key has an empty
-`/etc/kdos/keys/tree`, and on it `fetch` stops before the network and reports `no-key`; with no key
-in `/etc/kdos/keys` the binhost and image lanes stop the same way. The
-signature checks, the refusal of an older tree or image, the exchange with `/ports`, a slot image
-unpacked from a local directory, and `kpkg fetch`'s archive and upstream order have been exercised
-in a container with no network, but none of it against a real release over the internet. No update
-has been applied on an installed machine, so how long one takes, and how much space it needs, is
-not measured.
+release, and the binhost index and slot image manifest through that index (see
+[Publishing a release](../03-architecture/packaging.md#publishing-a-release)). Against the
+published v0.2 release these have run over the internet: the tree's fetch and its signature check,
+the slot image's manifest, the binhost index with the binhost named, and prebuilt installs from it.
+An image update has been applied on an installed A/B machine from a signed local stick image and
+not from a release, so `kdos update apply` has not written a slot from a published release, and
+how long that takes and how much space it needs are not measured. An image built without a release
+key has an empty `/etc/kdos/keys/tree`, and on it `fetch` stops before the network and reports
+`no-key`; with no key in `/etc/kdos/keys` the binhost and image lanes stop the same way.
 
-One thing is known short of that. A Discover started again while an update is downloading does not pick the running job back up; the System Versions page shows it. See
+One defect is known: a Discover started again while an update is downloading does not pick the running job back up; the System Versions page shows it. See
 [Discover](../04-programs/discover.md#system-updates).
 
 ### Per-slot kernels have been booted on virtual firmware only
@@ -934,8 +940,8 @@ The full statement is
 - there is no mandatory access control, no verified boot and no measured boot;
 - kernel modules are signed but the signature is not enforced: root loads an unsigned module and
   the kernel only marks itself tainted;
-- the live image's serial console is a root shell with no password (an installed system's asks
-  for a login);
+- the live image's serial console logs `root` in without asking for a password (`agetty
+  --autologin root`); an installed system's asks for a login;
 - on the live image, `root` and `kdos` both have the password `kdos`, and opening `ssh` in the
   firewall starts `sshd` with those accounts as they are; until then the image's
   `/etc/service.disabled/sshd` keeps it stopped;
@@ -1247,36 +1253,34 @@ no recipe names in `runtime =`; a Python import inside a submodule, behind `try:
 installed after the importer; and a module a host program registers in-process, such as KWin's
 `org.kde.kwin`, which the gate counts as met by nothing rather than failing.
 
-### The base ISO fits one release asset by about 30 MiB, and no boot is timed per codec
+### No boot is timed per codec
 
-`110_iso.sh` fails a base ISO over 1,900 MiB. The base's run-time files squash to 1,781 MiB with
-the default zstd:19, an ISO of about 1,870 MiB (see
-[The codec](../05-developer/build-system.md#the-codec)); that is measured on a copy of the files,
-not on a built ISO, and a recipe that grows by 30 MiB of compressed files stops a release build
-at the gate. The ledger `088_ledger.sh` writes names the largest packages and why each is there,
-`KDOS_ISO_COMP=xz-bcj` is about 100 MiB smaller, and `KDOS_ISO_GATE=0` builds the same image as
-a developer one. The codec was chosen from decompression measured on one core, not from a boot
-to Plasma timed under QEMU, so whether xz-bcj boots within 10% of zstd is not known.
+`110_iso.sh` fails a base ISO over 1,900 MiB. The base ISO this tree builds, with Orca, BRLTTY,
+plocate, ISO Image Writer and Adwaita, measures 1,662,947,328 bytes (1,585 MiB) in the default
+zstd:19 (see [The codec](../05-developer/build-system.md#the-codec)), 315 MiB under the gate. The ledger
+`088_ledger.sh` writes names the largest packages and why each is there, `KDOS_ISO_COMP=xz-bcj` is
+about 100 MiB smaller, and `KDOS_ISO_GATE=0` builds the same image as a developer one. The codec
+was chosen from decompression measured on one core, not from a boot to Plasma timed under QEMU, so
+whether xz-bcj boots within 10% of zstd is not known.
 
-### A KDOS settings page's Help button needs the Help Center
+### A tagged image cannot take its own build's binhost
 
-The Help button of a KDOS page in System Settings opens `help:/kdos/...`, the address its
-`X-DocPath` names, and the desktop hands a `help:` address to the Help Center, which the
-installation medium does not carry because it pulls in Qt WebEngine. Until
-`kdos update install khelpcenter` (or the `kde-system` group) adds it, `kdos-doc <page>` opens the
-same page in the browser. See [Help](../04-programs/kdos-settings.md#help).
+A build from a clean checkout of a tagged commit names its release in `/ports/TREE`, but
+`70_image/010_binhost.sh` stamps `build/binhost`'s index with the commit cut to 12 characters, and
+`kdos update` refuses an index whose version is not the tree's (`the release index at <base> is
+for <commit>, and this tree is <tag>`). So `binhost =` pointing at `build/binhost`, or at a
+sources stick's `sources/binhost`, is refused on that image. The published release is unaffected:
+`ports/publish --release` writes the release's own index under the tag. See
+[The release tag](../05-developer/build-system.md#the-release-tag).
 
-### The image's run-time facets have not been through a built ISO
+### An image update has not installed a whole package into a slot
 
 `017_stage.sh` strips every package of the base to its run-time
-[facet](../03-architecture/packaging.md#facets), and the rules are measured on a full build tree
-(949 MB of the base's 5.46 GB), but no ISO has yet been built and booted with them: `kpkg facets
---strip` and an install under `FACETS=run` have run against the self-test's fixtures only. Two
-things the gates cannot see would show there. A program that `dlopen()`s an unversioned
-`lib<x>.so` finds nothing once the development link is gone; no program in the base links one by
-`DT_NEEDED`. And what an image update does with a package the machine keeps whole, installing it
-whole again in the slot after the world step, has been planned by the self-test's dry run only:
-no image update has yet run it into a slot.
+[facet](../03-architecture/packaging.md#facets), and the v0.2 ISO was built and booted that way,
+with `FACETS=run`. What an image update does with a package the machine keeps whole, installing it
+whole again in the slot after the world step, has been planned by the self-test's dry run only: no
+image update has yet run it into a slot. A program that `dlopen()`s an unversioned `lib<x>.so`
+finds nothing once the development link is gone; no program in the base links one by `DT_NEEDED`.
 
 ### Build times and snapshot sizes are measured for part of the build only
 

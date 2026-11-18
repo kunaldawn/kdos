@@ -36,6 +36,10 @@ AppStream file.
   or image manifest no trusted key signed, a package the binhost does not cover, or a slot that
   cannot be mounted reaches the person as the call's error, and only an update that can go ahead
   becomes a job.
+- **A `CheckNew` polkit does not allow answers from the document.** The offer is the update
+  document's, which every account reads, so `org.freedesktop.sysupdate1.check` guards only the
+  fetch: a caller it denies or challenges is answered without one, never with an error Discover
+  would raise as "Update Issue".
 - **`CheckNew` offers only what the release index named.** A fetch takes the release's signed
   `kdos-update.idx` first and the binhost index and slot image manifest only where it says, with
   the hash it gives; the offer in the update document is made from those alone. See

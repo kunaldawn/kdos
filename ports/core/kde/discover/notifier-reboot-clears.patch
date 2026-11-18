@@ -1,0 +1,345 @@
+Subject: notifier, sysupdate: clear "Restart to apply updates" when no backend needs it
+
+A backend notifier announces needsRebootChanged both when a restart
+becomes pending and when it is withdrawn, as an image update does when
+its staged slot is disarmed in the session. The notifier latches the
+first announcement, and the tray item sets its restart title, tooltip
+and menu entries once, so a withdrawn restart leaves the tray, and the
+persistent "Restart is required" notification, asking for one that
+would install nothing. Ask every backend at each announcement, report
+the change both ways, close the restart notification when the restart
+is withdrawn, and have the tray item follow it both ways.
+
+A withdrawn restart with updates still offered shows the tray item
+again at once: the item showed those updates before the install, and
+the requiredNotificationInterval wait would hide them until the next
+notification time.
+
+The sysupdate backend's updater learns of a restart only from its own
+install, and keeps it for the life of the process: an update applied
+from a terminal leaves the Updates page saying "Up to date" while the
+staged slot waits for a restart, and an open page keeps asking for the
+restart after the slot is disarmed. The backend reads io.kdos.Slots1's
+State beside sysupdate1 on its bus when it starts and follows it after.
+When rebootRequired is true and the armed slot's version (State's
+`version` while its `phase` is "armed") is newer than the version the
+target's GetVersion answered, less the slot that answer names, it sets the updater's restart; an armed
+slot of the running or an older version is a switch between versions
+and sets none. When rebootRequired goes false it clears the restart and
+reads the targets again, so the page offers the update once more.
+
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
+@@ -10,9 +10,16 @@
+ #include "libdiscover_systemdsysupdate_debug.h"
+ 
+ #include <AppStreamQt/metadata.h>
++#include <AppStreamQt/utils.h>
+ #include <KLocalizedString>
+ #include <QCoro/QCoroDBusPendingReply>
+ #include <QCoro/QCoroNetworkReply>
++#include <QDBusConnection>
++#include <QDBusMessage>
++#include <QDBusArgument>
++#include <QDBusPendingCallWatcher>
++#include <QDBusPendingReply>
++#include <QDBusVariant>
+ #include <QList>
+ #include <QNetworkReply>
+ #include <QtPreprocessorSupport>
+@@ -37,9 +44,87 @@
+ 
+     connect(m_manager, &org::freedesktop::sysupdate1::Manager::JobRemoved, this, &SystemdSysupdateBackend::transactionRemoved);
+     connect(m_updater, &StandardBackendUpdater::updatesCountChanged, this, &SystemdSysupdateBackend::updatesCountChanged);
++    // A restart is staged or withdrawn outside this backend too: an update
++    // applied from a terminal arms a slot, and a staged slot disarmed from
++    // the session withdraws the restart an install left pending.
++    // io.kdos.Slots1, beside sysupdate1 on its bus, says which in its State.
++    OUR_BUS().connect(QStringLiteral("io.kdos.Slots1"),
++                      QStringLiteral("/io/kdos/Slots1"),
++                      QStringLiteral("org.freedesktop.DBus.Properties"),
++                      QStringLiteral("PropertiesChanged"),
++                      this,
++                      SLOT(slotsPropertiesChanged(QString, QVariantMap, QStringList)));
++    readSlotsState();
+     QTimer::singleShot(0, this, &SystemdSysupdateBackend::checkForUpdates);
+ }
+ 
++void SystemdSysupdateBackend::slotsPropertiesChanged(const QString &interface, const QVariantMap &changed, const QStringList &invalidated)
++{
++    if (interface != QLatin1String("io.kdos.Slots1")) {
++        return;
++    }
++    if (changed.contains(QStringLiteral("State"))) {
++        slotsStateChanged(qdbus_cast<QVariantMap>(changed.value(QStringLiteral("State"))));
++        return;
++    }
++    if (invalidated.contains(QStringLiteral("State"))) {
++        readSlotsState();
++    }
++}
++
++void SystemdSysupdateBackend::readSlotsState()
++{
++    QDBusMessage get = QDBusMessage::createMethodCall(QStringLiteral("io.kdos.Slots1"),
++                                                      QStringLiteral("/io/kdos/Slots1"),
++                                                      QStringLiteral("org.freedesktop.DBus.Properties"),
++                                                      QStringLiteral("Get"));
++    get << QStringLiteral("io.kdos.Slots1") << QStringLiteral("State");
++    auto watcher = new QDBusPendingCallWatcher(OUR_BUS().asyncCall(get), this);
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *watcher) {
++        watcher->deleteLater();
++        const QDBusPendingReply<QDBusVariant> reply = *watcher;
++        if (!reply.isError()) {
++            slotsStateChanged(qdbus_cast<QVariantMap>(reply.value().variant()));
++        }
++    });
++}
++
++// The restart follows the slots both ways. A disarmed slot withdraws the
++// restart, and the targets are read again, so the update the slot held is
++// offered on the open page. An armed one may stage it (takeStagedUpdate).
++void SystemdSysupdateBackend::slotsStateChanged(const QVariantMap &state)
++{
++    m_slotsState = state;
++    if (!state.value(QStringLiteral("rebootRequired"), true).toBool()) {
++        if (m_updater->needsReboot()) {
++            m_updater->setNeedsReboot(false);
++            checkForUpdates();
++        }
++        return;
++    }
++    takeStagedUpdate();
++}
++
++// An armed slot that holds a version newer than the one running is a staged
++// update, whoever installed it, and the page asks for the restart; an armed
++// slot of the running or an older version is a switch between versions,
++// which asks for none here. The running version is the one the last fetch
++// read from the target's GetVersion, so a State that arrives before it is
++// taken again when the fetch ends. Only the arrival is taken then: a State
++// kept from before this backend's own install would withdraw its restart.
++void SystemdSysupdateBackend::takeStagedUpdate()
++{
++    const QVariantMap &state = m_slotsState;
++    if (m_updater->needsReboot() || m_runningVersion.isEmpty() || !state.value(QStringLiteral("rebootRequired")).toBool()
++        || state.value(QStringLiteral("phase")).toString() != QLatin1String("armed")) {
++        return;
++    }
++    const QString armedVersion = state.value(QStringLiteral("version")).toString();
++    if (!armedVersion.isEmpty() && AppStream::Utils::vercmpSimple(armedVersion, m_runningVersion) > 0) {
++        m_updater->setNeedsReboot(true);
++    }
++}
++
+ int SystemdSysupdateBackend::updatesCount() const
+ {
+     return m_updater->updatesCount();
+@@ -161,6 +246,11 @@
+         }
+         const QString installedVersion = installedReply.value();
+         const QString availableVersion = availableReply.value();
++        // kdos-sysupdated answers with the slot, "0.2.13 (slot A)"; State's
++        // `version` is the bare version, so only the first word is compared.
++        if (!installedVersion.isEmpty()) {
++            m_runningVersion = installedVersion.section(QLatin1Char(' '), 0, 0);
++        }
+         qCDebug(SYSTEMDSYSUPDATE_LOG) << "Installed version:" << installedVersion << "Available version:" << availableVersion;
+ 
+         if (installedVersion.isEmpty()) {
+@@ -249,6 +339,7 @@
+ {
+     m_fetchOperationCount--;
+     if (m_fetchOperationCount == 0) {
++        takeStagedUpdate();
+         Q_EMIT contentsChanged();
+     }
+ }
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.h
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.h
+@@ -49,7 +49,13 @@
+ 
+     static QDBusConnection OUR_BUS();
+ 
++private Q_SLOTS:
++    void slotsPropertiesChanged(const QString &interface, const QVariantMap &changed, const QStringList &invalidated);
++
+ private:
++    void readSlotsState();
++    void slotsStateChanged(const QVariantMap &state);
++    void takeStagedUpdate();
+     void beginFetch();
+     void endFetch();
+     QCoro::Task<> checkForUpdatesAsync();
+@@ -61,6 +67,10 @@
+     QPointer<org::freedesktop::sysupdate1::Manager> m_manager;
+ 
+     QNetworkAccessManager *m_nam;
++    // The running version a target's GetVersion last answered, without
++    // its slot, and the last io.kdos.Slots1 State.
++    QString m_runningVersion;
++    QVariantMap m_slotsState;
+ 
+ Q_SIGNALS:
+     void transactionRemoved(qulonglong id, const QDBusObjectPath &path, int status);
+--- a/notifier/DiscoverNotifier.cpp
++++ b/notifier/DiscoverNotifier.cpp
+@@ -76,13 +76,29 @@
+         connect(module, &BackendNotifierModule::foundUpdates, this, &DiscoverNotifier::updateStatusNotifier);
+         connect(module, &BackendNotifierModule::needsRebootChanged, this, [this]() {
+             // If we are using offline updates, there is no need to badger the user to
+-            // reboot since it is safe to continue using the system in its current state
+-            if (!m_needsReboot && !m_settings->useUnattendedUpdates()) {
+-                m_needsReboot = true;
++            // reboot since it is safe to continue using the system in its current state.
++            // The answer is asked of every module again, so a module whose pending
++            // restart is withdrawn clears it.
++            bool needsReboot = false;
++            if (!m_settings->useUnattendedUpdates()) {
++                for (BackendNotifierModule *backend : std::as_const(m_backends)) {
++                    needsReboot |= backend->needsReboot();
++                }
++            }
++            if (needsReboot == m_needsReboot) {
++                return;
++            }
++            m_needsReboot = needsReboot;
++            if (m_needsReboot) {
+                 showRebootNotification();
+-                Q_EMIT stateChanged();
+-                Q_EMIT needsRebootChanged(true);
++            } else if (m_rebootNotification) {
++                m_rebootNotification->close();
+             }
++            // needsRebootChanged first: the tray item reads it to decide
++            // whether a withdrawn restart shows the updates again, before
++            // stateChanged has it hide or show the item.
++            Q_EMIT needsRebootChanged(m_needsReboot);
++            Q_EMIT stateChanged();
+         });
+ 
+         connect(module, &BackendNotifierModule::foundUpgradeAction, this, &DiscoverNotifier::foundUpgradeAction);
+@@ -394,6 +410,10 @@
+ 
+ void DiscoverNotifier::showRebootNotification()
+ {
++    if (m_rebootNotification) {
++        m_rebootNotification->close();
++    }
++
+     KNotification *notification = KNotification::event(QStringLiteral("UpdateRestart"),
+                                                        i18n("Restart is required"),
+                                                        i18n("The system needs to be restarted for the updates to take effect."),
+@@ -406,6 +426,7 @@
+     connect(restartAction, &KNotificationAction::activated, this, &DiscoverNotifier::rebootPrompt);
+     connect(shutdownAction, &KNotificationAction::activated, this, &DiscoverNotifier::shutdownPrompt);
+ 
++    m_rebootNotification = notification;
+     notification->sendEvent();
+ }
+ 
+--- a/notifier/DiscoverNotifier.h
++++ b/notifier/DiscoverNotifier.h
+@@ -107,6 +107,7 @@
+     bool m_needsReboot = false;
+     bool m_isBusy = false;
+     QPointer<KNotification> m_updatesAvailableNotification;
++    QPointer<KNotification> m_rebootNotification;
+     std::unique_ptr<UnattendedUpdates> m_unattended;
+     KConfigWatcher::Ptr m_settingsWatcher;
+     QDateTime m_lastUpdate;
+--- a/notifier/NotifierItem.cpp
++++ b/notifier/NotifierItem.cpp
+@@ -13,6 +13,9 @@
+     : m_notifier(checkDelay)
+ {
+     connect(&m_notifier, &DiscoverNotifier::stateChanged, this, &NotifierItem::refreshStatusNotifierVisibility);
++    connect(&m_notifier, &DiscoverNotifier::needsRebootChanged, this, [this](bool needsReboot) {
++        m_restartWithdrawn = !needsReboot;
++    });
+ }
+ 
+ void NotifierItem::setupNotifierItem()
+@@ -50,25 +53,34 @@
+     auto refreshAction = menu->addAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Refresh…"));
+     connect(refreshAction, &QAction::triggered, &m_notifier, &DiscoverNotifier::recheckSystemUpdateNeededAndNotifyApp);
+ 
+-    if (m_notifier.needsReboot()) {
+-        menu->addSeparator();
++    auto rebootSeparator = menu->addSeparator();
+ 
+-        auto rebootAction = menu->addAction(QIcon::fromTheme(QStringLiteral("system-reboot-update")), i18n("Install Updates and Restart…"));
+-        connect(rebootAction, &QAction::triggered, &m_notifier, &DiscoverNotifier::rebootPrompt);
++    auto rebootAction = menu->addAction(QIcon::fromTheme(QStringLiteral("system-reboot-update")), i18n("Install Updates and Restart…"));
++    connect(rebootAction, &QAction::triggered, &m_notifier, &DiscoverNotifier::rebootPrompt);
+ 
+-        auto shutdownAction = menu->addAction(QIcon::fromTheme(QStringLiteral("system-shutdown-update")), i18n("Install Updates and Shut Down…"));
+-        connect(shutdownAction, &QAction::triggered, &m_notifier, &DiscoverNotifier::shutdownPrompt);
+-    }
++    auto shutdownAction = menu->addAction(QIcon::fromTheme(QStringLiteral("system-shutdown-update")), i18n("Install Updates and Shut Down…"));
++    connect(shutdownAction, &QAction::triggered, &m_notifier, &DiscoverNotifier::shutdownPrompt);
+ 
+-    auto f = [this]() {
+-        m_item->setTitle(i18n("Restart to apply installed updates"));
+-        m_item->setToolTipTitle(i18n("Click to restart the system"));
+-        m_item->setIconByName(QStringLiteral("system-reboot-update"));
++    // A pending restart can be withdrawn, so the item follows it both ways.
++    auto f = [this, rebootSeparator, rebootAction, shutdownAction]() {
++        if (!m_item) {
++            return;
++        }
++        const bool needsReboot = m_notifier.needsReboot();
++        rebootSeparator->setVisible(needsReboot);
++        rebootAction->setVisible(needsReboot);
++        shutdownAction->setVisible(needsReboot);
++        if (needsReboot) {
++            m_item->setTitle(i18n("Restart to apply installed updates"));
++            m_item->setToolTipTitle(i18n("Click to restart the system"));
++        } else {
++            m_item->setTitle(i18n("Updates"));
++            m_item->setToolTipTitle(i18n("Updates"));
++        }
++        m_item->setIconByName(m_notifier.iconName());
+     };
+-    if (m_notifier.needsReboot())
+-        f();
+-    else
+-        connect(&m_notifier, &DiscoverNotifier::needsRebootChanged, menu, f);
++    f();
++    connect(&m_notifier, &DiscoverNotifier::needsRebootChanged, menu, f);
+ 
+     connect(&m_notifier, &DiscoverNotifier::newUpgradeAction, menu, [menu](UpgradeAction *a) {
+         QAction *action = new QAction(a->description(), menu);
+@@ -82,6 +94,9 @@
+ 
+ void NotifierItem::refreshStatusNotifierVisibility()
+ {
++    if (m_notifier.state() == DiscoverNotifier::NoUpdates) {
++        m_restartWithdrawn = false;
++    }
+     bool shouldShow = shouldShowStatusNotifier();
+     if (!m_item && shouldShow) {
+         setStatusNotifierVisibility(true);
+@@ -130,6 +145,11 @@
+     case DiscoverNotifier::RebootRequired:
+         return true;
+     case DiscoverNotifier::NormalUpdates: {
++        // Updates that were waiting for a restart until it was withdrawn
++        // are shown now: they were on show before the install.
++        if (m_restartWithdrawn) {
++            return m_notifier.settings()->requiredNotificationInterval() > 0;
++        }
+         // Only show the status notifier on next notification time
+         // BUG: 466693
+         const QDateTime earliestNextNotificationTime = m_notifier.lastNotificationTime().addSecs(m_notifier.settings()->requiredNotificationInterval());
+--- a/notifier/NotifierItem.h
++++ b/notifier/NotifierItem.h
+@@ -32,5 +32,8 @@
+     void setStatusNotifierVisibility(bool visible);
+     bool shouldShowStatusNotifier() const;
+     DiscoverNotifier m_notifier;
++    // A restart withdrawn with updates still offered: the item that showed
++    // them before the install shows them again at once.
++    bool m_restartWithdrawn = false;
+     QPointer<KStatusNotifierItem> m_item;
+ };

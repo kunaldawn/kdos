@@ -6,7 +6,8 @@
   kdos-powerd's changes, asked for each caller of io.kdos.Power1 and for
   each socket client outside wheel.
 
-  The firewall needs an administrator, once per agent session: a named
+  The firewall needs an administrator's password, which polkit keeps for a
+  few minutes for the process that gave it (auth_admin_keep): a named
   service opened is a port the LAN can reach. The accent and the splash's
   motion are the look of the machine before anyone logs in — the boot menu,
   the splash, the console and the login screen — and the person at the

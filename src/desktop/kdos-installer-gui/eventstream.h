@@ -32,8 +32,10 @@ class EventStream : public QAbstractListModel
     Q_PROPERTY(int currentStep READ currentStep NOTIFY progressChanged)
     Q_PROPERTY(QString currentTitle READ currentTitle NOTIFY progressChanged)
     Q_PROPERTY(QString note READ note NOTIFY progressChanged)
-    /* The whole install's progress, 0..1: finished steps, plus the running
-     * step's own fraction where it has one. */
+    /* The whole install's progress, 0..1: the finished steps' weights, plus
+     * the running step's own fraction of its weight where it has one, over
+     * the weights of every step not skipped. A step weighs what the plan
+     * line says, and 1 where it says nothing. */
     Q_PROPERTY(double overall READ overall NOTIFY progressChanged)
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY warningsChanged)
     Q_PROPERTY(QStringList log READ log NOTIFY logChanged)
@@ -92,6 +94,7 @@ private:
         QString title, detail, state;
         double frac = -1;
         QString note;
+        double weight = 1;
     };
     bool line(const QByteArray &l);
     void setState(int step, const QString &state);

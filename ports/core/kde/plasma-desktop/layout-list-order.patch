@@ -1,0 +1,74 @@
+Subject: List keyboard layouts A to Z in the Add Layout dialog until a search
+
+The layout and variant proxies sort by search score alone, descending.
+Every score is 0 before a search, so the score says nothing about the
+order the lists open in, and the layout list opens at Wolof. Without a
+search the layouts now sort by description, ascending and ignoring case,
+and the variants keep the XKB registry's order, the layout first. A
+search sorts by score, descending, over that order, so rows of equal
+score stay in it.
+
+diff -ruN a/kcms/keyboard/ui/KeyboardLayoutsModel.qml b/kcms/keyboard/ui/KeyboardLayoutsModel.qml
+--- a/kcms/keyboard/ui/KeyboardLayoutsModel.qml
++++ b/kcms/keyboard/ui/KeyboardLayoutsModel.qml
+@@ -11,8 +11,21 @@
+ KItemModels.KSortFilterProxyModel {
+     id: layoutsProxy
+     sourceModel: layoutSearchProxy
+-    sortRoleName: "searchScore"
+-    sortOrder: Qt.DescendingOrder
++    sortRoleName: "description"
++    sortOrder: Qt.AscendingOrder
++    sortCaseSensitivity: Qt.CaseInsensitive
++
++    // Each sort is stable over the order before it: sorting by description
++    // first is what keeps rows of equal score in alphabetical order, where a
++    // sort by score alone keeps whatever order the rows were left in.
++    function sortForSearch(searching: bool) {
++        sortOrder = Qt.AscendingOrder;
++        sortRoleName = "description";
++        if (searching) {
++            sortRoleName = "searchScore";
++            sortOrder = Qt.DescendingOrder;
++        }
++    }
+ 
+     filterRowCallback: function (row, parent): bool {
+         const modelIndex = sourceModel.index(row, 0, parent);
+diff -ruN a/kcms/keyboard/ui/KeyboardVariantsModel.qml b/kcms/keyboard/ui/KeyboardVariantsModel.qml
+--- a/kcms/keyboard/ui/KeyboardVariantsModel.qml
++++ b/kcms/keyboard/ui/KeyboardVariantsModel.qml
+@@ -11,8 +11,19 @@
+ KItemModels.KSortFilterProxyModel {
+     id: variantProxy
+     sourceModel: layoutSearchProxy
+-    sortRoleName: "searchScore"
+-    sortOrder: Qt.DescendingOrder
++    sortRoleName: ""
++
++    // With no sort role the rows keep the XKB registry's order, the layout
++    // itself before its variants. Each sort is stable over the order before
++    // it, so clearing the role first is what keeps rows of equal score in
++    // that order when searching.
++    function sortForSearch(searching: bool) {
++        sortRoleName = "";
++        if (searching) {
++            sortRoleName = "searchScore";
++            sortOrder = Qt.DescendingOrder;
++        }
++    }
+ 
+     filterRowCallback: function (row, parent): bool {
+         if (!layoutsView.currentItem) {
+diff -ruN a/kcms/keyboard/ui/LayoutDialog.qml b/kcms/keyboard/ui/LayoutDialog.qml
+--- a/kcms/keyboard/ui/LayoutDialog.qml
++++ b/kcms/keyboard/ui/LayoutDialog.qml
+@@ -69,6 +69,8 @@
+             Layout.fillWidth: true
+             onAccepted: {
+                 layoutSearchProxy.searchString = searchField.text.trim();
++                layoutsProxy.sortForSearch(layoutSearchProxy.searchString.length > 0);
++                variantProxy.sortForSearch(layoutSearchProxy.searchString.length > 0);
+             }
+         }
+ 

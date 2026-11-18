@@ -103,7 +103,7 @@ Item {
 
     ShortcutHandler {
         name: "KDOS Raise mc"
-        text: i18nd("kdos-kwin-script-runraise", "Raise or Open Midnight Commander")
+        text: i18nd("kdos-kwin-script-runraise", "Raise or Open mc (files)")
         sequence: "Meta+Shift+M"
         onActivated: root.raiseOrRun("mc")
     }
@@ -117,7 +117,7 @@ Item {
 
     ShortcutHandler {
         name: "KDOS Raise lynx"
-        text: i18nd("kdos-kwin-script-runraise", "Raise or Open Lynx (web)")
+        text: i18nd("kdos-kwin-script-runraise", "Raise or Open lynx (web)")
         sequence: "Meta+Shift+B"
         onActivated: root.raiseOrRun("lynx")
     }

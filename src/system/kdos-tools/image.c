@@ -38,6 +38,11 @@
  * manifest gives; a bundle that was tampered with costs a download, never a
  * file. So, as with kpkg's deltas, a bundle carries no signature of its own.
  *
+ * THE OWNERS ARE CHECKED AS WELL AS THE BYTES. `make` and `verify` refuse a
+ * manifest whose root directory, top-level entries and trees under etc, usr,
+ * boot and ports do not all have one owner, and `make` and a fill run as root
+ * refuse one where that owner is not root (im_owners).
+ *
  * EVERY FILE IS FOUND THROUGH THE RELEASE INDEX (relidx.c). `make` writes
  * `kdos-update.idx` beside the manifest, signed with the same key, naming the
  * manifest, its signature, every part and every delta at `image/<name>`; a
@@ -571,6 +576,44 @@ next:
 bad:
 	free(data);
 	return -1;
+}
+
+/*
+ * THE SYSTEM'S TREES HAVE ONE OWNER: the root directory's. `.`, every
+ * top-level entry and everything beneath etc, usr, boot and ports must share
+ * its uid, and with `need_root` that uid must be 0. A slot is written with
+ * the owners its manifest gives, so a builder's uid on any of them hands the
+ * root directory or the recipe tree root builds from to whichever account
+ * has that uid. Elsewhere (var, root's home) other owners are the system's
+ * own. 0, or -1 with the first offender in `why`.
+ */
+static int im_owners(const KdtImage *m, int need_root, char *why, size_t wcap)
+{
+	static const char *const SYS[] = { "etc", "usr", "boot", "ports", NULL };
+	if (!m->nent)
+		return 0;
+	unsigned own = m->ent[0].uid;
+	if (need_root && own != 0) {
+		snprintf(why, wcap, "the root directory is owned by uid %u, not "
+			 "root", own);
+		return -1;
+	}
+	for (int i = 1; i < m->nent; i++) {
+		const ImEnt *e = &m->ent[i];
+		if (e->type == 'h' || e->uid == own)
+			continue;
+		int sys = !strchr(e->path, '/');
+		for (int k = 0; SYS[k] && !sys; k++) {
+			size_t n = strlen(SYS[k]);
+			sys = !strncmp(e->path, SYS[k], n) && e->path[n] == '/';
+		}
+		if (sys) {
+			snprintf(why, wcap, "%s is owned by uid %u and the root "
+				 "directory by uid %u", e->path, e->uid, own);
+			return -1;
+		}
+	}
+	return 0;
 }
 
 /* The header of a manifest a root records, unverified: `kdos update` asks a
@@ -1549,6 +1592,15 @@ static int cmd_make(int argc, char **argv)
 	free(m->bysha.slot);
 	memset(&m->bysha, 0, sizeof(m->bysha));
 	map_build(m, &m->bysha, 1);
+	{
+		char owhy[4400];
+		if (im_owners(m, geteuid() == 0, owhy, sizeof(owhy)) != 0) {
+			fprintf(stderr, "kdos image make: %s; a slot written "
+					"from it would give them to that "
+					"account\n", owhy);
+			goto fail;
+		}
+	}
 
 	if (kb_mkdir_p(outdir) != 0) {
 		fprintf(stderr, "kdos image make: cannot create %s\n", outdir);
@@ -2084,7 +2136,9 @@ static int record(const KdtImage *m, const char *target)
  * where each bundle is; `seed` is a root to copy unchanged files
  * from, normally the one this machine runs. 0 when every entry is in place
  * and verified; -1 with the reason in `why`, the target left partly written
- * — never booted, because nothing arms a slot this did not finish.
+ * — never booted: `kdos update` marks a slot with `kdos-bootctl unfill`
+ * before it calls this, `try` refuses a slot so marked, and only the
+ * `deploy` of an arm after a finished fill clears the mark.
  *
  * THE TARGET MUST NOT BE THE RUNNING ROOT, nor the seed: this removes every
  * entry the manifest does not name.
@@ -2124,6 +2178,11 @@ int kdt_image_fill(const KdtImage *m, const KdtRelIdx *ix, const char *target,
 	    ss.st_ino == ts.st_ino)
 		return fail_at(&F, "%s is the root it would be filled from",
 			       target);
+	{
+		char owhy[4400];
+		if (im_owners(m, geteuid() == 0, owhy, sizeof(owhy)) != 0)
+			return fail_at(&F, "the image is refused: %s", owhy);
+	}
 	F.dev = ts.st_dev;
 	if (seed) {
 		char bp[4200];
@@ -2216,12 +2275,17 @@ out:
  *   edited or   a file somebody changed, or one no package owns (the
  *   unowned     hostname, fstab, machine-id, host keys, network profiles):
  *               the running root's copy wins, and a different copy the
- *               slot held is kept beside it as `<file>.kdos-new`
+ *               slot held is kept beside it as `<file>.kdos-new`, or as
+ *               `.<file>.kdos-new` inside a directory whose name ends
+ *               `.d`, which its reader reads whole and skips dotfiles of
  *   accounts    passwd, group, shadow, gshadow, subuid, subgid: merged by
  *               name — every running entry, then every entry only the
  *               slot has, so an account made since the slot was filled
  *               and a system account a new version adds both survive
- *   fstab       the running root's, with the slot's own root line
+ *   fstab       the running root's, with the slot's own root line; every
+ *               absolute mount point it names is then made in the slot
+ *               (0755, root) where the slot has none, since an image root
+ *               holds only the directories its manifest names
  *
  * A few files are the slot's own and are never carried: its release
  * record, and caches regenerated from what the slot holds.
@@ -2641,8 +2705,19 @@ static int carry_etc(const char *run, const char *slot, const char *rel,
 			if (hash_file(rp, -1, a) == 0 &&
 			    hash_file(sp, -1, b) == 0 && !strcmp(a, b))
 				continue;
+			/* A directory whose name ends `.d` is read whole by
+			 * whatever reads it (sddm.conf.d, cron.d, sysctl.d),
+			 * so the slot's copy beside the kept one would be read
+			 * too, and last; there it is a dotfile, which none of
+			 * them reads. */
 			char keep[4400];
-			snprintf(keep, sizeof(keep), "%s.kdos-new", sp);
+			size_t rl = strlen(rel);
+			if (rl > 2 && !strcmp(rel + rl - 2, ".d"))
+				snprintf(keep, sizeof(keep), "%.*s.%s.kdos-new",
+					 (int)(strlen(sp) - strlen(names[i])),
+					 sp, names[i]);
+			else
+				snprintf(keep, sizeof(keep), "%s.kdos-new", sp);
 			if (rename(sp, keep) == 0)
 				(*nnew)++;
 		} else if (have) {
@@ -2653,6 +2728,71 @@ static int carry_etc(const char *run, const char *slot, const char *rel,
 			rc = -1;
 	}
 	kb_strv_free(names);
+	return rc;
+}
+
+/*
+ * Every absolute mount point the slot's fstab names, as a directory in the
+ * slot: rcS's `mount -a` mounts nothing on a path that is not there, and an
+ * image root holds only what its manifest names, which is no /boot/efi. A
+ * missing component is made 0755 and owned by root; one that exists is left
+ * as it is, and the walk stops at a symbolic link or a file on the way, so
+ * it never follows one out of the slot. 0, or -1 when a mount point could
+ * not be made.
+ */
+static int fstab_mountpoints(const char *slot)
+{
+	char fp[4200];
+	join(fp, sizeof(fp), slot, "etc/fstab");
+	char *data = kb_read_all(fp, NULL);
+	int rc = 0;
+
+	for (char *l = data; l && *l;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		char dev[512], mp[512];
+		while (*l == ' ' || *l == '\t')
+			l++;
+		if (*l != '#' && sscanf(l, "%511s %511s", dev, mp) == 2 &&
+		    mp[0] == '/' && mp[1] && path_ok(mp + 1)) {
+			int fd = open(slot, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+			for (char *c = mp + 1; fd >= 0 && *c;) {
+				size_t n = strcspn(c, "/");
+				char part[512];
+				snprintf(part, sizeof(part), "%.*s", (int)n, c);
+				c += n;
+				while (*c == '/')
+					c++;
+				if (!part[0])
+					continue;
+				struct stat st;
+				if (fstatat(fd, part, &st,
+					    AT_SYMLINK_NOFOLLOW) == 0) {
+					if (!S_ISDIR(st.st_mode))
+						break;	/* the slot's own */
+				} else if (mkdirat(fd, part, 0755) != 0 ||
+					   fchmodat(fd, part, 0755, 0) != 0 ||
+					   (geteuid() == 0 &&
+					    fchownat(fd, part, 0, 0,
+						     AT_SYMLINK_NOFOLLOW) != 0)) {
+					rc = -1;
+					break;
+				}
+				int nfd = openat(fd, part, O_RDONLY |
+						 O_DIRECTORY | O_NOFOLLOW |
+						 O_CLOEXEC);
+				close(fd);
+				fd = nfd;
+			}
+			if (fd < 0)
+				rc = -1;
+			else
+				close(fd);
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
 	return rc;
 }
 
@@ -2754,6 +2894,11 @@ int kdt_image_carry(const char *run, const char *slot, const char *db,
 		}
 	}
 	kb_strv_free(extra);
+	if (fstab_mountpoints(slot) != 0 && !rc) {
+		snprintf(why, wcap, "a mount point the fstab names could not be "
+			 "made in %s", slot);
+		rc = -1;
+	}
 	if (nnew)
 		printf("%d configuration file%s kept from this system; the "
 		       "new default%s beside %s as .kdos-new\n", nnew,
@@ -2966,6 +3111,11 @@ static int cmd_verify(int argc, char **argv)
 	KdtImage *m = kdt_image_load(mp, sp, im_keys(keys), why, sizeof(why));
 	if (!m) {
 		fprintf(stderr, "kdos image: %s\n", why);
+		return 3;
+	}
+	if (im_owners(m, 0, why, sizeof(why)) != 0) {
+		fprintf(stderr, "kdos image: %s\n", why);
+		kdt_image_free(m);
 		return 3;
 	}
 	int bad = 0;
