@@ -24,8 +24,9 @@ recipe in this repository and installed on the host like every other program. Th
 
 The live ISO already carries the *base*: the Plasma session, the core KDE applications (Konsole,
 Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager,
-Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), VLC, which Elisa
-plays through, Firefox ESR, Discover, the Orca screen reader and BRLTTY for braille, networking,
+Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), Haruna, KolourPaint,
+Skanpage, Filelight, KFind, KCharSelect, KClock and KWalletManager, VLC, which Elisa plays
+through, Firefox ESR, Discover, the Orca screen reader and BRLTTY for braille, networking,
 printing and the box stack. It carries no compiler: a build on the machine starts by installing
 the `build-tools` group. The rest of the about
 2,400 native ports, from LibreOffice, GIMP, Krita, Blender and the rest of KDE Gear to Thunderbird,
@@ -103,7 +104,7 @@ are set in **System Settings › System Versions › Installing software**:
 A flag on the command line overrides either. Discover follows the first choice: it offers both
 origins for every port the binhost holds and opens the one `install =` names, and its source
 picker offers the other. Before it asks for a password it says how many packages the install
-downloads, and how many it builds here. Building on this computer asks for an administrator's
+takes and how much of that it downloads, and how many it builds here. Building on this computer asks for an administrator's
 password every time; a prebuilt install's password is kept for a while. The live session has no Installing software section, since it keeps no versions; see
 [KDOS settings pages](../04-programs/kdos-settings.md#system-versions).
 
@@ -114,9 +115,9 @@ the installer offers the same ones (see [Installation](installation.md#8-applica
 
 | Group | What it installs |
 |---|---|
-| `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | KDE Gear's games, education, mail, calendar and contacts (KMail, Kontact, KOrganizer), audio and video (Kdenlive, K3b, JuK), graphics (KolourPaint, Skanpage), utilities and development tools: each group is the Gear meta port of its name, such as `kde-gear-pim` |
+| `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | KDE Gear's games, education, mail, calendar and contacts (KMail, Kontact, KOrganizer), audio and video (Kdenlive, K3b, JuK), graphics (KolourPaint, Skanpage), utilities (KClock among them) and development tools: each group is the Gear meta port of its name, such as `kde-gear-pim`. The base already carries KolourPaint, Skanpage and KClock |
 | `kde-network` | KTorrent, KRDC, Krfb, Google Drive in Dolphin, the online-account providers, Samba sharing from Dolphin's properties |
-| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, the Help Center |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, the Help Center; the base already carries Filelight, KFind, KWalletManager and KCharSelect |
 | `kde-artwork` | The KDE wallpaper collection and the Oxygen theme |
 | `office` | LibreOffice, Calibre, TeXstudio |
 | `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
@@ -135,22 +136,30 @@ sudo kdos update install office        # each member, as the port it is
 sudo kdos update install --pending     # the groups the installer recorded because it was offline
 ```
 
-Each member joins the world set by its own name, so removing a port from a group later leaves it
-installed. The download size is shown once the binhost index is on the machine, and only for a
+Each member the install adds joins the world set by its own name, so removing a port from a group
+later leaves it installed; a member already installed, such as one the base image brought, is left
+as it is and is not offered for removal. The download size is shown once the binhost index is on the machine, and only for a
 group whose every member installs prebuilt. On the live ISO a group goes into the live session's
 memory, like anything else installed there.
 
 ### Removing a port
 
 ```sh
-sudo kpkg remove kdenlive
+kdos update removable           # the ports somebody installed that nothing installed needs
+sudo kdos update remove kdenlive
 ```
 
-`kpkg remove` uninstalls the port and takes it out of the world set and the origin record, so the
-next update does not bring it back. It acts on the system that is running. When an update has
-already been written into the other system slot, that slot keeps its own copy of the package and,
-once the update is set for the next boot, of the world set too; run the removal again after
-restarting into it.
+`kdos update remove` takes out a port somebody installed, one that has a line in the world set
+(`/var/lib/kdos/world`) and that no installed package depends on; Discover's Remove button for host
+software runs the same command, and shows the button only for such a port. A port of the image is
+part of the system and refused, since it has no world line unless `kdos update install` named it,
+and one an installed package needs is refused with the name of that package. The removal runs `kpkg
+remove`, which uninstalls the port and takes it out of the world set and the origin record, so the
+next update does not bring it back; what the port brought with it stays, each dependency a package
+of its own. `sudo kpkg remove <port>` is the same step without the two refusals. Either acts on the
+system that is running. When an update has already been written into the other system slot, that
+slot keeps its own copy of the package and, once the update is set for the next boot, of the world
+set too; run the removal again after restarting into it.
 
 ### The data a port carries
 
@@ -387,9 +396,9 @@ In a terminal, `mpd` with `rmpc`, `termusic` and `cmus` play music; `sox` conver
 
 | Application | What it is for |
 |---|---|
-| Haruna | The default video player once it is installed, over mpv |
+| Haruna | The default video player, over mpv; on the installation medium |
 | mpv | A player with no toolkit, with the `uosc` on-screen controls |
-| VLC | VLC 3 with its Qt 5 interface; it runs on Xwayland. It is on the installation medium, and opens video, WebM audio and AC-3 while Haruna is not installed. A new account starts VLC with its first-run privacy question already answered: it fetches no album art or track details from the network |
+| VLC | VLC 3 with its Qt 5 interface; it runs on Xwayland. It is on the installation medium, which Elisa plays through, and opens video, WebM audio and AC-3 when Haruna is removed. A new account starts VLC with its first-run privacy question already answered: it fetches no album art or track details from the network |
 | SMPlayer, Celluloid, Dragon Player | Other players |
 | PlasmaTube | YouTube through Invidious or Piped, and PeerTube |
 | Kodi | A full-screen media centre for local and network media |
@@ -625,7 +634,7 @@ Default Applications page (a role) and File Associations page (one type), lands 
 | Pictures, camera RAW | Gwenview; Canon CR3 and Nikon NRW in darktable; JPEG 2000, DDS, OpenEXR and HDR in Okular; Windows metafiles in Inkscape; GIMP's own `.xcf` in GIMP | KolourPaint, GIMP, Krita, Inkscape, darktable |
 | PDF, PostScript, DjVu, XPS, comics | Okular | PDF4QT |
 | E-books | Calibre's viewer | Arianna, Okular |
-| Video, WebM audio, AC-3 | Haruna (VLC on the installation medium) | mpv, VLC, SMPlayer, Dragon Player |
+| Video, WebM audio, AC-3 | Haruna | mpv, VLC, SMPlayer, Dragon Player |
 | Music | Elisa | Strawberry, JuK |
 | Terminal | Konsole | Yakuake |
 | Screenshots and screen recording | Spectacle, on the `Print` keys | Flameshot |
@@ -646,8 +655,8 @@ reads and which stay with ISO Image Writer. *Open All in Ark* there would make A
 disk images as well.
 
 A row may name several applications, best first, and the first one installed opens the file. The
-video rows name Haruna and then VLC, so a video plays in VLC on the installation medium and in
-Haruna once Haruna is installed, with nothing else to change. A default outside the base, such as
+video rows name Haruna and then VLC, both on the installation medium, so a video plays in Haruna,
+and in VLC once Haruna is removed, with nothing else to change. A default outside the base, such as
 Thunderbird or LibreOffice, takes effect once its port is installed. Until then, and after its
 application is removed, a row falls through to another installed application that claims the type;
 office documents and mail links have none on the medium, so opening one shows the chooser.
@@ -665,7 +674,7 @@ network only when you press a button that says it will.
 | `medium` | The packs and application sets on the boot medium, and the catalogue's applications whose pack is only there | Offline, verified as each pack mounts |
 | `kdos-store` | The catalogue's applications with no pack anywhere, and Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image, less those that cannot work in a box | Built from Debian packages in a box of its own, over the network, and each says so before it starts; a Debian application's box is `deb.<package>` |
 | `kdos-boxes` | Boxes that no application above accounts for, such as one you made with `kdos-box create` | Removal only |
-| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Discover offers no removal; see [Removing a port](#removing-a-port) |
+| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Discover removes a port installed on request that nothing installed needs; a port with no world line, as the image's are, or one another installed package needs, is part of the system and has no Remove; see [Removing a port](#removing-a-port) |
 | `kdos-ports-source`, shown as *KDOS, built on this computer* | Each port the binhost holds that is not installed, as a second origin of the same application | Built on the machine from its recipe, by `kdos update install --source`, with an administrator's password every time; what it lacks comes prebuilt or is built too, as System Settings › System Versions › Installing software says |
 | The system update | The next KDOS release, as an A/B update (see [Keeping it current](administration.md#keeping-it-current)) | Written into the other slot; **Restart** starts it |
 | Firmware | Firmware updates fwupd knows for this machine's devices, from the metadata snapshot each release carries | Applied by fwupd; system firmware at the next restart |
@@ -1134,7 +1143,18 @@ kdos-box gc                                        # stop boxes past their autos
 ```
 
 `kdos-box list` also shows a box that has a profile and no container yet, with the state
-`not created`. `kdos-box enter` sets `KDOS_BOX` to the box's name inside it, which a shell prompt
+`not created`, and every container the engine holds, a distrobox you made with `distrobox create`
+included. When the engine cannot be asked, `list` shows what it did get, ends with a line saying
+the list is incomplete, and exits 1. The Boxes settings page does not take that partial list:
+before it has listed the boxes once it shows that line as its error, and after a good listing it
+keeps showing the boxes as they last were, under a banner saying they could not be listed again. A distrobox with no profile is never removed for you: when your session is
+restored at login it is simply started again, with everything installed in it. `kdos-box stop`
+also ends every application running in a box through `distrobox enter` or a distrobox
+application's launcher, and whatever a box's init left behind when it died, and it returns once
+nothing of the box is left holding its storage, so the box starts again at once; plain `podman stop`
+refuses a box with such a session open. A shell opened with `kdos-box enter` is hung up as a
+closed terminal would be, so it ends at once rather than at the end of the grace period, and its
+terminal window closes. `kdos-box enter` sets `KDOS_BOX` to the box's name inside it, which a shell prompt
 can show. The full command set, including `run`, `apps`, `export` and `import`, is in
 [kdos-appbox](../04-programs/kdos-appbox.md#kdos-box).
 

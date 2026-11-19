@@ -33,6 +33,9 @@ KCM.SimpleKCM {
     implicitWidth: Kirigami.Units.gridUnit * 36
     implicitHeight: Kirigami.Units.gridUnit * 34
 
+    /* The window the page is drawn in: the scene the start prompt falls
+     * back into where the platform has no second window. */
+    readonly property var pageWindow: Window.window
     /* A configured boot state with a slot that has no root: installed with
      * one system slot. */
     readonly property bool oneSlot: kcm.available && kcm.configured && kcm.slotList.some(s => !s.present)
@@ -169,6 +172,7 @@ KCM.SimpleKCM {
                 busy: kcm.busy
                 twinFormLayouts: [updatesForm]
                 onStartRequested: info => {
+                    kcm.holdOver(root.Window.window);
                     startDialog.slotInfo = info;
                     startDialog.open();
                 }
@@ -351,9 +355,31 @@ KCM.SimpleKCM {
      * System Settings shows a KCM in a scene of its own beside the sidebar
      * and the footer, so a prompt drawn inside that scene blocks only the
      * page: a click on the sidebar goes through and discards the prompt
-     * unanswered. The prompt opens as a window of its own and, modal, blocks
-     * input to every other window of the program until it is answered. Where
-     * the platform has no second window it falls back into the scene.
+     * unanswered. The prompt opens as a modal window of its own, which
+     * blocks input to every other window of the program until it is
+     * answered. Its window takes the page's scene for its parent, and that
+     * scene is drawn offscreen and never mapped, so kcm.holdOver() gives
+     * the scene System Settings' own window for its parent before the
+     * first open: the window system resolves the prompt's parent through
+     * it, and KWin keeps the prompt above System Settings as its dialog
+     * and gives it no taskbar entry. Minimising a modal dialog minimises
+     * System Settings with it, and restoring System Settings restores the
+     * prompt. kcm.holdSize() holds the prompt's window to its size, which
+     * takes away its maximise button. A hold that first reaches KWin after
+     * the map leaves a dead close glyph in the title bar, so it runs as Qt
+     * moves the prompt into its window on each open, the one moment before
+     * the window is mapped, and again once the prompt is open, at the size
+     * it settled at, which is no smaller: a re-hold that shrinks the window
+     * offers maximise for a moment on a mapped window. Where the platform
+     * has no second window the prompt falls back into the scene.
+     *
+     * As a window of its own the prompt draws no dim: KWin's Dialog Parent
+     * effect dims the whole of System Settings, sidebar and footer
+     * included, where compositing effects run, and under software
+     * rendering, where it does not load, nothing is dimmed. A dim drawn in
+     * the page's scene would darken the page alone and leave the sidebar
+     * bright, which reads as a sidebar still in use. Dimmed or not, the
+     * whole window refuses input until the prompt is answered.
      *
      * Kirigami's Dialog takes preferredWidth as a floor under the content's
      * implicit width, which for the subtitle is its whole sentence on one
@@ -361,11 +387,12 @@ KCM.SimpleKCM {
      *
      * Kirigami's own dim is a black wash and its edge is the scheme's frame
      * contrast; on a dark scheme neither shows, and the prompt reads as part
-     * of the page. The dim fades the page toward the window's background,
-     * which shows on a light scheme and a dark one alike, and the edge is
-     * drawn halfway from the view's background to its text. The background
-     * replaces Kirigami's, shadow included, so the dim and the edge alone
-     * set the prompt apart from the page: an edge colour taken closer to the
+     * of the page. Drawn in the page's scene, the prompt fades the page
+     * toward the window's background, which shows on a light scheme and a
+     * dark one alike; the edge is drawn halfway from the view's background
+     * to its text. The background replaces Kirigami's, shadow included, so
+     * the dim and the edge alone set the prompt apart from the page, and
+     * as a window the edge alone does: an edge colour taken closer to the
      * background leaves nothing to show where the prompt ends. As a window
      * the frame is square, since a rounded one leaves the window's own fill
      * showing at its corners; drawn in the page's own scene, it is rounded.
@@ -383,7 +410,7 @@ KCM.SimpleKCM {
 
         QQC2.Overlay.modal: Rectangle {
             objectName: "startDialogDim"
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, startDialogFrame.drawnIn === root.Window.window ? 0.75 : 0)
 
             /* The popup sets the dim's opacity as it opens and closes. */
             Behavior on opacity {
@@ -395,7 +422,10 @@ KCM.SimpleKCM {
         }
 
         background: Rectangle {
+            id: startDialogFrame
             objectName: "startDialogFrame"
+            readonly property var drawnIn: Window.window
+            onDrawnInChanged: kcm.holdSize(drawnIn, root.pageWindow)
             Kirigami.Theme.colorSet: Kirigami.Theme.View
             Kirigami.Theme.inherit: false
 
@@ -407,7 +437,13 @@ KCM.SimpleKCM {
 
         property var slotInfo: null
 
-        title: slotInfo ? i18nc("@title:window %1 version", "Start %1 Next Time?", slotInfo.title) : ""
+        onOpened: kcm.holdSize(startDialogFrame.drawnIn, root.pageWindow)
+        onClosed: kcm.releaseSize()
+
+        /* The caption carries no version: the window system appends the
+         * program's name, and a version as long as a build's would cut it
+         * short. The version is the subtitle's first sentence. */
+        title: i18nc("@title:window", "Start Next Time?")
         subtitle: slotInfo
             ? i18nc("@info %1 version to try, %2 confirmed version",
                     "The next restart starts %1 once. If it starts properly and this session runs for a minute, it becomes the version this computer starts. If it does not, the computer goes back to %2 by itself.",

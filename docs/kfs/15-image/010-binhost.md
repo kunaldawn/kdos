@@ -13,7 +13,7 @@ directory.
 
 ## Switching it on
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=61-64 pin=73a5f902efa6 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=66-69 pin=73a5f902efa6 -->
 
 `KDOS_MAKE_BINHOST` comes from the `make build` command line, through the `Makefile` and
 `script/chroot/exec.sh`. Set to anything but `1`, the step prints the line above and exits.
@@ -32,7 +32,7 @@ make build KDOS_MAKE_BINHOST=1
 
 ## The signing key
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=66-76 pin=79afd37a89a5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=71-81 pin=79afd37a89a5 -->
 
 The key pair is made once, by `kpkg keygen`, in `build/binhost-key/`, and every later run signs
 with the same key. kpkg writes the private half with mode 0600 and never replaces an existing
@@ -45,21 +45,21 @@ release-signing key, so only removing the directory by hand makes a new key.
 
 ## Moving the packages
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=78-90 pin=19babb00269e -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=83-95 pin=19babb00269e -->
 
 Every package in the cache is moved into `build/binhost/`, over a file of the same name, which
 leaves `build/fs`'s cache empty for the next build in either image mode: under `KDOS_IMAGE=base`,
-`020_cleanup.sh` empties only the stage's cache. Nothing is removed from `build/binhost/`, so it
-accumulates from run to run, and an incremental build keeps only the packages it installed. A run in
-which nothing was built adds nothing, and the step stops only when the whole directory holds no
-package.
+`020_cleanup.sh` empties only the stage's cache. The current packages earlier runs left stay, so
+the directory accumulates from run to run, and an incremental build adds only the packages it
+installed. A run in which nothing was built adds nothing, and the step stops only when the whole
+directory holds no package.
 
 An older package left by an earlier run is indexed beside its successor, but with an empty `E:`.
 The index takes each package's recipe hash from the ports tree at the moment the index is written,
 by package name (see [The index](#the-index)), and gives it only to the file whose version and
-release are the ones the recipe declares. A superseded version or release is listed and no client
-installs it, and the release index leaves it out (see [The release index](#the-release-index)),
-so old files need no clearing for the binhost to serve the current recipes.
+release are the ones the recipe declares. The step then moves every such file out of the directory
+(see [Superseded packages](#superseded-packages)), so old files need no clearing for the binhost to
+serve the current recipes.
 
 The one file the hash cannot tell apart is a package of the current version and release that was
 built from an earlier state of the recipe, by a run without the flag set after the run that kept
@@ -76,7 +76,7 @@ make build KDOS_MAKE_BINHOST=1 BUILD_ARGS=--fresh
 
 ## The index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=92-111 pin=0e27dd3a19b7 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=97-119 pin=382fd72f815f -->
 
 `kpkg index --sign` writes the index, `PACKAGES`, its signature `PACKAGES.sig`, and a signature
 beside each package, over every package in the directory. With `--buildonly
@@ -104,9 +104,24 @@ The index format and the rules a client applies are in
 [The binary host](../../kdos/03-architecture/packaging.md#the-binary-host) and
 [Signing](../../kdos/03-architecture/packaging.md#signing).
 
+## Superseded packages
+
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=121-157 pin=030a919fdf55 -->
+
+A [superseded]{.idx} package is a package stanza, one with no `O:` (which marks a delta), whose
+`E:` is empty: a file of an older version or release than its recipe's, or of a port the
+tree has no recipe for. No client takes one and no release publishes one. The step moves each, with its `.sig`,
+to `build/binhost-superseded/`, beside `build/binhost/` rather than in it, because `kpkg index`
+lists every package in the one flat directory it is given. It then indexes and verifies again, so
+`PACKAGES`, the catalogue below and the release index are all written over the same files, and a
+published `PACKAGES` never names a file the release does not carry. A delta stays, whatever its
+base. A directory in which every package is superseded stops the phase. The step names each file
+it moves; one moved by mistake, a current package whose recipe `kpkg` could not read, goes back by
+moving it and its `.sig` from `build/binhost-superseded/` into `build/binhost/` before the next run.
+
 ## The catalogue
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=113-134 pin=3b85a50dfbf5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=159-180 pin=3b85a50dfbf5 -->
 
 Discover lists what a binhost can add from an AppStream catalogue beside its index, which a client
 asks for as `binhost/swcatalog/xml/kdos-binhost.xml` and keeps at that path under
@@ -121,21 +136,19 @@ binhost. How each component is read is on [The software catalogue](086-swcatalog
 
 ## The release index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=136-170 pin=d4599ba2dcde -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=182-200 pin=4ec3c65163a3 -->
 
-The release index carries this tree's packages and no others. The step reads `PACKAGES` and marks
-every [superseded]{.idx} package: a package stanza, one with no `O:` (which marks a delta), whose
-`E:` is empty. Those files stay in `build/binhost` and in `PACKAGES`, and are never published. A
-current package larger than one GitHub release asset, `SRC_PART_SIZE` from `ports/srclib.sh`
+The release index carries this tree's packages and no others, the same set `PACKAGES` lists. A
+package larger than one GitHub release asset, `SRC_PART_SIZE` from `ports/srclib.sh`
 (1,900 MiB unless `KDOS_PART_SIZE` names another), stops the phase, naming the file: a machine
 takes a package whole, and the release could not carry it.
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=171-185 pin=44ef9b003423 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=201-214 pin=24628b21d926 -->
 
 `kdos update` never asks for a binhost file by its name alone: it asks the [release index]{.idx},
 `kdos-update.idx`, where the file is, and keeps it only with the size and SHA-256 the index gives.
-The step writes the directory's own index last, over every file in it but the index, the public
-key and the superseded packages with their signatures: each package, sidecar and delta at
+The step writes the directory's own index last, over every file in it but the index and the public
+key: each package, sidecar and delta at
 `binhost/<name>`, the index and its signature at
 `binhost/PACKAGES` and `binhost/PACKAGES.sig`, and the catalogue at its path above, every one with
 the release `-`, which means beside the index. `ports/releaselib.sh` is the writer, the same one
@@ -154,7 +167,8 @@ files are in releases `binhost-<version>-01`, `-02`, … of at most 1,000 assets
 
 Nothing on the image. On your machine, `build/binhost/` holds the packages, `PACKAGES`,
 `PACKAGES.sig`, the per-package signatures, `kdos-binhost.pub`, the catalogue with its signature
-and `kdos-update.idx` with its signature, every name flat, and `build/binhost-key/` holds
+and `kdos-update.idx` with its signature, every name flat; `build/binhost-superseded/` holds the
+superseded packages the step moved out, with their signatures, and `build/binhost-key/` holds
 the key pair. With `KDOS_ISO_SOURCES=1`, `110_iso.sh` also puts a copy of `build/binhost/` on the
 medium, under `/sources/binhost`, when the same build sets `KDOS_MAKE_BINHOST=1` and the directory
 holds an index. A binhost an earlier opt-in build left behind stays off the medium.

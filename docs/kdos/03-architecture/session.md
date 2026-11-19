@@ -90,22 +90,38 @@ The wrapper is a short shell script, run once per graphical login. Its standard
 error is the session log, `~/.local/share/sddm/wayland-session.log`; read the script to see exactly
 what a login does. In order:
 
-1. **It becomes a login shell.** It runs itself again under the user's shell with `--login` (bash
-   and zsh), or sources `/etc/profile` and `~/.profile` itself for any other shell, so
-   `/etc/profile.d` and the user's own profile reach Plasma and everything it starts, as they reach
-   a console login.
-2. **It refuses a login with no runtime directory of its own.** `XDG_RUNTIME_DIR` must name a
+1. **It becomes a login shell.** It runs itself again under the user's shell as a login shell that
+   reads no startup file itself (`bash --noprofile --login`, `zsh -l -f`), then reads that shell's
+   login files itself, in the shell's own order: `/etc/profile` and the first of `~/.bash_profile`,
+   `~/.bash_login` and `~/.profile` for bash, `~/.zshenv`, `/etc/zsh/zprofile`, `~/.zprofile`,
+   `/etc/zsh/zlogin` and `~/.zlogin` for zsh, and `/etc/profile` and `~/.profile` for any other
+   shell. So `/etc/profile.d` and the user's own profile reach Plasma and everything it starts, as
+   they reach a console login, and a profile script that exits is logged with its status.
+2. **It logs each login's stages.** Each stage writes a line to syslog under `kdos-session` and to
+   the session log. One comes before the login shell starts and names the pid, the shell,
+   `XDG_RUNTIME_DIR` and whether the bus socket is there. One comes once the profile is read, and
+   one as Plasma starts. All three name the same pid. Every way out between the first line and
+   Plasma logs at `user.err`. A refusal says why. Any other exit, a profile script's included, logs
+   its status. A `SIGTERM`, `SIGHUP` or `SIGINT` logs its signal. SDDM reports a session that ends
+   at once only as `sddm-helper exited with N`, so these lines are what names the stage; see
+   [Boot and init](boot-and-init.md#a-login-that-comes-straight-back).
+3. **It waits out the last logout's teardown.** If the user's `ksvc stop` (turnstile's backend
+   stop) is still running, the wrapper waits up to ten seconds for that process to end, and refuses
+   the session if it is still running then. After a wait it allows turnstiled one more second to
+   clear the runtime directory before it checks the directory and the bus. `pam_turnstile` holds a
+   login until that stop is over, so this should never wait.
+4. **It refuses a login with no runtime directory of its own.** `XDG_RUNTIME_DIR` must name a
    directory owned by the user; `pam_turnstile` makes it. Without it KWin cannot start, so the
    wrapper exits and the login screen comes back, with the reason in the session log and in syslog
    under `kdos-session`.
-3. **It insists on the one session bus.** It pings `unix:path=$XDG_RUNTIME_DIR/bus` for up to four
+5. **It insists on the one session bus.** It pings `unix:path=$XDG_RUNTIME_DIR/bus` for up to four
    seconds and refuses the session when nothing answers. When the login's
    `DBUS_SESSION_BUS_ADDRESS` names anything else, it logs the difference and sets the fixed
    address. `plasma-dbus-run-session-if-needed` starts a private bus whenever the variable is empty,
    and a private bus is one no box, user service or console login can reach: notifications,
    single-instance applications and the portals would all stop working with nothing on the screen
    to say why.
-4. **It settles the desktop's environment** before the first program reads it:
+6. **It settles the desktop's environment** before the first program reads it:
    `XDG_CURRENT_DESKTOP=KDE`, and `XDG_CONFIG_DIRS` as described
    [below](#the-environment-the-session-starts-with). It unsets `QT_IM_MODULE`, `QT_IM_MODULES` and
    `GTK_IM_MODULE`, so each toolkit chooses its input-method route itself
@@ -113,12 +129,13 @@ what a login does. In order:
    describe a terminal the session does not have: carried into Plasma, a terminal program Konsole
    runs for a launcher would draw at 80x24 in a larger window. A person who wants an input-method
    variable sets it in `~/.config/plasma-workspace/env/`, which Plasma reads after this.
-5. **It warms the boxes** behind the pinned favourites: `kdos-appbox warmup`, in the background at
+7. **It warms the boxes** behind the pinned favourites: `kdos-appbox warmup`, in the background at
    `nice 10`. At 19 the warm-up loses every CPU slice to the starting desktop and is still busy
    minutes later, and a launch in that window waits for it. A second warm-up while one runs does
    nothing.
-6. **It runs the `Exec=` line**, word-split as SDDM's own session script runs it and never
-   globbed.
+8. **It runs the `Exec=` line**, word-split as SDDM's own session script runs it and never
+   globbed; a first word that names no program is refused, so a failed exec cannot end the login
+   silently.
 
 The Plasma session entry, `/usr/share/wayland-sessions/plasma.desktop`, is plasma-workspace's,
 unedited. The pieces the wrapper and the environment script share are in
@@ -131,7 +148,7 @@ unedited. The pieces the wrapper and the environment script share are in
 Three sources set the environment, in the order a login meets them.
 
 **`/etc/profile.d/10-wayland.sh`** runs in every login shell: a console, the serial line, ssh, and
-the login shell the wrapper re-executes itself in. The runtime directory, the bus address, the
+the wrapper, which reads the profile itself in the login shell it re-executes itself in. The runtime directory, the bus address, the
 desktop's name and the configuration directories are filled in only where the session does not
 already carry a value; the toolkit variables below them are set outright, so a value a login
 carried in is replaced:
@@ -237,13 +254,16 @@ The installer offers two kinds of application. The native groups (see
 [Packaging](packaging.md#groups)) are installed during the install, prebuilt from the release's
 binhost; a group that cannot be, because the network or the binhost did not answer, is written to
 the new disk's `/var/lib/kdos/groups-pending`, and `kdos update install --pending` installs it
-later. Nothing in the session reads that file.
+later. Discover does not list those groups; the first login's `kdos-notice` names each one and the
+`sudo kdos update install --pending` that installs it, in the same notice as the boxed selections
+below (the groups and their command first, the selections on a line after them), and withdraws the
+notice once neither file names anything.
 
 Boxed applications ticked in the installer are *offered* in the first session, never built in the
 background. `kinstall` builds none of them: it writes the chosen ids to the new disk's
 `/var/lib/kdos/apps-pending`. Discover's KDOS backend lists them under
-"Selected during install", and `kdos-notice` says once per content of the file that they are
-waiting, and withdraws the notice when the file names nothing. Building means podman and apt, which
+"Selected during install", and `kdos-notice` says once per content of the two files that they are
+waiting, with an Open Discover action whenever this file names something. Building means podman and apt, which
 can take twenty minutes or more on a machine booted for the first time, and a build that long with
 nothing on screen leaves the machine busy with no visible cause.
 
@@ -258,9 +278,13 @@ bus, the same PipeWire and the same running boxes.
 socket, `/run/turnstiled/control.sock`. At a user's first login it creates `/run/user/<uid>` (mode
 0700), runs the *backend* that starts the services, and exports `XDG_RUNTIME_DIR` and
 `DBUS_SESSION_BUS_ADDRESS` into the login once the bus answers. At the last logout it stops them and
-removes the directory. turnstile is the directory's only owner: elogind is built with its own
-runtime-directory code removed (`no-runtime-dir.patch`), because two owners would delete each
-other's directory, elogind's at its last session, under services and boxes still using it.
+removes the directory. A login lasts as long as its connection to that socket, and the module opens
+the connection close-on-exec (`session-socket-cloexec.patch`), so only the PAM caller holds the
+login: `sddm-helper` or `login` closes it when the session's process exits, and no program the
+session started, a box among them, keeps the login open after it. turnstile is the directory's
+only owner: elogind is built with its own runtime-directory code removed (`no-runtime-dir.patch`),
+because two owners would delete each other's directory, elogind's at its last session, under
+services and boxes still using it.
 Configuration is `/etc/turnstile/turnstiled.conf`.
 
 **The backend** is `/usr/lib/turnstile/ksvc`, a shell script that runs the table in
@@ -276,7 +300,7 @@ system's own `/etc/init.d` scripts:
 | `22_pipewire-pulse.sh` | `pipewire-pulse` | The PulseAudio server every Pulse client finds, the panel's volume applet among them; restarted whenever `pipewire` is |
 | `25_mpd.sh` | `mpd` | Only when a `mpd.conf` exists in one of the places mpd reads; the image ships none. It makes `$XDG_RUNTIME_DIR/mpd` first, where the socket [`kdos-mpctl`](../04-programs/kdos-command.md#kdos-mpctl) and every client `MPD_HOST` points at (`/etc/profile.d/45-mpd.sh`) reach mpd; mpd makes that directory itself only when it binds no address |
 | `30_timers.sh` | `timers` | The user's periodic jobs: every row of `/etc/kdos/user-services/timers.d` and `~/.config/kdos/timers.d`, under `snooze`, in one supervised process. Its start also builds the first file index in the background (`kdos-updatedb --if-missing`) when there is none |
-| `40_boxes.sh` | `boxes` | Starts nothing. Its `stop` runs first, because the table stops backwards, and stops every running container of the user's within thirty seconds, through `kdos-box stop`: in a box that shares the host's PID namespace and has no cgroup of its own, `podman stop` reaches the box's init and its descendants and leaves running the applications its launches started. It then ends podman's rootless pause process, by the pid in `$XDG_RUNTIME_DIR/libpod/tmp/pause.pid` |
+| `40_boxes.sh` | `boxes` | Starts nothing. Its `stop` runs first, because the table stops backwards, and stops every running container of the user's within fifteen seconds, through `kdos-box stop`: in a box that shares the host's PID namespace and has no cgroup of its own, `podman stop` reaches the box's init and its descendants and leaves running the applications its launches started. It then ends podman's rootless pause process, by the pid in `$XDG_RUNTIME_DIR/libpod/tmp/pause.pid` |
 
 Each script is asked `ready` before the next starts, so PipeWire's socket exists before WirePlumber
 connects, and the backend reports ready only after the last. turnstile holds the login until then,
@@ -815,11 +839,11 @@ screen again. A Restart or Shut Down then reaches elogind's `Reboot` or `PowerOf
 `/sbin/reboot` or `/sbin/poweroff`, and so sysvinit's runlevel 6 or 0 (see
 [Boot and init](boot-and-init.md#shutdown)).
 
-The user's services do not end with the session. If the user has no other login and does not
-linger, turnstile stops them at this point: the `boxes` service first, so every container is
-stopped while its sockets still exist, then the rest of the table backwards, and then it clears
-the runtime directory. A box with no `autostop` that is still running at a Log Out is therefore
-stopped by the last logout and not before.
+The user's services do not end with the session. If the user has no other login and does not linger,
+turnstile stops them when `sddm-helper` closes the PAM session: the `boxes` service first, so every
+container is stopped while its sockets still exist, then the rest of the table backwards, and then
+it clears the runtime directory. A box with no `autostop` that is still running at a Log Out is
+therefore stopped by the last logout and not before.
 
 A login that arrives while that stop is under way, such as SDDM's automatic login logging the
 account straight back in after `loginctl terminate-user`, waits for it. turnstile starts a fresh

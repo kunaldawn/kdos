@@ -85,6 +85,42 @@ typedef struct {
 	char vg[64];
 } Disk;
 
+/*
+ * WHERE IN THE COPY ITS COST LIES. rsync's `to-chk` counts every entry of
+ * its list, in its own order, and the entries do not cost alike: a regular
+ * file is read, written and closed, while a directory, a symbolic link or a
+ * later name of a hard-linked file is a call or two on the target. The live
+ * tree keeps some twenty-five thousand links in its icon themes past the
+ * middle of its list, so a time left that charges every entry a file's cost
+ * reads the rest of the copy as up to half again as long as it is there.
+ *
+ * A profile holds the cost done after each 1/KI_COPY_PROF of the entries, as
+ * a fraction of the whole, a regular file's first name counting 1 and any
+ * other entry KI_COPY_OTHER_W, and `per_entry` the units of an average
+ * entry. KI_COPY_OTHER_W is the ratio of the two costs fitted to the
+ * progress of the live medium's install onto a virtual disk: about 0.1 ms
+ * an entry against 0.35 ms a file. ki_copy_note() reads the files done and
+ * left through the profile; with `ok` 0, every entry counts as a file.
+ */
+#define KI_COPY_PROF 128
+#define KI_COPY_OTHER_W 0.3
+
+typedef struct {
+	int ok;
+	double per_entry;
+	float at[KI_COPY_PROF + 1];
+} KiCopyProfile;
+
+/* The kinds of entry a profile is built from, one byte each in rsync's
+ * order: a regular file's first name or any other entry, and whether it is
+ * inside the box store. */
+enum { KI_ENT_OTHER = 0, KI_ENT_FILE = 1, KI_ENT_STORE = 2 };
+
+/* The profile of the `n` entries of `kind`, leaving out the box store's
+ * when `store` is 0. */
+void ki_copy_profile(KiCopyProfile *p, const unsigned char *kind, size_t n,
+		     int store);
+
 typedef struct {
 	int uefi;
 	/*
@@ -110,6 +146,9 @@ typedef struct {
 	 * each name's blocks. */
 	unsigned long long link_extra_bytes;
 	unsigned long long link_extra_appbox_bytes;	/* of which, the store */
+	/* Where the copy's cost lies, with the box store and without it; the
+	 * second is slot B's too, whose -x copy never enters /home. */
+	KiCopyProfile copy_prof, copy_prof_sys;
 } SysInfo;
 
 /*
@@ -148,9 +187,10 @@ extern int ki_nlv;
 
 void probe_system(void);
 /* The size of the tree an install copies, into ki_sys.payload_kb and
- * appbox_kb, and its extra hard-link names into link_extra_bytes and
- * link_extra_appbox_bytes: a walk of the whole root filesystem, the one slow probe, and so
- * called on its own. */
+ * appbox_kb, its extra hard-link names into link_extra_bytes and
+ * link_extra_appbox_bytes, and where its cost lies into copy_prof and
+ * copy_prof_sys: a walk of the whole root filesystem in rsync's order, the
+ * one slow probe, and so called on its own. */
 void probe_payload(void);
 /* Also activates every volume group, once per process and only as root, then
  * lists the logical volumes into ki_lv. */
@@ -264,6 +304,10 @@ typedef struct {
 
 extern KiNative ki_native[MAX_NATIVE];
 extern int ki_nnative;
+/* 1 when `kdos update` would find a binhost for the groups: update.conf's
+ * `binhost =`, $KDOS_UPDATE_BINHOST, or a release named in the TREE stamp
+ * beside the groups file. Read by probe_groups(). */
+extern int ki_binhost_named;
 
 void probe_groups(void);
 /* Read the groups file and apply an answer file's `groups =`: the ids it
@@ -601,11 +645,18 @@ int ki_swap_check(char *err, size_t n);
 
 /* What a copy's progress lines have said so far, zeroed when a copy
  * starts: the last file counts (`to-chk=left/total`), the samples the time
- * left is fitted on — seconds, bytes and files done, thinned to at most
- * KI_COPY_SAMPLES spread over the whole copy — whether the samples have
- * given an estimate yet, and the time left last shown with the progress it
- * was shown at. */
+ * left is fitted on — seconds, bytes and files done, the files in a
+ * profile's units, thinned to at most KI_COPY_SAMPLES spread over the whole
+ * copy — the time left last shown with the seconds and the progress it was
+ * shown at, whether a figure is showing (`counting`; none while the
+ * estimate settles), when the bytes or files last advanced (`moved_el`),
+ * the last line's estimate (`est`, which a tick counts down toward), the
+ * estimates of the last KI_COPY_HIST slots of KI_COPY_HIST_S seconds, the
+ * lowest and highest of each (`h_*`, `hn` slots filled in all), and the
+ * fraction done last given. */
 #define KI_COPY_SAMPLES 64
+#define KI_COPY_HIST 32
+#define KI_COPY_HIST_S 0.1
 
 typedef struct {
 	long left, total;
@@ -613,22 +664,77 @@ typedef struct {
 	double step;
 	double el[KI_COPY_SAMPLES], bytes[KI_COPY_SAMPLES],
 		files[KI_COPY_SAMPLES];
-	int shown_ok, fitted;
-	double shown, shown_bytes, shown_files;
-	/* Since when every estimate has stood more than KI_COPY_RISE times
-	 * the time shown. */
-	int over;
-	double over_t;
+	int shown_ok, counting;
+	double shown, shown_el, shown_bytes, shown_files, moved_el;
+	double est;
+	int hn;
+	double h_el[KI_COPY_HIST], h_lo[KI_COPY_HIST], h_hi[KI_COPY_HIST];
+	double frac;
 } KiCopyFiles;
 
-/* The time left shown rises only once every estimate for KI_COPY_RISE_S
- * seconds has stood more than KI_COPY_RISE times it. */
-#define KI_COPY_RISE 1.25
-#define KI_COPY_RISE_S 3.0
+/* The time left shown (install.c, THE TIME SHOWN). The selftest replays
+ * the eight recorded installs in testing/fixtures/kinstall, each copy plain
+ * and slowed two, three and five times, and one12's root copy re-timed to
+ * two GUI installs on 12 GiB, through `harness copy` with its ticks, and
+ * holds every frame to its bounds. Each value below is named with the
+ * range, varied alone, on which every replay passes but e2e10-30's slot B,
+ * and sits inside it away from its edges; past the range a replay fails as
+ * said. e2e10-30's slot B passes on no value: its estimate stands at 1.3
+ * to 1.4 times the real time from 13 s to 17 s of its 28, through a
+ * stretch that copies slower than the rest, and the figure reads up to
+ * 1.33 times the real time there, a bound of its own in the selftest.
+ *
+ * Until the estimate settles no figure is shown. It has settled once the
+ * note's fraction, the seconds so far over those and the estimate, is
+ * KI_COPY_START (0.04 to 0.12, every replay the same) and the estimates
+ * that stood over the last KI_COPY_SETTLE_S seconds (1.25 to 3; at 1
+ * fresh12's root copy slowed five times shows its first fits, low, and
+ * stands at 0:00:01) lie within KI_COPY_SPREAD above the lowest of them
+ * (0.1 to 1; at 0.075 the re-timed slow start of one12 is first shown at
+ * its forced settle, at up to 1.9 times the real time), or once the
+ * fraction is KI_COPY_SETTLED (0.12 to 0.2; at 0.11 fresh30's slot B
+ * slowed five times is shown its first fits, low, and stands at 0:00:01),
+ * which is before a fifth of the copy while the estimate is at most 1.31
+ * times the real time left and past it for a higher one.
+ * The estimate the countdown is set against is the highest of those that
+ * stood over the last KI_COPY_EST_S seconds (0 to 0.2; at 0.3 fresh30's
+ * slot B reads over the high bound). Above it the countdown falls to it,
+ * at least as fast as the clock and at most KI_COPY_FAST times it (2 to
+ * 30; at 1.5 the re-timed slow start reads over the high bound). Below it
+ * the countdown runs at the clock while within KI_COPY_NEAR of it (0 to
+ * 0.11), slower the further below, and at KI_COPY_SLOW of the clock from
+ * KI_COPY_FAR below it on (0.1 to 0.2); at a NEAR of 0.12 or a FAR of 0.25
+ * two30's slot B slowed five times, whose estimate is low through its
+ * first half and then jumps, reads under the low floor. KI_COPY_SLOW is
+ * above 1/(2 - KI_COPY_TICK_S), so no whole second stands for two seconds
+ * while the copy moves, and passes up to 0.6 (at 0.62 two30's slot B
+ * slowed five times reads under the low floor).
+ * A tick comes each KI_COPY_TICK_S with no line, and a copy whose bytes and
+ * files have not advanced for KI_COPY_QUIET_S, longer than the second rsync
+ * leaves between the running lines of a large file, stands. */
+#define KI_COPY_START 0.08
+#define KI_COPY_SETTLE_S 2.0
+#define KI_COPY_SPREAD 0.3
+#define KI_COPY_SETTLED 0.16
+#define KI_COPY_FAST 8.0
+#define KI_COPY_EST_S 0.1
+#define KI_COPY_NEAR 0.06
+#define KI_COPY_FAR 0.16
+#define KI_COPY_SLOW 0.58
+#define KI_COPY_TICK_S 0.2
+#define KI_COPY_QUIET_S 1.5
+/* The span of samples, in seconds, the first fit needs: behind a listing
+ * of several seconds a fifth of a short copy is past before two seconds of
+ * samples are, and until the first fit no time left is shown. */
+#define KI_COPY_SPAN_S 1.0
+/* A sample KI_COPY_HALF_S seconds older than the newest weighs half as much
+ * in the fit (10 to 30): at 7.5 s two30's slot B slowed five times reads
+ * under the low floor and stands at 0:00:01. */
+#define KI_COPY_HALF_S 20.0
 /* The floors of the seconds a file and a byte cost, which hold the cost the
- * samples cannot yet tell apart from the other: about half of each cost on
- * the live medium's copy onto a virtual disk, so that a faster machine is
- * seldom shown more time than it takes. */
+ * samples cannot yet tell apart from the other: below each cost on the live
+ * medium's copy onto a virtual disk, about 0.35 ms a file and 4 ns a byte,
+ * so that a faster machine is seldom shown more time than it takes. */
 #define KI_COPY_FILE_S 100e-6
 #define KI_COPY_BYTE_S 2e-9
 
@@ -636,13 +742,25 @@ typedef struct {
  * One rsync --info=progress2 line, `el` seconds into a copy of `total`
  * bytes (0 when not measured), of which `links` are names of hard-linked
  * files after their first, which rsync counts and never copies, as the Copy
- * step's note: "364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15 left", and its
- * fraction of the bytes it copies done into *frac. `files`
- * carries the file counts, the samples the time left is fitted on and the
+ * step's note: "364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15 left", or
+ * "…, estimating time left" while no figure is shown, and its fraction done
+ * into *frac: of the time once there is an estimate (the time shown, or
+ * the estimate while none is), of the bytes it copies before that, and
+ * never less than the last one. `prof`
+ * says where in the list of entries the cost lies (NULL: every entry a
+ * file). `files` carries the file counts, the samples the time left is fitted on and the
  * time last shown from line to line; NULL reads the counts from this line
  * alone and fits nothing. 0 for a line that is not a progress line.
  */
 int ki_copy_note(const char *line, double el, unsigned long long total,
+		 unsigned long long links, const KiCopyProfile *prof,
+		 KiCopyFiles *files, double *frac, char *note, size_t n);
+/* The Copy step's note `el` seconds into the same copy when no line has
+ * come for KI_COPY_TICK_S: the time left counted down from the last line's,
+ * which the next line goes on from. 0, and nothing written, while no
+ * figure is shown (THE TIME SHOWN in install.c) and once no progress has
+ * come for KI_COPY_QUIET_S, when the time shown stands. */
+int ki_copy_tick(double el, unsigned long long total,
 		 unsigned long long links, KiCopyFiles *files, double *frac,
 		 char *note, size_t n);
 
@@ -658,7 +776,7 @@ typedef struct {
 	int state;
 	double t0, t1;
 	double frac;		/* -1 when indeterminate                   */
-	/* Its share of the whole install against a short step's 1: see THE
+	/* The time it is expected to take, in tenths of a second: see THE
 	 * STEPS' WEIGHTS in install.c. */
 	int weight;
 	char note[96];
@@ -679,7 +797,11 @@ typedef struct {
 	int nwarn;
 	pid_t pid;
 	int fd;
-	double t0;
+	/* When the install first started (a retry keeps it), and when it
+	 * finished or stopped: the terminal installer reports t1 - t0 once
+	 * `done` or `failed` is set, so the running clock and the closing
+	 * figure are one number. */
+	double t0, t1;
 	char (*log)[LOG_COLS];
 	int nlog, logtop;
 	int logfd;

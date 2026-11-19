@@ -33,6 +33,7 @@ cp -v -R ns/VERSION ns/VERSION.xsl ns/assembly ns/common ns/eclipse ns/epub \
          ns/xhtml5 \
     $nsdest
 cp -v -R ns/webhelp/xsl $nsdest/webhelp/
+rm -rf $dest/epub/bin $nsdest/epub/bin
 
 install -v -m755 -d $PKG/etc/xml
 xmlcatalog --noout --create $PKG/etc/xml/catalog

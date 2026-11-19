@@ -196,7 +196,7 @@ The installation medium carries the *base*: the ports [`ports/base`](../../../po
 their dependency closure, which `script/lib/imageset.py` computes over each recipe's `depends =`
 line without following it into a compiler `ports/buildonly` lists. That is the Plasma session, the
 core KDE applications, Firefox ESR, networking, printing and scanning, the box stack, the
-self-hosting toolchain and every program of KDOS's own, about 1,000 of the about 2,430 packages a
+self-hosting toolchain and every program of KDOS's own, about 900 of the about 2,440 packages a
 build makes. The build compiles every port all the same, and the release publishes every package
 it made on its signed [binhost](../06-reference/glossary.md#binhost), so the rest of the native
 ports (all of KDE Gear, LibreOffice, GIMP, Blender, Wine and the other applications

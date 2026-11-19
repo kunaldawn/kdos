@@ -27,8 +27,9 @@ The chapter follows these steps in order:
 
 A release is a live ISO. It carries the *base*: the Plasma session, the core KDE applications
 (Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition
-Manager, Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), VLC, which
-Elisa plays through and which plays video until Haruna is installed, Firefox ESR, Discover, the
+Manager, Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), the
+everyday programs beside them (Haruna, the video player, KolourPaint, Skanpage, Filelight, KFind,
+KCharSelect, KClock and KWalletManager), VLC, which Elisa plays through, Firefox ESR, Discover, the
 Orca screen reader and BRLTTY for braille displays, networking, printing and scanning, the box
 stack, Python and Perl, every KDOS tool and the KDOS book. It carries no compiler: the toolchain is
 the `build-tools` group, and the Chinese, Japanese and Korean input methods are the `lang-zh`,
@@ -302,7 +303,11 @@ collections, Chinese, Japanese and Korean input, and more), each with what it do
 and press **Install**; each is downloaded ready-made, one at a time, after your password, and the
 page ends with a button to Discover for everything else. Until the computer has the release's
 package list the page has no sizes and offers nothing: connect, open Discover, press **Refresh** on
-its Updates page, then **Look Again**. Make It Yours is the last KDOS page; Plasma's own **Enjoy
+its Updates page, then **Look Again**. When the release names no binary host and a refresh cannot name
+one either (the last refresh found none, the published tree is older than this one, or the
+computer has one system slot, whose refresh takes no newer tree), the page says instead that no
+group can be installed ready-made, with a button to Discover, which can build programs on this
+computer, and its opening line offers only Discover. Make It Yours is the last KDOS page; Plasma's own **Enjoy
 It!** page follows it and ends the tour. Every choice there takes effect at once and can be
 changed later. On the live medium the tour opens at every login, on a page with a large **Install
 KDOS** button, and a second page offers to keep the session's changes on the stick.
@@ -445,8 +450,9 @@ time, so it matches what you have rebound. [The desktop](desktop.md) describes b
 When you chose boxed applications in the installer, which records them on the new disk, your
 first session shows a notification saying they are ready to install rather than starting a long
 build unannounced. Run `kdos app install --pending` when you are ready, or open Discover (see
-[Applications](applications.md#discover)). Native groups the installer could not download wait
-for `sudo kdos update install --pending`; `kdos update groups` shows what is installed.
+[Applications](applications.md#discover)). Native groups chosen in the installer and not installed
+yet wait for `sudo kdos update install --pending`, and the first login says so; `kdos update
+groups` shows what is installed.
 
 Everything else is installed from Discover or `kdos update install`, prebuilt or built on the
 machine; [Applications](applications.md#where-applications-come-from) says which to choose.

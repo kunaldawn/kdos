@@ -19,6 +19,8 @@
 
 #include <QNetworkInformation>
 
+#include <algorithm>
+
 #include <signal.h>
 #include <unistd.h>
 
@@ -70,6 +72,13 @@ bool KdosTransaction::start()
     return true;
 }
 
+// What a running step is doing: downloading when it fetches anything, else
+// changing the machine.
+static Transaction::Status runningStatus(const Step &step)
+{
+    return step.downloads ? Transaction::DownloadingStatus : Transaction::CommittingStatus;
+}
+
 void KdosTransaction::runStep()
 {
     m_step++;
@@ -85,17 +94,20 @@ void KdosTransaction::runStep()
 
     if (step.kind == Step::Kind::Preview) {
         setStatus(SetupStatus);
-    } else if (step.downloads) {
+    } else {
         // QNetworkInformation answers only when a backend for it runs; with
         // none, the step is tried and its own error is the message.
         const QNetworkInformation *net = QNetworkInformation::instance();
-        if (net && net->reachability() == QNetworkInformation::Reachability::Disconnected) {
+        if (step.downloads && net && net->reachability() == QNetworkInformation::Reachability::Disconnected) {
             fail(i18n("it needs a network connection, and this computer is offline"));
             return;
         }
-        setStatus(DownloadingStatus);
-    } else {
-        setStatus(CommittingStatus);
+        // A step run through pkexec waits for the administrator's password
+        // and writes nothing until it has it: it stays in SetupStatus, which
+        // Discover says as "Waiting", until its first line of output
+        // (readOutput), so Discover never says Downloading beside an open
+        // password dialog.
+        setStatus(step.program == "pkexec"_L1 ? SetupStatus : runningStatus(step));
     }
 
     if (step.kind == Step::Kind::Packd) {
@@ -167,6 +179,9 @@ void KdosTransaction::readOutput()
     if (!m_process)
         return;
     m_stdout += m_process->readAllStandardOutput();
+    const Step &step = m_plan.steps.at(m_step);
+    if (step.kind != Step::Kind::Preview && status() == SetupStatus && m_stdout.contains('\n'))
+        setStatus(runningStatus(step));
     qsizetype nl;
     while ((nl = m_stdout.indexOf('\n')) >= 0) {
         const QString line = QString::fromUtf8(m_stdout.left(nl));
@@ -205,8 +220,27 @@ void KdosTransaction::stepSucceeded()
     runStep();
 }
 
+// The question a Preview step's dry run becomes. A removal's names the one
+// port it takes out (`remove <port>`, update.c's dry run); output without
+// that line is no removal anybody can be asked about, and fails before the
+// password.
 void KdosTransaction::ask()
 {
+    if (role() == RemoveRole) {
+        const auto *res = static_cast<KdosResource *>(resource());
+        const QByteArray want = "remove " + res->entry().id.toUtf8();
+        const QList<QByteArray> lines = QByteArray(m_previewOut + m_stdout).split('\n');
+        if (!std::any_of(lines.cbegin(), lines.cend(), [&want](const QByteArray &l) {
+                return l.trimmed() == want;
+            })) {
+            fail(i18n("what the removal would do could not be read"));
+            return;
+        }
+        m_asking = true;
+        Q_EMIT proceedRequest(i18nc("@title:window", "Remove %1?", resource()->name()),
+                              i18n("%1 is removed from this computer. Discover can install it again.", resource()->name().toHtmlEscaped()));
+        return;
+    }
     const InstallPreview p = parseInstallPreview(m_previewOut + m_stdout);
     if (!p.valid) {
         fail(i18n("what the install would do could not be read"));

@@ -1,8 +1,9 @@
 ## About
 
 The DocBook XSL stylesheets turn DocBook XML into manual pages, HTML and other formats when
-`xsltproc` runs them. In KDOS they serve the builds above all; the desktop itself never reads
-them. A port that renders its manual pages from DocBook, such as dbus, polkit, gtk3, bubblewrap
+`xsltproc` runs them. In KDOS they serve the builds, and the desktop reads them too:
+[kdoctools](#port-kdoctools) renders every KDE handbook through them at run time, so the base
+image carries them. A port that renders its manual pages from DocBook, such as dbus, polkit, gtk3, bubblewrap
 and postgresql, runs `xsltproc` over this tree, and so do the generators [xmlto](#port-xmlto) and
 [asciidoc](#port-asciidoc)'s `a2x`. The package installs no program and compiles nothing.
 
@@ -47,7 +48,9 @@ so a stylesheet address the catalogue does not map is a failed build, not a slow
 `build.sh` copies a named list of directories from each tree rather than the whole release. It
 leaves out `extensions/` and `tools/`, which hold prebuilt Java jars for Saxon, Xalan and the
 webhelp indexer; `docsrc/`, the sources of the stylesheets' reference documentation; and
-everything under `webhelp/` but `webhelp/xsl`.
+everything under `webhelp/` but `webhelp/xsl`. It then deletes `epub/bin/`, whose `dbtoepub` is a Ruby script:
+the base image carries no Ruby, and its gate fails a kept package with a program nothing on
+the image can run.
 `xsltproc` reads none of what is left out. A stylesheet directory a new release adds is not
 installed until it is added to the list.
 

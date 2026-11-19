@@ -276,7 +276,8 @@ thing it builds. Its twenty-two scripts run in this order:
 | `120_kpkg.sh` | `kpkg`, compiled from `src/system/kdos-kpkg` with `libkbase`, `libkpkg` and `libksig`, installed as `/usr/bin/kpkg` with four more names linked to it | Nothing can read a recipe before `kpkg` exists |
 | `130_kinstall.sh` | The installer, `kinstall`, from `src/system/kdos-installer` | It links nothing beyond musl, so it exists on every tree from this phase onwards |
 
-`kpkg` and `kinstall` are never rebuilt by a later phase, so these two compile lines carry the
+`kpkg` is never rebuilt by a later phase, and `kinstall` is every tree's installer until the
+`kdos-installer` package of `41_system` adopts its file, so these two compile lines carry the
 tree's hardening themselves (stack protector, stack-clash probes, `-z now`, packed relative
 relocations and a build ID); every other step keeps the plain flags of `script/env/host.env`.
 
@@ -796,9 +797,10 @@ for it. What the initramfs does at boot is in
    signature, and its boot code area is not empty. Any failure fails the build.
 
 The medium carries the base: Plasma, the applications every desk pins (Konsole, Dolphin, Kate,
-Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake, named
-one by one in `ports/base`) and Firefox ESR, no compiler, and none of the other native
-applications, which a machine installs from its
+Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake), the
+everyday programs beside them (Haruna, KolourPaint, Skanpage, Filelight, KFind, KCharSelect, KClock
+and KWalletManager), each named one by one in `ports/base`, and Firefox ESR, no compiler, and none
+of the other native applications, which a machine installs from its
 release's binhost one by one or as groups (see
 [Installing more software](../03-architecture/packaging.md#installing-more-software)). It carries
 no boxed application either: podman builds each catalogue application on the machine that
@@ -808,8 +810,8 @@ switches change what it carries, `KDOS_ISO_SOURCES=1` (the tree's sources under 
 `KDOS_PACK_KDOS=1` (the base pack); see [The first build](developing.md#the-first-build). How the
 medium boots is in [Boot and init](../03-architecture/boot-and-init.md).
 
-**What the medium needs.** Measured on a full build tree, the base is 1,003 of 2,430 packages
-and 9.5 GB of their 49.8 GB of files; the base ISO itself is not measured yet. An image built with
+**What the medium needs.** Measured on a full build tree, the base is 900 of 2,442 packages
+and 5.5 GB of their 49.5 GB of files, and the base ISO is 1,691 MiB. An image built with
 `KDOS_IMAGE=full` carries every package and its ISO is 20.4 GB. The full image sets four
 requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
 [Installation](../02-user-guide/installation.md), [kinstall](../04-programs/kinstall.md) and the

@@ -51,8 +51,15 @@
  * THE STATE FILE LIVES ON THE ESP, WHICH IS FAT AND HAS NO JOURNAL. A torn write
  * here bricks the machine — not "fails to update", bricks: the initramfs cannot
  * tell which slot to boot. So every write is temp file, `fsync` the file,
- * `fsync` the DIRECTORY, then `rename`. The directory fsync is the step people
- * leave out, and without it the rename can be lost while the data survives.
+ * `rename`, then `fsync` the RENAMED FILE and `syncfs` the ESP (esp_settle).
+ * On Linux vfat a directory fsync does not carry a rename onto the disk: a
+ * rename over an existing file reuses the target's directory slot and records
+ * the moved file there through the moved file's inode, which only that inode's
+ * writeback writes. A directory fsync flushes the FAT, which already frees the
+ * old file's clusters, while the entry still names them — and fsck then makes
+ * the file zero bytes at cluster 0. The renamed file's own fsync writes its
+ * entry; the syncfs then writes every other dirty inode, the FAT and the
+ * device cache, which is what carries an unlink, rmdir or mkdir.
  *
  * A file that cannot be parsed is treated as ABSENT, never as partial: half a
  * state file that looked complete is exactly how a machine ends up booting a
@@ -297,19 +304,87 @@ static int running_slot(void);
 
 /* ── writing, the only part that can brick a machine ───────────────────── */
 
+/*
+ * Settle one change on the ESP: `path` is the file a rename just put in place,
+ * or any path that still exists on that filesystem after an unlink, rmdir or
+ * mkdir. Its fsync writes its inode with WB_SYNC_ALL, and on vfat that inode
+ * write is what rewrites the directory entry a rename reused; the syncfs that
+ * follows writes every dirty inode, the FAT buffers and the device cache. The
+ * order is the point: the FAT already frees a replaced file's clusters, and
+ * reaching the disk before the entry that stops naming them is a zero-length
+ * file after fsck. -1 when either call fails: the change may not be on disk.
+ */
+static int esp_settle(const char *path)
+{
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	int rc = 0;
+
+	if (fd < 0)
+		return -1;
+	if (fsync(fd) != 0 && errno != EINVAL)
+		rc = -1;
+	if (syncfs(fd) != 0)
+		rc = -1;
+	close(fd);
+	return rc;
+}
+
+/*
+ * Replace `path` on the ESP with `n` bytes of `data`: a temp file beside it,
+ * its fsync, the rename, then esp_settle. Never a directory fsync between the
+ * rename and the settle — on vfat that writes the FAT's freed clusters while
+ * the reused entry still names them.
+ */
+static int esp_replace(const char *path, const char *data, size_t n)
+{
+	char tmp[PATH_MAX];
+	size_t off = 0;
+
+	if (snprintf(tmp, sizeof(tmp), "%s.new", path) >= (int)sizeof(tmp))
+		return -1;
+	int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	if (fd < 0)
+		return -1;
+	while (off < n) {
+		ssize_t w = write(fd, data + off, n - off);
+		if (w <= 0) {
+			if (w < 0 && errno == EINTR)
+				continue;
+			close(fd);
+			unlink(tmp);
+			return -1;
+		}
+		off += (size_t)w;
+	}
+	if (fsync(fd) != 0 || close(fd) != 0) {
+		unlink(tmp);
+		return -1;
+	}
+	if (rename(tmp, path) != 0) {
+		unlink(tmp);
+		return -1;
+	}
+	return esp_settle(path);
+}
+
+static int esp_write(const char *path, const char *text)
+{
+	return esp_replace(path, text, strlen(text));
+}
+
+/* Write `text` to `path` on the ESP unless it already holds exactly that. */
+static int esp_write_if_changed(const char *path, const char *text)
+{
+	char *old = kb_read_all(path, NULL);
+	int same = old && !strcmp(old, text);
+
+	free(old);
+	return same ? 0 : esp_write(path, text);
+}
+
 static int state_save(const BootState *st)
 {
 	const char *path = state_path();
-	char tmp[1024], dir[1024];
-
-	snprintf(tmp, sizeof(tmp), "%s.new", path);
-	kb_strlcpy(dir, path, sizeof(dir));
-	char *slash = strrchr(dir, '/');
-	if (slash)
-		*slash = 0;
-	else
-		kb_strlcpy(dir, ".", sizeof(dir));
-
 	KbBuf b = {0};
 	kb_buf_printf(&b,
 		      "# KDOS boot state. Written by kdos-bootctl; the initramfs\n"
@@ -334,38 +409,11 @@ static int state_save(const BootState *st)
 		      st->failed >= 0 ? slot_name(st->failed) : "",
 		      st->unfilled >= 0 ? slot_name(st->unfilled) : "");
 
-	int rc = -1;
-	int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (fd < 0)
-		goto out;
-	if (write(fd, b.p, b.n) != (ssize_t)b.n) {
-		close(fd);
-		unlink(tmp);
-		goto out;
-	}
-	/* The data, then the directory entry. FAT has no journal: without the
-	 * second fsync the rename can be lost while the bytes survive, and the
-	 * machine comes up reading the OLD state — which is the good failure —
-	 * or, with the fsyncs in the other order, a zero-length file, which is
-	 * the one that bricks it. */
-	if (fsync(fd) != 0) {
-		close(fd);
-		unlink(tmp);
-		goto out;
-	}
-	close(fd);
-
-	if (rename(tmp, path) != 0) {
-		unlink(tmp);
-		goto out;
-	}
-	int dfd = open(dir, O_RDONLY | O_DIRECTORY);
-	if (dfd >= 0) {
-		fsync(dfd);
-		close(dfd);
-	}
-	rc = 0;
-out:
+	/* The data, the rename, then the renamed file's own entry and the FAT.
+	 * An interruption before the settle comes up reading the OLD state,
+	 * which is the good failure; the FAT reaching the disk before the entry
+	 * is a zero-length file, which is the one that bricks it. */
+	int rc = esp_replace(path, b.p, b.n);
 	kb_buf_free(&b);
 	return rc;
 }
@@ -500,10 +548,10 @@ static int limine_restamp(const char *path, const KcolScheme *sc)
 		kb_buf_str(&out, theme);
 	free(data);
 
-	/* The ESP is FAT and has no journal, so this is the same
-	 * temp/fsync/rename/fsync-the-directory the boot state gets: a
-	 * zero-length limine.conf is a machine that shows no menu. */
-	int rc = kb_write_file_atomic(path, out.p);
+	/* The ESP is FAT and has no journal, so this is the same temp, fsync,
+	 * rename and settle the boot state gets: a zero-length limine.conf is
+	 * a machine that shows no menu. */
+	int rc = esp_write(path, out.p);
 	kb_buf_free(&out);
 	return rc;
 }
@@ -993,7 +1041,8 @@ static void trial_clear(const char *esp)
 		unlink(f);
 	}
 	snprintf(f, sizeof(f), "%s/" TRIAL_DIR, esp);
-	rmdir(f);
+	if (rmdir(f) == 0 || errno != ENOENT)
+		esp_settle(esp);
 }
 
 /*
@@ -1104,7 +1153,7 @@ static int splash_rewrite(const char *path, int phosphor)
 			kb_buf_str(&out, "\n");
 	}
 	kb_buf_str(&out, "");
-	int rc = write_if_changed(path, out.p);
+	int rc = esp_write_if_changed(path, out.p);
 	kb_buf_free(&out);
 	free(data);
 	return rc;
@@ -1258,7 +1307,7 @@ static int menu_sync(const BootState *st)
 
 	int rc = 0;
 	if (strcmp(out.p, conf) != 0)
-		rc = kb_write_file_atomic(conf_path, out.p);
+		rc = esp_write(conf_path, out.p);
 	if (rc == 0 && trial) {
 		char tdir[PATH_MAX], tconf[PATH_MAX];
 		KbBuf tout = {0};
@@ -1266,7 +1315,10 @@ static int menu_sync(const BootState *st)
 		snprintf(tconf, sizeof(tconf), "%s/" TRIAL_DIR "/limine.conf",
 			 esp);
 		menu_rebuild(conf, block.p, first + 3, &tout);
-		rc = kb_mkdir_p(tdir) == 0 ? write_if_changed(tconf, tout.p)
+		/* The new directory's entry reaches the disk with the
+		 * syncfs of the write into it; a directory already there
+		 * holding the same bytes has nothing to settle. */
+		rc = kb_mkdir_p(tdir) == 0 ? esp_write_if_changed(tconf, tout.p)
 					   : -1;
 		kb_buf_free(&tout);
 	}
@@ -1279,6 +1331,7 @@ static int menu_sync(const BootState *st)
 		unlink(f);
 		snprintf(f, sizeof(f), "%s/EFI/kdos/initramfs.cpio.gz", esp);
 		unlink(f);
+		esp_settle(esp);
 	}
 	kb_buf_free(&out);
 	free(conf);
@@ -1286,11 +1339,11 @@ static int menu_sync(const BootState *st)
 }
 
 /* Copy a file onto the ESP whole: written beside the target, flushed, renamed
- * over it, and the directory flushed. FAT has no journal, so an interruption
+ * over it, and settled (esp_settle). FAT has no journal, so an interruption
  * leaves the old file and never half of the new one. */
 static int copy_atomic(const char *src, const char *dst)
 {
-	char tmp[PATH_MAX], dir[PATH_MAX], buf[1 << 16];
+	char tmp[PATH_MAX], buf[1 << 16];
 	int in, out, rc = -1;
 	ssize_t r;
 
@@ -1327,17 +1380,7 @@ done:
 		unlink(tmp);
 		return -1;
 	}
-	kb_strlcpy(dir, dst, sizeof(dir));
-	char *slash = strrchr(dir, '/');
-	if (slash) {
-		*slash = 0;
-		int dfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-		if (dfd >= 0) {
-			fsync(dfd);
-			close(dfd);
-		}
-	}
-	return 0;
+	return esp_settle(dst);
 }
 
 /* The source the mount table names for the filesystem mounted at `path`, the
@@ -1624,9 +1667,9 @@ static int ident_from_esp(const char *esp, int i, SlotIdent *id)
 	return 0;
 }
 
-/* Written whole through the same temp, fsync and rename the boot state gets,
- * and only when it differs: the ESP is FAT, and a half-written release file
- * names a version nothing installed. */
+/* Written whole through the same temp, fsync, rename and settle the boot
+ * state gets, and only when it differs: the ESP is FAT, and a half-written
+ * release file names a version nothing installed. */
 static int ident_write_esp(const char *esp, int i, const SlotIdent *id)
 {
 	char p[PATH_MAX];
@@ -1643,7 +1686,7 @@ static int ident_write_esp(const char *esp, int i, const SlotIdent *id)
 		      "TREE_TIME=\"%lld\"\n",
 		      slot_name(i), id->version, id->build, id->date, id->tree,
 		      id->tree_time);
-	int rc = write_if_changed(p, b.p);
+	int rc = esp_write_if_changed(p, b.p);
 	kb_buf_free(&b);
 	return rc;
 }

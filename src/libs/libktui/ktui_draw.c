@@ -305,8 +305,15 @@ static int cp_in(const CpRange *t, int n, uint32_t cp)
 	return 0;
 }
 
+/* A control codepoint takes no cell: the terminal acts on it instead of
+ * painting it, and the tty diff's cursor arithmetic would lose step.  TAB
+ * is the one exception, drawn as one blank cell by ktui_draw_text. */
 int ktui_wcwidth(uint32_t cp)
 {
+	if (cp == '\t')
+		return 1;
+	if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0))
+		return 0;
 	if (cp < 0x0300)
 		return 1;
 	if (cp_in(width_zero, (int)(sizeof(width_zero) / sizeof(*width_zero)), cp))
@@ -647,19 +654,38 @@ void ktui_draw_fill(KRect r, int bg)
 		memcpy(back + (size_t)y * bw + x0, row, n * sizeof(*back));
 }
 
+/* Strings handed to ktui_draw_text wider than the width they were given; see
+ * ktui_draw_cut_count() in ktui.h. */
+static int cut_count;
+
+int ktui_draw_cut_count(void)
+{
+	return cut_count;
+}
+
+void ktui_draw_cut_reset(void)
+{
+	cut_count = 0;
+}
+
 int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg, int attr)
 {
 	int n = 0;
 	uint32_t cp;
 	while (*s && n < maxw) {
 		s = ktui_utf8_next(s, &cp);
-		if (!(ktui_caps & KT_CAP_UTF8) && cp > 0x7f)
-			cp = '?';
 		int cw = ktui_wcwidth(cp);
 		/* The grid cannot compose: a combining mark gets no cell of its
-		 * own, which keeps the columns in line with ktui_utf8_width. */
+		 * own, which keeps the columns in line with ktui_utf8_width.
+		 * A control codepoint is dropped the same way, and a TAB is one
+		 * blank cell, so no control byte reaches the terminal through
+		 * the grid. */
 		if (cw == 0)
 			continue;
+		if (cp == '\t')
+			cp = ' ';
+		if (!(ktui_caps & KT_CAP_UTF8) && cp > 0x7f)
+			cp = '?';
 		if (cw == 2) {
 			/* The VT font is 512 glyphs and every CJK codepoint
 			 * renders single-width blank there — a wide pair would
@@ -679,6 +705,16 @@ int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg, int at
 			ktui_draw_cell(x + n + 1, y, KTUI_WIDE_CONT, fg, bg, attr);
 		n += cw;
 	}
+	/* What takes no cell past the width is not a cut. */
+	while (*s) {
+		const char *nx = ktui_utf8_next(s, &cp);
+
+		if (ktui_wcwidth(cp) != 0)
+			break;
+		s = nx;
+	}
+	if (*s || x + n > clipr.x + clipr.w)
+		cut_count++;
 	return n;
 }
 
@@ -691,6 +727,42 @@ int ktui_draw_textf(int x, int y, int maxw, int fg, int bg, int attr,
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 	return ktui_draw_text(x, y, maxw, buf, fg, bg, attr);
+}
+
+/* The prefix is copied, not handed over whole with a short width, so the
+ * cut counter sees a string that fits: this cut is the one asked for. */
+int ktui_draw_text_fit(int x, int y, int w, const char *s, int fg, int bg,
+		       int attr)
+{
+	const char *ell = ktui_glyph[KT_G_ELLIPSIS];
+	int ew = ktui_utf8_width(ell);
+	int room, cols = 0;
+	const char *p = s;
+	char buf[512];
+	size_t n;
+
+	if (w <= 0)
+		return 0;
+	if (ktui_utf8_width(s) <= w)
+		return ktui_draw_text(x, y, w, s, fg, bg, attr);
+	room = w > ew ? w - ew : w;
+	while (*p) {
+		uint32_t cp;
+		const char *nx = ktui_utf8_next(p, &cp);
+		int cw = ktui_wcwidth(cp);
+
+		if (cols + cw > room || (size_t)(nx - s) >= sizeof(buf))
+			break;
+		cols += cw;
+		p = nx;
+	}
+	n = (size_t)(p - s);
+	memcpy(buf, s, n);
+	buf[n] = 0;
+	cols = ktui_draw_text(x, y, room, buf, fg, bg, attr);
+	if (w > ew)
+		cols += ktui_draw_text(x + cols, y, ew, ell, fg, bg, attr);
+	return cols;
 }
 
 int ktui_draw_text_right(int x, int y, int w, const char *s, int fg, int bg,
@@ -1399,6 +1471,8 @@ static void tty_flush(const KtuiCell *cur, KtuiCell *prev, int w, int h,
 	}
 
 	ktui_term_write("\033[0m", 4);
+	if (vt)
+		ktui_term_caret_hold();
 	if (sync)
 		ktui_term_write("\033[?2026l", 8);
 	ktui_term_flush();

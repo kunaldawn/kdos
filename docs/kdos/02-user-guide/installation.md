@@ -61,9 +61,10 @@ The installer checks each of these and names the one that failed.
 
 The base, with the core KDE applications and Firefox ESR, is always copied. Everything else is
 optional, chosen as groups on the Applications page (see [8. Applications](#8-applications)):
-native groups are downloaded prebuilt from the release's binhost into the new system while it
-installs, and the catalogue's boxed groups are recorded on the new disk for your first login to
-build.
+native groups are downloaded prebuilt from the release's binary host into the new system while it
+installs, or, on a medium that names no binary host, only recorded for
+`sudo kdos update install --pending` to install once a binary host answers, and the catalogue's boxed
+groups are recorded on the new disk for your first login to build.
 
 ## Installing from the desktop
 
@@ -85,17 +86,19 @@ clicking it:
 | Welcome | The time zone, from tzdata's list of zones with UTC first; type part of a name to narrow it (a single match is chosen) and the local time there is shown. A filter that matches nothing keeps the chosen zone, shown as `<zone> (no zone matches the filter)`. Beside it, what the installer measured about this machine: processor, memory, firmware, how many of the disks it found can take the install, and the install size. With Secure Boot on, the firmware line ends `, Secure Boot on`, and a warning says the installed computer will not start until Secure Boot is turned off in the firmware setup |
 | Keyboard | The keyboard layout, found with a search field, and its variant, in a form of one fixed width that does not move as the layout changes. The console keymap nearest it is chosen for the text consoles |
 | Disk | The disk. Each row names the disk's model, size and device, and under it what the disk holds (`Holds:` and its partitions by type, label and size; for a disk with no partitions what is written on the whole of it, such as `LVM physical volume (volume group kdos)`; or `Empty`), so two disks of one size can be told apart. `Tab` reaches the rows, the focused row framed in the focus colour round both its lines, and `Space` chooses one; choosing a disk with no partitions turns the layout to **Erase the disk and install KDOS**. Erasing a disk that is an LVM physical volume adds a warning that its group's volumes are destroyed. A disk that is the boot medium, read-only or too small cannot be chosen and says why on its row; a disk too small gives its size and the least the install needs. **Look Again** looks for disks again after you attach one; on the live medium it looks as root, which also activates the LVM volume groups of a disk attached after the boot, as the first look does. Then the layout: **Erase the disk and install KDOS**, with **Two system slots** ticked and a line saying this disk holds two, or a warning that it gets one and an update cannot be undone, and that the box left ticked still puts the system on an LVM volume group, so a second slot can be added later; **Use partitions that already exist**, where you choose the EFI system partition, whether to format it, and the root, which is formatted, and where a disk with nothing a root can go on says so (or, for LVM volumes that are not active, that Look Again activates them); or **Partition Manager…**, which opens Partition Manager. When it closes after running, the disks are looked at again, and the page turns to the existing partitions if the chosen disk then holds partitions, and keeps erasing it if it holds none; if Partition Manager cannot be started, the page says so and the layout is left as it was. Last the filesystem (ext4, btrfs, xfs or f2fs) and the swap: none, a file or a partition, and its size; the existing-partitions layout offers none or a file. A swap too large to fit beside the install on a disk that gets one system is refused under the size, with the largest that fits, and **Next** waits until it is changed; after each change of the swap, Next waits the moment the check takes |
-| Encryption | Whether to encrypt, and the passphrase twice, with a strength hint. On an erased disk everything KDOS writes is inside the container; on partitions you made, the root is |
-| Account | Either your full name, user name and password (twice, with a strength hint), whether you are an administrator, and, on an encrypted machine, whether to log in automatically after the disk passphrase; or **let the first person to start it set it up**, which makes no account (see [Preparing a machine for someone else](#preparing-a-machine-for-someone-else)). Then the computer's name, and whether root is locked or has a password of its own, with the same strength hint. The user name is lowercase letters, digits, `-` and `_`, and starts with a letter or `_`; the computer's name is letters, digits and dashes, and does not start or end with a dash, and an empty one is asked for with "Give the computer a name." A user name the system already uses, such as `root`, is refused here |
+| Encryption | Whether to encrypt, and the passphrase twice, with a strength hint on one line. `Tab` from the passphrase goes to the second field; `Shift+Tab` from the second field reaches the eye button that shows the passphrase, and `Space` there shows or hides it. On an erased disk everything KDOS writes is inside the container; on partitions you made, the root is |
+| Account | Either your full name, user name and password (twice, with a strength hint; `Tab` and `Shift+Tab` move between the two fields and the first one's eye button as on the Encryption page), whether you are an administrator, and, on an encrypted machine, whether to log in automatically after the disk passphrase; or **let the first person to start it set it up**, which makes no account (see [Preparing a machine for someone else](#preparing-a-machine-for-someone-else)). Then the computer's name, and whether root is locked or has a password of its own, with the same strength hint. The user name is lowercase letters, digits, `-` and `_`, and starts with a letter or `_`; the computer's name is letters, digits and dashes, and does not start or end with a dash, and an empty one is asked for with "Give the computer a name." A user name the system already uses, such as `root`, is refused here |
 | Look | The accent, each a card drawn in its own colours, and the desk, each shown by a small drawing of its screen and named with a line saying how it lays out the panels. `Tab` reaches every card and row, and `Space` chooses one |
-| Applications | Two lists of groups (see [8. Applications](#8-applications)): **KDOS applications**, the native groups, each with how many ports it installs, downloaded prebuilt into the new system during the install; and **Boxed applications**, the catalogue's groups, recorded for the first login. Then whether to keep the live session's box images |
-| Summary | Everything above as the installer plans to carry it out, with what is erased in the warning colour, the native groups by their titles, a warning when the disk gets one system slot, and the button that starts the install; its confirmation names the disk by model, size and device. Answers the installer would refuse are refused here with the reason: among them a reused root too small for the install, a swap that does not fit beside a one-slot install, and a volume group named `kdos` already on another disk, active or not, which on the live medium the Summary sees by asking as root |
+| Applications | Two lists of groups (see [8. Applications](#8-applications)): **KDOS applications**, the native groups, each with how many ports it installs, downloaded prebuilt into the new system during the install, or, when the medium names no binary host, only recorded, which the line above the list says with `sudo kdos update install --pending` on a line of its own, to install once a binary host answers; and **Boxed applications**, the catalogue's groups, recorded for the first login. Then whether to keep the live session's box images |
+| Summary | Everything above as the installer plans to carry it out, with what is erased in the warning colour, the native groups by their titles ("downloaded during the install" when the medium names a binary host, and otherwise "recorded; this installs it once a binary host answers:" with `sudo kdos update install --pending` on a line of its own), the steps that will run (the Packs step's line says whether the native groups are downloaded and installed or recorded, and on a medium with no binary host that the first login says how to install what was recorded), a warning when the disk gets one system slot, and the button that starts the install; its confirmation names the disk by model, size and device. Answers the installer would refuse are refused here with the reason: among them a reused root too small for the install, a swap that does not fit beside a one-slot install, and a volume group named `kdos` already on another disk, active or not, which on the live medium the Summary sees by asking as root |
 
 Alt+Left and Alt+Right move back and on, as **Back** and **Next** do; neither starts the install,
 which only the **Install…** button and its confirmation do. **Quit** closes the window. The install
 page shows each step and its progress, the copy as `364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15
-left`, under a bar over the whole install in which each copy counts for its share of the time; the last page says how it ended, lists the warnings one bullet each, a repeated one once,
-with the commands in them set as code, and offers to restart. On an encrypted machine with automatic
+left` (`estimating time left` for its first seconds), under a bar over the whole install in which each step counts for the time it takes and the
+copies move with their time left; the warnings are listed as they arrive, as the last page lists
+them. The last page says how it ended, lists the warnings one bullet each, a repeated one once,
+each starting with a capital and with the commands in them set as code, and offers to restart. On an encrypted machine with automatic
 login it says the session starts after the disk passphrase, locked behind your password when you
 chose *Start the session locked*. When the install failed it shows `kinstall`'s reason and the end
 of the log when `kinstall` sent one. Whenever `kinstall` ran, **Open the Log** opens
@@ -144,7 +147,7 @@ it.
 | `Tab` / `Shift+Tab` | Move between controls |
 | `↑` `↓` `←` `→` | Move inside a list or a field |
 | `Enter` / `Space` | Activate, toggle, choose |
-| `Alt+←` / `Alt+→` | Previous and next page |
+| `Alt+B` / `Alt+N` | Previous and next page; `Alt+←` / `Alt+→` too where the terminal passes them through. On a text console the kernel takes `Alt+←` and `Alt+→` to switch consoles, so the bottom bar names `Alt+B/N` |
 | `Esc` | Back a page, or close the key card |
 | `PgUp` / `PgDn`, mouse wheel | Scroll a page taller than the screen |
 | `Ctrl+U` | Clear the field you are in |
@@ -198,7 +201,7 @@ What the installer measured about this machine: the processor and its thread cou
 number of disks visible, the *install size* (how much the install will copy), and the firmware.
 Below that is a preflight list:
 
-- running as root;
+- running as root (when it is not, the line reads "not running as root — start it with sudo kinstall");
 - at least one writable disk;
 - `rsync` present;
 - `mkfs.ext4` and `mkfs.vfat` present;
@@ -249,7 +252,8 @@ Keyboard page.
 ### 3. Time
 
 A time zone by name. The list is tzdata's `zone1970.tab`, with a filter box, and the page shows the
-current local time in the zone under the cursor. An image with no zone data offers `UTC` alone.
+chosen zone, its `TZ string` and the current local time there beside the list; a zone name too long
+for the list ends in `…`. An image with no zone data offers `UTC` alone.
 
 The install records the zone in two places that always agree: `/etc/localtime` becomes a symbolic
 link to the zone file, and `/etc/profile.d/20-timezone.sh` exports `TZ=':/etc/localtime'`. The
@@ -413,14 +417,15 @@ only no swap or a file, and turns a swap partition chosen before into a file.
 - **Full name and user name**: the user name is lowercase letters, digits, `-` and `_`, and starts
   with a letter or `_`, never a digit or `-`. The full name may not hold a colon or a control
   character.
-- **Password**: required, typed twice, with a strength meter.
+- **Password**: required, typed twice, with a strength meter that rates it by length alone, as the
+  desktop's installer does: under 8 characters `short`, 8 to 15 `fair`, 16 and over `long, good`.
 - **Administrator**: ticked by default. Ticked, the account is in the `wheel` group and can use
   `sudo` and the administrator's actions in System Settings and Discover. Unticked, the account is
   taken out of `wheel`; it still has the desktop, and can suspend, power off, reboot, connect to
   networks and mount removable media, because those are granted to whoever is at the machine
   rather than to a group.
 - **Login**: on an encrypted root, *Log in automatically after the disk passphrase*, and under it
-  *Start the session locked (unlock with this password)*, ticked by default. On a plain root the
+  *Start the session locked*, unlocked with this password, ticked by default. On a plain root the
   page says the login screen asks for the password, and offers nothing.
 - **Lock the root account**: ticked by default. Unticked, you set a root password, typed twice.
 
@@ -501,7 +506,7 @@ the new disk whatever you choose here; see
 
 #### Native groups
 
-Sets of native ports that the release's binhost holds prebuilt, read from `/ports/groups`. None is
+Sets of native ports that the release's binary host holds prebuilt, read from `/ports/groups`. None is
 ticked by default, since each one downloads, except the language group your keyboard or time zone
 points at: a Chinese (`cn`, `tw`), Japanese (`jp`) or Korean (`kr`) keyboard layout, the Japanese
 console keymap, or a time zone such as `Asia/Shanghai`, `Asia/Taipei`, `Asia/Tokyo` or
@@ -516,7 +521,7 @@ groups` on a running KDOS shows the same groups with their download sizes.
 |---|---|
 | `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | KDE Gear's games, education, mail and calendar, multimedia, graphics, utilities and development tools, each the Gear set of that name |
 | `kde-network` | KTorrent, KRDC, Krfb, Google Drive in Dolphin, the online-account providers, Samba sharing |
-| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, the Help Center, and ISO Image Writer, which the base already carries |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect and the Help Center; the base already carries Filelight, KFind, KWalletManager and KCharSelect |
 | `kde-artwork` | The KDE wallpaper collection and the Oxygen theme |
 | `office` | LibreOffice, Calibre, TeXstudio |
 | `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
@@ -529,12 +534,14 @@ groups` on a running KDOS shows the same groups with their download sizes.
 | `build-tools` | GCC with binutils, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex |
 | `lang-zh`, `lang-ja`, `lang-ko` | Chinese, Japanese or Korean input for fcitx5, its GTK modules and Noto CJK fonts |
 
-The Packs step installs the ticked ones. It takes the release index and binhost index of the
+The Packs step installs the ticked ones. It takes the release index and binary host index of the
 release the medium belongs to (`kdos update fetch --binhost-only`), with the download cache on the
 new disk rather than in the live system's memory, then runs `kdos update install --prebuilt --root
-/mnt/kinstall <id>` for each group. Each port joins the new system's world set, so the installed
-machine updates it like anything else installed on purpose. When the release's binhost index cannot
-be fetched, or a group does not install, the ids are written to `/var/lib/kdos/groups-pending` on
+/mnt/kinstall <id>` for each group. Each port the group adds joins the new system's world set, so the
+installed machine updates it like anything else installed on purpose; a member the base image
+already holds is left as it is. When the medium names no binary host (the
+Applications page says so above its list, in both front ends), when the release's binary host index
+cannot be fetched, or when a group does not install, the ids are written to `/var/lib/kdos/groups-pending` on
 the new disk with a warning, and the install goes on: the system boots without them. Once the
 machine is online,
 
@@ -542,7 +549,8 @@ machine is online,
 sudo kdos update install --pending
 ```
 
-installs every recorded group, and each one that installs leaves the file.
+installs every recorded group, and each one that installs leaves the file. The first login's
+notice names the groups still waiting and this command, and goes once they are installed.
 
 #### Boxed groups
 
@@ -591,7 +599,8 @@ account, accent, desk, whether the alien app library is copied, the native group
 application groups and their route, the enabled services, the target disk, the plan, the root and
 ESP on the reuse plan, the slot layout when there is one (`slots A and B of N each, /home shared`,
 or `one slot` in the warning colour), which firmwares the disk will start on (`UEFI and legacy
-BIOS`, or `UEFI only` for a reused GPT disk with no BIOS boot partition), and swap. Encryption is
+BIOS`, or `UEFI only` for a reused GPT disk with no BIOS boot partition), and swap (on the
+two-slot layout a `swap volume` row, `shared by both slots`, as the Layout page calls it). Encryption is
 part of the LVM line when there is one; otherwise, whenever encryption is on, on either plan, an
 `encryption` line reads `root inside LUKS2`. The destructive parts are in the error colour, and a
 rule across the page reads `EVERYTHING ABOVE THIS LINE IS STILL REVERSIBLE`. Two buttons sit under
@@ -614,19 +623,25 @@ unattended](#installing-unattended)): the work, with an overall progress bar, on
 the tail of the log. The install runs in a separate process, so the screen stays responsive during
 a multi-gigabyte copy. Each step is marked as it starts, finishes, is skipped (`not needed`) or
 fails; the two copy steps show the amount copied out of the whole, the rate and the time left, both
-worked out by the installer from the copy so far (`--` until there is enough to go on). `L`
+worked out by the installer from the copy so far (the rate reads `--` in the first second, and
+the time left reads `estimating time left` until its estimate has settled, as a rule before a
+fifth of the copy). The time left counts a directory or a link at a fraction of a file's cost and weighs the
+last seconds of the copy most, so it follows the slow tail of small files and links. It counts
+down while the copy moves, at least one second in every two even between rsync's lines, and once
+shown never goes up; it stands only when the copy has stopped moving, and reads `0:00:00` only on
+the copy's last line. The step's percentage is of the copy's time. `L`
 switches to the full log, where `PgUp` and `PgDn` scroll. The window's install page shows the same
 steps.
 
 | Step | What it does | Skipped when |
 |---|---|---|
 | Prepare | Checks the tools and the target (the answers and target checks again, the swap rule among them), stops swap on disks (the compressed swap in memory stays on), unmounts the target and anything on the disk, and on the erase plan takes down volume groups and containers on it | |
-| Partition | Wipes the disk's signatures, writes the GPT layout and zeroes the BIOS boot partition | The plan is not "erase" |
+| Partition | Wipes the disk's signatures, writes the GPT layout (the ESP, the BIOS boot partition, a swap partition when one was chosen, and the root, or the LVM volume for the system slots, encrypted when encrypting) and zeroes the BIOS boot partition | The plan is not "erase" |
 | Format | Encrypts and creates the volume group and its volumes if asked, then makes the root filesystem, slot B's and the home's, the ESP (when it is to be formatted) and the swap | |
 | Mount | Mounts the root at `/mnt/kinstall`, the home at `/mnt/kinstall/home` with the pack store bound under it, and the ESP at `/mnt/kinstall/boot/efi`; the boot medium at `/mnt/iso` and any stick under `/mnt` stay reachable beside it | |
 | Copy system | Copies the live system with `rsync`, leaving out the live session (see [What is not copied](#what-is-not-copied)). The installer and everything it starts run at `oom_score_adj` -900, so the memory guard, `kdos-oomd`, passes over the copy however long it stalls memory | |
-| Packs | Installs the native groups you chose from the release's binhost, or records them for `kdos update install --pending`, and records the boxed applications you chose for the first login | No native group was chosen, and no boxed group (or the medium has no catalogue) |
-| Firmware | Installs the firmware packages this machine's devices need and the medium does not carry, with `kdos firmware sync --root /mnt/kinstall`, from the same release's binhost; the log lists what it installed | |
+| Packs | Installs the native groups you chose from the release's binary host when the medium names one, or records them for `sudo kdos update install --pending` when it names none, and records the boxed applications you chose for the first login; the Summary's line for the step says which | No native group was chosen, and no boxed group (or the medium has no catalogue) |
+| Firmware | Installs the firmware packages this machine's devices need and the medium does not carry, with `kdos firmware sync --root /mnt/kinstall`, from the same release's binary host; the log lists what it installed | |
 | Configure | The swap file first, then `fstab` (with the swap file's line only when the file was made whole), hostname, `/etc/hosts`, time zone, Wi-Fi country, keymap and keyboard layout, the login screen's automatic login, the serial console's login, DNS resolver and services | |
 | Accounts | Users, passwords, the administrator choice, and the new home filled from `/etc/skel`; on an OEM install, the live account removed instead | |
 | Theme | The accent and the desk the first login takes, the accent of the splash and the consoles, and the login screen's look | |
@@ -643,9 +658,9 @@ unattended run instead ends by itself after five seconds.
 A warning is something the installed system will lack while the install carries on: no
 `BOOTIA32.EFI` for 32-bit UEFI, no BIOS boot code (on a UEFI machine: a reused GPT disk with no BIOS
 boot partition, no `limine` program, or a failed `limine bios-install`), no partition number for the
-firmware boot entry, an ESP too small for a second slot's kernel, a release binhost index that could
+firmware boot entry, an ESP too small for a second slot's kernel, a release binary host index that could
 not be fetched, a medium that names no binary host at all, or a native group that did not install
-(each recorded for `kdos update install --pending`), firmware that could not be looked for or
+(each recorded for `sudo kdos update install --pending`), firmware that could not be looked for or
 installed (run `sudo kdos firmware sync` after the first boot), a swap file that could not be made,
 or a choice of applications that could not be recorded. A failed fetch's warnings name
 `/var/log/kinstall.log`, which says why it failed; a medium that names no binary host says "this
@@ -972,9 +987,9 @@ machine when the rehearsal finishes.
 | `/swapfile` | The swap file, when you chose one on a one-slot layout and it was made whole |
 | `/var/lib/kdos/packs` | The pack store, with the `staging` directory an import goes through and the `mnt` directory packs are mounted under; on the two-slot layout it is `/home/.kdos/packs`, bound there |
 | `/var/lib/kdos/apps-pending` | The boxed application groups you chose, which your first login offers to build |
-| `/var/lib/kdos/groups-pending` | The native groups that could not be installed during the install, for `kdos update install --pending` |
+| `/var/lib/kdos/groups-pending` | The native groups chosen during the install and not installed by it, for `sudo kdos update install --pending`: on a medium with no binary host every one chosen |
 | `/var/lib/kdos/world`, `/var/lib/kdos/origin` | The ports of the native groups installed, as installed on purpose, and the way each package the install added came (`prebuilt`) |
-| `/var/lib/kdos/binhost` | The release's binhost index, fetched for the native groups and the firmware |
+| `/var/lib/kdos/binhost` | The release's binary host index, fetched for the native groups and the firmware |
 
 ### What is not copied
 

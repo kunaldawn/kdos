@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3228-3260 pin=a862490fe7d7 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3656-3688 pin=a862490fe7d7 -->
 
 `KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
 no text cursor is drawn between the splash and the login screen.
@@ -79,7 +79,7 @@ picked by hand until the update finishes it (see
 [A/B slots and rollback](ab-slots-and-rollback.md#updating-through-the-inactive-slot)). It builds every `/KDOS` command
 line from the **first** `/KDOS` entry's, less the words it sets per entry:
 
-<!-- kfs:include src/system/kdos-tools/bootctl.c lines=891-944 pin=2202937c55ec -->
+<!-- kfs:include src/system/kdos-tools/bootctl.c lines=939-992 pin=2202937c55ec -->
 
 Every other word carries over, so a word you add to the first entry's `cmdline` reaches every
 `/KDOS` entry the next time the menu is regenerated, and a word you add only to another entry is

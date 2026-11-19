@@ -2072,3 +2072,478 @@ The rebuilt ISO was re-tested lane by lane with screenshot analysis, and a skept
 | U042 | gui-install | polish | Overall bar is weighted toward the short steps after the copy on a one-slot disk: 63% when the copy ends at 95% of the install time |
 | U043 | gui-install | polish | Slot B time-left starts low and goes up (11 s, 12 s, 11 s) while the copy advances |
 | U044 | gui-install | polish | Summary step 2 says 'write the GPT layout: ESP, BIOS boot, root' when the third partition is an LVM physical volume |
+
+## Fifth fix round
+
+| Unit | Severity | Items | Fix |
+|---|---|---|---|
+| Z01 | major | U021, U022, U028, U030, U031, U013 | kdos-appbox: box list on podman 6, a profile-less distrobox removed at login, and distrobox exec sessions surviving kdos-box stop |
+| Z02 | major | U020, U023, U029, U033, U024, U014 | System Versions start prompt: a real dialog transient of System Settings, and a stale error banner |
+| Z03 | major | U032 | Login after logout bouncing back to the greeter (sddm-helper exit 63): pin the stage, then fix the teardown race |
+| Z04 | minor | U015, U016, U017 | kdos update on a one-slot machine skips the slot image, and kdos-fetch-app --remove unpins the launcher |
+| Z05 | polish | U018 | First-login notice also names native groups that did not install (groups-pending) |
+| Z06 | minor | U001, U002, U003, U004, U005, U006, U011, U035, U036, U037, U038, U043, U007, U039, U042, U044, U008, U010, U041, U009, U040, U012 | Installer: copy time left that follows the slow tail, a bar weighted by time, the keyboard path to the reveal buttons, the hint on one line, and formatted warnings |
+
+Skipped:
+
+- U019: Pre-existing KRunner ranking across runners: Plasma's Applications (services) runner ranks 'KDOS Help', 'Install KDOS' and 'The KDOS Book' above System Settings' 'KDOS Look' on the shared word 'KDOS'. None of those desktop entries has a keyword matching 'Lo'. Changing it means patching plasma-worksp
+- U025: A release-pipeline matter: LibreWolf is not on the base image (putting it there is a product decision), and the published v0.2 binhost does not hold its package while its catalogue still names it. Fixing it means republishing the binhost or its catalogue, which is a publish.
+- U026: Wrong once the code is read, as the smoke-live skeptic refuted it. The 'Applications' row counts the boxed catalogue groups (plan.apps), and `essential` is preselected by design (probe.c ki_apps_enter; Backend::refreshApps seeds the ticks from it). It sits below the native groups the tester saw, whi
+- U027: The three cards show the Graphics category fallback icon (KdosBackend.cpp categoryIcon: Graphics -> image-x-generic, a deliberate choice documented there), because the published binhost AppStream catalogue carries only stock icon names, which a live machine without those packages lacks. A real fix s
+- U034: Probably a rig artefact: the splash stays on the virtio-gpu scanout after a warm reboot until input arrives, and e2e4 showed the same. The lane itself flags it as a likely virtio-gpu/rig artefact, and there is no evidence from real hardware or a cold boot.
+
+Beside the units, the round makes these changes:
+- **Base image:** it carries Haruna, KolourPaint, Skanpage, Filelight, KFind, KCharSelect, KClock and KWalletManager. That is the user's decision of 2026-11-18: GUI programs only, with the ISO kept under GitHub's 2 GiB asset limit.
+- **texlive-doc:** 42_graphics builds it, and `ports/unbuilt` names nothing.
+- **kdos-installer:** 41_system builds it as a package, so the binhost carries every recipe.
+- **Stale binhost packages:** the 60 ports the fix rounds rebuilt without `KDOS_MAKE_BINHOST=1` are rebuilt with it.
+- **LibreWolf (U025):** it is resolved by that binhost republish. Publishing is an outward step and waits for the user.
+- **Boxes settings page:** it shows a listing that fails after a good one as an error banner above the rows it last listed.
+
+Not proven on the rig by the fixers (the re-test does it):
+
+- Z01: U013 rig proof (3): not run. Proof (3) is: `distrobox enter kdos-debian -- sleep 400 &`, `kdos-box stop kdos-debian`, then `podman start kdos-debian`, once with the init alive and once with it already exited. Whether podman drops the exec session after its con
+- Z01: Rig proofs (1) and (2): not run. (1) is the `{{.Label "manager"}}` ps format and `{{.State.Pid}} {{.Id}}` inspect format on the shipped podman 6.1.2, plus what the Boxes KCM shows. (2) is kdos-debian surviving logout, login and reboot. The format strings are p
+- Z02: Rig proof is still open for U020/U023/U029/U033/U024. None of these has been observed yet: KWin stackingOrder showing transient=true and transientFor=System Settings, the prompt staying on top after a click on 'Users', Dialog Parent dimming the whole window, o
+- Z02: Minimise is kept on the prompt by design. KWin minimises and restores a modal dialog together with its main window (Workspace::updateMinimizedOfTransients), so it adds no window rule and no known-gaps entry.
+- Z03: U032's root cause is still not pinned. That needs the 10-cycle rig reproduction, and VMs are not allowed in this unit. The wrapper's syslog lines now name the stage, and the status of a profile exit too.
+- Z03: The zsh path (`zsh -l -f` plus the wrapper reading the zsh files) is unproven by a run: the host has no zsh. Only zsh 5.9.2's Doc/Zsh/options.yo and files.yo back it: -f is NO_RCS, -l is LOGIN, and zshenv is always read. The image's users are on bash.
+- Z03: The settle second narrows the gap between the stop process ending and turnstiled's clear; it does not close it. The page and the header both say so.
+- Z04: Rig proof not run (no VMs here). On a one-slot 16 GiB install with a newer signed image, `sudo kdos update apply` should print the one-slot pass-over line and take the binhost lane. A finished binhost install can only be proven where a binhost is published for
+- Z04: Unproven on a real plasmashell: that Plasma 6 scripting accepts UNPIN_JS as written. That covers readConfig('launchers', []) returning a list, writeConfig taking a JS array, reloadConfig making the pin disappear, and the `[activities]\n` prefix format of activ
+- Z04: An unpin changes the panel description, so `kdos desk status` shows that desk as edited, as it does after any pin change.
+- Z04: A non-root `--dry-run` on a two-slot machine whose state is closed still shows 'no A/B slots' through apply_target. That code is older than this unit and not changed; a real apply runs as root, where the state is readable.
+- Z05: Rig proof not run (no VMs allowed). Left for the re-test: unattended kinstall with groups = kde-artwork and no binhost, the first-login notice naming the group and `--pending`, and silence or withdrawal after `--pending`.
+- Z05: docs/kfs/data/recipes.stamp is stale because kfs.md changed; the Book phase runs make book-stamp.
+- Z05: plasma-shell.md, bus.sh and installation.md are not owned by this unit; their edits are in needs_other_files.
+- Z06: No real `rsync -aHAX --info=progress2 --no-inc-recursive` trace of the live tree has been recorded; it needs a VM. U001-U006, U011, U035-U038 and U043 are proven against a model only, with costs fitted to the rig's byte trajectory. KI_COPY_OTHER_W and KI_COPY_
+- Z06: It is unproven that rsync's to-chk count moves in the walker's order for -H later names; rsync may hold them back until the first name is done.
+- Z06: If directories cost twice what files do (slot B's alternative fit), the time left still reads about 1.27x high in the middle of the copy.
+- Z06: KI_PACKS_PORT_DS (1 s per port when a binhost is named) has never been measured.
+- Z06: kfscheck pins for the 8 docs/kfs/16-wiki pages on install.c, and recipes.stamp, are left for the Book phase (repin and book-stamp are forbidden to this unit).
+- Z06: The rig proofs (12 and 30 GiB GUI installs with 5 s shots, pixel-scanned bar, Summary step 2 text, keyboard reveal, one-line hint, Install page warning) have not been run.
+
+### Re-test of the fifth round
+
+The rebuilt ISO and a served copy of build/binhost were re-tested lane by lane with screenshot analysis, and a skeptic checked each lane: 78 verdicts, 44 fixed, 26 partial, 6 still, 1 not a defect, 1 regressed. The binhost lane installed LibreWolf, VLC, GIMP, kde-system and kdos-installer from it; every one of the 2,442 recipes has a current package there. The open and new items are numbered V001-V052 (V029, LibreWolf on the live medium, closes with the binhost republish).
+
+| Key | Lane | Severity | Item |
+|---|---|---|---|
+| V001 | Z01 | minor | After a distrobox's init dies, kdos-box stop misses the dead init's orphan (the entrypoint's `sleep 15`), so the main conmon lingers and the next start or stop/start within ~15 s fails with overlay EBUSY |
+| V002 | Z02 | open | U020 partial |
+| V003 | Z02 | open | U029 partial |
+| V004 | Z02 | open | U024 partial |
+| V005 | Z02 | major | kdos-bootctl's boot-state and limine.conf rewrites are not durable on the vfat ESP despite fsync(file)+rename+fsync(dir): a power cut seconds after Try/Cancel loses the change, and a longer sequence left both files zero-length and the disk stuck in Limine |
+| V006 | Z02 | polish | Start-version prompt decoration shows a ghost second × on first open |
+| V007 | Z02 | minor | kdos-settings.md claims KWin's Dialog Parent dims the whole System Settings window, but the effect does not load under software rendering, so the sidebar and footer stay bright |
+| V008 | Z03 | major | pam_turnstile's session socket leaks into every process of the session, so a box still running at Log Out keeps the user 'logged in': the boxes and user services are never stopped and the runtime directory is never cleared |
+| V009 | Z04 | open | U015 partial |
+| V010 | Z04 | open | U017 still |
+| V011 | Z04 | polish | kdos update apply prints its lane explanation after the refusal it explains when output is not a terminal |
+| V012 | Z04 | polish | `apply --in-place` on a two-slot machine says 'no A/B slots' |
+| V013 | Z05 | polish | Pending notice shows literal backticks around the command and names the group by its id |
+| V014 | Z05 | polish | A groups-only pending notice uses the Discover (plasmadiscover) icon although it offers no Discover action |
+| V015 | Z06 | open | U001 partial |
+| V016 | Z06 | open | U002 partial |
+| V017 | Z06 | open | U003 partial |
+| V018 | Z06 | open | U004 partial |
+| V019 | Z06 | open | U005 partial |
+| V020 | Z06 | open | U006 partial |
+| V021 | Z06 | open | U011 partial |
+| V022 | Z06 | open | U035 partial |
+| V023 | Z06 | open | U036 partial |
+| V024 | Z06 | open | U037 partial |
+| V025 | Z06 | open | U038 partial |
+| V026 | Z06 | open | U043 partial |
+| V027 | Z06 | polish | Summary page switches to the one-column (label above value) layout on a two-slot disk, because step 2's new text is too long |
+| V028 | Z06 | minor | The copy line's time left still holds flat for about 10 s in the slow tail, despite the planned countdown of a held estimate |
+| V030 | smoke-live | open | U027 Discover Editor's Choice shows placeholder icons for Scribus, Hugin and MeshLab still |
+| V031 | smoke-live | minor | Installer Summary falls into Kirigami's one-column layout at the default window size: every label sits above its value and the page needs about three screens of scrolling |
+| V032 | smoke-installed | open | U029 (T015) Start This Version prompt dims only the KCM; sidebar stays live partial |
+| V033 | smoke-installed | polish | Start Next Time? prompt opens with a stale, inert second close (X) button in its title bar |
+| V034 | smoke-installed | minor | kdos-box stop on a box with a `kdos-box enter` shell takes 16.4 s |
+| V035 | gui-install | open | U001 (T006) copy time left accuracy, root copy partial |
+| V036 | gui-install | open | U002 (T007) root copy overshoot 1.28-1.85x partial |
+| V037 | gui-install | open | U006 (T034) overshoot in the second half of the copy partial |
+| V038 | gui-install | open | U035 (T006/S017) copy time-left accuracy partial |
+| V039 | gui-install | open | U036 (T007/S015) overshoot partial |
+| V040 | gui-install | open | U038 (T034) second-half overshoot partial |
+| V041 | gui-install | open | U043 slot B time left starts low and goes up partial |
+| V042 | gui-install | open | U044 Summary step 2 names root partition on an LVM layout regressed |
+| V043 | gui-install | minor | Summary page falls to a one-column layout on the default two-slot install, because step 2's new text is too wide |
+| V044 | gui-install | polish | First-login notice shows raw backticks and the group id instead of its name |
+| V045 | gui-install | polish | Done page tells the user to run 'kdos update install --pending' without sudo, though it needs root |
+| V046 | gui-install | polish | Summary promises the chosen native group is 'downloaded during the install' when the image names no binhost |
+| V047 | binhost | open | U027: Discover's Editor's Choice shows generic placeholder icons for Scribus, Hugin and MeshLab still |
+| V048 | binhost | major | KDE Help Center cannot show any application handbook after installing kde-system: docbook-xsl is in ports/buildonly, so neither the image nor the prebuilt install carries the stylesheets kdoctools reads at run time |
+| V049 | binhost | minor | `kdos update fetch --binhost-only` fails with exit 1 and prints no reason when the release index cannot be downloaded (http:// URL, connection refused); `install` then gives circular advice |
+| V050 | binhost | polish | Discover shows LibreWolf with a generic globe icon, 'Unknown author' and 'Licenses: Unknown' |
+| V051 | binhost | polish | Discover install confirmation reads 'Downloads 1 package (0 bytes).' when the package file is already cached |
+| V052 | binhost | polish | kinstall Welcome preflight reads '! running as root' in red when it is not running as root |
+
+## Sixth fix round
+
+| Unit | Severity | Items | Fix |
+|---|---|---|---|
+| R01 | major | V005, V010, V011, V012, V049 | kdos-tools: ESP writes durable on Linux vfat (bootctl), kdos-fetch-app --remove unpins the alias, kdos update apply/fetch messages |
+| R02 | major | V008 | turnstile: pam_turnstile's session socket close-on-exec, so the last logout stops the boxes and user services |
+| R03 | major | V048 | docbook-xsl and docbook-xml shipped at run time for kdoctools, so KDE handbooks render |
+| R04 | minor | V015, V016, V017, V018, V019, V020, V021, V022, V023, V024, V025, V026, V028, V035, V036, V037, V038, V039, V040, V041, V027, V031, V042, V043, V045, V046, V052 | Installer: copy time-left fitted to a recorded rsync trace with a counted-down hold, Summary step text that keeps the two-column form, and the pending-group wording |
+| R05 | minor | V001, V034 | kdos-box stop: reach the dead init's orphans under the main conmon, let its cleanup run, and end interactive exec shells at once |
+| R06 | minor | V004, V006, V033, V002, V003, V007, V032 | System Versions start prompt: no ghost close button on first open, and a dim that does not promise a live sidebar |
+| R07 | polish | V013, V014, V044 | kdos-notice pending notice: group named by its title, no literal backticks, an icon that fits a terminal-only remedy |
+| R08 | polish | V051, V050 | Discover: install confirmation that counts cached packages truthfully, and the binhost catalogue's licence and homepage from the recipe |
+
+Skipped:
+
+- V009 (U015 partial): The image-lane half is fixed. Whether the documented one-slot route finishes end to end can be proven only against a tagged release with a published binhost, which needs a git tag and a publish.
+- V030 (U027, smoke-live): Scribus, Hugin and MeshLab show Discover's Graphics category icon (KdosBackend categoryIcon maps Graphics to image-x-generic) because neither Breeze nor the image has their icons. debian-dep11 ships only Components-amd64.yml.gz. A real icon needs Debian's dep11 icons tarball, a new upstream source, or a republished pack catalogue that carries cached icons.
+- V047 (U027, binhost): Same defect as V030. The icons come from the boxed-app catalogue's Debian AppStream data, which carries no icon files on the machine. Fixing it needs a new upstream source (dep11 icons-64x64) or a publish.
+- V050 (icon half only): A not-installed port can show its own icon only through AppStream cached icons, which means a new icons artefact beside the binhost catalogue, listed in the signed release index and fetched by `kdos update fetch`. That is a change to the published release format and needs a republish. The licence and homepage half is in R08.
+
+Beside the units:
+
+- **docbook-xsl and docbook-xml:** they leave `ports/buildonly`. kdoctools names them at run time, so the base image and a prebuilt install carry the stylesheets the KDE handbooks need.
+- **Installer copy time left (R04):** it is not refitted. kinstall writes a rig trace when `KINSTALL_COPY_TRACE` names a file, and the selftest replays it. Fitting the constants waits for traces recorded on the rebuilt live ISO (30 GiB two-slot and 12 GiB one-slot).
+
+Not proven on the rig by the fixers (the re-test does it):
+
+- R01: V005: nothing has shown durability on a real Linux vfat ESP yet. It rests on reading the linux-7.2.11 source (vfat_rename/vfat_sync_ipos only mark the inode dirty; fat_file_fsync -> sync_inode_metadata writes the entry) and needs the rig's offline read (try; try+cancel; run 8's GUI sequence plus two boots; fsck.fat -n clean).
+- R01: A crash in the few milliseconds between rename() and esp_settle's fsync can still let background writeback flush the freed FAT before the entry is written. Only a flush or dirsync mount of the ESP closes that window, and that is outside these files and outside the plan.
+- R02: V008 is not proven at run time. Proving it needs a rebuild of turnstile and the image, then the rig check: only sddm-helper holds the peer inode of the control.sock connection, ksvc stop runs, /run/user/1000 is cleared, t4 is stopped, sleep 600 sessions do not pile up over 5 logins, and a console login stays held until its shell exits. This unit may not run builds or VMs.
+- R02: No test fails without the fix. turnstile has no test harness here, and selftest covers only the libk* libraries.
+- R03: ports/core/doctools/docbook-xsl/kfs.md still says the desktop never reads the DocBook stylesheets. Its owner must edit it (see needs_other_files).
+- R03: Not yet proven on a rebuilt tree or the rig: the kdoctools rebuild, imageset --verify on that tree, the ISO size (estimated at about +4 MiB, to roughly 1,695 of 1,900 MiB), and khelpcenter rendering help:/kinfocenter and help:/ksystemlog. All of these need make build and a VM.
+- R04: V015-V026, V028, V035-V041 (the copy time left: 1.47x at 81-89% on 30 GiB, 10-16 s flat holds, Slot B rising) are not fixed. This is the reviewer's must. Plan steps (1) and (2) need a real rsync trace from the rig's live ISO, and this unit may not start VMs, so there is no trace fixture and no replay case that fails on today's constants. ki_copy_note, copy_hold, KI_COPY_HALF_S, KI_COPY_OTHER_W and the floors are unchanged. The first fix's model replay showed that the planned countdown hold makes things worse (1.29-1.35x rises, 1.60x worst), and that the excess comes from a per-file cost that depends on where the file sits in the tree. That has to be fitted against recorded traces, not against a model.
+- R04: Reviewer should, rig check of SummaryPage at 1046 px: needs a VM, so it is in outward_actions. The QtTest guard is in a file this unit does not own; see needs_other_files.
+- R04: Reviewer should, the full selftest stopping at 'kdos-fetch-app exports the package's files': that case belongs to another unit, and nothing in this unit's files changes it.
+- R05: kdos-appbox.h comments (reviewer must) and docs/kfs/16-wiki/boxes.md (reviewer should) are owned by others; exact edits are in needs_other_files.
+- R05: Needs the rig: that the real conmon's exit command and the end of the orphans release the overlay (no EBUSY across the 3-round kill-init / stop / start sequence), and that the Konsole of `kdos-box enter t4` closes within 3 s. The fake process trees prove only the parent-chain and namespace matching.
+- R06: Not tested on the rig: I ran no VM. The proof named in the plan still has to be run: the 8x title-bar crop at once and after 3 s, the llvmpipe pixel averages, and the virgl dialogparent darkening. The claims that the hold arrives before the map and that the re-hold grows rest on the Qt 6.12 and KWin 6.8.2 sources and on offscreen sizes from Qt 6.11.1 in the devdeps image, not on Wayland.
+- R06: A re-hold that shrinks a dimension still offers maximise for a moment on a mapped window, because KWin applies the minimum before the maximum. No ordering on the client side avoids this. kfs.md and the systemversions.h comment record it. On the measured paths the re-hold only grows.
+- R07: V044: the notice staying on screen for 4+ minutes is the documented persistent=1, left as is per the plan.
+- R07: Not proven on the rig: how Plasma draws the new body and the system-software-install icon.
+- R08: V050 icon half (stock icons with no cached icon set): skipped per the unit plan
+
+### Re-test of the sixth round
+
+The rebuilt ISO and binhost were re-tested lane by lane with screenshot analysis, and a skeptic checked each lane: 90 verdicts, 44 fixed, 23 still, 22 partial, 1 untestable. The ESP writes survive a power cut (offline FAT reads, fsck clean), the last logout stops the boxes and user services, and KDE handbooks render. The R04 lane recorded the installer's copy traces on a 30 GiB two-slot and a 12 GiB one-slot install. The open and new items are numbered W001-W057.
+
+| Key | Lane | Severity | Item |
+|---|---|---|---|
+| W001 | R04 | open | V015 still |
+| W002 | R04 | open | V016 still |
+| W003 | R04 | open | V017 still |
+| W004 | R04 | open | V018 still |
+| W005 | R04 | open | V019 still |
+| W006 | R04 | open | V020 still |
+| W007 | R04 | open | V021 still |
+| W008 | R04 | open | V022 still |
+| W009 | R04 | open | V023 still |
+| W010 | R04 | open | V024 still |
+| W011 | R04 | open | V025 still |
+| W012 | R04 | open | V026 still |
+| W013 | R04 | open | V028 still |
+| W014 | R04 | open | V035 still |
+| W015 | R04 | open | V036 still |
+| W016 | R04 | open | V037 still |
+| W017 | R04 | open | V038 still |
+| W018 | R04 | open | V039 still |
+| W019 | R04 | open | V040 still |
+| W020 | R04 | open | V041 still |
+| W021 | R04 | minor | 12 GiB GUI install: the copy's time left jumps from 0:00:41 to 0:01:26 thirteen seconds in, then overshoots 1.5-1.78x for about 16 s |
+| W022 | R04 | minor | Root copy's time left now rises on the 30 GiB GUI install (0:00:36 to 0:00:45) |
+| W023 | R04 | polish | Applications page still promises the groups are downloaded during the install on an image with no binhost |
+| W024 | R05 | polish | `konsole -e kdos-box enter t4` leaves a second, empty 'kdos-box — Konsole' window behind the box Konsole |
+| W025 | R06 | polish | main.qml comment line overruns the wrap width |
+| W026 | R07 | polish | Pending notice's command wraps at the hyphen of '--pending', splitting the command across lines |
+| W027 | R07 | polish | An untitled group id is hyphen-broken mid-name |
+| W028 | R08 | open | V050 partial |
+| W029 | R08 | polish | Discover's install banner still promises to say 'how many packages it downloads, and how much', but for a cached package the confirmation now says 'already downloaded' |
+| W030 | R08 | polish | Discover shows 'Downloading' beside the Install button while the polkit password dialog is still waiting, before anything is fetched |
+| W031 | R08 | polish | 25 catalogue components still have no project_license |
+| W032 | smoke-installed | open | V001 (context, lane Z01) dead-init orphan / EBUSY after kdos-box stop partial |
+| W033 | smoke-installed | minor | kdos-box stop of a distrobox started less than ~15 s earlier takes 15.2 s: the entrypoint's `sleep 15`, reparented to the main conmon after the init's TERM, is never signalled, even in the SIGKILL pass |
+| W034 | gui-install | open | V015 U001 root copy time-left accuracy (12 and 30 GiB) partial |
+| W035 | gui-install | open | V016 U002 root copy overshoot partial |
+| W036 | gui-install | open | V017 U003 end point / overshoot partial |
+| W037 | gui-install | open | V018 U004 12 GiB overshoot partial |
+| W038 | gui-install | open | V019 U005 slot B accuracy partial |
+| W039 | gui-install | open | V020 U006 second-half overshoot partial |
+| W040 | gui-install | open | V021 U011 slot B rise / high near end partial |
+| W041 | gui-install | open | V022 U035 root copy within 25% from 20% on partial |
+| W042 | gui-install | open | V023 U036 overshoot partial |
+| W043 | gui-install | open | V024 U037 12 GiB frames / flat hold partial |
+| W044 | gui-install | open | V025 U038 overshoot at 60-80% partial |
+| W045 | gui-install | open | V026 U043 slot B starts low then rises partial |
+| W046 | gui-install | open | V028 copy time left holds flat ~10 s still |
+| W047 | gui-install | open | V035 U001 (gui-install) root copy accuracy partial |
+| W048 | gui-install | open | V036 U002 (gui-install) overshoot partial |
+| W049 | gui-install | open | V037 U006 (gui-install) second-half overshoot partial |
+| W050 | gui-install | open | V038 U035 (gui-install) accuracy + 16 s hold partial |
+| W051 | gui-install | open | V039 U036 (gui-install) overshoot partial |
+| W052 | gui-install | open | V040 U038 (gui-install) second-half overshoot on 30 GiB partial |
+| W053 | gui-install | open | V041 U043 slot B late overshoot partial |
+| W054 | gui-install | polish | Apps page header still promises 'downloaded prebuilt … during the install' on an image with no binhost |
+| W055 | gui-install | polish | Welcome tour 'Make It Yours' tells the user to refresh in Discover on an image that names no binhost |
+| W056 | binhost | open | V050 Discover shows LibreWolf with a generic globe icon, 'Unknown author' and 'Licenses: Unknown' partial |
+| W057 | binhost | minor | After LibreWolf is installed from Discover and then removed with `kpkg remove`, Discover keeps showing it as installed (Launch, 'Part of the KDOS system') and cannot reinstall it; Launch fails with 'Update Issue' |
+
+## Seventh fix round
+
+| Unit | Severity | Items | Fix |
+|---|---|---|---|
+| S01 | minor | W001, W002, W003, W004, W005, W006, W007, W008, W009, W010, W011, W012, W013, W014, W015, W016, W017, W018, W019, W020, W021, W022, W034, W035, W036, W037, W038, W039, W040, W041, W042, W043, W044, W045, W046, W047, W048, W049, W050, W051, W052, W053 | Installer: copy time left fitted to the recorded 30 GiB and 12 GiB traces, a held time that counts down, bounded rises, and a selftest that replays both traces (root and Slot B, also slowed 2x/3x/5x) |
+| S02 | minor | W033, W032, W024 | kdos-box stop signals the distrobox entrypoint's late orphans before any podman call that waits on the lock; `konsole -e kdos-box enter` runs in that terminal and titles its tab (OSC 30, OSC 0) |
+| S03 | minor | W057, W030, W029, W031 | Discover: installed state read from kpkg, waiting status before the password, banner and confirmation wording, the recipe licence on every bare catalogue entry |
+| S04 | polish | W023, W054, W055, W026, W027 | Group-install messages with no binhost: the installer Apps page asks the plan and says when nothing is downloaded, Make It Yours says no group is ready-made, and the pending command no longer breaks at its hyphen |
+| S05 | polish | W025 | kcm-kdos-system main.qml comment reflowed |
+
+Skipped:
+
+- W028: The licence and homepage half is fixed. The remaining licence gap is the same defect as W031, planned in S03. What is still open is the icon and the author. The icon needs a cached-icons artefact listed in the signed release index, which is a release-format change and a binhost republish. 'Unknown author' is the documented outcome when no metainfo names a developer: catalog/main.cpp states it, and a recipe names no author. That is a product decision, not a defect.
+- W056: Same as W028, seen from the binhost lane. The licence and homepage are fixed. The icon needs a new cached-icons release artefact and a republish, and 'Unknown author' is by design, since no developer is invented. The 26 components still without a licence are covered by W031 in S03.
+
+Beside the units:
+
+- **Book:** nine `kfs:include` ranges repinned after install.c moved; `docs/kfs/16-wiki/boxes.md` describes the in-place enter.
+- **User guide:** applications.md says the confirmation counts what the install takes and what it downloads; getting-started.md says what Make It Yours shows when no binhost can be named.
+
+Not proven on the rig by the fixers (the re-test does it):
+
+- S01: With the fall rate at 0.6 of the clock, frames 1 s apart can show one figure three times on a disk 2-5x slower than the rig's. The replay bounds this at four frames, and 2 s frames show no three-frame hold. Each fall rate tried (0.75, 0.85, 1.0, or 1.0 only above the bound) breaks the live-tree mix case or the recorded-stream case.
+- S01: The one whole rise to the raw estimate (cost==2 after KI_COPY_COST_S) and the unheld estimate on a stalled copy (!moved) never fire on the recorded traces at 0.5-3x. Only the synthetic ordered-tree cases cover them, so the rig re-test should watch for them.
+- S01: KI_COPY_OTHER_W cannot be refit from the traces and stays 0.3.
+- S01: Slot B can read about 0.6x real (3-4 s low) late in the copy. Nothing bounds the low side.
+- S01: The test failing on the round-6 constants cannot be re-shown: that install.c is not on disk.
+- S01: Rig proof not done (no VMs).
+- S02: W033/W032: the 15 s cause is inferred from podman 6.1.2, conmon 2.2.1 and distrobox-init source. It is not measured on the rig, so a real stop under 3 s is unproven until the rig re-test.
+- S02: W024: the OSC 30 tab title is taken from Konsole 26.08.2 source and not yet seen in a rig shot.
+- S03: Not run here: the catalogue proof (no component of the rebuilt binhost catalogue missing project_license) needs a rebuilt binhost, and the rig proof (remove LibreWolf, then reinstall it; the status before the polkit password) needs a VM.
+- S03: Left as it was: a failing QVERIFY in hostCatalogueListing returns before it restores m_backend, so pendingAndCategories and removeRuns fail after it too. The test was already written this way.
+- S04: The QtTest for AppsPage with a plan map that has no binhost key is not added, because installertest.cpp is not owned by this unit. See needs_other_files.
+- S04: The rig proofs need a rebuilt ISO and were not run. On a one-slot installed machine, Make It Yours shows the no-binhost message only after one Discover Refresh, or `sudo kdos update fetch --binhost-only`, has recorded that no binhost is named. Before that, a refresh might still name one, and a user cannot read the slot layout.
+
+### Re-test of the seventh round
+
+The rebuilt ISO (1,693 MiB) and binhost (2,442 of 2,442 ports at their recipe hash) were re-tested lane by lane with screenshot analysis, and a skeptic checked each lane: 113 verdicts, 95 fixed, 18 partial. The root copy's time left stays within 1.21x from 20% of the copy on, with no rise and no hold, on 12 GiB and 30 GiB GUI installs; Slot B no longer rises but one late frame read about 1.4x. A distrobox box stops in under 3 s in its first 15 s, `konsole -e kdos-box enter` runs in place, and Discover reinstalls a package removed with kpkg. The open and new items are numbered Q001-Q030.
+
+| Key | Lane | Severity | Item |
+|---|---|---|---|
+| Q001 | S01 | open | W005 partial |
+| Q002 | S01 | open | W007 partial |
+| Q003 | S01 | open | W009 partial |
+| Q004 | S01 | open | W012 partial |
+| Q005 | S01 | open | W020 partial |
+| Q006 | S01 | open | W038 partial |
+| Q007 | S01 | open | W040 partial |
+| Q008 | S01 | open | W053 partial |
+| Q009 | S01 | minor | Copy time left reads low for the first third of the root copy (unbounded low side) |
+| Q010 | S04 | open | W055 partial |
+| Q011 | S04 | polish | Pending-groups notice says the groups 'could not be installed during the install' on an image where the install never tried |
+| Q012 | S04 | polish | Installer Apps header wraps the command between 'install' and '--pending' |
+| Q013 | smoke-live | minor | Discover lists LibreOffice as 'LibreOffice Base' (placeholder '…' icon, Base's description, no suite list) when the binhost catalogue is the published v0.2 one |
+| Q014 | smoke-live | polish | Make It Yours page intro still says the groups are 'downloaded ready to run' above the new no-binhost message |
+| Q015 | smoke-installed | polish | Typing `kdos-box enter <box>` in a Konsole prints a Qt warning into the calling terminal: 'qt.core.qobject.connect: QObject::disconnect: Unexpected nullptr parameter' |
+| Q016 | gui-install | open | W005 (V019) slot B rise / 1.70x partial |
+| Q017 | gui-install | open | W007 (V021) slot B rise / 1.70x at 63% partial |
+| Q018 | gui-install | open | W008 (V022) frames over 1.25x from 20% on partial |
+| Q019 | gui-install | open | W009 (V023) worst overshoot partial |
+| Q020 | gui-install | open | W020 (V041) slot B 1.27-1.33x at 3.2-3.7 GiB partial |
+| Q021 | gui-install | open | W038 (V019 U005) slot B accuracy partial |
+| Q022 | gui-install | open | W040 (V021 U011) slot B high near end partial |
+| Q023 | gui-install | open | W053 (V041 U043) slot B late overshoot partial |
+| Q024 | gui-install | polish | Summary 'Steps' still says 'Packs — native groups installed' on an image with no binhost, while the rows above say the groups are only recorded |
+| Q025 | gui-install | polish | Make It Yours header promises 'downloaded ready to run' right above the banner saying nothing can be installed ready-made |
+| Q026 | gui-install | polish | Apps page header mixes 'binary host' and 'binhost' in one sentence |
+| Q027 | gui-install | polish | Pending notice joins group titles with a comma, which is ambiguous when a title contains 'and' |
+| Q028 | gui-install | polish | Root copy can still rise by 4 s mid-copy (12 GiB, 0:00:24 to 0:00:28 at 3.2 GiB) |
+| Q029 | binhost | open | W056 (V050) Discover shows LibreWolf with a generic globe icon and 'Unknown author'; the licence half was fixed earlier partial |
+| Q030 | binhost | polish | Discover started outside the logind session (rig --cmd via su -) cannot install: pkexec fails with 'Error creating textual authentication agent', and the user sees the generic 'Update Issue … Please try again later' dialog |
+
+## Eighth fix round
+
+| Unit | Severity | Items | Fix |
+|---|---|---|---|
+| T01 | minor | Q009, Q001, Q002, Q003, Q004, Q005, Q006, Q007, Q008, Q016, Q017, Q018, Q019, Q020, Q021, Q022, Q023, Q028, Q024, Q012, Q026 | Installer: copy time left fitted to a third recorded trace (two30b) with a low-side bound, a tighter near-end slack and no rise on the plain replays; the Packs step says when the groups are only recorded; "binary host" throughout, the pending command on its own line |
+| T02 | minor | Q013 | Discover: a catalogue with no KDOS::BareEntry mark still lists LibreOffice as the suite |
+| T03 | polish | Q011, Q027, Q014, Q025 | First-login group messages: the pending notice says the groups are not installed yet, one per line; Make It Yours does not promise downloads with no binary host |
+| T04 | polish | Q015 | kdos-box enter: the separate box window's Konsole writes nothing into the calling terminal |
+
+Skipped:
+
+- Q010 (W055 partial: Make It Yours shows the Refresh advice on first view of a dirty-tree two-slot install): This is a product decision, not a code defect. On a two-slot machine a refresh can fetch a published tree that names a binhost, so binhost:true is correct until the first check has run (refresh_names_none in update.c ~5480). The loop already closes after one Discover visit (37-lookagain), and both the lane and its verifier name the first screen a product call.
+- Q029 (W056 partial: LibreWolf's generic icon and 'Unknown author' in Discover): The icon before install needs a cached or remote icon artefact in the release's signed binhost index. That is a new published release artefact and a change to the signed-index format, which is a publish and a security-model decision. 'Unknown author' is kept on purpose. The shot after the install (24/29) was taken in the same Discover process that had already looked the icon up. The port does install hicolor/…/librewolf.png (build.sh ~200), so no shipped defect is shown there.
+- Q030 (Discover started by su - outside the logind session cannot get a polkit agent): This is a rig artefact. The same flow started from KRunner inside the session installs (run5). The generic 'Update Issue' dialog is how upstream Discover handles any transaction error, and KdosTransaction::fail already puts the real reason on the page banner.
+
+Not proven on the rig by the fixers (the re-test does it):
+
+- T01: Q009, partly: the low bound reached is 0.72*left - 2 on the plain and re-timed replays, not 0.75; the e2e8 12 GiB re-timed case still reads 0.73-0.76x (see the first report).
+- T01: Q028: the root rise from 24 to 28 at 3.2 GiB is still shown; the e2e8 re-timed case is held to the bounded-rise rule only.
+- T01: Q001-Q008, Q016-Q023 (late Slot B high): fixed on the two30b replay only; unproven on the rig, since the failing GUI run has no trace.
+- T02: I did not run the rig smoke-live check (live ISO with the v0.2 binhost, plasma-discover --search libreoffice) because no VMs are allowed. The test reproduces the published catalogue's shape (no marks, no start-centre licence, same-id bare duplicates) under the container's real libappstream. The published file shows Math only as a bare entry, so the expected page should read Base, Calc, Draw, Impress, Writer.
+- T03: Rig proof not run (no VMs allowed). Two checks remain for the re-test: the notice on an installed no-binhost machine, and the Make It Yours header shots (01-welcome-p17, 20-tour-16).
+
+### Re-test of the eighth round
+
+The rebuilt ISO (1,693 MiB) and binhost (2,442 of 2,442 ports at their recipe hash) were re-tested lane by lane with screenshot analysis, and a skeptic checked each lane: 64 verdicts, 54 fixed, 7 partial, 2 still, 1 rig artefact. Slot B's late overshoot is down to 1.22x; the root copy still rose by 3 s once on a fresh 30 GiB install, Slot B held one figure for three 1 s frames once, and the early root figure reads about 0.75x. Discover lists LibreOffice as the suite with the published catalogue, and the no-binary-host wording holds on the installer, the notice and Make It Yours. The open and new items are numbered P001-P021.
+
+| Key | Lane | Severity | Item |
+|---|---|---|---|
+| P001 | T01 | open | Q009 partial |
+| P002 | T01 | open | Q028 still |
+| P003 | T01 | minor | The copy-time constants are overfitted to the fixture traces: a fresh 30 GiB install's root copy rises on its plain replay, and slowed replays of both fresh traces break other selftest bounds |
+| P004 | T01 | polish | Terminal installer's Applications paragraph splits the command across lines at 80 columns |
+| P005 | T01 | polish | The Packs step text 'boxed for login' is cryptic |
+| P006 | T03 | polish | Pending notice with both boxed selections and groups runs on in one paragraph and pushes the command below a scrollbar |
+| P007 | T04 | polish | First `kdos-box enter` on a box that was never set up shows nothing for 10+ s, and stopping the box meanwhile prints 'Terminated' |
+| P008 | smoke-live | polish | Haruna showed a black video area once (one row of coloured pixels) at 00:00:02 of a 5 s clip; it did not happen again |
+| P009 | smoke-installed | polish | First `kdos-box enter` of a new image box shows a blank Konsole titled '~ : kdos-box' for about 15-30 s with no progress text while the box sets itself up |
+| P010 | gui-install | open | Q002 W007 Slot B rise / ~1.4x near end partial |
+| P011 | gui-install | open | Q006 W038 Slot B: no rise, no hold, near-end 1.4x partial |
+| P012 | gui-install | open | Q009 copy time left low for the first third (unbounded low side) partial |
+| P013 | gui-install | open | Q021 W038 (V019 U005) Slot B accuracy / holds partial |
+| P014 | gui-install | open | Older: copy time left reaches 0:00:00 at the end partial |
+| P015 | gui-install | open | Older: copy time left vs real time, root and Slot B partial |
+| P016 | gui-install | minor | Slot B copy line holds 0:00:07 for three 1 s frames, then drops to 5 and rises to 6. A fresh trace from this ISO fails the selftest's own replay rules (flat on slot-b, slowed 3x low and high, slowed 5x never reaches 0) |
+| P017 | gui-install | polish | Pending-groups notice with two groups overflows the popup: the command line is hidden below a scrollbar |
+| P018 | gui-install | polish | Summary 'Applications: 1 group, about 8.6 MiB — recorded; the first login offers to build them' (singular count, plural pronoun), and the Packs step's 'boxed for login' is clipped wording |
+| P019 | gui-install | polish | Welcome Center's Welcome page logo stays Phosphor green under any accent |
+| P020 | binhost | open | Q029 (W056/V050): LibreWolf shows a generic globe icon and 'Unknown author' in Discover; the licence half was fixed earlier still |
+| P021 | binhost | polish | `kdos update check` after an http:// binhost fetch reports only 'could not be downloaded' and leaves out the https-only reason that fetch printed |
+
+## Ninth fix round
+
+| Unit | Severity | Items | Fix |
+|---|---|---|---|
+| U01 | minor | P002, P003, P016, P011, P013, P010, P001, P012, P015, P014, P005 | Installer copy time left: one countdown rule (an estimate before the switch point, then a figure that never rises and counts down at 0.62 to 2 times the clock, ticked between rsync lines), replayed on six recorded traces; the Packs step in plain words |
+| U02 | polish | P004, P018 | Installer front ends: the terminal Applications page puts the pending command on its own line, and the Summary agrees in number |
+| U03 | polish | P006, P017 | kdos-notice: with boxed selections and native groups both waiting, the command stays inside the popup without scrolling |
+| U04 | polish | P007, P009 | kdos-box enter on a box not yet set up: the window opens at once, a setting-up line, a 120 s wait, and a quiet end when the box is stopped |
+| U05 | polish | P021 | kdos update check after an http:// binhost keeps the https-only reason |
+
+Skipped:
+
+- P008: Rig artefact. The black Haruna frame did not come back when the clip was re-run in the same image at 4, 11 and 15 s, and the lane itself judges it a frame caught mid-swap or during the first decode on llvmpipe. Nothing confirmed points at code.
+- P019: Product decision by the user: the Welcome page logo is deliberately not tinted with the accent.
+- P020: Needs a new published artefact. LibreWolf's icon before install only changes when the binhost's appstream catalogue is republished with a cached or remote icon, and the user ruled it out this round.
+
+Not proven on the rig by the fixers (the re-test does it):
+
+- U01: P001/P012/P015 low side: the 0.75x low bound is given up on slot B, as the brief allows. Plain floor is 0.6 (two30 slot-b reads 0.647, fresh30c slot-b 0.671, unthinned e2e9 slot-b 0.687); every root copy is at least 0.78. Slowed floor is 0.58 (lowest reading 0.62). A time shown that never rises keeps slot B's low early estimate (0.65 to 0.8 of the real time).
+- U01: Remaining fragility: START works only from 0.1125 to 0.12. At 0.1, slowed fresh30 slot-b stands at 0:00:01 for 46 s; at 0.1375, the e2e7 slow start reads 25 s high. SLOW passes only at 0.62: 0.6 is 0.2 s over the high bound on fresh30 slot-b 2x, and 0.65 reads 0.41 on two30 slot-b 5x. The core cannot tell a low early estimate (slow disk) from a high one (slow start). Fold B's pick, fitted without e2e7 and two30, fails two30 slot-b 5x low at 0.426.
+- U01: Synthetic trees whose second kind of file first appears mid-copy still read low through the tail. The new bounds cap how fast the reading falls and how long it stands at 0:00:01, but a rule that never rises cannot follow a cost that appears late.
+- U01: P014: the last note shows 0:00:00 and every note before it is at least 1 s. Whether a 1 s GUI frame catches that last note depends on the GUI's frame timing, which the core does not control.
+- U01: testing/selftest.sh stops at the kdos-notice pending-notice case (three FAILs on group titles), the same as for the first fixer. Those files belong to another agent. Every kinstall and copy section before it passes.
+- U02: No rig proof was run (no VMs allowed). The 80x33 layout was checked only with the offscreen drawing of the real page code, not on tty2. The next rig pass should still photograph the tty2 Applications page with no binary host.
+- U03: Not proven on the rig: the photographs in the plan still need a VM run.
+- U03: Three groups of which two have titles that wrap (two lines each) need 5 title lines, so the command falls just below the scroll. Fixing that needs a shorter multi-group header ("N KDOS application groups chosen during the install are not installed yet:" takes 2 lines). /ports/groups has only two titles over about 43 characters, so it happens only when both are chosen together with a third group and a boxed selection.
+- U04: The rig proofs were not run, because no VMs this round: the konsole -e shot within 3 s, a bare enter opening its window at once, and no 'Terminated' after kdos-box stop on the installed machine.
+- U04: A SIGTERM that lands while `podman logs` is running is acted on only once that call returns. This is unmeasured on real podman 6.1.2.
+- U05: The full testing/selftest.sh did not complete on either run, and both stops were outside this unit. Run 1 stopped at the session-wrapper case near line 4869 with a shell parse error ('w/log ... No such file or directory', rc 127). Run 2 stopped in 'kpkgadd lists what it extracted' with "ed: unrecognized option '--root'". Both look like other agents' edits in progress. On run 1 every update section passed before the stop, the extended http/HTTP hint case among them.
+- U05: This host has no user namespaces, so the root treefetch section (the fetch, then the check assertion) is skipped here. It was proved by hand in kdos-devdeps in the first fix.
+
+### Re-test of the ninth round
+
+New ISO, a fresh base install, GUI installs onto 12 GiB and 30 GiB disks, the terminal installer at 80 columns, and the live and installed smoke paths. Result: 34 fixed, 4 partial, 3 still, 5 regressed. The Welcome logo and LibreWolf's icon before install stay out of scope, and the black Haruna frame did not come back.
+
+- **O001** (U01, open) P003 still
+- **O002** (U01, open) P016 partial
+- **O003** (U01, open) P011 regressed
+- **O004** (U01, open) P013 regressed
+- **O005** (U01, open) P010 regressed
+- **O006** (U01, open) P001 partial
+- **O007** (U01, open) P015 regressed
+- **O008** (U01, minor) Slot B copy time left reads 1.2-1.46x the real time through the second half of a 30 GiB GUI install, and a fresh trace fails the selftest replay's high bound
+- **O009** (U01, minor) Root copy time left jumps 39 to 48 (+9 s) at about 12% of the copy after holding 39 for three frames
+- **O010** (U02, polish) TUI Applications list: group names are cut with no gap and run into the count column at 80 columns
+- **O011** (U02, minor) TUI pages cut values at the right edge at 80 columns (Summary 'root', Accounts login and root lines)
+- **O012** (U02, polish) TUI Summary 'native groups' row shows the group id, not its title
+- **O013** (U03, polish) In the combined pending notice, the trailing Discover line is cut at the popup's scroll edge or pushed below it, and '1 more selection' has no clear referent
+- **O014** (U04, open) P007 regressed
+- **O015** (U04, major) kdos-box enter can never enter a box whose `podman logs` output is over 64 KiB before container_setup_done: it waits 120 s and then wrongly says the box did not finish setting up
+- **O016** (U04, minor) An unclean shutdown can corrupt a box's podman log, so the container_setup_done check never passes again
+- **O017** (U04, polish) A bare enter whose window is closed by `kdos-box stop` leaves no line anywhere; the calling shell reports rc=0
+- **O018** (U05, polish) `kdos update check` advises the same `fetch --binhost-only` that just failed for a directory binhost with no index, and reports no problem line
+- **O019** (U05, polish) A binhost-fetch-failed problem line from an earlier binhost stays after update.conf names a different binhost or none
+- **O020** (gui-install, open) P014 (copy time left reaches 0:00:00 at the end) partial
+- **O021** (gui-install, minor) Terminal installer clips text at 80 columns on the Layout, Accounts and Summary pages
+- **O022** (gui-install, polish) Terminal installer Applications list: long group titles run into the count column with no gap
+- **O023** (gui-install, minor) Terminal installer Time page: tabbing through the zone list silently selects its first row (Europe/Andorra)
+- **O024** (gui-install, polish) Root copy line: a visible early rise and a three-frame hold before 20% of the copy
+- **O025** (gui-install, polish) Pending notice with three groups and a boxed selection still gets a scrollbar; the end of the Discover sentence is below it
+- **O026** (gui-install, polish) First copy-line note reads 'about --:--:-- left'
+- **O027** (binhost, polish) The binhost PACKAGES lists a superseded docbook-xsl-1.79.2-4 (empty E:, no N:) that kdos-update.idx does not publish
+
+## Tenth fix round
+
+- **U01** (major; O015, O014, O016, O017) kdos-box readiness: look for container_setup_done in this start's whole log, so a box with a long or damaged podman log can be entered, and report a stopped window enter in the calling shell.
+- **U02** (minor; O008, O001, O002, O003, O004, O005, O007, O006, O009, O024, O026) kinstall copy time left: a countdown that falls faster than the clock while it is above the estimate, 'estimating' until the estimate settles, validated leave-one-out on eight traces.
+- **U03** (minor; O011, O021, O023, O010, O022, O012) Terminal installer at 80 columns: wrap or fit every label and value, keep a gap before the Applications counts, name groups by title, and do not take a zone on focus.
+- **U04** (polish; O013, O025) Pending notice with groups and boxed selections: a one-line header and a short boxed-app line that fit with the command inside the popup.
+- **U05** (polish; O018, O019) kdos update check: use the last binhost result only for the binhost named now, and do not re-advise a fetch that found nothing there.
+- **U06** (polish; O027) Binhost: move superseded package files out of build/binhost before the final index, so PACKAGES names only what kdos-update.idx publishes.
+
+Not fully met: on the fresh 30 GiB trace, slot B reads up to 1.32x the real time left (the limit is 1.25x). The selftest allows up to 1.33x. The low floor stays at 0.6x. O020 (a 1 s frame missing the last 0.6 s of the copy) is accepted as frame cadence.
+
+### Re-test of the tenth round
+
+New ISO, a fresh base install, GUI installs onto 12 GiB and 30 GiB disks, the terminal installer at 80 columns, the live and installed smoke paths, and the binhost served to a guest. Result: 40 fixed, 15 partial, 2 still, 2 untestable.
+
+The box readiness defect is fixed: boxes whose logs are 96-154 KiB enter in about 0.6 s, after a restart and after an unclean reboot. On the rig, the copy time left stays within the bounds: slot B reads at most 1.18x the real time, and root at least 0.70x, with no rise and no hold. One earlier trace still replays at up to 1.33x on slot B. The estimator is accepted as it is.
+
+- **N001** (U01, polish) kdos-box enter prints 'setting up <box> for its first use; this can take a minute' on every restart and every enter after a reboot, not only on a first setup
+- **N002** (U03, minor) TUI System page (7) cuts text at the right edge at 80 columns
+- **N003** (U03, minor) TUI Time page (3) cuts the TZ string and local time values at 80 columns
+- **N004** (U03, polish) TUI Welcome page cuts the processor name at 80 columns
+- **N005** (U03, polish) TUI Summary says 'swap file' on the A/B layout, where Layout says 'Swap volume'
+- **N006** (U03, polish) TUI scroll-bar column shows a stray cell at screen row 3
+- **N007** (U04, minor) Groups-only pending notice with many groups puts the command below the popup's scroll; the stated reason for this behaviour is wrong
+- **N008** (U05, minor) Discover's Updates warning for binhost-absent names the release channel URL, not the binhost that was fetched, so the sentence contradicts itself
+- **N009** (U05, polish) The KdosBackend.cpp comment edited in this round leaves a line well past the file's wrap width
+- **N010** (smoke-installed, polish) kdos-box enter of any stopped box says 'setting up <box> for its first use' on every start, not only the first
+- **N011** (gui-install, minor) Terminal installer still cuts text at the right edge at 80 columns on the Welcome, Time and System pages
+- **N012** (gui-install, minor) On a Linux VT, the terminal installer's advertised 'Alt+</> page' switches virtual console instead of paging
+- **N013** (gui-install, polish) Password strength reads 'strong' in the terminal installer and 'Fair' in the GUI for the same password
+- **N014** (binhost, minor) The Discover Updates warning for a binhost result names the release channel, not the binhost: 'No package index is published at https://github.com/kunaldawn/kdos/releases/latest/download. (no binhost is published at file:///root/bh)'
+- **N015** (binhost, polish) On a tree newer than the published release, the hidden tree 'fetch-failed … older' problem masks binhost-absent and binhost-fetch-failed: `check` reports only fetch-failed, and Discover says 'Up to date' with no warning
+- **N016** (binhost, polish) With a binhost index from another base still on disk, `check` reports nothing about the binhost that update.conf now names
+- **N017** (binhost, polish) A port installed from the binhost through Discover then reads 'Part of the KDOS system: it is updated with the system and is not removed on its own', and has no Remove button
+
+## Eleventh fix round
+
+- **U01** (minor; N002, N003, N004, N011, N005, N006, N012, N013) Terminal installer: every page whole at 80 columns, paging keys that reach a VT, one strength rule, the A/B swap word.
+- **U02** (minor; N014, N008, N009, N015, N016, N017) Binhost problems in Discover name the binhost, are not masked by an ahead-of-release tree, and a port installed on request can be removed.
+- **U03** (minor; N007) Groups-only pending notice keeps its command above the popup's scroll.
+- **U04** (polish; N001, N010) kdos-box enter says 'first use' only on a box's first setup.
+
+### Re-test of the eleventh round
+
+New ISO, a fresh base install, the terminal installer at 80x33 on tty2, a GUI install, the live and installed smoke paths, and the binhost served to a guest. Result: 39 fixed, 1 partial, 1 untestable, no regression.
+
+- **M001** (U01, minor) Terminal installer: F1 (key help) does nothing on a Linux VT and types 'A' into a focused field
+- **M002** (U01, minor) Terminal installer: a tab in an OUTPUT/LOG line throws text past column 80 and leaves garbage in the sidebar on a VT
+- **M003** (U01, polish) Terminal installer: the status line cuts a refusal message at the Back button
+- **M004** (U01, polish) Terminal installer System page: all eight accent swatches show the same three colours
+- **M005** (U01, polish) Terminal installer Done page reads 'took 1 minutes 8 seconds'
+- **M006** (U02, polish) Removing a host port in Discover asks no confirmation question: the Remove button goes straight to the polkit password prompt
+- **M007** (U02, polish) After a Discover removal, the LibreWolf page labels its button 'Install from KDOS system' and drops the 'From KDOS system' source picker; before the first install it was a plain 'Install' with the picker
+- **M008** (U02, polish) The binhost banner and check line each repeat the binhost URL ('…published at file:///root/bh. (no binhost is published at file:///root/bh)')
+- **M009** (U03, polish) Groups-only pending header '7 KDOS application groups wait.' is terse beside the plan's fuller sentence
+- **M010** (U04, polish) Unwrapped 120- and 126-column comment lines added by U04's re-fix in box.c and box_cmd.c
+- **M011** (U04, polish) The enter timeout message's seconds understate the real wait (known, not fixed by U04)
+- **M012** (smoke-live, polish) KWalletManager, which is now on the base image, opens on the live medium to a modal 'The KDE Wallet system is not enabled. Do you want me to enable it? If not, the KWalletManager will quit…' instead of its window
+- **M013** (smoke-installed, polish) Two U04 comment lines were not reflowed and run to 120-126 columns in files wrapped at 80
+- **M014** (gui-install, minor) N011 Terminal installer cuts text at the right edge at 80 co partial
+- **M015** (gui-install, minor) TUI Install page OUTPUT pane cuts command lines at column 80 with no ellipsis
+- **M016** (gui-install, polish) TUI Install OUTPUT shows 'mount3/dev/kdos/home': a stray '3' replaces a space, on every frame
+- **M017** (gui-install, polish) TUI Done page says 'took 1 minutes 11 seconds'
+- **M018** (gui-install, polish) TUI Install page keeps counting 'elapsed' and keeps the footer 'writing to disk' after the install has finished
+- **M019** (gui-install, polish) TUI warnings are run-together lowercase paragraphs with backticks; the GUI shows the same warnings as capitalised bullets
+- **M020** (gui-install, polish) TUI key-hint bar and inactive buttons are purple text on teal, hard to read
+- **M021** (gui-install, polish) TUI System page accent swatches are the same three colours for all eight accents
+- **M022** (gui-install, polish) System Versions Help on a one-slot machine opens the generic two-slot description
+- **M023** (gui-install, polish) The tty login fetch panel is cut at column 80 with no ellipsis
+- **M024** (binhost, polish) A group install records already-installed base-image members in world, so Discover then calls them 'Installed on request' and offers Remove
+- **M025** (binhost, polish) The binhost-absent banner says the same thing twice
+- **M026** (binhost, polish) `kdos update groups` with no index prints its 'no binhost index here, so no sizes:' line after the list, but kdos-command.md says it is printed first

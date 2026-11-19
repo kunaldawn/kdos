@@ -5,13 +5,18 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   installertest — the answer file, the event stream and the layout list
+ *   installertest — the answer file, the event stream, the layout list and
+ *   the password pairs' keyboard path
  *
  * The fixtures under fixtures/ are kinstall's own output: two streams a real
  * `kinstall --events json` wrote (refused answers; a dry run stopped for not
  * being root) and one success in the same shape. Beside them, a rules list,
  * an XKB symbols directory holding `us` and `de` only, a zone1970.tab, and
  * two mounts tables, the live medium's and an installed machine's.
+ *
+ * The Encryption and Account pages are loaded from the source tree's qml/,
+ * with a Backend that holds the answers and nothing else, in a window of the
+ * installer's default size, and driven with keys.
  */
 
 #include "answers.h"
@@ -19,11 +24,44 @@
 #include "eventstream.h"
 #include "keyboardmodel.h"
 
+#include <QDir>
 #include <QFile>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QWindow>
 
 using namespace Kdos;
+
+/* The pages' i18n() and i18nc(), as KLocalizedContext gives them: the text
+ * with its arguments filled in, untranslated. */
+class PageStrings : public QObject
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE QString i18n(const QString &text, const QVariant &a = {}, const QVariant &b = {}) const
+    {
+        return fill(text, a, b);
+    }
+    Q_INVOKABLE QString i18nc(const QString &, const QString &text, const QVariant &a = {}, const QVariant &b = {}) const
+    {
+        return fill(text, a, b);
+    }
+
+private:
+    static QString fill(QString text, const QVariant &a, const QVariant &b)
+    {
+        if (a.isValid()) {
+            text = text.arg(a.toString());
+        }
+        if (b.isValid()) {
+            text = text.arg(b.toString());
+        }
+        return text;
+    }
+};
 
 class InstallerTest : public QObject
 {
@@ -37,6 +75,14 @@ private:
             qFatal("missing fixture %s", name);
         }
         return f.readAll();
+    }
+
+    static void write(const QString &path, const QByteArray &text)
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly) || f.write(text) != text.size()) {
+            qFatal("cannot write %s", qPrintable(path));
+        }
     }
 
     static QMap<QString, QString> parse(const QString &text)
@@ -182,23 +228,25 @@ private Q_SLOTS:
 
     void streamWeights()
     {
-        /* The copy weighs 8 against the short steps' 1, and the skipped
-         * step's 3 counts for nothing: half way through the copy the bar is
-         * at (1 + 4) / 10, where counting steps would put it at 1.5 / 3. */
+        /* Weights in tenths of a second as kinstall writes them: Prepare
+         * 0.3 s and Finish 0.3 s against a 54 s copy, and the skipped slot
+         * B's 26 s counts for nothing. Half way through the copy the bar is
+         * at (3 + 270) / 546 = 0.5, where counting steps would put it at
+         * 1.5 / 3, and at Finish it is at 543 / 546. */
         EventStream s;
         QVERIFY(s.feed(QByteArrayLiteral(
             "{\"t\":\"plan\",\"steps\":["
-            "{\"index\":0,\"title\":\"Prepare\",\"detail\":\"\",\"state\":\"pending\",\"weight\":1},"
-            "{\"index\":1,\"title\":\"Copy system\",\"detail\":\"\",\"state\":\"pending\",\"weight\":8},"
-            "{\"index\":2,\"title\":\"Slot B\",\"detail\":\"\",\"state\":\"skipped\",\"weight\":3},"
-            "{\"index\":3,\"title\":\"Finish\",\"detail\":\"\",\"state\":\"pending\",\"weight\":1}]}\n"
+            "{\"index\":0,\"title\":\"Prepare\",\"detail\":\"\",\"state\":\"pending\",\"weight\":3},"
+            "{\"index\":1,\"title\":\"Copy system\",\"detail\":\"\",\"state\":\"pending\",\"weight\":540},"
+            "{\"index\":2,\"title\":\"Slot B\",\"detail\":\"\",\"state\":\"skipped\",\"weight\":260},"
+            "{\"index\":3,\"title\":\"Finish\",\"detail\":\"\",\"state\":\"pending\",\"weight\":3}]}\n"
             "{\"t\":\"S\",\"step\":0,\"title\":\"Prepare\"}\n"
             "{\"t\":\"S\",\"step\":1,\"title\":\"Copy system\"}\n")));
-        QCOMPARE(s.overall(), 0.1);
+        QCOMPARE(s.overall(), 3.0 / 546);
         QVERIFY(s.feed(QByteArrayLiteral("{\"t\":\"P\",\"step\":1,\"frac\":0.5}\n")));
         QCOMPARE(s.overall(), 0.5);
         QVERIFY(s.feed(QByteArrayLiteral("{\"t\":\"S\",\"step\":3,\"title\":\"Finish\"}\n")));
-        QCOMPARE(s.overall(), 0.9);
+        QCOMPARE(s.overall(), 543.0 / 546);
 
         /* A plan line with no weights, as an older kinstall writes it,
          * counts every step as 1. */
@@ -334,8 +382,183 @@ private Q_SLOTS:
         QCOMPARE(Backend::dumpArgs(QStringLiteral("apps"), true, root),
                  (answers + QStringList{QStringLiteral("--dump"), QStringLiteral("apps"), QStringLiteral("--json")}));
     }
+
+    /* Every QML file in qml/ is in the module's QML_FILES: a component the
+     * module does not carry is an unknown type at run time, and the page
+     * that uses it fails to load. */
+    void moduleListsEveryFile()
+    {
+        QFile cmake(QStringLiteral(FIXTURES_DIR "/../../CMakeLists.txt"));
+        QVERIFY(cmake.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(cmake.readAll());
+        const QStringList files = QDir(QStringLiteral(FIXTURES_DIR "/../../qml")).entryList({QStringLiteral("*.qml")}, QDir::Files);
+        QVERIFY(files.contains(QStringLiteral("Main.qml")));
+        for (const QString &f : files) {
+            QVERIFY2(text.contains(QStringLiteral("qml/") + f), qPrintable(QStringLiteral("qml/%1 is not in qt_add_qml_module's QML_FILES").arg(f)));
+        }
+    }
+
+    void revealByKeyboard_data()
+    {
+        QTest::addColumn<QString>("page");
+        QTest::addColumn<int>("pair");
+        QTest::addColumn<int>("units");
+        QTest::newRow("encryption") << QStringLiteral("EncryptionPage") << 0 << 58;
+        QTest::newRow("account") << QStringLiteral("AccountPage") << 0 << 58;
+        QTest::newRow("root") << QStringLiteral("AccountPage") << 1 << 58;
+        QTest::newRow("encryption, narrowest window") << QStringLiteral("EncryptionPage") << 0 << 40;
+        QTest::newRow("account, narrowest window") << QStringLiteral("AccountPage") << 0 << 40;
+    }
+
+    /* Type, Tab, type, Shift+Tab, Space: what is typed after the Tab lands
+     * in the second field, Shift+Tab from it stops on the first field's
+     * reveal button, and Space there shows the first field's text and types
+     * nothing into it. The page sits beside an 11-grid-unit step list, as
+     * in the installer's window. At the default width of 58 grid units the
+     * short advice under the first field sits on one line; at the minimum
+     * of 40 the form and its advice stay inside the page. */
+    void revealByKeyboard()
+    {
+        QFETCH(QString, page);
+        QFETCH(int, pair);
+        QFETCH(int, units);
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        QVERIFY(QDir().mkpath(mod));
+        const QString src = QStringLiteral(FIXTURES_DIR "/../../qml/");
+        for (const char *f : {"WizardPage.qml", "StrengthLabel.qml", "EncryptionPage.qml", "AccountPage.qml"}) {
+            QVERIFY(QFile::copy(src + QLatin1String(f), mod + QLatin1Char('/') + QLatin1String(f)));
+        }
+        write(mod + QStringLiteral("/qmldir"),
+              "module org.kdos.installer\n"
+              "WizardPage 1.0 WizardPage.qml\n"
+              "StrengthLabel 1.0 StrengthLabel.qml\n"
+              "EncryptionPage 1.0 EncryptionPage.qml\n"
+              "AccountPage 1.0 AccountPage.qml\n"
+              "singleton Backend 1.0 Backend.qml\n");
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    property QtObject answers: QtObject {\n"
+              "        property bool luks: true\n"
+              "        property string plan: \"wipe\"\n"
+              "        property bool autologin: false\n"
+              "        property bool autologinLock: false\n"
+              "        property bool oem: false\n"
+              "        property bool admin: true\n"
+              "        property bool rootLocked: false\n"
+              "        property string hostname: \"kdos\"\n"
+              "        property string username: \"ann\"\n"
+              "        property string fullname\n"
+              "        property string password\n"
+              "        property string rootPassword\n"
+              "        property string luksPassphrase\n"
+              "        function fitsAnswerFile(s) { return true; }\n"
+              "        function hostnameOk(s) { return true; }\n"
+              "        function fullnameOk(s) { return true; }\n"
+              "        function usernameOk(s) { return true; }\n"
+              "        function usernameReserved(s) { return false; }\n"
+              "        function suggestUsername(s) { return \"ann\"; }\n"
+              "    }\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")),
+              "import QtQuick\n"
+              "import QtQuick.Window\n"
+              "import org.kde.kirigami as Kirigami\n"
+              "import org.kdos.installer\n"
+              "Window {\n"
+              "    width: Kirigami.Units.gridUnit * "
+                  + QByteArray::number(units)
+                  + "\n"
+                    "    height: 752\n"
+                    "    visible: true\n"
+                    "    function rightEdge(item) { return item.mapToItem(pageItem, item.width, 0).x; }\n"
+                    "    property real pageWidth: pageItem.width\n"
+                    "    "
+                  + page.toUtf8()
+                  + " { id: pageItem; x: Kirigami.Units.gridUnit * 11; width: parent.width - x; height: parent.height }\n"
+                    "}\n");
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+
+        /* The password fields in the order the page declares them. */
+        QList<QObject *> fields;
+        const auto all = window->findChildren<QObject *>();
+        for (QObject *o : all) {
+            if (o->metaObject()->indexOfProperty("showPassword") >= 0 && o->metaObject()->indexOfProperty("echoMode") >= 0) {
+                fields << o;
+            }
+        }
+        QVERIFY(fields.size() >= 2 * pair + 2);
+        QObject *first = fields.at(2 * pair);
+        QObject *second = fields.at(2 * pair + 1);
+
+        QVERIFY(QMetaObject::invokeMethod(first, "forceActiveFocus"));
+        for (char c : {'a', 'b', 'c', 'd'}) {
+            QTest::keyClick(window, c);
+        }
+        QTest::keyClick(window, Qt::Key_Tab);
+        for (char c : {'a', 'b', 'c', 'd'}) {
+            QTest::keyClick(window, c);
+        }
+        QCOMPARE(first->property("text").toString(), QStringLiteral("abcd"));
+        QCOMPARE(second->property("text").toString(), QStringLiteral("abcd"));
+
+        QObject *hint = nullptr;
+        for (QObject *o : all) {
+            if (o->metaObject()->indexOfProperty("shortAdvice") >= 0 && o->property("secret").toString() == QStringLiteral("abcd")
+                && o->property("visible").toBool()) {
+                hint = o;
+            }
+        }
+        QVERIFY(hint);
+        QCOMPARE(hint->property("text").toString(), hint->property("shortAdvice").toString());
+        if (units == 58) {
+            QTRY_COMPARE(hint->property("lineCount").toInt(), 1);
+        } else {
+            const qreal pageWidth = window->property("pageWidth").toReal();
+            QVERIFY(pageWidth > 0);
+            for (QObject *o : {hint, second}) {
+                QVariant right;
+                QVERIFY(QMetaObject::invokeMethod(window, "rightEdge", Q_RETURN_ARG(QVariant, right), Q_ARG(QVariant, QVariant::fromValue(o))));
+                QVERIFY2(right.toReal() <= pageWidth + 0.5,
+                         qPrintable(QStringLiteral("%1 ends at %2 on a page %3 wide")
+                                        .arg(QLatin1String(o->metaObject()->className()))
+                                        .arg(right.toReal())
+                                        .arg(pageWidth)));
+            }
+        }
+
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QObject *focus = window->property("activeFocusItem").value<QObject *>();
+        QVERIFY(focus);
+        QVERIFY2(focus != first, "Shift+Tab from the second field stopped in the first field, not on its reveal button");
+        bool inside = false;
+        for (QObject *up = focus; up && !inside; up = up->property("parent").value<QObject *>()) {
+            inside = up == first;
+        }
+        QVERIFY2(inside, qPrintable(QStringLiteral("Shift+Tab from the second field went to %1").arg(QLatin1String(focus->metaObject()->className()))));
+
+        QVERIFY(!first->property("showPassword").toBool());
+        QTest::keyClick(window, Qt::Key_Space);
+        QVERIFY(first->property("showPassword").toBool());
+        QCOMPARE(first->property("text").toString(), QStringLiteral("abcd"));
+    }
 };
 
-QTEST_GUILESS_MAIN(InstallerTest)
+QTEST_MAIN(InstallerTest)
 
 #include "installertest.moc"

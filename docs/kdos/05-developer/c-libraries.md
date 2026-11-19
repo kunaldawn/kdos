@@ -390,6 +390,21 @@ DECRQM value of `0` means "not recognised" and `4` means "permanently reset", so
 `3` set `KT_CAP_SYNC`. The replies are consumed there, or they would be typed into the program as
 stray characters. The Linux VT answers neither and is skipped rather than waited on.
 
+The Linux VT sends F1 to F5 in a form of its own, `ESC [ [ A` to `ESC [ [ E`, and the decoder
+reads it as those keys. Read as an ordinary CSI, the second `[` would end the sequence and the
+letter after it would be typed into the field with the focus.
+
+On the Linux VT the library sets the console's colour map to the theme's eight slots for as long as
+it owns the screen, and puts back the map it found (the `/etc/vtrgb` palette `kdos-getty` loaded)
+when it hands the screen back. The map is set through a VT descriptor, and `/dev/tty` is not one
+under `sudo`, which runs its command on a pseudo-terminal of its own while the screen stays the
+console. The library therefore tries the terminal itself, then the VT `sudo` was started from
+(`SUDO_TTY`, when it names `/dev/ttyN`), then `/dev/tty0` when standard input is a pseudo-terminal
+under a `sudo` that set no `SUDO_TTY`. A `sudo` whose `SUDO_TTY` names a pseudo-terminal, and a
+pseudo-terminal outside `sudo`, such as an ssh login with `TERM=linux`, are not on this machine's
+screen and leave its palette alone. Without the map, the screen keeps the login
+palette, whose blue, magenta and cyan sit where the theme's rules and hints belong.
+
 A frame is bracketed where that bit is set: `CSI ? 2026 h` before the diff and `CSI ? 2026 l`
 after it. A diff frame is a scatter of cursor moves and single cells, and a terminal that draws
 them as they arrive shows a menu before the one under it is erased. The close is written again when
@@ -411,7 +426,10 @@ will draw against stale dimensions and silently fail its own bounds checks.
 The caret goes to the backend when the backend has one. `ktui_term_caret()` is the one call a
 program makes to say where it is typing, and it writes the terminal escape only when nothing else
 claims the answer: a backend that leaves the `caret` entry NULL keeps the escape, which is what the
-terminal backend does.
+terminal backend does. With no caret placed the cursor stays hidden, and on a Linux console each
+frame's flush sends the hide escape again (`ktui_term_caret_hold()`): the console's cursor state
+belongs to the virtual console, and another writer on it would otherwise turn the cursor back on
+wherever the last frame's write left it.
 
 The pointer follows the same rule. `KtuiBackend.pointer` is handed the cell the pointer is on and
 answers whether it drew a pointer itself; a backend that composites an arrow into a framebuffer it
@@ -499,6 +517,25 @@ field. The cursor claims no id and reads no frame, and it draws through the call
 made itself, so a page moved onto it draws the cells it drew before; the installer's pages are laid
 out through it. A row past the bottom of the rect is still handed out at its real position, because
 clipping is the draw calls' business.
+
+Text is drawn into a width: `ktui_draw_text()` stops at it, `ktui_para()` wraps into it (at the
+line's last space, or after its last `/` when the line has no space, so a path or a zone name
+breaks after a separator), and
+`ktui_draw_text_fit()` cuts a string a tier ellipsis short of it, so a reader sees that the row goes
+on. No control character reaches the terminal through the cell grid: `ktui_wcwidth()` gives a TAB
+one cell and every other C0 character, DEL and C1 character none, and `ktui_draw_text()` draws a
+TAB as one blank cell and skips the rest. A control byte sent as a glyph would move the terminal's
+cursor instead of painting a cell, every cell after it would land in another column than the diff
+believes, and the diff would never repaint them. A caller that wants a TAB's real stops expands it
+before drawing. `ktui_pw_meter()` rates a password with `ktui_pw_score()`, by its length in characters alone:
+under 8 `short`, 8 to 15 `fair`, 16 and over `long, good`, the tiers of the graphical installer's
+strength hint, so both installers rate one password the same. `ktui_draw_cut_count()` counts the
+`ktui_draw_text()` and `ktui_draw_textf()` calls since `ktui_draw_cut_reset()` whose string was
+wider than its width or reached past the right edge of the clip, the line a dump cannot tell from
+one that ends there. A fitted string is not counted, since `ktui_draw_text_fit()` hands over only
+the part it shows, and a text field draws only the part of its value it shows, so it is not counted
+either; `testing/fixtures/kinstall/pagedraw.c` prints it as `# cuts`, and `testing/selftest.sh`
+refuses any installer page at 80x33 whose count is not 0.
 
 The splitter and the fold are frame controls that are named rather than counted: each claims
 `ktui_id_str()` of its name and keeps what the hand did in `ktui_state()` under that id, so a

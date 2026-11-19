@@ -7,7 +7,8 @@ reaches no graphics and no toolkit: the services the machine boots into, network
 file systems, the command line, cryptography, the audio and image codecs, fonts, and the science,
 radio and hardware libraries. It also builds KDOS's own artwork and the first of KDOS's own
 programs to be built as ports; [kpkg](../03-bootstrap/120-kpkg.md) and
-[kinstall](../03-bootstrap/130-kinstall.md) are built earlier, by hand, in Part III. This part
+[kinstall](../03-bootstrap/130-kinstall.md) are built earlier, by hand, in Part III, and kinstall
+is built again here as the [kdos-installer](#port-kdos-installer) package. This part
 describes the rule that fills the phase, how its list is filed, the order file that sorts
 ahead of every shelf and what it does to a parallel build, and which of its ports have a full
 page. The package pages follow, in chapters by shelf, in the shelves' own order, and within a shelf

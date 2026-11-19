@@ -383,7 +383,8 @@ no firmware.
 | `build/.kdosbuild` | The compiled orchestrator, with `build/.kdosbuild.sum` beside it | Recompiled at the start of a build when its sources, flags or compiler changed |
 | `build/.devplan.json` | The build plan in force | |
 | `build/kdos-base/` | The base pack, with `KDOS_PACK_KDOS=1` | |
-| `build/binhost/` | The signed binhost, with `KDOS_MAKE_BINHOST=1` | Each run adds what it built and keeps what earlier runs added |
+| `build/binhost/` | The signed binhost, with `KDOS_MAKE_BINHOST=1` | Each run adds what it built and keeps the current packages earlier runs added; superseded ones are moved to `build/binhost-superseded/` |
+| `build/binhost-superseded/` | The package files, with their `.sig`, that `70_image/010_binhost.sh` moves out of `build/binhost/` because their index stanza has an empty `E:` (a superseded release, or a port the tree has no recipe for); the step names each in its log, and one moved back into `build/binhost/` is indexed again on the next run | Each binhost run adds to it; nothing reads it |
 | `build/binhost-key/` | `kdos-binhost.key`, which signs the binhost's index, made on the first `KDOS_MAKE_BINHOST=1` run, and its `.pub` | Kept by both cleans, so every later binhost is signed with the same key |
 | `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` and `script/release-image.sh --upper` lays over the stage | Rewritten by every image build |
 | `build/image-upper/` | The image stage's upper layer over `build/fs`: every change the `70_image` steps from `017_stage.sh` on made, the whiteouts of the packages the base leaves out among them | Emptied each time `017_stage.sh` starts. Root's, like `build/fs`, and never handed back. See [The image stage](build-system.md#the-image-stage) |
@@ -623,7 +624,7 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 | A KDE Frameworks, Plasma or Gear release | Every recipe of that family in one change, then `make build BUILD_ARGS="--continue-from 41_system"`; see below |
 | The book under `docs/` | `make build BUILD_ARGS="--phases 41_system,70_image"`; see below |
 | A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,43_toolkits,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
-| The installer (`src/system/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:130_kinstall.sh"`; see below |
+| The installer (`src/system/kdos-installer`, `src/system/kinstall-core`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 41_system,70_image --rebuild kdos-installer"`; see below |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
 | Only packaging, for the rig | `make build KDOS_ISO_COMP=zstd:3 BUILD_ARGS="--phases 70_image"` |
 | Nothing; a step failed and the fix is in the tree | `R` in the failure panel, without quitting; see [When a build fails](#when-a-build-fails) |
@@ -660,26 +661,28 @@ The environments differ: `20_selfhost` names no compiler, while every later phas
 `CXX=g++`. `PORT_REPO` differs too: `src/system` and `src/art` are on it from `40_lang` on, and
 `src/desktop` and `src/daemons` only in `50_desktop`.
 
-Five ports in `ports/core` are named in no list. Four are dependencies of `20_selfhost`'s list
+Four ports in `ports/core` are named in no list. They are dependencies of `20_selfhost`'s list
 (`gmp`, `mpfr`, `mpc` and `xxhash`), so that phase installs them, and the second command finds it.
-The fifth, `texlive-doc`, is named in `ports/unbuilt`, the list of recipes no phase builds on
-purpose, kept for `kpkg install` on a machine that wants one. Every other recipe is named by a phase
-list, and `testing/bookcounts.py` fails on a recipe no phase installs that `ports/unbuilt` does not
-name.
+Every other recipe is named by a phase list. `ports/unbuilt` is the list of recipes no phase builds
+on purpose, kept for `kpkg install` on a machine that wants one, and it names none;
+`testing/bookcounts.py` fails on a recipe no phase installs that `ports/unbuilt` does not name.
 
 **Editing a library rebuilds every port of KDOS's own**, not only the ones that use it. KDOS's own
 programs are recipes under `src/system/`, `src/art/`, `src/desktop/` and `src/daemons/`.
 Such a recipe has no upstream tarball, so its recipe hash covers its own directory and the whole of
 `src/libs`; working out which libraries a `build.sh` actually compiles would need a shell parser
 inside the package manager. Each of these ports takes seconds to compile. Upstream ports are
-unaffected. The phase lists install every one but `kdos-installer`, in `41_system`,
-`42_graphics`, `43_toolkits` and `50_desktop`, and their changed hash is enough to rebuild them, so
-they need no `--rebuild`. The Qt ports of `src/desktop` compile in minutes rather than seconds; a
-change to a library none of them links still rebuilds them. `kdos-installer` is in no phase list, so `--rebuild kdos-installer` reaches no phase and
-rebuilds nothing; the installer on the image comes from the `10_bootstrap` step `130_kinstall.sh`
-instead, which also compiles in `catalogue.c` from `src/system/kdos-appbox`. An edit to that file
-rebuilds the `kdos-appbox` port through its directory hash but leaves `kinstall` as it was until the
-step is named, as in the installer row above.
+unaffected. The phase lists install every one, in `41_system`, `42_graphics`, `43_toolkits` and
+`50_desktop`, and their changed hash is enough to rebuild them, so they need no `--rebuild`. The Qt
+ports of `src/desktop` compile in minutes rather than seconds; a change to a library none of them
+links still rebuilds them. The installer is the exception to "no `--rebuild`": `kdos-installer`,
+at the end of `41_system`'s `src-system.txt`, also compiles `src/system/kinstall-core` and
+`catalogue.c` from `src/system/kdos-appbox`, and its recipe hash covers neither, so an edit to
+either alone rebuilds it only when `--rebuild kdos-installer` names it, as in the installer row
+above. Its package adopts the `/usr/bin/kinstall` that the `10_bootstrap` step `130_kinstall.sh`
+compiled from the same sources for the trees before `41_system`, so the package's copy is the one
+on the image and on the binhost; that step runs again only when its mark is gone or
+`--steps 10_bootstrap:130_kinstall.sh` names it.
 
 **The book is a port too.** `src/system/kdos-doc` renders `docs/kdos` to HTML under
 `/usr/share/doc/kdos`, writes `kdos(7)`, which says where the book is and lists its chapters, and

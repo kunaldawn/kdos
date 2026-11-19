@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <limits.h>
+#include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -121,36 +122,96 @@ static int step_skipped(int i)
 }
 
 /*
- * THE STEPS' WEIGHTS, for a front end's bar over the whole install: a short
- * step weighs 1, and the two copies weigh by the bytes they carry, at least
- * 1 each: the copy of the live tree one per KI_COPY_GIB_PER_W GiB of
- * ki_need_bytes(), which holds the box store when it is copied, and slot B
- * one per KI_SLOTB_GIB_PER_W GiB of the payload less the box store, which its
- * -x copy never enters. Measured on the live
- * medium's install onto a virtual disk: a short step takes some seconds, the
- * copy of the live tree about a minute, and slot B, a copy between
- * two volumes of one disk with nothing to list over a squashfs, a third of
- * that. A bar that counted steps would stand still through most of the
- * install's time and race through the rest.
+ * THE STEPS' WEIGHTS, for a front end's bar over the whole install: each
+ * step's expected time in tenths of a second, so the bar moves with the
+ * clock. Measured from kinstall.log's timestamps on the live medium's GUI
+ * installs onto a virtual disk: Prepare, Partition, Format and Mount take
+ * about three seconds between them, the copy of the live tree's 4.8 GiB 50
+ * to 56 seconds, slot B's 21 to 28, and the steps after the copy about
+ * four. The two copies weigh their bytes at the rates measured,
+ * KI_COPY_MIB_S for ki_need_bytes() and KI_SLOTB_MIB_S for the payload less
+ * the box store, which slot B's -x copy never enters. Packs weighs its two
+ * seconds of recording and, only when a binhost is named
+ * (ki_binhost_named), KI_PACKS_PORT_DS for each port of the chosen native
+ * groups, an allowance no install has measured; with no binhost the groups
+ * go to groups-pending and nothing downloads. A short step given a share of
+ * the copy's time would hold back the bar through the copy and fill a third
+ * of it in the last seconds.
  */
-#define KI_COPY_GIB_PER_W 0.6
-#define KI_SLOTB_GIB_PER_W 1.5
+#define KI_COPY_MIB_S 90.0
+#define KI_SLOTB_MIB_S 190.0
+#define KI_PACKS_PORT_DS 10
 
 static int step_weight(int i)
 {
-	double sys_gib = (double)(ki_sys.payload_kb > ki_sys.appbox_kb
-					  ? ki_sys.payload_kb - ki_sys.appbox_kb
-					  : 0) / (1024.0 * 1024.0);
-	double w;
+	static const int short_ds[S_COUNT] = {
+		[S_PREPARE] = 3,  [S_PARTITION] = 10, [S_FORMAT] = 15,
+		[S_MOUNT] = 2,	  [S_APPS] = 20,      [S_FIRMWARE] = 3,
+		[S_CONFIG] = 3,	  [S_ACCOUNTS] = 3,   [S_THEME] = 2,
+		[S_BOOT] = 8,	  [S_FINISH] = 3,
+	};
+	double mib = 0, rate = 1;
+	int w;
 
-	if (i == S_COPY)
-		w = (double)ki_need_bytes() / (1024.0 * 1024.0 * 1024.0) /
-		    KI_COPY_GIB_PER_W;
-	else if (i == S_SLOTB)
-		w = sys_gib / KI_SLOTB_GIB_PER_W;
+	if (i == S_COPY) {
+		mib = (double)ki_need_bytes() / (1024.0 * 1024.0);
+		rate = KI_COPY_MIB_S;
+	} else if (i == S_SLOTB) {
+		mib = (double)(ki_sys.payload_kb > ki_sys.appbox_kb
+				       ? ki_sys.payload_kb - ki_sys.appbox_kb
+				       : 0) /
+		      1024.0;
+		rate = KI_SLOTB_MIB_S;
+	} else if (i == S_APPS) {
+		w = short_ds[i];
+		for (int k = 0; ki_binhost_named && k < ki_nnative; k++)
+			if (ki_native[k].chosen)
+				w += ki_native[k].nports * KI_PACKS_PORT_DS;
+		return w;
+	} else {
+		return short_ds[i];
+	}
+	w = (int)(mib / rate * 10 + 0.5);
+	return w < 1 ? 1 : w;
+}
+
+/* The Partition step's line names what its last partition is: the LVM
+ * volume, encrypted when asked, and what it holds, or the root itself; it
+ * replaces the table's line, which names the root. At most 80 characters,
+ * which the graphical Summary's value column wraps inside itself; a longer
+ * line only costs rows, since the column's width is capped. */
+static const char *partition_detail(void)
+{
+	static char d[160];
+	const char *swap = ki_wipe_part_swap() ? ", swap" : "";
+
+	if (cfg.plan == PLAN_WIPE && cfg.lvm)
+		snprintf(d, sizeof(d),
+			 "write the GPT layout: ESP, BIOS boot%s, %sLVM volume "
+			 "for %s",
+			 swap, cfg.luks ? "encrypted " : "",
+			 ki_ab() ? "both system slots" : "the root");
 	else
-		return 1;
-	return w < 1 ? 1 : (int)(w + 0.5);
+		snprintf(d, sizeof(d),
+			 "write the GPT layout: ESP, BIOS boot%s, %sroot", swap,
+			 cfg.luks ? "encrypted " : "");
+	return d;
+}
+
+/* The Packs step's line says what becomes of the native groups chosen: on
+ * a medium that names a binary host they are downloaded and installed, and
+ * on one that names none they are recorded, as the Summary's rows above the
+ * steps say (ki_binhost_named). The boxed applications are recorded either
+ * way, and the first login's notice (kdos-notice) names what each record
+ * holds and how it is installed, so the line leaves the command to it. At
+ * most 80 characters, as partition_detail's. */
+static const char *packs_detail(void)
+{
+	return ki_binhost_named
+		? "native groups downloaded and installed, boxed apps recorded "
+		  "for the first login"
+		: "native groups and boxed apps recorded; the first login says "
+		  "how to install each";
 }
 
 void install_plan(void)
@@ -159,7 +220,9 @@ void install_plan(void)
 	inst.nsteps = S_COUNT;
 	for (int i = 0; i < S_COUNT; i++) {
 		inst.step[i].title = steps[i].title;
-		inst.step[i].detail = steps[i].detail;
+		inst.step[i].detail = i == S_PARTITION ? partition_detail()
+				      : i == S_APPS ? packs_detail()
+						    : steps[i].detail;
 		inst.step[i].state = step_skipped(i) ? ST_SKIP : ST_PENDING;
 		inst.step[i].frac = -1;
 		inst.step[i].weight = step_weight(i);
@@ -170,11 +233,41 @@ void install_plan(void)
 	inst.nwarn = 0;
 }
 
+/*
+ * A LINE KEPT FOR A SCREEN HOLDS NO CONTROL BYTE: a tab becomes the spaces to
+ * the next multiple of 8, as a terminal would set it, and every other C0 byte
+ * is dropped. A screen counts a tab as one cell and a VT moves it to the next
+ * tab stop, so mke2fs's and efibootmgr's tabbed columns would run past the
+ * pane and into the sidebar. The log file keeps the line as it came.
+ */
+static void screen_line(char *out, size_t n, const char *line)
+{
+	size_t o = 0, col = 0;
+
+	for (const unsigned char *c = (const unsigned char *)line;
+	     *c && o + 1 < n; c++) {
+		if (*c == '\t') {
+			do {
+				out[o++] = ' ';
+				col++;
+			} while (col % 8 && o + 1 < n);
+			continue;
+		}
+		if (*c < 0x20 || *c == 0x7f)
+			continue;
+		out[o++] = (char)*c;
+		/* A UTF-8 continuation byte is part of the cell before it. */
+		if ((*c & 0xc0) != 0x80)
+			col++;
+	}
+	out[o] = 0;
+}
+
 void install_log(const char *line)
 {
 	if (!inst.log)
 		inst.log = kb_calloc(LOG_LINES, LOG_COLS);
-	kb_strlcpy(inst.log[inst.nlog % LOG_LINES], line, LOG_COLS);
+	screen_line(inst.log[inst.nlog % LOG_LINES], LOG_COLS, line);
 	inst.nlog++;
 	if (inst.logfd >= 0) {
 		char stamp[32];
@@ -247,6 +340,7 @@ void install_start(int from_step)
 	 * warning on every call. */
 	if (pipe2(fds, O_CLOEXEC) < 0) {
 		inst.failed = 1;
+		inst.t0 = inst.t1 = kb_now_s();
 		kb_strlcpy(inst.failmsg, "pipe() failed", sizeof(inst.failmsg));
 		return;
 	}
@@ -266,7 +360,10 @@ void install_start(int from_step)
 	inst.failed = 0;
 	inst.done = 0;
 	inst.failmsg[0] = 0;
-	inst.t0 = kb_now_s();
+	/* A retry keeps the first start: the elapsed time and Done's figure
+	 * cover the steps that ran before the failure as well. */
+	if (from_step == 0 || inst.t0 == 0)
+		inst.t0 = kb_now_s();
 	if (!cfg.dry_run)
 		shield_from_oomd();
 
@@ -275,6 +372,7 @@ void install_start(int from_step)
 		close(fds[0]);
 		close(fds[1]);
 		inst.failed = 1;
+		inst.t1 = kb_now_s();
 		kb_strlcpy(inst.failmsg, "fork() failed", sizeof(inst.failmsg));
 		return;
 	}
@@ -369,6 +467,7 @@ static void handle_line(char *s)
 	}
 	case 'F':
 		inst.failed = 1;
+		inst.t1 = kb_now_s();
 		kb_strlcpy(inst.failmsg, arg, sizeof(inst.failmsg));
 		if (inst.cur >= 0) {
 			inst.step[inst.cur].state = ST_FAIL;
@@ -383,6 +482,7 @@ static void handle_line(char *s)
 				inst.step[i].t1 = kb_now_s();
 			}
 		inst.done = 1;
+		inst.t1 = kb_now_s();
 		break;
 	default:
 		break;
@@ -432,6 +532,7 @@ void install_pump(void)
 
 	if (!inst.done && !inst.failed) {
 		inst.failed = 1;
+		inst.t1 = kb_now_s();
 		snprintf(inst.failmsg, sizeof(inst.failmsg),
 			 "install process exited unexpectedly (status %d)",
 			 WIFEXITED(status) ? WEXITSTATUS(status) : -1);
@@ -449,6 +550,7 @@ void install_abort(void)
 	close(inst.fd);
 	inst.running = 0;
 	inst.failed = 1;
+	inst.t1 = kb_now_s();
 	kb_strlcpy(inst.failmsg, "aborted by user", sizeof(inst.failmsg));
 }
 
@@ -531,8 +633,12 @@ static void bios_problem(const char *fmt, ...)
 
 typedef void (*LineParse)(const char *line);
 
+/* `parse` reads each line the program prints (NULL: each goes to the log),
+ * and `tick`, when given, runs each time KI_COPY_TICK_S passes with no
+ * output. */
 static int run_full(char *const argv[], const char *stdin_data,
-		    LineParse parse, const int *ok_codes, int nok)
+		    LineParse parse, void (*tick)(void), const int *ok_codes,
+		    int nok)
 {
 	char cmd[512] = "";
 	for (int i = 0; argv[i]; i++) {
@@ -594,7 +700,18 @@ static int run_full(char *const argv[], const char *stdin_data,
 	char buf[4096], line[1024];
 	size_t ll = 0;
 	ssize_t n;
-	while ((n = read(out[0], buf, sizeof(buf))) > 0) {
+	struct pollfd pfd = { .fd = out[0], .events = POLLIN };
+	for (;;) {
+		int r = poll(&pfd, 1, tick ? (int)(KI_COPY_TICK_S * 1000) : -1);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r == 0) {
+			tick();
+			continue;
+		}
+		if ((n = read(out[0], buf, sizeof(buf))) <= 0)
+			break;
 		for (ssize_t i = 0; i < n; i++) {
 			char c = buf[i];
 			if (c == '\n' || c == '\r') {
@@ -633,7 +750,7 @@ static int run_full(char *const argv[], const char *stdin_data,
 static int run(char *const argv[])
 {
 	static const int ok[] = { 0 };
-	return run_full(argv, NULL, NULL, ok, 1);
+	return run_full(argv, NULL, NULL, NULL, ok, 1);
 }
 
 /* Same, with a secret on the child's stdin. cryptsetup's `--key-file=-` reads
@@ -642,7 +759,7 @@ static int run(char *const argv[])
 static int run_stdin(char *const argv[], const char *secret)
 {
 	static const int ok[] = { 0 };
-	return run_full(argv, secret, NULL, ok, 1);
+	return run_full(argv, secret, NULL, NULL, ok, 1);
 }
 
 static void must(char *const argv[])
@@ -928,6 +1045,9 @@ static unsigned long long rsync_total_bytes;
 /* Of rsync's total, the bytes of the names it makes links and never copies:
  * see THE BYTES LEFT ARE THE BYTES RSYNC COPIES. */
 static unsigned long long rsync_link_bytes;
+/* Where the running copy's cost lies: see THE FILES ARE COUNTED BY WHAT
+ * THEY COST. */
+static const KiCopyProfile *rsync_prof;
 /* When the running copy started, on the monotonic clock. */
 static double rsync_t0;
 /* The running copy's last file counts, which every copy resets. */
@@ -961,6 +1081,50 @@ static void iec_size(unsigned long long b, char *out, size_t n)
 		snprintf(out, n, "%llu KiB", b >> 10);
 }
 
+void ki_copy_profile(KiCopyProfile *p, const unsigned char *kind, size_t n,
+		     int store)
+{
+	double units = 0, u = 0;
+	size_t m = 0, k = 0;
+	int b = 1;
+
+	memset(p, 0, sizeof(*p));
+	for (size_t i = 0; i < n; i++) {
+		if (!store && (kind[i] & KI_ENT_STORE))
+			continue;
+		m++;
+		units += kind[i] & KI_ENT_FILE ? 1 : KI_COPY_OTHER_W;
+	}
+	if (!m)
+		return;
+	for (size_t i = 0; i < n && b <= KI_COPY_PROF; i++) {
+		if (!store && (kind[i] & KI_ENT_STORE))
+			continue;
+		u += kind[i] & KI_ENT_FILE ? 1 : KI_COPY_OTHER_W;
+		k++;
+		while (b <= KI_COPY_PROF && k * KI_COPY_PROF >= (size_t)b * m)
+			p->at[b++] = (float)(u / units);
+	}
+	p->per_entry = units / (double)m;
+	p->ok = 1;
+}
+
+/* The fraction of a profile's cost done after fraction `x` of its
+ * entries. */
+static double copy_prof_at(const KiCopyProfile *p, double x)
+{
+	double k;
+	int i;
+
+	if (x <= 0)
+		return 0;
+	if (x >= 1)
+		return 1;
+	k = x * KI_COPY_PROF;
+	i = (int)k;
+	return p->at[i] + (p->at[i + 1] - p->at[i]) * (k - i);
+}
+
 /* Keep one sample of the copy's progress, at most one per `step` seconds;
  * a full set drops every other sample and doubles the step, so the samples
  * stay spread over the whole copy in fixed room. */
@@ -989,6 +1153,24 @@ static void copy_sample(KiCopyFiles *c, double el, double bytes, double files)
 	c->n++;
 }
 
+/* A sample's weight in a fit, `age` seconds older than the newest: half
+ * for every `half` seconds, in straight lines between, and none once it
+ * is below a millionth. Past that the remainder of the age would be more
+ * than `half` and the straight line negative, and a negative weight turns
+ * the sums of squares negative and the fit's slopes to nothing. */
+static double copy_weight(double age, double half)
+{
+	double w = 1;
+
+	while (age >= half) {
+		w /= 2;
+		age -= half;
+		if (w < 1e-6)
+			return 0;
+	}
+	return w * (1 - 0.5 * age / half);
+}
+
 /* The slope of the seconds on one quantity, with an intercept; 0 when the
  * quantity did not move or the slope comes out negative. */
 static double copy_slope(double sxx, double sxt)
@@ -996,10 +1178,70 @@ static double copy_slope(double sxx, double sxt)
 	return sxx > 0 && sxt > 0 ? sxt / sxx : 0;
 }
 
+/* The weighted sums of squares and products about the weighted means of
+ * the bytes (b), files (f) and seconds (t) of the samples, each weighed by
+ * its age with half-life `half`. */
+typedef struct {
+	double bb, ff, bf, bt, ft;
+} CopySums;
+
+static void copy_sums(const KiCopyFiles *c, double half, CopySums *s)
+{
+	double mb = 0, mf = 0, mt = 0, sw = 0, w[KI_COPY_SAMPLES];
+
+	memset(s, 0, sizeof(*s));
+	for (int i = 0; i < c->n; i++) {
+		w[i] = copy_weight(c->el[c->n - 1] - c->el[i], half);
+		sw += w[i];
+		mb += w[i] * c->bytes[i];
+		mf += w[i] * c->files[i];
+		mt += w[i] * c->el[i];
+	}
+	mb /= sw;
+	mf /= sw;
+	mt /= sw;
+	for (int i = 0; i < c->n; i++) {
+		double db = c->bytes[i] - mb, df = c->files[i] - mf;
+		double dt = c->el[i] - mt;
+
+		s->bb += w[i] * db * db;
+		s->ff += w[i] * df * df;
+		s->bf += w[i] * db * df;
+		s->bt += w[i] * db * dt;
+		s->ft += w[i] * df * dt;
+	}
+}
+
+/* The time left with one cost fitted and the other held at `fc` seconds a
+ * file: the cost per byte, or with no file counts (`fleft` < 0) the bytes'
+ * alone. -1 when the bytes did not move in the samples' weight, so there
+ * is no cost per byte to fit ... */
+static double copy_by_bytes(const CopySums *s, double bleft, double fleft,
+			    double fc)
+{
+	double a;
+
+	if (fleft < 0)
+		fc = fleft = 0;
+	a = copy_slope(s->bb, s->bt - fc * s->bf);
+	return a > 0 ? a * bleft + fc * fleft : -1;
+}
+
+/* ... and the cost per file with each byte held at `bc` seconds. */
+static double copy_by_files(const CopySums *s, double bleft, double fleft,
+			    double bc)
+{
+	double b = copy_slope(s->ff, s->ft - bc * s->bf);
+
+	return b > 0 ? b * fleft + bc * bleft : -1;
+}
+
 /* The seconds the rest of the copy takes, from the samples: el = c +
- * a·bytes + b·files fitted by least squares, and a·bytes_left +
+ * a·bytes + b·files fitted by least squares, each sample weighed by its
+ * age (copy_weight, half-life KI_COPY_HALF_S), and a·bytes_left +
  * b·files_left, of `btot` bytes and `ftot` files in all. -1 when the
- * samples span too little time to fit.
+ * samples span less than KI_COPY_SPAN_S seconds, or neither quantity has
+ * moved enough, to fit.
  *
  * Both costs are fitted only when the samples can tell them apart: each
  * quantity has moved by a two-hundredth of its total, and the two have not
@@ -1011,86 +1253,177 @@ static double copy_slope(double sxx, double sxt)
  * run of large files the time per file is the time per large file, which
  * times the small files still to go reads as many minutes when the tail is
  * one. The floor keeps the files left from counting for nothing; the
- * estimate is low by the rest of their cost until the samples show it. */
+ * estimate is low by the rest of their cost until the samples show it.
+ * The time shown starts from this estimate and counts down toward it
+ * (copy_hold). */
 static double copy_fit(const KiCopyFiles *c, double bleft, double btot,
 		       double fleft, double ftot)
 {
-	double mb = 0, mf = 0, mt = 0;
-	double sbb = 0, sff = 0, sbf = 0, sbt = 0, sft = 0, det, a, b, tb, tf;
+	CopySums s;
+	double det, a, b, tb, tf, t;
 	int bmoved, fmoved;
 
-	if (c->n < 2 || c->el[c->n - 1] - c->el[0] < 2)
+	if (c->n < 2 || c->el[c->n - 1] - c->el[0] < KI_COPY_SPAN_S)
 		return -1;
 	bmoved = c->bytes[c->n - 1] - c->bytes[0] >= btot / 200;
 	fmoved = fleft >= 0 && c->files[c->n - 1] - c->files[0] >= ftot / 200;
 	if (!bmoved && !fmoved)
 		return -1;
-	for (int i = 0; i < c->n; i++) {
-		mb += c->bytes[i];
-		mf += c->files[i];
-		mt += c->el[i];
+	copy_sums(c, KI_COPY_HALF_S, &s);
+	if (fleft < 0) {
+		t = copy_by_bytes(&s, bleft, fleft, 0);
+		return t < 0 ? 0 : t;
 	}
-	mb /= c->n;
-	mf /= c->n;
-	mt /= c->n;
-	for (int i = 0; i < c->n; i++) {
-		double db = c->bytes[i] - mb, df = c->files[i] - mf;
-		double dt = c->el[i] - mt;
+	tb = copy_by_bytes(&s, bleft, fleft, KI_COPY_FILE_S);
+	tf = copy_by_files(&s, bleft, fleft, KI_COPY_BYTE_S);
+	if (tb < 0)
+		tb = KI_COPY_FILE_S * fleft;
+	if (tf < 0)
+		tf = KI_COPY_BYTE_S * bleft;
+	if (!fmoved || s.ff <= 0) {
+		t = tb;
+	} else if (!bmoved || s.bb <= 0) {
+		t = tf;
+	} else if ((det = s.bb * s.ff - s.bf * s.bf) <= 0.01 * s.bb * s.ff) {
+		t = tb < tf ? tb : tf;
+	} else {
+		a = (s.ff * s.bt - s.bf * s.ft) / det;
+		b = (s.bb * s.ft - s.bf * s.bt) / det;
+		if (a < 0)
+			t = copy_slope(s.ff, s.ft) * fleft;
+		else if (b < 0)
+			t = copy_slope(s.bb, s.bt) * bleft;
+		else
+			t = a * bleft + b * fleft;
+	}
+	return t;
+}
 
-		sbb += db * db;
-		sff += df * df;
-		sbf += db * df;
-		sbt += db * dt;
-		sft += df * dt;
+/* Estimate `t`, made `el` seconds in, into the copy's history: one slot
+ * each KI_COPY_HIST_S, holding the lowest and highest made in it. */
+static void copy_hist_add(KiCopyFiles *c, double t, double el)
+{
+	int k = (c->hn + KI_COPY_HIST - 1) % KI_COPY_HIST;
+
+	if (c->hn && el - c->h_el[k] < KI_COPY_HIST_S) {
+		if (t < c->h_lo[k])
+			c->h_lo[k] = t;
+		if (t > c->h_hi[k])
+			c->h_hi[k] = t;
+		return;
 	}
-	if (fleft < 0)
-		return copy_slope(sbb, sbt) * bleft;
-	tb = copy_slope(sbb, sbt - KI_COPY_FILE_S * sbf) * bleft +
-	     KI_COPY_FILE_S * fleft;
-	tf = copy_slope(sff, sft - KI_COPY_BYTE_S * sbf) * fleft +
-	     KI_COPY_BYTE_S * bleft;
-	if (!fmoved || sff <= 0)
-		return tb;
-	if (!bmoved || sbb <= 0)
-		return tf;
-	det = sbb * sff - sbf * sbf;
-	if (det <= 0.01 * sbb * sff)
-		return tb < tf ? tb : tf;
-	a = (sff * sbt - sbf * sft) / det;
-	b = (sbb * sft - sbf * sbt) / det;
-	if (a < 0)
-		return copy_slope(sff, sft) * fleft;
-	if (b < 0)
-		return copy_slope(sbb, sbt) * bleft;
-	return a * bleft + b * fleft;
+	k = c->hn++ % KI_COPY_HIST;
+	c->h_el[k] = el;
+	c->h_lo[k] = c->h_hi[k] = t;
+}
+
+/* The lowest and highest of the estimates that stood over the `span`
+ * seconds before `el`: those made in them and the one standing as they
+ * began. 0 when the history does not reach back that far. */
+static int copy_hist(const KiCopyFiles *c, double el, double span,
+		     double *lo, double *hi)
+{
+	int n = c->hn < KI_COPY_HIST ? c->hn : KI_COPY_HIST;
+
+	*lo = *hi = c->est;
+	for (int i = 0; i < n; i++) {
+		int k = (c->hn - 1 - i) % KI_COPY_HIST;
+
+		if (c->h_lo[k] < *lo)
+			*lo = c->h_lo[k];
+		if (c->h_hi[k] > *hi)
+			*hi = c->h_hi[k];
+		if (el - c->h_el[k] >= span)
+			return 1;
+	}
+	return 0;
 }
 
 /* The time left to show for estimate `t`, `el` seconds in with `done`
- * bytes and `fdone` files copied: see THE TIME SHOWN below. */
+ * bytes and `fdone` files copied, `last` on the copy's last line, or -1
+ * while the estimate has not settled: see THE TIME SHOWN below. A line
+ * (`line` 1) adds its estimate to the history; a tick (ki_copy_tick)
+ * passes the last line's estimate and progress again. */
 static double copy_hold(KiCopyFiles *c, double t, double el, double done,
-			double fdone)
+			double fdone, int last, int line)
 {
-	int moved = done > c->shown_bytes || fdone > c->shown_files;
+	double lo, hi, frac, below, rate, dt = el - c->shown_el;
+	int covered;
 
-	if (!c->shown_ok || !moved || t <= c->shown) {
-		c->over = 0;
-	} else if (t <= c->shown * KI_COPY_RISE) {
-		c->over = 0;
-		t = c->shown;
-	} else if (!c->over) {
-		c->over = 1;
-		c->over_t = el;
-		t = c->shown;
-	} else if (el - c->over_t < KI_COPY_RISE_S) {
-		t = c->shown;
-	} else {
-		c->over = 0;
-	}
+	if (!c->shown_ok || done > c->shown_bytes || fdone > c->shown_files)
+		c->moved_el = el;
+	if (line)
+		copy_hist_add(c, t, el);
 	c->shown_ok = 1;
-	c->shown = t;
 	c->shown_bytes = done;
 	c->shown_files = fdone;
+	if (last) {
+		c->counting = 1;
+		t = 0;
+	} else if (!c->counting) {
+		covered = copy_hist(c, el, KI_COPY_SETTLE_S, &lo, &hi);
+		frac = el / (el + t);
+		if (frac < KI_COPY_SETTLED &&
+		    (frac < KI_COPY_START || !covered ||
+		     hi > lo * (1 + KI_COPY_SPREAD))) {
+			c->shown_el = el;
+			return -1;
+		}
+		/* The first figure is the settled estimate. */
+		c->counting = 1;
+	} else if (el - c->moved_el >= KI_COPY_QUIET_S) {
+		t = c->shown;
+	} else {
+		copy_hist(c, el, KI_COPY_EST_S, &lo, &hi);
+		if (c->shown > hi) {
+			t = c->shown - dt < hi ? c->shown - dt : hi;
+			if (t < c->shown - KI_COPY_FAST * dt)
+				t = c->shown - KI_COPY_FAST * dt;
+		} else {
+			below = hi > 0 ? 1 - c->shown / hi : 0;
+			rate = 1 - (1 - KI_COPY_SLOW) * (below - KI_COPY_NEAR) /
+					   (KI_COPY_FAR - KI_COPY_NEAR);
+			if (rate > 1)
+				rate = 1;
+			if (rate < KI_COPY_SLOW)
+				rate = KI_COPY_SLOW;
+			t = c->shown - rate * dt;
+		}
+	}
+	if (!last && t < 1)
+		t = c->shown > 0 && c->shown < 1 ? c->shown : 1;
+	c->shown = t;
+	c->shown_el = el;
 	return t;
+}
+
+/* The copy line's text for `done` bytes `el` seconds in, `t` seconds
+ * left (below 0: "estimating time left") and a payload of `total` less
+ * `links` bytes (none when 0). */
+static void copy_text(double done, double el, unsigned long long total,
+		      unsigned long long links, double t, char *note, size_t n)
+{
+	char had[24], all[24], rate[40] = "--", left[40] = "estimating time left";
+
+	if (el >= 1) {
+		char r[24];
+
+		iec_size((unsigned long long)(done / el), r, sizeof(r));
+		snprintf(rate, sizeof(rate), "%s/s", r);
+	}
+	if (t >= 0) {
+		unsigned long long r2 = (unsigned long long)(t + 0.5);
+		snprintf(left, sizeof(left), "about %llu:%02llu:%02llu left",
+			 r2 / 3600, r2 / 60 % 60, r2 % 60);
+	}
+	iec_size((unsigned long long)done, had, sizeof(had));
+	if (total) {
+		iec_size(total > links ? total - links : total, all,
+			 sizeof(all));
+		snprintf(note, n, "%s of %s, %s, %s", had, all, rate, left);
+	} else {
+		snprintf(note, n, "%s copied, %s, %s", had, rate, left);
+	}
 }
 
 /*
@@ -1103,7 +1436,10 @@ static double copy_hold(KiCopyFiles *c, double t, double el, double done,
  * THE TIME LEFT IS TWO COSTS: the bytes still to go at a cost per byte, and
  * the files still to go at a cost per file, the two fitted by least squares,
  * with an intercept, on samples of the seconds, bytes and files done
- * (copy_fit). A live tree copies its large files at the disk's speed and
+ * (copy_fit). A sample weighs half as much for every KI_COPY_HALF_S seconds
+ * it is older than the newest, so the costs are those of the part of the
+ * tree being copied now and not an average over the whole copy so far. A
+ * live tree copies its large files at the disk's speed and
  * ends in tens of thousands of small ones, where the per-file cost is what
  * takes the time: scaled from bytes alone that tail reads as seconds when
  * it is a minute, and scaled from files alone, at a rate that counts the
@@ -1117,17 +1453,32 @@ static double copy_hold(KiCopyFiles *c, double t, double el, double done,
  * far — the unknown one is held at its floor (copy_fit), and the time left
  * is low by the rest of it: through a tree whose large files all come
  * before its small ones, the small ones' cost shows only when they start,
- * a few seconds before the time left takes it in. The live tree mixes the
- * two from its first seconds, and its time left is close from early on.
+ * and the estimate takes it in a few seconds later, but a figure once
+ * shown does not rise to it (THE TIME SHOWN): it slows, and reads low
+ * through the tail. The live tree mixes the two from its first seconds,
+ * and its time left is close from early on.
  *
- * Until the samples span two seconds there is nothing to fit, and the
- * time left is the bytes' estimate from the first progress line on, or the
- * files' when that is lower: early on, the one of the two that has barely
- * moved gives hours. The first fitted estimate replaces that one as it is.
+ * Until the samples span KI_COPY_SPAN_S seconds there is nothing to fit,
+ * and the note reads "estimating time left". The first time shown is a
+ * fitted one: an estimate from the first lines alone, of bytes or of files
+ * with the other cost left out, is low, and it would take a rise to
+ * correct.
+ * With no `files` to fit on, the time left is that estimate from the first
+ * progress line on: the bytes', or the files' when that is lower, since
+ * the one of the two that has barely moved gives hours.
  *
  * The files left are read from `to-chk=<left>/<total>` only. `ir-chk=` is
  * a list still growing, whose "left" is the part found so far; the copy
  * runs --no-inc-recursive, so rsync prints `to-chk=` from its first line.
+ *
+ * THE FILES ARE COUNTED BY WHAT THEY COST. `to-chk` counts every entry of
+ * rsync's list, and a directory, a symbolic link or a later name of a file
+ * costs a fraction of a regular file (KiCopyProfile). The walk's profile
+ * turns the entries done into the cost done, read at the same fraction of
+ * the list, so the files done and left that the fit sees are in the
+ * profile's units: through the live tree's icon themes, where the links
+ * outnumber the files, the files left shrink by what they cost and not by
+ * their count, and the time left does not charge the links a file's cost.
  *
  * THE BYTES LEFT ARE THE BYTES RSYNC COPIES, which are not the bytes its
  * percentage is of. With -H its total counts every name of a hard-linked
@@ -1137,8 +1488,8 @@ static double copy_hold(KiCopyFiles *c, double t, double el, double done,
  * nothing read as a third more time than there is. The total is rsync's,
  * worked out from its percentage once that is ten or more, less `links`,
  * the bytes of every name after a file's first (probe_payload); before
- * that, `total` less `links`. It is never less than the bytes done, and the
- * fraction done is of it, so the line reaches 100% as the copy does. The
+ * that, `total` less `links`. It is never less than the bytes done, so the
+ * bytes shown reach the total as the copy ends. The
  * note's "of" is `total` less `links`, the walk's own figure: one worked
  * out from a whole-number percentage moves by a tenth of a GiB from line to
  * line.
@@ -1149,29 +1500,75 @@ static double copy_hold(KiCopyFiles *c, double t, double el, double done,
  * taken only on a line with counts, where bytes and files are of one
  * moment.
  *
- * THE TIME SHOWN DOES NOT RISE WHILE THE COPY MOVES, but for a cost that
- * has just shown (copy_hold). Each refit moves the estimate a little, and a
- * clock that climbs while bytes and files go by reads as a copy going
- * backwards: while either advances, the time shown is at most the last one
- * shown. The one exception is a cost the samples have begun to show, such
- * as the first small files after a run of large ones. Holding the time low
- * through that would leave it wrong to the end, so once every estimate for
- * KI_COPY_RISE_S seconds has stood more than KI_COPY_RISE times the time
- * shown, the time shown rises to the latest estimate. A single high
- * estimate, or one only a little above, is held. A copy that is stalled,
- * neither advancing, shows the estimate unheld.
+ * THE FRACTION DONE IS OF THE TIME: the seconds so far over those and the
+ * time left shown, or the estimate while no figure is shown, once there is
+ * an estimate, and of the bytes before that, never less than the last one. A front end's bars follow it, and the live
+ * tree's bytes are not spread like its time: two thirds of them go in the
+ * first third of the copy, and a bar of bytes would stand near the end for
+ * the half minute of small files and links. The time shown reaches 0 as
+ * the copy ends, so the fraction reaches 1.
+ *
+ * THE TIME SHOWN COUNTS DOWN WHILE THE COPY MOVES, AND ONCE SHOWN IT NEVER
+ * RISES (copy_hold). Each refit moves the estimate, and a clock that
+ * climbs while bytes and files go by reads as a copy going backwards, one
+ * that stands still as a copy that has stopped.
+ *
+ * NO FIGURE IS SHOWN UNTIL THE ESTIMATE SETTLES, and the note reads
+ * "estimating time left". The first fits are low on a slower disk and on
+ * a tree whose small files have not started, and high behind a slow
+ * start, and a figure shown from them would have to rise, or stand, to
+ * meet the copy. The estimate has settled once the note's own fraction,
+ * the seconds so far over those and the estimate, is KI_COPY_START, and
+ * the estimates that stood over the last KI_COPY_SETTLE_S seconds lie
+ * within KI_COPY_SPREAD above the lowest of them; or once that fraction
+ * is KI_COPY_SETTLED whatever they do. That fraction is of the estimate:
+ * the forced settle comes before a fifth of the copy while the estimate
+ * is at most 1.31 times the real time left (0.16r/(0.84 + 0.16r) of the
+ * copy for an estimate r times it), and an estimate higher than that
+ * which still spreads by more than KI_COPY_SPREAD leaves no figure shown
+ * past a fifth. The first figure is the estimate then, and from it
+ * on only the countdown moves it. While no figure is shown the fraction
+ * done is of the estimate, so the bar moves with the copy.
+ *
+ * THE COUNTDOWN IS SET AGAINST THE ESTIMATE, the highest of those that
+ * stood over the last KI_COPY_EST_S seconds. Above it, the time shown
+ * falls to it, at least as fast as the clock and at most KI_COPY_FAST
+ * times as fast, so a high first figure, or one an estimate has fallen
+ * below, is corrected within a second or two wherever it came from.
+ * Below it, the time shown counts at the clock while it is within
+ * KI_COPY_NEAR of it, and slower the further below, down to KI_COPY_SLOW
+ * of the clock from KI_COPY_FAR below it on, which lets the copy catch up
+ * with a figure that is low. An estimate a little above the time shown is
+ * as often a slow stretch of the copy as a copy slower than shown, and
+ * the clock keeps the figure from following it up; one well above is the
+ * copy's own pace. The time shown never rises.
+ *
+ * NO WHOLE SECOND STANDS FOR TWO SECONDS WHILE THE COPY MOVES, which a
+ * front end framing once a second would show as three equal frames. rsync
+ * prints a line as each file ends and once a second through a large file,
+ * so the reader (run_full) ticks each KI_COPY_TICK_S without a line, and
+ * a tick (ki_copy_tick) counts the time shown down from the last line's
+ * estimate as a line would. A whole second then stands for at most
+ * 1/KI_COPY_SLOW + KI_COPY_TICK_S seconds, under two. A copy whose bytes
+ * and files have not advanced for KI_COPY_QUIET_S, longer than rsync's
+ * second between running lines, is not moving, and keeps its time shown.
+ *
+ * The time shown is never below one second until the copy's last line
+ * (`to-chk=0/N`, or no bytes and no files left), which shows 0:00:00: an
+ * estimate that reaches 0 before rsync has finished would show 0:00:00 on
+ * a copy still running, and the end of the copy would not be told apart
+ * from a stall.
  */
 int ki_copy_note(const char *line, double el, unsigned long long total,
-		 unsigned long long links, KiCopyFiles *files, double *frac,
-		 char *note, size_t n)
+		 unsigned long long links, const KiCopyProfile *prof,
+		 KiCopyFiles *files, double *frac, char *note, size_t n)
 {
 	/* 10,544,196,181  45%  45.67MB/s    0:00:12 (xfr#123, to-chk=456/789) */
-	char size[32], pct[16], had[24], all[24], rate[40] = "--";
-	char left[32] = "--:--:--";
+	char size[32], pct[16];
 	const char *chk;
 	long fleft = -1, ftotal = 0;
 	unsigned long long done;
-	double t = -1, btot = 0, bleft = -1, fdone = -1;
+	double t = -1, btot = 0, bleft = -1, fdone = -1, fl = -1, ft = 0;
 	int p;
 
 	if (sscanf(line, "%31s %15s", size, pct) != 2 || !strchr(pct, '%') ||
@@ -1193,8 +1590,16 @@ int ki_copy_note(const char *line, double el, unsigned long long total,
 	} else {
 		fleft = -1;
 	}
-	if (fleft >= 0)
+	if (fleft >= 0 && prof && prof->ok && ftotal > 0) {
+		ft = (double)ftotal * prof->per_entry;
+		fdone = ft * copy_prof_at(prof, (double)(ftotal - fleft) /
+							(double)ftotal);
+		fl = ft - fdone;
+	} else if (fleft >= 0) {
+		ft = (double)ftotal;
 		fdone = (double)(ftotal - fleft);
+		fl = (double)fleft;
+	}
 
 	if (p >= 10 && p < 100)
 		btot = done * 100.0 / (p + 0.5) - (double)links;
@@ -1213,61 +1618,117 @@ int ki_copy_note(const char *line, double el, unsigned long long total,
 		copy_sample(files, el, (double)done, fdone >= 0 ? fdone : 0);
 
 	if (el >= 1) {
-		char r[24];
 		/* The first sample is the first progress line. */
 		int first = files && files->n;
 		double run = first ? el - files->el[0] : el;
 		double b0 = first ? files->bytes[0] : 0;
 		double f0 = first ? files->files[0] : 0;
 
-		iec_size((unsigned long long)(done / el), r, sizeof(r));
-		snprintf(rate, sizeof(rate), "%s/s", r);
 		if (files && bleft >= 0)
-			t = copy_fit(files, bleft, btot, fleft, (double)ftotal);
-		if (files && t >= 0 && !files->fitted) {
-			files->fitted = 1;
-			files->shown_ok = 0;
-		}
-		if (t < 0 && run >= 1 && bleft >= 0 && done > b0) {
+			t = copy_fit(files, bleft, btot, fl, ft);
+		if (!files && run >= 1 && bleft >= 0 && done > b0) {
 			t = run * bleft / (done - b0);
-			if (fleft >= 0 && fdone > f0 &&
-			    run * fleft / (fdone - f0) < t)
-				t = run * fleft / (fdone - f0);
+			if (fl >= 0 && fdone > f0 && run * fl / (fdone - f0) < t)
+				t = run * fl / (fdone - f0);
 		}
-		if (files && t >= 0)
-			t = copy_hold(files, t, el, (double)done, fdone);
-		if (t >= 0) {
-			unsigned long long r2 = (unsigned long long)(t + 0.5);
-			snprintf(left, sizeof(left), "%llu:%02llu:%02llu",
-				 r2 / 3600, r2 / 60 % 60, r2 % 60);
+		if (files && t >= 0) {
+			double e = t;
+
+			files->est = e;
+			t = copy_hold(files, e, el, (double)done, fdone,
+				      fleft == 0 || (bleft <= 0 && fl <= 0), 1);
+			*frac = el / (el + (t >= 0 ? t : e));
 		}
 	}
-	iec_size(done, had, sizeof(had));
-	if (total) {
-		iec_size(total > links ? total - links : total, all,
-			 sizeof(all));
-		snprintf(note, n, "%s of %s, %s, about %s left", had, all,
-			 rate, left);
-	} else {
-		snprintf(note, n, "%s copied, %s, about %s left", had, rate,
-			 left);
+	if (files) {
+		if (*frac < files->frac)
+			*frac = files->frac;
+		files->frac = *frac;
 	}
+	copy_text((double)done, el, total, links, t, note, n);
 	return 1;
+}
+
+int ki_copy_tick(double el, unsigned long long total,
+		 unsigned long long links, KiCopyFiles *files, double *frac,
+		 char *note, size_t n)
+{
+	double t;
+
+	if (!files->shown_ok || !files->counting || files->shown <= 0 ||
+	    el - files->moved_el >= KI_COPY_QUIET_S)
+		return 0;
+	t = copy_hold(files, files->est, el, files->shown_bytes,
+		      files->shown_files, 0, 0);
+	*frac = el / (el + t);
+	if (*frac < files->frac)
+		*frac = files->frac;
+	files->frac = *frac;
+	copy_text(files->shown_bytes, el, total, links, t, note, n);
+	return 1;
+}
+
+/* KINSTALL_COPY_TRACE=<file>: every line a copy's rsync prints is appended
+ * to the file as `<seconds since the copy started> <line>`, after a
+ * `# <copy> total=<bytes> links=<bytes>` line naming the copy and the
+ * figures its time left is given, and a `# prof <per_entry> <at[0]>…`
+ * line holding the walk's profile. That is the stream `harness copy`
+ * reads, so a copy on real hardware replays in the selftest as it ran. */
+static FILE *rsync_trace;
+
+static void copy_trace_start(const char *what)
+{
+	const char *path = getenv("KINSTALL_COPY_TRACE");
+
+	if (rsync_trace)
+		fclose(rsync_trace);
+	rsync_trace = path && *path ? fopen(path, "ae") : NULL;
+	if (!rsync_trace)
+		return;
+	fprintf(rsync_trace, "# %s total=%llu links=%llu\n", what,
+		rsync_total_bytes, rsync_link_bytes);
+	if (rsync_prof && rsync_prof->ok) {
+		fprintf(rsync_trace, "# prof %.6f", rsync_prof->per_entry);
+		for (int i = 0; i <= KI_COPY_PROF; i++)
+			fprintf(rsync_trace, " %.6f", (double)rsync_prof->at[i]);
+		fputc('\n', rsync_trace);
+	}
+}
+
+static void copy_trace_end(void)
+{
+	if (rsync_trace)
+		fclose(rsync_trace);
+	rsync_trace = NULL;
 }
 
 static void rsync_parse(const char *line)
 {
 	char note[128];
 
+	if (rsync_trace)
+		fprintf(rsync_trace, "%.3f %s\n", kb_now_s() - rsync_t0, line);
 	if (ki_copy_note(line, kb_now_s() - rsync_t0, rsync_total_bytes,
-			 rsync_link_bytes, &rsync_files, &rsync_total_pct, note,
-			 sizeof(note))) {
+			 rsync_link_bytes, rsync_prof, &rsync_files,
+			 &rsync_total_pct, note, sizeof(note))) {
 		emit('P', "%.4f", rsync_total_pct);
 		emit('N', "%s", note);
 		return;
 	}
 	if (line[0] && line[0] != ' ')
 		logf_("%s", line);
+}
+
+static void rsync_tick(void)
+{
+	char note[128];
+
+	if (ki_copy_tick(kb_now_s() - rsync_t0, rsync_total_bytes,
+			 rsync_link_bytes, &rsync_files, &rsync_total_pct, note,
+			 sizeof(note))) {
+		emit('P', "%.4f", rsync_total_pct);
+		emit('N', "%s", note);
+	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -1635,7 +2096,7 @@ static void do_partition(void)
 	emit('N', "writing the partition table");
 	char *sf[] = { "sfdisk", "--wipe", "always", cfg.disk, NULL };
 	static const int ok0[] = { 0 };
-	int rc = run_full(sf, layout, NULL, ok0, 1);
+	int rc = run_full(sf, layout, NULL, NULL, ok0, 1);
 	if (rc)
 		fail("sfdisk failed (exit %d)", rc);
 
@@ -2060,12 +2521,15 @@ static void do_copy(void)
 	rsync_link_bytes = cfg.with_appbox ? ki_sys.link_extra_bytes
 					   : ki_sys.link_extra_bytes -
 						     ki_sys.link_extra_appbox_bytes;
+	rsync_prof = cfg.with_appbox ? &ki_sys.copy_prof : &ki_sys.copy_prof_sys;
 	rsync_t0 = kb_now_s();
+	copy_trace_start("root");
 
 	/* 24 is "some files vanished before transfer" — on a live system with
 	 * a running session that is the normal case, not a failure. */
 	static const int ok[] = { 0, 24 };
-	int rc = run_full(argv, NULL, rsync_parse, ok, 2);
+	int rc = run_full(argv, NULL, rsync_parse, rsync_tick, ok, 2);
+	copy_trace_end();
 	if (rc)
 		fail("rsync failed (exit %d)", rc);
 
@@ -2121,7 +2585,7 @@ static int fetch_index(void)
 		static const int ok[] = { 0 };
 
 		mkpath("%s", cache);
-		index_state = run_full(fetch, NULL, index_parse, ok, 1) == 0;
+		index_state = run_full(fetch, NULL, index_parse, NULL, ok, 1) == 0;
 	}
 	return index_state;
 }
@@ -2165,11 +2629,11 @@ static void do_native(void)
 	online = fetch_index();
 	if (!online)
 		emit('W', "%s; the chosen groups are recorded and install "
-			  "later with `kdos update install --pending`",
+			  "later with `sudo kdos update install --pending`",
 		     index_why());
 	kb_buf_printf(&b, "# Native groups chosen during the install and not "
-			  "yet installed.\n# `kdos update install --pending` "
-			  "installs them.\n");
+			  "yet installed.\n# `sudo kdos update install "
+			  "--pending` installs them.\n");
 	for (int i = 0; i < ki_nnative; i++) {
 		if (!ki_native[i].chosen)
 			continue;
@@ -2183,7 +2647,7 @@ static void do_native(void)
 			if (run(inst) == 0)
 				continue;
 			emit('W', "group %s did not install; it is recorded for "
-				  "`kdos update install --pending`",
+				  "`sudo kdos update install --pending`",
 			     ki_native[i].id);
 		}
 		kb_buf_printf(&b, "%s\n", ki_native[i].id);
@@ -2800,8 +3264,11 @@ static void do_slotb(void)
 				     : 0) * 1024;
 	rsync_link_bytes = ki_sys.link_extra_bytes -
 			   ki_sys.link_extra_appbox_bytes;
-	if (run_full(argv, NULL, rsync_parse, ok, 1))
+	rsync_prof = &ki_sys.copy_prof_sys;
+	copy_trace_start("slot-b");
+	if (run_full(argv, NULL, rsync_parse, rsync_tick, ok, 1))
 		fail("rsync into slot B failed");
+	copy_trace_end();
 
 	snprintf(from, sizeof(from), "UUID=%s\t/\t", a_uuid);
 	snprintf(to, sizeof(to), "UUID=%s\t/\t", b_uuid);

@@ -490,8 +490,8 @@ static void plan_dump(int json)
 			printf("apps cost     %s (an estimate)\n",
 			       kb_human_size(ki_apps_bytes()));
 		}
-		/* Native groups are downloaded during the install, or recorded
-		 * when the network does not answer. */
+		/* Native groups are downloaded during the install when a
+		 * binhost is named and answers, and recorded otherwise. */
 		printf("groups        %s\n",
 		       ki_groups_chosen() ? cfg.groups : "(none chosen)");
 		printf("dry run       %s\n", cfg.dry_run ? "yes" : "no");
@@ -617,7 +617,10 @@ static void plan_dump(int json)
 			kb_json_str(&b, ki_native[i].id);
 		}
 	}
-	kb_buf_str(&b, "]");
+	/* Whether `kdos update` has a binhost to fetch them from
+	 * (probe.c): with none they are recorded, and a front end says so. */
+	kb_buf_printf(&b, "], \"binhost\": %s",
+		      ki_binhost_named ? "true" : "false");
 	kb_buf_str(&b, ",\n  \"services_off\": [");
 	if (svc.n)
 		kb_buf_str(&b, svc.p);

@@ -18,4 +18,3 @@
 # earlier build left installed, so the image never carries one. A line
 # starting with '#' and a blank line are skipped.
 
-texlive-doc

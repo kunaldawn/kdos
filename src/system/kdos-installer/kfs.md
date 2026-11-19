@@ -12,10 +12,11 @@ with `kdos-appbox`'s `catalogue.c`, so the installer reads the application catal
 of calling a program that may not exist yet. Its pages, steps, answer files and event stream are in
 [kinstall](../../../docs/kdos/04-programs/kinstall.md).
 
-The `kinstall` on the image is not this port's. `10_bootstrap`'s `130_kinstall.sh` compiles the
-same sources with the cross compiler, so that every tree from the first bootable one onward has
-an installer, and no phase list names this port. The recipe is there so a running KDOS can
-rebuild the installer natively with `kpkg`.
+`41_system` builds this port, the last name in its `src-system.txt`, and the image and the
+binhost carry its package. `10_bootstrap`'s `130_kinstall.sh` compiles the same sources first with
+the cross compiler, so that every tree from the first bootable one onward has an installer, and
+installs `/usr/bin/kinstall` as a file no package owns; this package adopts it (see
+[Who owns a file](../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
 
 ## Notes
 
@@ -30,8 +31,9 @@ rebuild the installer natively with `kpkg`.
 - **`-I"$APPBOX"` is for `catalogue.c`'s header**, which lives with `kdos-appbox`; nothing else of
   that program is compiled in.
 - **The recipe hash does not cover `catalogue.c` or `kinstall-core`.** It covers this directory and
-  `src/libs`, so a `kpkg` build of this port counts an edit to either alone as nothing to do; see
-  [The image's installer is rebuilt only when its mark is gone](../../../docs/kdos/06-reference/known-gaps.md#the-images-installer-is-rebuilt-only-when-its-mark-is-gone).
+  `src/libs`, so a build counts an edit to either alone as nothing to do until
+  `--rebuild kdos-installer` names the port; see
+  [The installer's recipe hash leaves out its backend and the catalogue reader](../../../docs/kdos/06-reference/known-gaps.md#the-installers-recipe-hash-leaves-out-its-backend-and-the-catalogue-reader).
 - **`sysvinit` is a dependency** for `reboot`, which the installer runs at the end of an install
   that asks for it.
 - **A new library on its line moves the installer.** One that needs a real `-l` cannot be

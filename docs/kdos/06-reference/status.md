@@ -71,7 +71,7 @@ end to end on a booted machine that holds packs, exercised by a harness that rep
 its reason rather than passing silently.
 
 The natively ported applications are mostly unproved. The lists of the userland phases,
-`40_lang` to `44_apps`, name 2,183 recipes for the languages, the system, the graphical stacks,
+`40_lang` to `44_apps`, name 2,185 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed. On the live ISO under QEMU,
 Dolphin, Konsole, Discover and System Settings start and draw; no other application has been
 started on an image, and none has been installed from a published binhost under a harness. A package in the build tree is current when its recipe's `kp_recipe_hash`
@@ -100,14 +100,12 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,442 recipes, 2 are absent from the build tree's package
+- **The ports tree.** Of the 2,442 recipes, 0 are absent from the build tree's package
   database once a build has run every phase, and the database holds no name that no recipe gives.
-  The two are `kdos-installer`, which `10_bootstrap` compiles by script and never records as a
-  package, and `texlive-doc`, whose recipe `ports/unbuilt` lists as built by no phase. Every other
-  port is installed by a package phase, as a name on its list or as a dependency of one that no
-  earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
+  Every port is installed by a package phase, as a name on its list or as a dependency of one
+  that no earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
   list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 185 by `40_lang`,
-  1,035 by `41_system`, 188 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 91 by
+  1,045 by `41_system`, 189 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 91 by
   `50_desktop` and 2 by `60_kernel`; `python3 testing/phaseclosure.py` prints these figures, and
   `testing/bookcounts.py` fails on a recipe that no phase installs unless `ports/unbuilt` names it.
   On a built tree, the absent names are what `comm -23` prints when it compares the names of the

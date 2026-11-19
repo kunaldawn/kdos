@@ -436,44 +436,359 @@ int kn_decide_oom(const KnOom *o, int prev, KnPost *out)
 	return 1;
 }
 
-/* ── what the installer could not install ─────────────────────────────── */
+/* ── what the installer left to install ───────────────────────────────── */
 
 /*
- * THE INSTALLER'S CHOICES THAT ARE STILL WAITING. When kinstall can neither
- * import nor build a selection it was asked for, it records the id in
- * /var/lib/kdos/apps-pending, and Discover's KDOS backend shows those under
- * "Selected during install". The notice says so once per content of the
- * file and is withdrawn when the file names nothing, which is when Discover
- * has installed them all. A line is a selection, an application or a group
- * of ports, so the summary names neither and the body counts selections.
+ * THE INSTALLER'S CHOICES THAT ARE STILL WAITING. kinstall keeps two records
+ * on the new disk. /var/lib/kdos/apps-pending names the boxed selections it
+ * was asked for, which it never builds; Discover's KDOS backend shows them
+ * under "Selected during install" and empties the file as it installs them.
+ * /var/lib/kdos/groups-pending names the native groups chosen and not
+ * installed: recorded alone on a medium that names no binary host, or left
+ * when the binary host did not answer or a group failed. The body says only
+ * that they are not installed yet, which is true of all three; Discover does
+ * not list those, and `kdos update install --pending` installs them and
+ * empties that file. A line is one id in either file, so the boxed half counts
+ * selections, and the native half counts groups and names each by the title
+ * its `group <id> <title>` line in /ports/groups gives it, the name the
+ * installer offered it by; a group with no title there is named by its id.
+ *
+ * One notice covers both, keyed on both files' ids and not on the titles,
+ * so a tree whose title changed does not say it again: it is said once per
+ * content of the pair, and withdrawn when neither names anything. The body
+ * says what each file holds and how it is installed, in plain text with the
+ * command alone on a line of its own, since Plasma draws Markdown as the
+ * characters it is written in and wraps a long line after a hyphen; an
+ * untitled id is quoted, with non-breaking hyphens. One group, or the count
+ * alone, ends with the command. Several groups alone put a one-line count
+ * and the command first, then "They are:" and every title. When boxed
+ * selections wait too, the groups' text and the command come first and
+ * Discover's one-line count follows. In every layout the command stays
+ * inside the popup's first lines rather than below its scroll. Open
+ * Discover, and Discover's icon, are offered only when apps-pending names
+ * something, since Discover has nothing to show for a group; a notice of
+ * groups alone, whose remedy is a terminal command, carries the
+ * software-install icon.
  */
-void kn_parse_pending(const char *text, KnPending *out)
+/* A package name as kpkg and `kdos update` spell one. */
+static int name_ok(const char *s)
+{
+	size_t n = strlen(s);
+
+	return n && n < 128 && *s != '.' && *s != '-' &&
+	       strspn(s, "abcdefghijklmnopqrstuvwxyz"
+			 "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-") == n;
+}
+
+/*
+ * The title /ports/groups gives group `id`, read as probe.c and `kdos
+ * update` read that file: a `#` starts a comment, and a `group <id>
+ * <title>` line names it. "" when the file has no such line or no title.
+ */
+static void group_title(const char *titles, const char *id, char *out,
+			size_t cap)
+{
+	size_t il = strlen(id);
+
+	out[0] = '\0';
+	for (const char *l = titles; l && *l;) {
+		const char *nl = strchr(l, '\n');
+		size_t len = nl ? (size_t)(nl - l) : strlen(l);
+		const char *h = memchr(l, '#', len);
+		const char *e;
+
+		if (h)
+			len = (size_t)(h - l);
+		e = l + len;
+		while (l < e && (*l == ' ' || *l == '\t'))
+			l++;
+		if (e - l > 6 && !strncmp(l, "group", 5) &&
+		    (l[5] == ' ' || l[5] == '\t')) {
+			const char *g = l + 6;
+
+			while (g < e && (*g == ' ' || *g == '\t'))
+				g++;
+			if ((size_t)(e - g) >= il && !strncmp(g, id, il) &&
+			    (g + il == e || g[il] == ' ' || g[il] == '\t' ||
+			     g[il] == '\r')) {
+				const char *t = g + il;
+
+				while (t < e && (*t == ' ' || *t == '\t'))
+					t++;
+				while (e > t && (e[-1] == ' ' || e[-1] == '\t' ||
+						 e[-1] == '\r'))
+					e--;
+				if (e > t) {
+					size_t tl = (size_t)(e - t);
+
+					if (tl >= cap)
+						tl = cap - 1;
+					memcpy(out, t, tl);
+					out[tl] = '\0';
+				}
+				return;
+			}
+		}
+		l = nl ? nl + 1 : l + strlen(l);
+	}
+}
+
+/* Append `s` with the three characters Plasma's notification body reads
+ * as markup written as entities, so a title is drawn as it is spelt. */
+static void append_escaped(KbBuf *b, const char *s)
+{
+	for (; *s; s++) {
+		if (*s == '&')
+			kb_buf_str(b, "&amp;");
+		else if (*s == '<')
+			kb_buf_str(b, "&lt;");
+		else if (*s == '>')
+			kb_buf_str(b, "&gt;");
+		else
+			kb_buf_add(b, s, 1);
+	}
+}
+
+/*
+ * An untitled group's id as display text: in typographic quotes, each
+ * hyphen a non-breaking one (U+2011), since Qt breaks a line after a hyphen
+ * and "nosuch-" / "group" reads as two words. The id is never a command
+ * argument here; the body's command line is plain ASCII.
+ */
+static void append_id(KbBuf *b, const char *id)
+{
+	kb_buf_str(b, "“");
+	for (; *id; id++) {
+		if (*id == '-')
+			kb_buf_str(b, "\u2011");
+		else
+			kb_buf_add(b, id, 1);
+	}
+	kb_buf_str(b, "”");
+}
+
+/*
+ * Count the ids in one record and append them to `ids`. Without `names` a
+ * line is read as Discover reads apps-pending: trimmed, and skipped when it
+ * is empty, a `#` comment or has a space inside. With `names` it is read as
+ * `kdos update install --pending` reads groups-pending: cut at the first
+ * space, tab or `#`, and counted when what is left is a package name, so
+ * the notice names exactly what that command installs; each group is also
+ * written into `names` by its title in `titles`, or its id as append_id
+ * writes it, one name a line: a title may hold a comma or an "and", so any
+ * separator inside a line would read as more groups than there are, and
+ * Plasma's notification server turns each newline into a line break.
+ * `names` is left empty when they do not fit in `cap`, since a cut list
+ * would name a group that is not there.
+ */
+static int count_ids(const char *text, KbBuf *ids, const char *titles,
+		     char *names, size_t cap, int *untitled)
 {
 	char *copy = kb_strdup(text ? text : ""), *save = NULL;
+	KbBuf list = { 0 };
+	int n = 0;
+
+	if (names)
+		names[0] = '\0';
+	for (char *l = strtok_r(copy, "\n", &save); l;
+	     l = strtok_r(NULL, "\n", &save)) {
+		size_t len;
+
+		if (names) {
+			l[strcspn(l, " \t\r#")] = '\0';
+			if (!name_ok(l))
+				continue;
+		} else {
+			while (*l == ' ' || *l == '\t')
+				l++;
+			len = strlen(l);
+			while (len && (l[len - 1] == ' ' ||
+				       l[len - 1] == '\t' ||
+				       l[len - 1] == '\r'))
+				l[--len] = '\0';
+			if (!*l || *l == '#' || strpbrk(l, " \t"))
+				continue;
+		}
+		n++;
+		kb_buf_printf(ids, "%s\n", l);
+		if (names) {
+			char title[192];
+
+			group_title(titles, l, title, sizeof(title));
+			if (!title[0])
+				(*untitled)++;
+			if (title[0])
+				append_escaped(&list, title);
+			else
+				append_id(&list, l);
+			kb_buf_str(&list, "\n");
+		}
+	}
+	if (names && list.p) {
+		size_t o = 0;
+		int fits = 1;
+
+		for (char *l = strtok_r(list.p, "\n", &save); l && fits;
+		     l = strtok_r(NULL, "\n", &save)) {
+			size_t need = (o ? 1 : 0) + strlen(l);
+
+			if (o + need + 1 > cap) {
+				fits = 0;
+				break;
+			}
+			o += (size_t)snprintf(names + o, cap - o, "%s%s",
+					      o ? "\n" : "", l);
+		}
+		if (!fits)
+			names[0] = '\0';
+	}
+	kb_buf_free(&list);
+	free(copy);
+	return n;
+}
+
+void kn_parse_pending(const char *apps, const char *groups,
+		      const char *titles, KnPending *out)
+{
 	KbBuf ids = { 0 };
 
 	memset(out, 0, sizeof(*out));
-	for (char *l = strtok_r(copy, "\n", &save); l;
-	     l = strtok_r(NULL, "\n", &save)) {
-		while (*l == ' ' || *l == '\t')
-			l++;
-		size_t n = strlen(l);
-		while (n && (l[n - 1] == ' ' || l[n - 1] == '\t' ||
-			     l[n - 1] == '\r'))
-			l[--n] = '\0';
-		if (!*l || *l == '#' || strpbrk(l, " \t"))
-			continue;
-		out->n++;
-		kb_buf_printf(&ids, "%s\n", l);
-	}
+	out->n = count_ids(apps, &ids, NULL, NULL, 0, NULL);
+	kb_buf_printf(&ids, "--\n");
+	out->ngroups = count_ids(groups, &ids, titles, out->groups,
+				 sizeof(out->groups), &out->untitled);
 	hash_hex(ids.p ? ids.p : "", out->key, sizeof(out->key));
 	kb_buf_free(&ids);
-	free(copy);
+}
+
+/* The command on a line of its own, so no wrap splits it at a hyphen:
+ * Plasma's notification server turns the newline into a line break, and the
+ * line is the command alone, plain ASCII, as a reader copies it. "binary
+ * host" is the installer's term for the same server. The line before it
+ * fits the popup's width unwrapped, so it costs one popup line. */
+#define KN_PENDING_RUN "Once a binary host answers, run:\n" \
+		       "sudo kdos update install --pending"
+
+/* What Plasma's notification popup shows before it scrolls: eight lines,
+ * each 38 to 41 characters wide on a 1920x1080 session as its proportional
+ * font's glyphs fall, so the count takes the narrow end. A body with groups
+ * and boxed apps is laid out to these, so the command and the boxed-app
+ * line stand above the scroll; a wider figure lets a title that wraps in
+ * the popup push the boxed line below it. */
+#define KN_POPUP_LINES 8
+#define KN_POPUP_COLS 38
+
+/* The popup lines `text` takes, each newline-separated line wrapped at word
+ * breaks to KN_POPUP_COLS as the popup wraps it. A UTF-8 character and a
+ * markup entity each count as one character, as they are drawn; a word
+ * wider than the popup takes as many lines as it fills. */
+static int popup_lines(const char *text)
+{
+	int lines = 0;
+
+	for (const char *b = text; *b;) {
+		const char *e = strchr(b, '\n');
+		const char *end = e ? e : b + strlen(b);
+		int col = 0;
+
+		lines++;
+		for (const char *w = b; w < end;) {
+			int n = 0;
+
+			while (w < end && *w == ' ')
+				w++;
+			if (w == end)
+				break;
+			while (w < end && *w != ' ') {
+				if (*w == '&') {
+					const char *semi = memchr(w, ';',
+								  (size_t)(end - w));
+
+					if (semi && semi - w <= 8)
+						w = semi;
+				}
+				if (((unsigned char)*w & 0xC0) != 0x80)
+					n++;
+				w++;
+			}
+			if (col && col + 1 + n > KN_POPUP_COLS) {
+				lines++;
+				col = 0;
+			}
+			col += (col ? 1 : 0) + n;
+			while (col > KN_POPUP_COLS) {
+				lines++;
+				col -= KN_POPUP_COLS;
+			}
+		}
+		b = e ? e + 1 : end;
+	}
+	return lines;
+}
+
+/* Several groups by title, inside `budget` popup lines: a one-line header,
+ * as many titles as fit, and "and N more" when not all do. The summary
+ * already says the software was chosen during the install and is not
+ * installed yet, so the header only counts. 0 when not even one title fits
+ * beside the "and N more" line, and the caller says the count alone. */
+static int list_groups(const KnPending *pd, int budget, char *out,
+		       size_t cap)
+{
+	char titles[sizeof(pd->groups)], *save = NULL;
+	const char *t[64];
+	int n = 0, shown = 0, used;
+	size_t o;
+
+	kb_strlcpy(titles, pd->groups, sizeof(titles));
+	for (char *l = strtok_r(titles, "\n", &save); l && n < 64;
+	     l = strtok_r(NULL, "\n", &save))
+		t[n++] = l;
+	used = 1;
+	for (int i = 0; i < n; i++)
+		used += popup_lines(t[i]);
+	if (n == pd->ngroups && used <= budget) {
+		shown = n;
+	} else {
+		used = 2;
+		while (shown < n && used + popup_lines(t[shown]) <= budget)
+			used += popup_lines(t[shown++]);
+		if (!shown)
+			return 0;
+	}
+	o = (size_t)snprintf(out, cap, "%d KDOS application groups:",
+			     pd->ngroups);
+	for (int i = 0; i < shown && o < cap; i++)
+		o += (size_t)snprintf(out + o, cap - o, "\n%s", t[i]);
+	if (shown < pd->ngroups && o < cap)
+		o += (size_t)snprintf(out + o, cap - o, "\nand %d more",
+				      pd->ngroups - shown);
+	return o < cap;
+}
+
+/* Several groups and nothing else waiting: a one-line count, the command,
+ * then "They are:" and every title, one a line. The summary already says
+ * the software was chosen during the install and is not installed yet, so
+ * the count line says no more than that the groups wait, and the command
+ * stands on the popup's third line. */
+static void groups_alone(const KnPending *pd, char *out, size_t cap)
+{
+	char titles[sizeof(pd->groups)], *save = NULL;
+	size_t o;
+
+	kb_strlcpy(titles, pd->groups, sizeof(titles));
+	o = (size_t)snprintf(out, cap, "%d KDOS application groups wait.\n"
+			     KN_PENDING_RUN "\nThey are:", pd->ngroups);
+	for (char *l = strtok_r(titles, "\n", &save); l && o < cap;
+	     l = strtok_r(NULL, "\n", &save))
+		o += (size_t)snprintf(out + o, cap - o, "\n%s", l);
 }
 
 int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 {
-	if (pd->n <= 0) {
+	char apps[384] = "", groups[640] = "";
+	int budget;
+
+	if (pd->n <= 0 && pd->ngroups <= 0) {
 		if (s->id[KN_PENDING] || s->key[KN_PENDING][0]) {
 			post_close(KN_PENDING, out);
 			return 1;
@@ -485,22 +800,67 @@ int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 	memset(out, 0, sizeof(*out));
 	out->kind = KN_PENDING;
 	kb_strlcpy(out->key, pd->key, sizeof(out->key));
-	out->icon = "plasmadiscover";
+	out->icon = pd->n > 0 ? "plasmadiscover" : "system-software-install";
 	out->urgency = 1;
 	out->persistent = 1;
 	kb_strlcpy(out->summary, "Software chosen during install is not "
 		   "installed yet", sizeof(out->summary));
-	if (pd->n == 1)
-		kb_strlcpy(out->body, "1 selection is waiting: Discover lists "
-			   "it under Selected during install, and installs it "
-			   "from there.", sizeof(out->body));
-	else
-		snprintf(out->body, sizeof(out->body),
-			 "%d selections are waiting: Discover lists them under "
-			 "Selected during install, and installs them from "
-			 "there.", pd->n);
-	out->actions[0] = KN_ACT_DETAILS;
-	out->actions[1] = "Open Discover";
+	/* Plasma's popup shows the top KN_POPUP_LINES of a body and scrolls
+	 * the rest, so what the reader must act on goes first. Both kinds
+	 * waiting: the groups and their command come first, and the boxed apps
+	 * follow as one short line that names what it counts, the body's last.
+	 * The command is the one thing the reader cannot get elsewhere (Open
+	 * Discover is a button), and the boxed line is the only words saying
+	 * apps wait too, so both stay inside KN_POPUP_LINES: the group list
+	 * gives up titles to keep them there. Several groups alone put a
+	 * one-line count and the command before "They are:" and every title,
+	 * with no budget, so a scroll hides nothing but titles: the notice is
+	 * the one place on the desktop that names them, since Discover does
+	 * not list a group and there is no Details action to show the rest. */
+	if (pd->n == 1 && pd->ngroups > 0)
+		kb_strlcpy(apps, "1 boxed app also waits in Discover.",
+			   sizeof(apps));
+	else if (pd->n > 1 && pd->ngroups > 0)
+		snprintf(apps, sizeof(apps), "%d boxed apps also wait in "
+			 "Discover.", pd->n);
+	else if (pd->n == 1)
+		kb_strlcpy(apps, "1 selection is waiting: Discover lists it "
+			   "under Selected during install, and installs it "
+			   "from there.", sizeof(apps));
+	else if (pd->n > 1)
+		snprintf(apps, sizeof(apps), "%d selections are waiting: "
+			 "Discover lists them under Selected during install, "
+			 "and installs them from there.", pd->n);
+	budget = KN_POPUP_LINES - popup_lines(KN_PENDING_RUN) -
+		 popup_lines(apps);
+	/* "Not installed yet" and never "could not be installed": a medium
+	 * with no binary host records the groups without trying them. */
+	if (pd->ngroups == 1 && pd->groups[0])
+		snprintf(groups, sizeof(groups), "%s%s was chosen during the "
+			 "install and is not installed yet. " KN_PENDING_RUN,
+			 pd->untitled ? "The KDOS application group " : "",
+			 pd->groups);
+	else if (pd->ngroups == 1)
+		kb_strlcpy(groups, "1 KDOS application group chosen during the "
+			   "install is not installed yet. " KN_PENDING_RUN,
+			   sizeof(groups));
+	else if (pd->ngroups > 1 && pd->groups[0] && !apps[0])
+		groups_alone(pd, groups, sizeof(groups));
+	else if (pd->ngroups > 1 && pd->groups[0] &&
+		 list_groups(pd, budget, groups, sizeof(groups) -
+			     sizeof(KN_PENDING_RUN)))
+		kb_strlcpy(groups + strlen(groups), "\n" KN_PENDING_RUN,
+			   sizeof(groups) - strlen(groups));
+	else if (pd->ngroups > 1)
+		snprintf(groups, sizeof(groups), "%d KDOS application groups "
+			 "chosen during the install are not installed yet. "
+			 KN_PENDING_RUN, pd->ngroups);
+	snprintf(out->body, sizeof(out->body), "%s%s%s", groups,
+		 apps[0] && groups[0] ? "\n" : "", apps);
+	if (pd->n > 0) {
+		out->actions[0] = KN_ACT_DETAILS;
+		out->actions[1] = "Open Discover";
+	}
 	return 1;
 }
 

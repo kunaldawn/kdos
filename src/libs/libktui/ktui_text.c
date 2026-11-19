@@ -9,7 +9,6 @@
  * ---------------------------------
  */
 
-#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -46,6 +45,13 @@ void ktui_note(int x, int y, int w, const char *s)
  * half a sequence at each end of the cut, which draws as a replacement glyph
  * and restarts the next line mid-character.
  *
+ * A LINE BREAKS AT ITS LAST SPACE, OR AFTER ITS LAST '/' WHEN IT HAS NO SPACE.
+ * A word longer than the line is then a path or a zone name, and cutting it
+ * after a separator keeps each piece readable: "America/Argentina/" over
+ * "Buenos_Aires", not "America/Argentina/Buenos" over "_Aires". A slash never
+ * beats a space, so a path inside a sentence still starts its own line whole.
+ * Only a run with neither is cut at the column budget.
+ *
  * EVERY LINE ADVANCES `s` BY AT LEAST ONE CODEPOINT. A width that fits nothing
  * — a one-column pane under a double-width character — otherwise copies
  * nothing, advances nothing and spins here for ever.
@@ -57,7 +63,7 @@ int ktui_para(int x, int y, int w, const char *s, int fg)
 	if (!s || w <= 0)
 		return 0;
 	while (*s) {
-		const char *p = s, *brk = NULL;
+		const char *p = s, *brk = NULL, *slash = NULL;
 		int cols = 0;
 
 		while (*p) {
@@ -69,6 +75,8 @@ int ktui_para(int x, int y, int w, const char *s, int fg)
 				break;
 			if (cp == ' ' && p > s)
 				brk = p;
+			else if (cp == '/' && *nx)
+				slash = nx;
 			cols += cw;
 			p = nx;
 		}
@@ -82,7 +90,7 @@ int ktui_para(int x, int y, int w, const char *s, int fg)
 		if (*p == ' ')
 			brk = p;
 
-		const char *end = brk ? brk : p;
+		const char *end = brk ? brk : slash ? slash : p;
 		uint32_t cp;
 
 		if (end == s)
@@ -119,53 +127,40 @@ int ktui_para(int x, int y, int w, const char *s, int fg)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * ONE RULE FOR BOTH INSTALLERS: by length alone, in characters, as the
+ * graphical installer's strength hint rates it. Under 8 is short, 8 to 15
+ * fair, 16 and over long. A second rule here would rate the same password
+ * two ways on one machine, depending on which installer asked.
+ */
 int ktui_pw_score(const char *p)
 {
-	int len = (int)strlen(p);
-	int lower = 0, upper = 0, digit = 0, other = 0;
-	for (const char *c = p; *c; c++) {
-		if (islower((unsigned char)*c))
-			lower = 1;
-		else if (isupper((unsigned char)*c))
-			upper = 1;
-		else if (isdigit((unsigned char)*c))
-			digit = 1;
-		else
-			other = 1;
+	int len = 0;
+
+	while (*p) {
+		uint32_t cp;
+
+		p = ktui_utf8_next(p, &cp);
+		len++;
 	}
-	int classes = lower + upper + digit + other;
-	int s = 0;
-	if (len >= 8)
-		s++;
-	if (len >= 12)
-		s++;
-	if (len >= 16)
-		s++;
-	if (classes >= 2)
-		s++;
-	if (classes >= 3)
-		s++;
-	if (len < 4)
-		s = 0;
-	return s > 4 ? 4 : s;
+	return len < 8 ? 0 : len < 16 ? 1 : 2;
 }
 
 void ktui_pw_meter(int x, int y, int w, const char *p)
 {
-	/* THE BAR IS THE PART READ AT A GLANCE, so every score has to move it:
-	 * the lit count is derived from the number of scores rather than from
-	 * a step size, or the top scores saturate the bar and two different
-	 * passwords paint the same picture. */
-	enum { PW_CELLS = 12, PW_STEPS = 5 };	/* names[] has PW_STEPS entries */
-	static const char *names[PW_STEPS] = { "weak", "fair", "good", "strong",
-					       "excellent" };
+	/* THE BAR IS THE PART READ AT A GLANCE, so every score moves it: the
+	 * lit count is derived from the number of scores rather than from a
+	 * step size, or the top score saturates the bar early and two scores
+	 * paint the same picture. */
+	enum { PW_CELLS = 12, PW_STEPS = 3 };	/* names[] has PW_STEPS entries */
+	static const char *names[PW_STEPS] = { "short", "fair", "long, good" };
 	if (!*p) {
 		ktui_note(x, y, w, "empty");
 		return;
 	}
 	int s = ktui_pw_score(p);
-	int fg = s <= 0 ? KT_ERR : s <= 1 ? KT_WARN : KT_ACCENT;
-	int lit = (s + 1) * PW_CELLS / PW_STEPS;	/* 2, 4, 7, 9, 12 */
+	int fg = s <= 0 ? KT_WARN : KT_ACCENT;
+	int lit = (s + 1) * PW_CELLS / PW_STEPS;	/* 4, 8, 12 */
 
 	ktui_draw_hline(x, y, lit, KT_G_FULL, fg, KT_BG);
 	ktui_draw_hline(x + lit, y, PW_CELLS - lit, KT_G_SHADE, KT_DIM, KT_BG);

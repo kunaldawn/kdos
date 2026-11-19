@@ -26,3 +26,12 @@ XSL's), so both have to be installed before this port builds. It also needs `xml
 from [libxml2](#port-libxml2) and stops without it. [perl](#port-perl) and
 [perl-uri](#port-perl-uri) are in `depends` because the configure URI-encodes the DTD directory by
 running `perl -MURI::Escape`.
+
+The same DTD and stylesheets are read at run time, not only at configure: `meinproc6` and the KIO
+help worker behind `help:/` (what F1 and KDE Help Center open) load `kdedbx45.dtd`, which reads the
+docbook-xml DTD, and the KDE stylesheets, which `xsl:import` docbook-xsl's
+`/usr/share/xml/docbook/xsl-stylesheets-1.79.2/html/chunk.xsl` and the rest. No file of the package
+links or names them in a way `kpkg needs` measures, so the recipe names both in `runtime =`, which
+records them as `need` lines and makes `imageset.py --verify` fail an image that keeps this port
+without them. Neither is in `ports/buildonly`, so the base closure and a prebuilt `kdos update
+install` follow this port's `depends =` into both. Without them every DocBook handbook fails with "could not be parsed".

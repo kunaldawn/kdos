@@ -29,6 +29,7 @@
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <QDBusMessage>
 #include <QDir>
 #include <QFile>
 #include <QProcess>
@@ -250,6 +251,51 @@ private Q_SLOTS:
         QVERIFY(m_kcm->message().contains(u"administrator's password"_s));
         QVERIFY(read(u"bootstate"_s).contains(u"\ntry      = \n"_s));
         QVERIFY(!m_kcm->isTrialArmed());
+    }
+
+    /* A refused Try is the news only until a trial is armed by another
+     * route: the server's own State change clears it, and a refusal about
+     * the channel is not touched by the trial at all. */
+    void trialRefusalClearsWhenArmedElsewhere()
+    {
+        begin();
+        write(u"deny"_s, u"Try\n"_s);
+        QTRY_VERIFY(slot(1)->isBootable());
+        m_kcm->startNextTime(u"b"_s);
+        QTRY_COMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        QVERIFY(m_kcm->message().contains(u"administrator's password"_s));
+
+        /* An unrelated update leaves the refusal in place. */
+        m_kcm->client()->refresh();
+        QTest::qWait(300);
+        QVERIFY(m_kcm->message().contains(u"administrator's password"_s));
+
+        write(u"deny"_s, QString());
+        QDBusMessage call = QDBusMessage::createMethodCall(u"io.kdos.Slots1"_s, Kdos::SlotsClient::objectPath(), Kdos::SlotsClient::interfaceName(), u"Try"_s);
+        call << u"b"_s;
+        const QDBusMessage reply = QDBusConnection::sessionBus().call(call);
+        QVERIFY2(reply.type() == QDBusMessage::ReplyMessage, qPrintable(reply.errorMessage()));
+
+        QTRY_VERIFY(m_kcm->isTrialArmed());
+        QTRY_VERIFY(m_kcm->message().isEmpty());
+        QCOMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::NoMessage));
+    }
+
+    void channelRefusalOutlivesATrial()
+    {
+        begin();
+        write(u"deny"_s, u"SetChannel\n"_s);
+        QTRY_VERIFY(m_kcm->isConfigured());
+        m_kcm->setChannelKind(u"folder"_s);
+        m_kcm->setChannelLocation(u"/srv/kdos"_s);
+        m_kcm->save();
+        QTRY_COMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        const QString refusal = m_kcm->message();
+
+        m_kcm->client()->requestTry(u"b"_s);
+        QTRY_VERIFY(m_kcm->isTrialArmed());
+        QTest::qWait(300);
+        QCOMPARE(m_kcm->message(), refusal);
     }
 
     void channelIsASettingAppliedBySave()

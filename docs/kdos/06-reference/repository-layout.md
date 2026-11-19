@@ -337,17 +337,18 @@ and any recipe at another depth, and fails the orphan sweep in
 `script/phases/70_image/040_orphans.sh` when its list of repositories leaves out an area that holds
 a recipe, since the sweep deletes from the image every package whose port it cannot find.
 
-Two directories under `src/system/` are built by `10_bootstrap` scripts rather than through a phase
-list, because that phase runs before the package manager exists:
+Two directories under `src/system/` are built by `10_bootstrap` scripts, because that phase runs
+before the package manager exists:
 
 - `src/system/kdos-kpkg/` has no `kpkgbuild`. The package manager cannot be built by the package
   manager, so `script/phases/10_bootstrap/120_kpkg.sh` compiles it directly and installs it as
   `/usr/bin/kpkg` with four symlinks beside it: `kpkgadd`, `kpkgbuild`, `kpkgdel` and
   `kpkgdepends`.
-- `src/system/kdos-installer/` has a recipe, but no phase list names it.
-  `script/phases/10_bootstrap/130_kinstall.sh` compiles `kinstall` from the same directory, taking
-  every `.c` file by glob. The recipe's `build.sh` also compiles `src/system/kinstall-core`, the
-  backend, which has no recipe of its own.
+- `src/system/kdos-installer/` has a recipe, which `41_system`'s list names, and
+  `script/phases/10_bootstrap/130_kinstall.sh` compiles `kinstall` from the same directory first,
+  taking every `.c` file by glob, for the trees before that phase. The package adopts the file the
+  step installed. Both builds also compile `src/system/kinstall-core`, the backend, which has no
+  recipe of its own.
 
 ## The script directory
 

@@ -25,8 +25,17 @@
  * group is not prebuilt, and a prebuilt install refuses both. Fetching the
  * index needs root and this page has no root path but the helper's, so with
  * no index at all the page says to connect and press Refresh on Discover's
- * Updates page, which fetches it, and offers to look again. A group that is not
- * all prebuilt is left to Discover, which can build it here.
+ * Updates page, which fetches it, and offers to look again. When the command
+ * also says nothing names a binhost for this tree and no refresh can name
+ * one (`binhost` false: the last refresh found none, the published tree is
+ * older, or there is no second slot to take a tree into), the page says
+ * instead that this release
+ * installs no group ready-made and Discover can build programs here, and
+ * the page's header drops its "downloaded ready to run" for the same
+ * sentence about Discover, so the header never promises what the message
+ * under it takes back. A
+ * group that is not all prebuilt is left to Discover, which can build it
+ * here.
  *
  * On the live medium an install goes into the session's memory and is gone
  * at the next start, and the page says so.
@@ -50,7 +59,9 @@ Welcome.ScrollablePage {
     id: page
 
     heading: i18ndc("kdos-welcome", "@title:window", "Make It Yours")
-    description: i18ndc("kdos-welcome", "@info:usagetip", "KDOS starts small. Add whole sets of programs here, downloaded ready to run; Discover has every program one at a time.")
+    description: page.loaded && page.noBinhost
+        ? i18ndc("kdos-welcome", "@info:usagetip", "KDOS starts small. Discover has every program one at a time and can build them on this computer.")
+        : i18ndc("kdos-welcome", "@info:usagetip", "KDOS starts small. Add whole sets of programs here, downloaded ready to run; Discover has every program one at a time.")
 
     Kdos.Run {
         id: run
@@ -66,6 +77,7 @@ Welcome.ScrollablePage {
     property var outcome: null
 
     readonly property bool noIndex: Groups.noIndex(page.groups)
+    readonly property bool noBinhost: Groups.noBinhost(page.groups)
     readonly property bool installing: page.job !== null
     readonly property real downloadBytes: Groups.bytes(page.groups, page.chosen)
 
@@ -112,7 +124,9 @@ Welcome.ScrollablePage {
             return i18ndc("kdos-welcome", "@info", "Installed");
         }
         if (g.size === null) {
-            return page.noIndex
+            return page.noBinhost
+                ? i18ndc("kdos-welcome", "@info", "Not available ready-made on this release")
+                : page.noIndex
                 ? i18ndc("kdos-welcome", "@info", "Size not known until the package list is on this computer")
                 : i18ndc("kdos-welcome", "@info", "Not all of it is ready-made; Discover can build it on this computer");
         }
@@ -145,7 +159,7 @@ Welcome.ScrollablePage {
         Kirigami.InlineMessage {
             Layout.fillWidth: true
             type: Kirigami.MessageType.Warning
-            visible: page.loaded && page.noIndex
+            visible: page.loaded && page.noIndex && !page.noBinhost
             text: i18ndc("kdos-welcome", "@info", "This computer does not have the list of ready-made packages yet. Connect to the internet, open Discover, press Refresh on its Updates page, then look again here.")
             actions: [
                 Kirigami.Action {
@@ -158,6 +172,20 @@ Welcome.ScrollablePage {
                     icon.name: "view-refresh"
                     enabled: !page.installing
                     onTriggered: page.refresh()
+                }
+            ]
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            type: Kirigami.MessageType.Information
+            visible: page.loaded && page.noBinhost
+            text: i18ndc("kdos-welcome", "@info", "This release names no binary host, so no group can be installed ready-made. Discover can build programs on this computer.")
+            actions: [
+                Kirigami.Action {
+                    text: i18ndc("kdos-welcome", "@action:button", "Open Discover")
+                    icon.name: "plasmadiscover"
+                    onTriggered: Welcome.Utils.launchApp("org.kde.discover")
                 }
             ]
         }

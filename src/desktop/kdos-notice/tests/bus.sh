@@ -71,7 +71,9 @@ export PATH="$D/bin:$PATH" XDG_STATE_HOME=$D/state XDG_DATA_HOME=$D/data \
 	KDOS_OOMD_SOCK=$D/oomd.sock KDOS_NOTICE_PKGDB=$D/db \
 	KDOS_NOTICE_UPDATE_JSON=$D/var/update.json \
 	KDOS_NOTICE_BOOTSTATE=$D/run/bootstate.json \
-	KDOS_APPS_PENDING=$D/var/apps-pending
+	KDOS_APPS_PENDING=$D/var/apps-pending \
+	KDOS_GROUPS_PENDING=$D/var/groups-pending \
+	KDOS_NOTICE_GROUPS=$D/var/groups
 
 now restarts restarts-apps.json
 now cve cve-3.json

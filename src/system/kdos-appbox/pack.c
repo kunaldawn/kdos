@@ -620,15 +620,19 @@ int pack_box_create(const Profile *p, const char *merged,
  * keeps nothing in its container — the writes are kdos-packd's upper — so one
  * created over the session's runtime directory, or under a cgroup scope whose
  * login session has ended (which podman can never start again), is removed
- * here and made again by the caller. A store box keeps its writes inside its
- * container and is never removed by a launch.
+ * here and made again by the caller. Only a box whose profile's base is
+ * `pack:<id>` is a pack box here, the rule box_unstick keeps: a box with no
+ * profile — a distrobox somebody made with `distrobox create`, kdos-fetch-app's
+ * among them — shares the session's runtime directory by design and keeps
+ * everything installed in it inside its container, and a store box keeps its
+ * writes there too, so neither is ever removed by a start or a launch.
  */
 static int pack_box_outdated(const char *box, const Profile *p)
 {
 	KbArgv r = {0};
 	int layout;
 
-	if (box_lane(p) != BOX_LANE_PACK)
+	if (strncmp(p->base, "pack:", 5))
 		return 0;
 	layout = box_layout_private(box);
 	if (layout != 0 && !box_cgroup_stale(box))
@@ -744,6 +748,9 @@ int pack_box_ensure(const char *box, const char *id)
  * Start the box if it is not running, then wait for kdos-boxinit's marker.
  * The wait is the same contract the image lane keeps — `container_setup_done`
  * in podman's logs — so `box_wait_ready()` is shared rather than reimplemented.
+ * Session restore starts every box the last session left running through
+ * here, so a box with no profile — a distrobox — reaches it too: that one is
+ * given a plain `podman start` and nothing else, never a remove or a compose.
  */
 int pack_box_start(const char *box)
 {
@@ -801,10 +808,11 @@ int pack_box_start(const char *box)
 	}
 	/* Stopped, so a pack box whose container is out of date — over the
 	 * session's runtime directory, or under a dead session's cgroup — is
-	 * made again before podman is asked to start it. */
-	if (box_lane(&p) == BOX_LANE_PACK && box_exists(box) &&
-	    pack_box_outdated(box, &p) &&
-	    pack_box_ensure(box, p.base[0] ? p.base + 5 : box) != 0)
+	 * made again over its profile's packs before podman is asked to start
+	 * it. A box with no profile is never removed or composed: it is
+	 * started below with a plain `podman start`, as it is. */
+	if (box_exists(box) && pack_box_outdated(box, &p) &&
+	    pack_box_ensure(box, p.base + 5) != 0)
 		return 1;
 
 	/*

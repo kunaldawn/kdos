@@ -72,7 +72,13 @@ password covers the queue. A group whose size the command gives as null is not o
 null when the signed binhost index is not on the machine, or when a package of the group is not
 prebuilt, and a prebuilt install refuses both. The page has no root path to fetch the index, so
 with none it sends the person to the Refresh button on Discover's Updates page and offers to look
-again.
+again. Where every row's `binhost` is false, nothing names a binhost for this tree and no refresh
+can give it one (the last binhost step found none named, the last fetch refused the published tree
+as older, or the machine has no second slot and its refresh fetches no tree), so the page says
+instead that this release installs no group ready-made and
+offers Discover, which can build programs on the computer; its header then says only that Discover
+has every program and can build them here, without the "downloaded ready to run" the message under
+it would contradict.
 
 **Order.** Welcome Center puts distribution pages after its own, and before its closing Enjoy It!
 page. The Accessibility page is `00-` so that the [plasma-welcome](#port-plasma-welcome) patch that

@@ -21,7 +21,9 @@
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QGuiApplication>
 #include <QUrl>
+#include <QWindow>
 
 #include <functional>
 
@@ -102,6 +104,7 @@ SystemVersionsModule::SystemVersionsModule(QObject *parent, const KPluginMetaDat
     });
     connect(m_client, &SlotsClient::loadedChanged, this, &SystemVersionsModule::availabilityChanged);
     connect(m_client, &SlotsClient::propertiesUpdated, this, [this] {
+        dropStaleTrialMessage();
         /* The first answer after a SetChannel is the server's own spelling
          * of what was written, and it replaces the edit. */
         if (m_awaitingChannel) {
@@ -118,6 +121,7 @@ SystemVersionsModule::SystemVersionsModule(QObject *parent, const KPluginMetaDat
     });
     connect(m_client, &SlotsClient::slotsUpdated, this, [this] {
         syncSlots();
+        dropStaleTrialMessage();
         Q_EMIT statusChanged();
     });
     connect(m_client, &SlotsClient::busyChanged, this, &SystemVersionsModule::busyChanged);
@@ -480,12 +484,100 @@ void SystemVersionsModule::setMessage(const QString &text, MessageType type)
      * again when the same thing happens again. */
     m_message = text;
     m_messageType = text.isEmpty() ? NoMessage : type;
+    m_trialMessage = false;
     Q_EMIT messageChanged();
+}
+
+QString SystemVersionsModule::trialKey() const
+{
+    return isTrialArmed() ? u"armed "_s + m_client->trySlot() : QString();
+}
+
+void SystemVersionsModule::dropStaleTrialMessage()
+{
+    /* A refusal is the news only while the trial it was about stands: once
+     * a trial is armed or called off by another route (kdos-bootctl, a
+     * second System Settings, busctl), it would sit above the banner that
+     * contradicts it until closed by hand. */
+    if (m_trialMessage && trialKey() != m_trialKeyAtMessage) {
+        dismissMessage();
+    }
 }
 
 void SystemVersionsModule::dismissMessage()
 {
     setMessage(QString(), NoMessage);
+}
+
+void SystemVersionsModule::holdOver(QWindow *scene)
+{
+    if (!scene || scene->isVisible()) {
+        return;
+    }
+    const auto usable = [scene](QWindow *w) {
+        return w && w != scene && w->isVisible() && !scene->isAncestorOf(w);
+    };
+    QWindow *top = QGuiApplication::focusWindow();
+    while (top && top->parent()) {
+        top = top->parent();
+    }
+    if (!usable(top)) {
+        top = nullptr;
+        const auto windows = QGuiApplication::topLevelWindows();
+        for (QWindow *w : windows) {
+            if (usable(w) && w->type() == Qt::Window && !w->transientParent()) {
+                top = w;
+                break;
+            }
+        }
+    }
+    if (top && scene->transientParent() != top) {
+        scene->setTransientParent(top);
+    }
+}
+
+/* QWindow's own unbounded maximum, QWINDOWSIZE_MAX in a private header. */
+static constexpr int unboundedWindowSize = (1 << 24) - 1;
+
+/* Every change of a bound makes QWindow resize the window into its bounds,
+ * unless the minimum exceeds the maximum in both dimensions. A window
+ * whose size has moved since it was held is outside the old bounds, so the
+ * order of the changes decides whether the window is resized. */
+void SystemVersionsModule::holdSize(QWindow *prompt, QWindow *page)
+{
+    if (!prompt || prompt == page) {
+        releaseSize();
+        return;
+    }
+    if (m_heldPrompt && m_heldPrompt != prompt) {
+        releaseSize();
+    }
+    const QSize size = prompt->size();
+    if (m_heldPrompt == prompt && prompt->minimumSize() == size && prompt->maximumSize() == size) {
+        return;
+    }
+    /* The maximum moves first: whatever the old minimum, fitting the
+     * window's size into a maximum of that same size leaves it there. Qt's
+     * Wayland plugin sends no bounds whose minimum exceeds the maximum, and
+     * both changes reach the compositor in one commit. */
+    prompt->setMaximumSize(size);
+    prompt->setMinimumSize(size);
+    m_heldPrompt = prompt;
+}
+
+void SystemVersionsModule::releaseSize()
+{
+    if (QWindow *window = m_heldPrompt) {
+        /* A minimum above every maximum leaves the window as it is while
+         * the bounds pass through states that would fit it into the old
+         * hold; the last two changes fit its size into bounds that already
+         * hold it. */
+        window->setMinimumSize(QSize(unboundedWindowSize, unboundedWindowSize));
+        window->setMaximumSize(QSize(unboundedWindowSize - 1, unboundedWindowSize - 1));
+        window->setMinimumSize(QSize(0, 0));
+        window->setMaximumSize(QSize(unboundedWindowSize, unboundedWindowSize));
+    }
+    m_heldPrompt.clear();
 }
 
 void SystemVersionsModule::load()
@@ -583,6 +675,10 @@ void SystemVersionsModule::onRequestFinished(SlotsClient::Request request, const
 {
     if (!errorName.isEmpty()) {
         setMessage(describeError(request, errorName, errorMessage), Error);
+        if (request == SlotsClient::Request::Try || request == SlotsClient::Request::CancelTry) {
+            m_trialMessage = true;
+            m_trialKeyAtMessage = trialKey();
+        }
         if (request == SlotsClient::Request::SetChannel) {
             m_awaitingChannel = false;
             updateSaveState();

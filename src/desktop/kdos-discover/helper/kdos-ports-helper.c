@@ -5,26 +5,37 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-ports-helper — one host port into this slot, prebuilt or built here
+ *   kdos-ports-helper — one host port into this slot, prebuilt or built
+ *   here, or one installed on request out of it
  *
  *   pkexec /usr/libexec/kdos-discover/kdos-ports-helper install <port>
+ *   pkexec /usr/libexec/kdos-discover/kdos-ports-helper remove <port>
  *   pkexec /usr/libexec/kdos-discover/kdos-ports-builder install \
  *       [--build-deps=prebuilt|source] <port>
  *
  * Discover's KDOS backend runs one of these, through pkexec, when somebody
- * installs host software the running system lacks. Each is the whole of the
- * root side of its button, so it takes one verb and one port name, and the
- * name is checked before it means anything: pkexec's grant names a program,
- * never its arguments, and /usr/bin/kdos under the same grant would reach
- * every subcommand.
+ * installs host software the running system lacks or removes a port that
+ * was installed on request. Each is the whole of the root side of its
+ * button, so it takes one verb and one port name, and the name is checked
+ * before it means anything: pkexec's grant names a program and its first
+ * argument, never the rest, and /usr/bin/kdos under the same grant would
+ * reach every subcommand.
  *
- * ONE SOURCE, TWO PROGRAMS, TWO GRANTS. kdos-ports-helper takes the port
- * prebuilt from the signed binhost, under io.kdos.ports.install.
- * kdos-ports-builder, this file compiled with KPH_BUILD, builds the port on
- * this computer under io.kdos.ports.build, which asks for the password every
- * time: it runs a recipe's build.sh as root, for minutes or hours, and a kept
- * grant for the first would otherwise cover it. pkexec picks the action by
- * the program's path, so the two routes are two programs.
+ * ONE SOURCE, TWO PROGRAMS, THREE GRANTS. kdos-ports-helper takes the port
+ * prebuilt from the signed binhost, under io.kdos.ports.install, and removes
+ * one under io.kdos.ports.remove. kdos-ports-builder, this file compiled
+ * with KPH_BUILD, builds the port on this computer under io.kdos.ports.build,
+ * which asks for the password every time: it runs a recipe's build.sh as
+ * root, for minutes or hours, and a kept grant for the first would otherwise
+ * cover it. pkexec picks the action by the program's path and its first
+ * argument (exec.path, exec.argv1), so the two routes are two programs, and
+ * each action of the helper names its verb: an action naming the path alone
+ * would match either verb, whichever pkexec read first.
+ *
+ * THE REMOVAL IS `kdos update remove`'S. It refuses a port that is not in
+ * /var/lib/kdos/world (part of the system) and one an installed package
+ * depends on, and runs `kpkg remove`, which takes the port off the world set
+ * and the origin record too.
  *
  * THE INSTALL IS `kdos update install`'S, never a second copy of it. That
  * command owns everything the route decides: the signed index `kdos update
@@ -37,9 +48,10 @@
  * builder passes --build-deps only when asked; without it, `build-deps =` in
  * /etc/kdos/update.conf decides.
  *
- * THE CATALOGUE IS WRITTEN AGAIN after an install, so Discover lists the new
- * program as installed host software at its next refresh. A catalogue that
- * could not be written leaves the port installed and is said, not failed.
+ * THE CATALOGUE IS WRITTEN AGAIN after an install or a removal, so
+ * Discover's next refresh lists the program as it now is. A catalogue that
+ * could not be written leaves the port as the step left it and is said, not
+ * failed.
  *
  * The environment pkexec hands over is replaced by a fixed PATH and the C
  * locale before anything runs, so nothing the caller set reaches a root
@@ -76,7 +88,7 @@ static int kph_name_ok(const char *s)
 #define KPH_USAGE "install [--build-deps=prebuilt|source] <port>"
 #else
 #define KPH_NAME "kdos-ports-helper"
-#define KPH_USAGE "install <port>"
+#define KPH_USAGE "install|remove <port>"
 #endif
 
 int main(int argc, char **argv)
@@ -93,7 +105,11 @@ int main(int argc, char **argv)
 		argc = 3;
 	}
 #endif
-	if (argc != 3 || strcmp(argv[1], "install")) {
+	int removing = 0;
+#ifndef KPH_BUILD
+	removing = argc == 3 && !strcmp(argv[1], "remove");
+#endif
+	if (argc != 3 || (strcmp(argv[1], "install") && !removing)) {
 		fprintf(stderr, "usage: " KPH_NAME " " KPH_USAGE "\n");
 		return 2;
 	}
@@ -113,13 +129,14 @@ int main(int argc, char **argv)
 
 	kb_argv_add(&install, "kdos");
 	kb_argv_add(&install, "update");
-	kb_argv_add(&install, "install");
+	kb_argv_add(&install, removing ? "remove" : "install");
 #ifdef KPH_BUILD
 	kb_argv_add(&install, "--source");
 	if (deps)
 		kb_argv_add(&install, deps);
 #else
-	kb_argv_add(&install, "--prebuilt");
+	if (!removing)
+		kb_argv_add(&install, "--prebuilt");
 #endif
 	kb_argv_add(&install, port);
 	kb_argv_end(&install);
@@ -129,10 +146,10 @@ int main(int argc, char **argv)
 	kb_argv_add(&cat, "kdos-discover-catalog");
 	kb_argv_end(&cat);
 	if (kb_run_tty(&cat) != 0)
-		fprintf(stderr, KPH_NAME ": %s is installed and the AppStream "
+		fprintf(stderr, KPH_NAME ": %s is %s and the AppStream "
 				"catalogue was not rewritten; Discover lists it "
-				"after the next system update\n",
-			port);
-	printf("==> %s installed\n", port);
+				"as it was until the next system update\n",
+			port, removing ? "removed" : "installed");
+	printf("==> %s %s\n", port, removing ? "removed" : "installed");
 	return 0;
 }

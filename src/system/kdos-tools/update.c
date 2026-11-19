@@ -21,6 +21,9 @@
  *   kdos update install   one port and what it lacks into the running root:
  *                         prebuilt from the binhost, or built here with its
  *                         missing dependencies prebuilt or built too
+ *   kdos update remove    one port somebody installed, that nothing
+ *                         installed needs, out of the running root
+ *   kdos update removable the installed ports `remove` takes
  *   kdos update theme     re-apply the accent to $HOME after an update
  *
  * ── What "an update" means here ──
@@ -50,6 +53,12 @@
  * machine downloads, and every file is checked against the signed manifest.
  * The binhost lane is the way when no image newer than the running system is
  * published, and --image, --binhost and --source pick one by name.
+ *
+ * AN IMAGE NEEDS A SLOT TO BE WRITTEN INTO. A machine with one root (a disk
+ * too small for two slots, or the live medium) is never offered one: `check`
+ * reports no image, and `apply` names the image it passes over and installs
+ * from the binhost into the running root. Only --image, or --root DIR naming
+ * a root to write, takes an image there, and --image without --root refuses.
  *
  * A PREBUILT PACKAGE IS USED ONLY WHEN THE WHOLE SET IS PREBUILT. kpkg's three
  * equality tests (architecture, build-config hash, recipe hash) decide each
@@ -96,6 +105,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/mount.h>
@@ -415,6 +425,7 @@ static int same_commit(const char *a, const char *b)
  *
  *   fetch <code> <unix time> <detail>
  *   binhost <code> <unix time> <detail>
+ *   binhost-at <named|none> <unix time> <base|->
  *   apply <code> <unix time> <detail>
  *
  * `fetch` codes: `ok`, `no-key` (refused before any download because
@@ -426,6 +437,12 @@ static int same_commit(const char *a, const char *b)
  * binhost index whose signature no key in /etc/kdos/keys verifies, a release
  * index for another release, or a file other than the one the release index
  * names).
+ * `binhost-at` is written with every `binhost` line and names the base that
+ * result is for (`-` when none was named). A `binhost` line whose
+ * `binhost-at` differs from the base update.conf, $KDOS_UPDATE_BINHOST or
+ * the tree names now is about a binhost that is not configured, and `check`,
+ * `install` and the fetch hints pass over it; one with no `binhost-at` line
+ * is read as for the base named now.
  * `image` codes: `ok`, `absent` (no slot image is published there),
  * `no-key` (as for `binhost`), `no-network`, `fetch-failed`, `unverified`.
  * `apply` codes: `ok`, `acquired` (a slot filled and checked, detail
@@ -436,27 +453,47 @@ static int same_commit(const char *a, const char *b)
  * the build that failed yesterday. kdos-sysupdated reads the `fetch` line's
  * time to refresh at most hourly.
  */
-static void state_set(const char *step, const char *code, const char *detail)
+static int state_line_is(const char *l, const char *step)
+{
+	size_t sl = strlen(step);
+
+	return strncmp(l, step, sl) == 0 && l[sl] == ' ';
+}
+
+/* Replace the `step` line and, when `step2` is not NULL, the `step2` line in
+ * one atomic rewrite, so no reader sees one without the other. */
+static void state_set2(const char *step, const char *code, const char *detail,
+		       const char *step2, const char *code2,
+		       const char *detail2)
 {
 	const char *path = state_path();
 	char *old = kb_read_all(path, NULL);
 	KbBuf b = {0};
-	size_t sl = strlen(step);
+	long long now = (long long)time(NULL);
 	for (char *l = old; l && *l;) {
 		char *nl = strchr(l, '\n');
 		if (nl)
 			*nl = 0;
-		if (*l && !(strncmp(l, step, sl) == 0 && l[sl] == ' '))
+		if (*l && !state_line_is(l, step) &&
+		    !(step2 && state_line_is(l, step2)))
 			kb_buf_printf(&b, "%s\n", l);
 		l = nl ? nl + 1 : NULL;
 	}
 	free(old);
-	kb_buf_printf(&b, "%s %s %lld %s\n", step, code, (long long)time(NULL),
+	kb_buf_printf(&b, "%s %s %lld %s\n", step, code, now,
 		      detail && *detail ? detail : "-");
+	if (step2)
+		kb_buf_printf(&b, "%s %s %lld %s\n", step2, code2, now,
+			      detail2 && *detail2 ? detail2 : "-");
 	if (kb_write_file_atomic(path, b.p) != 0)
 		fprintf(stderr, "kdos update: cannot record the outcome in %s: "
 			"%s\n", path, strerror(errno));
 	kb_buf_free(&b);
+}
+
+static void state_set(const char *step, const char *code, const char *detail)
+{
+	state_set2(step, code, detail, NULL, NULL, NULL);
 }
 
 static int state_get(const char *step, char *code, size_t ccap, char *detail,
@@ -1208,16 +1245,35 @@ static int bh_present(const BhStanza *s)
 /* ── problems ──────────────────────────────────────────────────────────── */
 
 /*
- * The one problem worth a notice, worst first: no tree at all, then a fetch
- * that failed (the machine cannot learn of updates), then a binhost index
- * that did not arrive or did not verify, then an apply that failed. `code` is
- * empty when there is none. A binhost that is simply not published is not a
- * problem; neither is an acquired slot waiting to be armed, nor a cancel.
+ * The one problem worth a notice, worst first: no tree at all, then a tree
+ * fetch that failed (the machine cannot learn of updates), then a binhost
+ * index that did not arrive or did not verify, then a slot image that did
+ * not, then an apply that failed, and last a tree fetch that refused the
+ * published tree as older than this machine's (published_older's test). That
+ * refusal is no cut-off: the machine is ahead of the release, which Discover
+ * does not call a problem, so it ranks below every other and never hides a
+ * binhost result. `code` is empty when there is none. A binhost result for
+ * another base than the one named is passed over, so no line names a URL
+ * that is not configured. A binhost that is simply not published is not a
+ * problem where the tree's release names it and the index in place came from
+ * there, but is (`binhost-absent`) where update.conf or $KDOS_UPDATE_BINHOST
+ * names it, since that line then points at nothing, and where the index in
+ * place came from another base (bh_origin_other), since installs then read an
+ * index the named base did not give. An acquired slot waiting to be armed is
+ * not a problem, nor is a cancel.
  */
+static int binhost_rec_current(const KpConf *c);
+static int binhost_explicit(void);
+static int bh_origin_other(const KpConf *c, char *origin, size_t ocap,
+			   char *base, size_t bcap);
+static void binhost_base_now(const KpConf *c, char *out, size_t cap);
+
 static void problem(const KpConf *c, char *code, size_t ccap, char *detail,
 		    size_t dcap)
 {
 	char fc[32], fd[256], bc[20], bd[256], ac[32], ad[256], ic[20], id[256];
+	char oo[1024], ob[1024];
+	int older = 0;
 	code[0] = detail[0] = 0;
 	if (!have_ports(c)) {
 		kb_strlcpy(code, "no-tree", ccap);
@@ -1226,12 +1282,19 @@ static void problem(const KpConf *c, char *code, size_t ccap, char *detail,
 	}
 	if (state_get("fetch", fc, sizeof(fc), fd, sizeof(fd)) &&
 	    strcmp(fc, "ok")) {
-		kb_strlcpy(code, fc, ccap);
-		kb_strlcpy(detail, fd, dcap);
-		return;
+		older = strstr(fd, "is older than this machine's") != NULL;
+		if (!older) {
+			kb_strlcpy(code, fc, ccap);
+			kb_strlcpy(detail, fd, dcap);
+			return;
+		}
 	}
 	if (state_get("binhost", bc, sizeof(bc), bd, sizeof(bd)) &&
-	    strcmp(bc, "ok") && strcmp(bc, "absent")) {
+	    binhost_rec_current(c) && strcmp(bc, "ok") &&
+	    (strcmp(bc, "absent") ||
+	     (strcmp(bd, "no binhost is named for this tree") &&
+	      (binhost_explicit() ||
+	       bh_origin_other(c, oo, sizeof(oo), ob, sizeof(ob)))))) {
 		snprintf(code, ccap, "binhost-%s", bc);
 		kb_strlcpy(detail, bd, dcap);
 		return;
@@ -1247,6 +1310,11 @@ static void problem(const KpConf *c, char *code, size_t ccap, char *detail,
 	    strcmp(ac, "cancelled")) {
 		kb_strlcpy(code, ac, ccap);
 		kb_strlcpy(detail, ad, dcap);
+		return;
+	}
+	if (older) {
+		kb_strlcpy(code, fc, ccap);
+		kb_strlcpy(detail, fd, dcap);
 	}
 }
 
@@ -1394,6 +1462,8 @@ static KdtImage *image_offer(char *why, size_t wcap)
 	return NULL;
 }
 
+static KdtImage *image_usable(char *why, size_t wcap);
+
 /* ── check ─────────────────────────────────────────────────────────────── */
 
 /* The release notes a published tree carries in `<tree>/RELEASE`, plain
@@ -1438,7 +1508,11 @@ static char *tree_notes(const char *root)
  *                                 covered by a verified index
  *   signed_by, verified, binhost  the key that signed what is offered, when
  *                                 it was verified, and where the binhost
- *                                 index came from
+ *                                 index in place came from (its ORIGIN)
+ *   binhost_base                  the binhost named now (update.conf,
+ *                                 $KDOS_UPDATE_BINHOST or the tree's
+ *                                 release), null when nothing names one;
+ *                                 a binhost-* problem is about this base
  *   image                         where the offered image is fetched from
  *   channel, notes, checked       the tree source in effect, the tree's
  *                                 release notes, the time of this check
@@ -1452,7 +1526,7 @@ static char *tree_notes(const char *root)
 static int check_json(const KpConf *c, FILE *o)
 {
 	char pc[32], pd[256], commit[64] = "", root[512];
-	char ver[64] = "", inst[64] = "", why[256], base[1024];
+	char ver[64] = "", inst[64] = "", why[256], base[1024], bbase[1024];
 	long long t;
 	Behind *v = NULL;
 	int orphans = 0, n = 0, rc, covered = 0, builds = 0;
@@ -1501,7 +1575,7 @@ static int check_json(const KpConf *c, FILE *o)
 		}
 	}
 	char iwhy[256], irec[64], iorigin[1024] = "";
-	KdtImage *im = image_offer(iwhy, sizeof(iwhy));
+	KdtImage *im = image_usable(iwhy, sizeof(iwhy));
 	int offered = !im && (have_ix || builds == n) && n > 0 && covered == n &&
 		      ver[0];
 	if (im) {
@@ -1587,6 +1661,12 @@ static int check_json(const KpConf *c, FILE *o)
 	kb_buf_str(&b, ",\"image\":");
 	if (im && iorigin[0])
 		kb_json_str(&b, iorigin);
+	else
+		kb_buf_str(&b, "null");
+	kb_buf_str(&b, ",\"binhost_base\":");
+	binhost_base_now(c, bbase, sizeof(bbase));
+	if (bbase[0])
+		kb_json_str(&b, bbase);
 	else
 		kb_buf_str(&b, "null");
 	kb_buf_str(&b, ",\"channel\":");
@@ -1695,6 +1775,38 @@ static void doc_refresh(void)
 static int live_medium(void);
 static const char *binhost_step(const KpConf *c);
 
+/* The line for an index in place that another base gave (bh_origin_other):
+ * where it is from, which base is named and by what, and what the last fetch
+ * of that base recorded. Installs and applies keep reading the index in
+ * place: it is signed by a trusted key and its packages are checked against
+ * this tree's recipe hashes, so the line says so rather than refusing it. */
+static void binhost_other_line(const KpConf *c, const char *origin,
+			       const char *base)
+{
+	char code[20], det[256], *conf = conf_value("binhost");
+	const char *by = conf ? UPDATE_CONF
+			      : binhost_explicit() ? "$KDOS_UPDATE_BINHOST"
+						   : "this tree's release";
+	free(conf);
+	int rec = state_get("binhost", code, sizeof(code), det, sizeof(det)) &&
+		  binhost_rec_current(c);
+	if (rec && !strcmp(code, "absent"))
+		printf("  %sbinhost: the index in place is from %s, not %s "
+		       "that %s names; the last fetch of %s found no binhost "
+		       "there; installs still read the index in place%s\n", W,
+		       origin, base, by, base, O);
+	else if (rec)
+		printf("  %sbinhost: the index in place is from %s, not %s "
+		       "that %s names; the last fetch of %s: %s; installs "
+		       "still read the index in place%s\n", W, origin, base, by,
+		       base, det, O);
+	else
+		printf("  %sbinhost: the index in place is from %s, not %s "
+		       "that %s names; no fetch of %s is recorded; installs "
+		       "still read the index in place%s\n", W, origin, base, by,
+		       base, O);
+}
+
 static int cmd_check_human(const KpConf *c)
 {
 	char pc[32], pd[256], commit[64] = "", root[512], why[256];
@@ -1704,10 +1816,12 @@ static int cmd_check_human(const KpConf *c)
 	problem(c, pc, sizeof(pc), pd, sizeof(pd));
 	if (!strcmp(pc, "no-tree")) {
 		char iwhy[256];
-		KdtImage *im = image_offer(iwhy, sizeof(iwhy));
+		KdtImage *im = image_usable(iwhy, sizeof(iwhy));
 		fprintf(stderr, "kdos update: %s\n", NO_TREE_TEXT);
-		if (!im)
+		if (!im) {
+			printf("  %simage: %s%s\n", D, iwhy, O);
 			return 2;
+		}
 		printf("  image: %s, signed by key %s, is offered\n",
 		       kdt_image_version(im), kdt_image_signer(im));
 		kdt_image_free(im);
@@ -1772,16 +1886,19 @@ static int cmd_check_human(const KpConf *c)
 		       "what is behind%s\n", D, why, O);
 	else if (!have_ix)
 		printf("  %sbinhost: %s — %s%s\n", D, why, binhost_step(c), O);
-	else if (n && covered == n)
+	char oo[1024], ob[1024];
+	if (have_ix && bh_origin_other(c, oo, sizeof(oo), ob, sizeof(ob)))
+		binhost_other_line(c, oo, ob);
+	if (have_ix && n && covered == n)
 		printf("  binhost: all %d prebuilt, signed by %s (key %s); "
 		       "offered as %s\n", n,
 		       ix.keyname[0] ? ix.keyname : "a trusted key", ix.who,
 		       ver);
-	else if (n)
+	else if (have_ix && n)
 		printf("  %sbinhost: %d of %d prebuilt; the rest need "
 		       "`kdos update apply --source`%s\n", W, covered, n, O);
 	char iwhy[256];
-	KdtImage *im = image_offer(iwhy, sizeof(iwhy));
+	KdtImage *im = image_usable(iwhy, sizeof(iwhy));
 	if (im) {
 		char irec[64];
 		image_installed(sys_root(), irec, sizeof(irec));
@@ -2105,6 +2222,118 @@ static int binhost_base(const char *version, int named, char *out, size_t cap)
 	return rc;
 }
 
+/* The base binhost_base() names for the tree in place; empty when none. */
+static void binhost_base_now(const KpConf *c, char *out, size_t cap)
+{
+	char root[512], ver[64] = "";
+	int named = 0;
+
+	ports_root(c, root, sizeof(root));
+	tree_version(root, ver, sizeof(ver), &named);
+	if (binhost_base(ver, named, out, cap) != 0)
+		out[0] = 0;
+}
+
+/* 1 when a base is named and the cached index's ORIGIN (the place
+ * kdt_relidx_fetch took it from) is another one, with both in `origin` and
+ * `base`: a fetch of the named base that found nothing leaves the index in
+ * place, so installs go on reading the other base's index. 0 when nothing is
+ * named, no index is cached, or the two agree. */
+static int bh_origin_other(const KpConf *c, char *origin, size_t ocap,
+			   char *base, size_t bcap)
+{
+	char p[1024];
+	origin[0] = 0;
+	binhost_base_now(c, base, bcap);
+	if (!base[0])
+		return 0;
+	snprintf(p, sizeof(p), "%s/" BINHOST_INDEX, cache_dir());
+	if (!kb_path_exists(p))
+		return 0;
+	snprintf(p, sizeof(p), "%s/ORIGIN", cache_dir());
+	char *o = kb_read_all(p, NULL);
+	if (!o)
+		return 0;
+	o[strcspn(o, "\r\n")] = 0;
+	kb_strlcpy(origin, o, ocap);
+	free(o);
+	return origin[0] && strcmp(origin, base);
+}
+
+/* 1 when update.conf or $KDOS_UPDATE_BINHOST names the binhost, rather than
+ * the tree's release or nothing. */
+static int binhost_explicit(void)
+{
+	char *conf = conf_value("binhost");
+	const char *e = getenv("KDOS_UPDATE_BINHOST");
+	int named = conf || (e && *e);
+	free(conf);
+	return named;
+}
+
+/* The `binhost` line and the `binhost-at` line naming the base it is for
+ * (`-` for none), written in one rewrite of update.state, so a `check`
+ * running beside the fetch never reads a result against the wrong base. */
+static void binhost_record(const char *base, const char *code,
+			   const char *detail)
+{
+	state_set2("binhost", code, detail, "binhost-at",
+		   base && *base ? "named" : "none",
+		   base && *base ? base : "-");
+}
+
+/* 1 when the `binhost` line is for the base named now: its `binhost-at` names
+ * that base, or there is no `binhost-at` line. */
+static int binhost_rec_current(const KpConf *c)
+{
+	char code[16], at[1100], now[1100];
+
+	if (!state_get("binhost-at", code, sizeof(code), at, sizeof(at)))
+		return 1;
+	binhost_base_now(c, now, sizeof(now));
+	return !strcmp(at, now);
+}
+
+/* 1 when the `binhost` line, for the base named now, says the last fetch
+ * found no binhost published there, as against none named. */
+static int binhost_absent_at(const KpConf *c)
+{
+	char code[32], det[256];
+
+	return state_get("binhost", code, sizeof(code), det, sizeof(det)) &&
+	       !strcmp(code, "absent") &&
+	       strcmp(det, "no binhost is named for this tree") &&
+	       binhost_rec_current(c);
+}
+
+/* curl runs with --proto =https,file, so an http:// binhost is refused
+ * before any connection; every line that names the fetch's failure or its
+ * next step names this instead of a fetch that fails the same way. */
+#define BINHOST_HTTPS "binhost takes an https:// URL or a directory"
+#define BINHOST_HTTP_STEP \
+	"`binhost =` in " UPDATE_CONF " or $KDOS_UPDATE_BINHOST names an " \
+	"http:// URL, which kdos " \
+	"update refuses (curl --proto =https,file); name an https:// URL " \
+	"or a directory"
+
+static int binhost_is_http(const char *base)
+{
+	return !strncasecmp(base, "http://", 7);
+}
+
+/* 1 when the binhost update.conf, $KDOS_UPDATE_BINHOST or the tree names
+ * is an http:// URL. */
+static int binhost_named_http(const KpConf *c)
+{
+	char root[512], ver[64] = "", base[1024];
+	int named = 0;
+
+	ports_root(c, root, sizeof(root));
+	tree_version(root, ver, sizeof(ver), &named);
+	return binhost_base(ver, named, base, sizeof(base)) == 0 &&
+	       binhost_is_http(base);
+}
+
 /* 1 when the last tree fetch refused the published tree as older than this
  * machine's: that tree is never taken, so a fetch is no way to a binhost. */
 static int published_older(void)
@@ -2116,18 +2345,32 @@ static int published_older(void)
 
 /* What takes the signed index the tree in place has none of: a fetch of the
  * index alone once update.conf, $KDOS_UPDATE_BINHOST or a named TREE names
- * a binhost, a fetch of the published tree otherwise — the index alone then
- * finds none, so advising it sends the reader round a loop — and, when the
- * published tree is older than this machine's, `binhost =` alone, for the
- * same reason. */
+ * a binhost that is not http:// (one that is gets the https:// rule, as a
+ * fetch would fail the same way), unless the last fetch of that same base
+ * found no binhost published there, when the line says so and names
+ * publishing one or `binhost =`, since the fetch would find none again; a
+ * fetch of the published tree otherwise, as the index alone then finds none
+ * and advising it sends the reader round a loop; and, when the published
+ * tree is older than this machine's, `binhost =` alone, for the same
+ * reason. The text is in a static buffer, good until the next call. */
 static const char *binhost_step(const KpConf *c)
 {
+	static char absent[1400];
 	char root[512], ver[64] = "", base[1024];
-	int named = 0;
+	int named = 0, have_base;
 
 	ports_root(c, root, sizeof(root));
 	tree_version(root, ver, sizeof(ver), &named);
-	if (binhost_base(ver, named, base, sizeof(base)) == 0)
+	have_base = binhost_base(ver, named, base, sizeof(base)) == 0;
+	if (have_base && binhost_is_http(base))
+		return BINHOST_HTTP_STEP;
+	if (have_base && binhost_absent_at(c)) {
+		snprintf(absent, sizeof(absent), "the last fetch found no "
+			 "binhost published at %s; publish one there or name "
+			 "another with `binhost =` in " UPDATE_CONF, base);
+		return absent;
+	}
+	if (have_base)
 		return "`sudo kdos update fetch --binhost-only` takes this "
 		       "release's signed index";
 	if (published_older())
@@ -2230,19 +2473,44 @@ static void catalogue_fetch(const KdtRelIdx *rel, const KsigRing *ring)
 	free(data);
 }
 
-static int binhost_refuse(const char *stage, const char *code, const char *msg)
+/* Every refusal is said on stderr as it happens, whatever the caller does
+ * next: the state line alone reaches only `kdos update check`, and a fetch
+ * that exits 1 with nothing said sends the reader to the install's advice,
+ * which is to run the same fetch. An http:// binhost is refused before any
+ * connection, and that is said too, and kept on the state line after the
+ * reason, which is cut short rather than the rule: state_get's readers hold
+ * 256 bytes, and `kdos update check` prints the line as its
+ * binhost-<code> problem. */
+static int binhost_refuse(const char *stage, const char *base,
+			  const char *code, const char *msg)
 {
+	char det[256];
+
 	kb_rmtree(stage);
-	state_set("binhost", code, msg);
-	if (!strcmp(code, "unverified"))
-		fprintf(stderr, "kdos update: %s — it was not kept\n", msg);
+	if (binhost_is_http(base)) {
+		int room = (int)(sizeof(det) - sizeof("; " BINHOST_HTTPS));
+		snprintf(det, sizeof(det), "%.*s; " BINHOST_HTTPS, room, msg);
+	} else {
+		kb_strlcpy(det, msg, sizeof(det));
+	}
+	binhost_record(base, code, det);
+	fprintf(stderr, "kdos update: %s%s\n", msg,
+		!strcmp(code, "unverified") ? " — it was not kept" : "");
+	if (binhost_is_http(base))
+		fprintf(stderr, "kdos update: binhost takes an https:// URL or "
+				"a directory; curl runs with --proto "
+				"=https,file\n");
 	return 1;
 }
 
 /* 1 when the last binhost step found no binhost, after saying why: for a
  * tree that names no release, what would name one — or, when update.conf
- * or $KDOS_UPDATE_BINHOST has named one since, the fetch that takes it;
- * else where none was published. A published tree the last fetch refused as
+ * or $KDOS_UPDATE_BINHOST has named one since, the fetch that takes it, or
+ * for an http:// one the https:// rule that fetch would fail on; else where
+ * none was published. A result recorded for another base than the one named
+ * now, whatever its code, is a binhost the last fetch did not see, and is
+ * answered as a step that found none named: repeating its text would name a
+ * URL that is not configured. A published tree the last fetch refused as
  * older than this machine's is never taken, so `sudo kdos update fetch` is
  * not offered for it and `binhost =` is the one way named: offering the
  * fetch would send a person round the same refusal again. */
@@ -2250,14 +2518,23 @@ static int binhost_absent_hint(const KpConf *c)
 {
 	char code[32], det[256], root[512], ver[64] = "", base[1024];
 	int named = 0;
-	if (!state_get("binhost", code, sizeof(code), det, sizeof(det)) ||
-	    strcmp(code, "absent"))
+	if (!state_get("binhost", code, sizeof(code), det, sizeof(det)))
 		return 0;
+	int stale = !binhost_rec_current(c);
+	if (!stale && strcmp(code, "absent"))
+		return 0;
+	if (stale)
+		kb_strlcpy(det, "no binhost is named for this tree",
+			   sizeof(det));
 	ports_root(c, root, sizeof(root));
 	tree_version(root, ver, sizeof(ver), &named);
 	int older = published_older();
-	if (!strcmp(det, "no binhost is named for this tree") &&
-	    binhost_base(ver, named, base, sizeof(base)) == 0)
+	int have_base = binhost_base(ver, named, base, sizeof(base)) == 0;
+	if (!strcmp(det, "no binhost is named for this tree") && have_base &&
+	    binhost_is_http(base))
+		fprintf(stderr, "kdos update: %s names a binhost the last fetch "
+				"did not see; " BINHOST_HTTP_STEP "\n", base);
+	else if (!strcmp(det, "no binhost is named for this tree") && have_base)
 		fprintf(stderr, "kdos update: %s names a binhost the last fetch "
 				"did not see; `sudo kdos update fetch "
 				"--binhost-only` takes its signed index\n",
@@ -2302,19 +2579,22 @@ static int binhost_fetch(const KpConf *c, int quiet)
 	tree_version(root, ver, sizeof(ver), &named);
 	if (binhost_base(ver, named, base, sizeof(base)) != 0) {
 		catalogue_drop();
-		state_set("binhost", "absent", "no binhost is named for this "
-			  "tree");
+		binhost_record(NULL, "absent", "no binhost is named for "
+			       "this tree");
 		return 0;
 	}
 	if (!host_keyed()) {
 		snprintf(msg, sizeof(msg), "no trusted key in %s can verify a "
 			 "release index", keyring_dir());
-		state_set("binhost", "no-key", msg);
+		binhost_record(base, "no-key", msg);
+		fprintf(stderr, "kdos update: %s\n", msg);
 		return 1;
 	}
 	if (kb_mkdir_p(cache_dir()) != 0) {
-		state_set("binhost", "fetch-failed", "cannot create the binhost "
-			  "cache");
+		binhost_record(base, "fetch-failed", "cannot create the "
+			       "binhost cache");
+		fprintf(stderr, "kdos update: cannot create the binhost cache "
+				"%s: %s\n", cache_dir(), strerror(errno));
 		return 1;
 	}
 	snprintf(stage, sizeof(stage), "%s/new", cache_dir());
@@ -2331,10 +2611,11 @@ static int binhost_fetch(const KpConf *c, int quiet)
 			catalogue_drop();
 			snprintf(msg, sizeof(msg), "no binhost is published at "
 				 "%s", base);
-			state_set("binhost", "absent", msg);
+			binhost_record(base, "absent", msg);
 			return 0;
 		}
-		return binhost_refuse(stage, how == KDT_GOT_OFFLINE ? "no-network"
+		return binhost_refuse(stage, base,
+				      how == KDT_GOT_OFFLINE ? "no-network"
 				      : how == KDT_GOT_UNVERIFIED ? "unverified"
 				      : "fetch-failed", why);
 	}
@@ -2343,7 +2624,7 @@ static int binhost_fetch(const KpConf *c, int quiet)
 			 "and this tree is %s", base, kdt_relidx_version(rel),
 			 ver);
 		kdt_relidx_free(rel);
-		return binhost_refuse(stage, "unverified", msg);
+		return binhost_refuse(stage, base, "unverified", msg);
 	}
 	char ip[1200], sp[1200];
 	snprintf(ip, sizeof(ip), "%s/" BINHOST_INDEX, stage);
@@ -2355,7 +2636,7 @@ static int binhost_fetch(const KpConf *c, int quiet)
 		catalogue_drop();
 		snprintf(msg, sizeof(msg), "the release at %s publishes no "
 			 "binhost", base);
-		state_set("binhost", "absent", msg);
+		binhost_record(base, "absent", msg);
 		return 0;
 	}
 	int got = kdt_relidx_take(rel, "binhost/" BINHOST_SIG, sp, why,
@@ -2365,7 +2646,8 @@ static int binhost_fetch(const KpConf *c, int quiet)
 				      sizeof(why));
 	if (got != KDT_GOT_OK) {
 		kdt_relidx_free(rel);
-		return binhost_refuse(stage, got == KDT_GOT_OFFLINE ? "no-network"
+		return binhost_refuse(stage, base,
+				      got == KDT_GOT_OFFLINE ? "no-network"
 				      : got == KDT_GOT_FAILED ? "fetch-failed"
 				      : "unverified", why);
 	}
@@ -2379,9 +2661,9 @@ static int binhost_fetch(const KpConf *c, int quiet)
 	free(data);
 	if (!ok) {
 		kdt_relidx_free(rel);
-		return binhost_refuse(stage, "unverified", "the binhost index's "
-				      "signature does not verify against "
-				      "/etc/kdos/keys");
+		return binhost_refuse(stage, base, "unverified",
+				      "the binhost index's signature does not "
+				      "verify against /etc/kdos/keys");
 	}
 	for (int i = 0; keep[i]; i++) {
 		char from[1300], to[1300];
@@ -2389,9 +2671,9 @@ static int binhost_fetch(const KpConf *c, int quiet)
 		snprintf(to, sizeof(to), "%s/%s", cache_dir(), keep[i]);
 		if (rename(from, to) != 0) {
 			kdt_relidx_free(rel);
-			return binhost_refuse(stage, "fetch-failed", "the binhost "
-					      "index could not be put in the "
-					      "cache");
+			return binhost_refuse(stage, base, "fetch-failed",
+					      "the binhost index could not be "
+					      "put in the cache");
 		}
 	}
 	kb_rmtree(stage);
@@ -2403,7 +2685,7 @@ static int binhost_fetch(const KpConf *c, int quiet)
 		cache_prune(&ix);
 		snprintf(msg, sizeof(msg), "%d packages, signed by %s", ix.n,
 			 who);
-		state_set("binhost", "ok", msg);
+		binhost_record(base, "ok", msg);
 		if (!quiet)
 			printf("binhost index: %d packages, signed by key %s\n",
 			       ix.n, who);
@@ -2621,6 +2903,7 @@ typedef struct {
 	char running[8];	/* the slot this boot runs, "" when unknown */
 	char trying[8];		/* the slot armed or on trial, "" for none */
 	int live;		/* no slots because this is the live medium */
+	int known;		/* kdos-bootctl said what slots this machine has */
 } Layout;
 
 /* `kdos-bootctl status --json`, read for the inactive slot. Exec'd rather
@@ -2628,6 +2911,12 @@ typedef struct {
  * file and it is the one that owns its fsync discipline. 1 when the machine
  * has slots and the inactive one has a root, 0 when it does not; on 0,
  * `live` says whether the reason is that this boot is the live medium.
+ *
+ * `known` IS 0 WHEN THE ANSWER IS NOT ABOUT THIS MACHINE'S SLOTS: no
+ * kdos-bootctl, or `"configured": false` read by a user, which is also what
+ * a two-slot machine prints to one while its state is closed on the ESP and
+ * no copy is published in /run/kdos. Root reads the ESP, so its
+ * `"configured": false` is a machine with no boot state and one root.
  *
  * THE INACTIVE SLOT IS THE ONE THAT IS NOT CONFIRMED, which on a trial boot
  * is the root this boot runs; `running` and `trying` are read beside it so
@@ -2649,9 +2938,13 @@ static int bootctl_layout(Layout *L)
 	int rc = kb_run_capture_buf(&a, &out);
 	L->live = out.p && strstr(out.p, "\"live\": true") != NULL;
 	if (rc != 0 || !out.p || !strstr(out.p, "\"configured\": true")) {
+		L->known = L->live ||
+			   (geteuid() == 0 && out.p &&
+			    strstr(out.p, "\"configured\": false"));
 		kb_buf_free(&out);
 		return 0;
 	}
+	L->known = 1;
 	int active_b = strstr(out.p, "\"active\": \"b\"") != NULL;
 	kb_strlcpy(L->slot, active_b ? "a" : "b", sizeof(L->slot));
 	json_field(out.p, active_b ? "slot_a" : "slot_b", L->uuid,
@@ -2670,6 +2963,26 @@ static int live_medium(void)
 	Layout L;
 	bootctl_layout(&L);
 	return L.live;
+}
+
+/* The image on offer TO THIS MACHINE: image_offer's, and only where there
+ * is an inactive slot to write it into. On one root it is NULL with the
+ * reason in `why`, so `check` reports no image and its exit code says
+ * nothing is offered when nothing is behind; offering one there would send
+ * `apply` to a lane that refuses. A layout kdos-bootctl could not read
+ * (`known` 0) keeps the offer: hiding it would tell a two-slot machine it
+ * has one. */
+static KdtImage *image_usable(char *why, size_t wcap)
+{
+	KdtImage *m = image_offer(why, wcap);
+	Layout L;
+	if (!m || bootctl_layout(&L) || !L.known)
+		return m;
+	snprintf(why, wcap, "slot image %s is on offer, but %s",
+		 kdt_image_version(m), L.live ? "this is the live medium"
+					      : "this machine has one slot");
+	kdt_image_free(m);
+	return NULL;
 }
 
 /*
@@ -3149,8 +3462,16 @@ static int apply_target(Apply *ap, const KpConf *c)
 				      "keeps it. Install KDOS to update it, or "
 				      "pass --in-place to update this session "
 				      "anyway");
-		printf("%sno A/B slots — updating the running root in "
-		       "place%s\n", D, O);
+		/* --in-place skips the layout above; it is read here only
+		 * for the wording, so a two-slot machine is not told it has
+		 * none. */
+		Layout L;
+		if (ap->in_place && bootctl_layout(&L))
+			printf("%s--in-place: updating the running root in "
+			       "place, without an A/B rollback%s\n", D, O);
+		else
+			printf("%sno A/B slots — updating the running root "
+			       "in place%s\n", D, O);
 	}
 	if ((ap->acquire || ap->arm) && !ap->ab)
 		return refuse(ap, NULL, "--acquire and --arm fill and arm the "
@@ -4893,12 +5214,19 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 				"halves of one apply; pass one, or neither\n");
 		return AP_USAGE;
 	}
-	/* No tree leaves nothing to install from but an image; --image says
-	 * whether there is one itself. */
+	/* No tree leaves nothing to install from but an image this run can
+	 * write: into the inactive slot, or into the root --root names;
+	 * --image says whether there is one itself, and --in-place passes
+	 * every image over for the binhost. The live medium's image
+	 * is let through to apply_target, whose refusal names the live
+	 * medium. */
 	if (!have_ports(c) && !ap.want_image) {
 		char iwhy[256];
-		KdtImage *im = ap.source || ap.want_binhost
-			       ? NULL : image_offer(iwhy, sizeof(iwhy));
+		KdtImage *im = ap.source || ap.want_binhost || ap.in_place
+			       ? NULL
+			       : ap.root || live_medium()
+			       ? image_offer(iwhy, sizeof(iwhy))
+			       : image_usable(iwhy, sizeof(iwhy));
 		kdt_image_free(im);
 		if (!im) {
 			fprintf(stderr, "kdos update: %s\n", NO_TREE_TEXT);
@@ -4945,19 +5273,33 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 	}
 
 	/* THE LANE: an image newer than this system when one is cached and
-	 * verified, unless --binhost or --source says otherwise. */
+	 * verified and this run has a slot (or a --root) to write it into,
+	 * unless --binhost or --source says otherwise. One root, or
+	 * --in-place, passes the image over for the binhost; --image keeps it,
+	 * and fill_image refuses it there. */
 	if (!ap.source && !ap.want_binhost) {
-		char iwhy[256];
+		char iwhy[256] = "";
 		ap.img = image_offer(iwhy, sizeof(iwhy));
 		if (!ap.img && ap.want_image)
 			return refuse(&ap, NULL, "no slot image is on offer: %s",
 				      iwhy);
+		if (ap.img && !ap.want_image && !ap.ab &&
+		    (!ap.root || ap.in_place)) {
+			printf("a slot image is on offer, but %s; installing "
+			       "from the binhost\n",
+			       ap.in_place ? "--in-place updates the running "
+					     "root"
+					   : "this machine has one slot");
+			kdt_image_free(ap.img);
+			ap.img = NULL;
+			iwhy[0] = 0;
+		}
 		/* A fetched image this run does not take is named, so the
 		 * binhost lane's own refusal is not the only thing said. */
 		char idir[1024], iman[1100];
 		image_dir(idir, sizeof(idir));
 		snprintf(iman, sizeof(iman), "%s/MANIFEST", idir);
-		if (!ap.img && kb_path_exists(iman))
+		if (!ap.img && iwhy[0] && kb_path_exists(iman))
 			printf("%s, so apply looks for packages\n", iwhy);
 		if (ap.img) {
 			ap.from_image = 1;
@@ -5275,9 +5617,12 @@ static int stale_dep(const KpConf *c, const char *name, const Behind *v,
  * line, then the member ports, any number to a line, until the next group.
  * A member may be a meta port (`kde-gear-games`), which installs what it
  * names. A group is no package: `kdos update install <id>` installs each
- * member as the port it is, and each member joins the world set by its own
- * name, so a member a later tree drops from the group stays installed and a
- * member it adds arrives with the next `kdos update install <id>`.
+ * member as the port it is. Each member the install adds joins the world set
+ * by its own name, so a member a later tree drops from the group stays
+ * installed and a member it adds arrives with the next `kdos update install
+ * <id>`. A member already installed is left as it is: recording it would make
+ * a base-image program look installed on request, and `kdos update removable`
+ * and Discover would offer to remove it.
  */
 #define GROUPS_MAX 64
 typedef struct {
@@ -5382,11 +5727,44 @@ static char **build_tools(const KpConf *c)
 }
 
 /*
+ * 1 when no index is to be had by a refresh: nothing names a binhost for this
+ * tree (update.conf, $KDOS_UPDATE_BINHOST, a release-named TREE: the test
+ * binhost_fetch makes) and a fetch cannot give it a name either. A tree
+ * fetch can, by taking a published tree that names its release, except
+ * where the last one refused that tree as older (published_older), where
+ * the last binhost step ran after it and still found none named, and where
+ * there is no second slot, whose refresh is `fetch --binhost-only` and
+ * fetches no tree. A layout kdos-bootctl could not read (`known` 0, as a
+ * user on a two-slot machine reads it) counts as one that can fetch.
+ */
+static int refresh_names_none(const KpConf *c)
+{
+	char root[512], ver[64], base[1024], code[32], det[256];
+	int named = 0;
+	Layout L;
+
+	ports_root(c, root, sizeof(root));
+	tree_version(root, ver, sizeof(ver), &named);
+	if (binhost_base(ver, named, base, sizeof(base)) == 0)
+		return 0;
+	if (published_older())
+		return 1;
+	if (state_get("binhost", code, sizeof(code), det, sizeof(det)) &&
+	    !strcmp(code, "absent") &&
+	    !strcmp(det, "no binhost is named for this tree"))
+		return 1;
+	return !bootctl_layout(&L) && L.known;
+}
+
+/*
  * `kdos update groups [--json]`: every group, whether all of it is
  * installed, how many of its members are not, and — when the signed binhost
  * index is in place — how many packages installing it prebuilt would add
  * and their size. The size is null in the JSON when there is no index, or
- * when some package of it is not covered.
+ * when some package of it is not covered. Each JSON row's `binhost` is
+ * false when no refresh can bring an index (refresh_names_none), so no group
+ * can be installed prebuilt and advising a refresh sends the reader round a
+ * loop; true otherwise, a refresh that may yet name one included.
  */
 static int cmd_groups(const KpConf *c, int argc, char **argv)
 {
@@ -5402,9 +5780,13 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 	int have_ix = bh_load(&ix, why, sizeof(why)) == 0;
 	if (have_ix)
 		build_env_for(NULL);
+	int named_bh = have_ix || !refresh_names_none(c);
 	KbBuf b = {0};
 	if (json)
 		kb_buf_str(&b, "[");
+	else if (ng && !have_ix)
+		printf("no binhost index here, so no sizes: %s\n",
+		       binhost_step(c));
 	for (int i = 0; i < ng; i++) {
 		int missing = 0;
 		char **want = kb_calloc((size_t)g[i].n + 1, sizeof(*want));
@@ -5441,8 +5823,9 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 				kb_json_str(&b, g[i].ports[k]);
 			}
 			kb_buf_printf(&b, "],\"installed\":%s,\"missing\":%d,"
-				      "\"packages\":%d,\"size\":",
-				      missing ? "false" : "true", missing, npkg);
+				      "\"packages\":%d,\"binhost\":%s,\"size\":",
+				      missing ? "false" : "true", missing, npkg,
+				      named_bh ? "true" : "false");
 			if (covered)
 				kb_buf_printf(&b, "%lld}", size);
 			else
@@ -5468,9 +5851,6 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 		fputs(b.p, stdout);
 	} else if (!ng) {
 		printf("this tree names no groups\n");
-	} else if (!have_ix) {
-		printf("no binhost index here, so no sizes: %s\n",
-		       binhost_step(c));
 	}
 	kb_buf_free(&b);
 	if (have_ix)
@@ -5480,6 +5860,10 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 }
 
 static int cmd_install(const KpConf *c, int argc, char **argv);
+
+/* Set while a group's members are installed: a member already installed is
+ * not added to the world set (see A GROUP IS A NAMED SET OF PORTS). */
+static int installing_group;
 
 /*
  * `kdos update install --pending`: every group (or port) the installer
@@ -5958,6 +6342,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			return 1;
 		}
 		int worst = 0;
+		installing_group = 1;
 		for (int k = 0; k < gr->n; k++) {
 			char *av[8], dbuf[32];
 			int an = 0;
@@ -5979,6 +6364,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			if (r > worst)
 				worst = r;
 		}
+		installing_group = 0;
 		groups_free(g, ng);
 		return worst;
 	}
@@ -6001,16 +6387,28 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	 * or a live session has never fetched one, and an install is what a
 	 * person asked for, so it does what `kdos update fetch --binhost-only`
 	 * does first. A cached index that fails its signature is not replaced
-	 * here, and a dry run changes nothing, so both still stop. */
+	 * here, and a dry run changes nothing, so both still stop. A fetch
+	 * that failed here has said why, and advising the same fetch after it
+	 * is a loop, so the advice is left out then, and an http:// binhost is
+	 * given the https:// rule in its place. */
+	int bh_refused = 0;
 	if (!have_ix && !dry) {
 		char ip[1024];
 		snprintf(ip, sizeof(ip), "%s/" BINHOST_INDEX, cache_dir());
-		if (access(ip, F_OK) != 0 && binhost_fetch(c, 0) == 0)
-			have_ix = bh_load(&ix, why, sizeof(why)) == 0;
+		if (access(ip, F_OK) != 0) {
+			if (binhost_fetch(c, 0) == 0)
+				have_ix = bh_load(&ix, why, sizeof(why)) == 0;
+			else
+				bh_refused = 1;
+		}
 	}
 	if (!have_ix && deps == ROUTE_PREBUILT) {
 		fprintf(stderr, "kdos update: %s\n", why);
-		if (!binhost_absent_hint(c))
+		if (binhost_absent_hint(c) || bh_refused)
+			;
+		else if (binhost_named_http(c))
+			fprintf(stderr, "kdos update: %s\n", BINHOST_HTTP_STEP);
+		else
 			fprintf(stderr, "kdos update: `sudo kdos update fetch "
 					"--binhost-only` fetches the release's "
 					"signed index\n");
@@ -6176,7 +6574,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		goto out;
 	}
 	if (!need) {
-		if (world_add(name) != 0) {
+		if (!installing_group && world_add(name) != 0) {
 			fprintf(stderr, "kdos update: %s is installed and could "
 					"not be added to %s\n", name,
 				WORLD_FILE);
@@ -6293,6 +6691,218 @@ out:
 	return rc;
 }
 
+/* ── removal ───────────────────────────────────────────────────────────── */
+
+/*
+ * WHAT A PERSON MAY REMOVE ONE AT A TIME: a package in the world set, which
+ * somebody installed on purpose (`kdos update install`, Discover), that no
+ * installed package depends on. Every other package is part of the system: a
+ * package of the image has no world line, and it is updated and replaced
+ * with the slot; a package an installed one depends on would leave that one
+ * unable to run. kpkg's database records versions and files and no edges,
+ * so the edges are each installed package's recipe in the tree in place,
+ * read with kp_depends as the solver reads them; a package with no recipe
+ * here depends on nothing this can see.
+ */
+typedef struct {
+	char **installed;	/* the database's entries */
+	int ninst;
+	char (*need)[2][128];	/* [dependency, an installed package naming it] */
+	int nneed;
+} RmGraph;
+
+static void rm_graph_load(const KpConf *c, RmGraph *g)
+{
+	memset(g, 0, sizeof(*g));
+	char *db = kp_db_dir(c);
+	int nn = 0;
+	char **names = kb_listdir(db, &nn);
+	free(db);
+	g->installed = kb_calloc((size_t)nn + 1, sizeof(*g->installed));
+	for (int i = 0; names && i < nn; i++)
+		if (names[i][0] != '.' && pkg_name_ok(names[i]))
+			g->installed[g->ninst++] = kb_strdup(names[i]);
+	kb_strv_free(names);
+	int cap = 0;
+	char (*deps)[128] = kb_calloc(KP_MAX_DEPS, sizeof(*deps));
+	for (int i = 0; i < g->ninst; i++) {
+		char *pd = kp_port_dir(c, g->installed[i]);
+		if (!pd)
+			continue;
+		int nd = kp_depends(pd, deps, KP_MAX_DEPS);
+		free(pd);
+		for (int d = 0; d < nd; d++) {
+			if (g->nneed >= cap) {
+				cap = cap ? cap * 2 : 256;
+				g->need = kb_realloc(g->need, (size_t)cap *
+						     sizeof(*g->need));
+			}
+			kb_strlcpy(g->need[g->nneed][0], deps[d], 128);
+			kb_strlcpy(g->need[g->nneed][1], g->installed[i], 128);
+			g->nneed++;
+		}
+	}
+	free(deps);
+}
+
+static void rm_graph_free(RmGraph *g)
+{
+	for (int i = 0; i < g->ninst; i++)
+		free(g->installed[i]);
+	free(g->installed);
+	free(g->need);
+}
+
+static int rm_installed(const RmGraph *g, const char *name)
+{
+	for (int i = 0; i < g->ninst; i++)
+		if (!strcmp(g->installed[i], name))
+			return 1;
+	return 0;
+}
+
+/* The first installed package, by name, whose recipe depends on `name`;
+ * NULL when none does. */
+static const char *rm_needed_by(const RmGraph *g, const char *name)
+{
+	const char *by = NULL;
+	for (int i = 0; i < g->nneed; i++)
+		if (!strcmp(g->need[i][0], name) && strcmp(g->need[i][1], name) &&
+		    (!by || strcmp(g->need[i][1], by) < 0))
+			by = g->need[i][1];
+	return by;
+}
+
+static int in_world(char **world, int nw, const char *name)
+{
+	for (int i = 0; i < nw; i++)
+		if (!strcmp(world[i], name))
+			return 1;
+	return 0;
+}
+
+/*
+ * `kdos update removable [--json]`: each installed world package no
+ * installed package depends on, one a line; with --json one object,
+ * `{"removable":[...],"needed":{"<pkg>":"<an installed package needing
+ * it>",...}}`, `needed` holding the installed world packages that are not
+ * removable. Discover's Remove button for host software reads it.
+ */
+static int cmd_removable(const KpConf *c, int argc, char **argv)
+{
+	int json = 0, nw = 0;
+	for (int i = 0; i < argc; i++) {
+		if (strcmp(argv[i], "--json")) {
+			fprintf(stderr, "usage: kdos update removable "
+					"[--json]\n");
+			return 2;
+		}
+		json = 1;
+	}
+	RmGraph g;
+	rm_graph_load(c, &g);
+	char **world = world_load(&nw);
+	KbBuf rm = {0}, nd = {0};
+	int nrm = 0, nnd = 0;
+	kb_buf_str(&rm, "");
+	kb_buf_str(&nd, "");
+	for (int i = 0; i < nw; i++) {
+		if (!rm_installed(&g, world[i]) ||
+		    in_world(world, i, world[i]))
+			continue;
+		const char *by = rm_needed_by(&g, world[i]);
+		if (!json && !by) {
+			printf("%s\n", world[i]);
+			continue;
+		}
+		KbBuf *b = by ? &nd : &rm;
+		kb_buf_str(b, (by ? nnd++ : nrm++) ? "," : "");
+		kb_json_str(b, world[i]);
+		if (by) {
+			kb_buf_str(b, ":");
+			kb_json_str(b, by);
+		}
+	}
+	if (json)
+		printf("{\"removable\":[%s],\"needed\":{%s}}\n", rm.p, nd.p);
+	kb_buf_free(&rm);
+	kb_buf_free(&nd);
+	kb_strv_free(world);
+	rm_graph_free(&g);
+	return 0;
+}
+
+/*
+ * `kdos update remove [--dry-run] <port>`: one world package out of this
+ * system, by `kpkg remove`, which also takes it off the world set and the
+ * origin record so the next update does not install it again. Refused,
+ * before anything is touched, for a package that is not installed, one that
+ * is not in the world set (part of the system), and one an installed package
+ * depends on (`needed by <pkg>`). What the package brought with it stays:
+ * each dependency is a package of its own, removed by name when it is one
+ * somebody asked for. The dry run says `remove <port>` and changes nothing.
+ * Exit 0 removed (or would be), 1 refused or failed, 2 a usage error.
+ */
+static int cmd_remove(const KpConf *c, int argc, char **argv)
+{
+	int dry = 0, nw = 0, rc;
+	const char *name = NULL;
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "--dry-run"))
+			dry = 1;
+		else if (!name && argv[i][0] != '-' && pkg_name_ok(argv[i]))
+			name = argv[i];
+		else
+			name = NULL, i = argc;
+	}
+	if (!name) {
+		fprintf(stderr, "usage: kdos update remove [--dry-run] "
+				"<port>\n");
+		return 2;
+	}
+	RmGraph g;
+	rm_graph_load(c, &g);
+	char **world = world_load(&nw);
+	const char *by = rm_needed_by(&g, name);
+	rc = 1;
+	if (!rm_installed(&g, name))
+		fprintf(stderr, "kdos update: refused: %s is not installed\n",
+			name);
+	else if (!in_world(world, nw, name))
+		fprintf(stderr, "kdos update: refused: %s is part of the "
+				"system: it came with this version of KDOS or "
+				"with a package that needs it, and leaves "
+				"with the system version\n", name);
+	else if (by)
+		fprintf(stderr, "kdos update: refused: %s is needed by %s, "
+				"which is installed\n", name, by);
+	else
+		rc = 0;
+	kb_strv_free(world);
+	rm_graph_free(&g);
+	if (rc)
+		return rc;
+	if (dry) {
+		printf("remove %s\n", name);
+		return 0;
+	}
+	if (geteuid() != 0) {
+		fprintf(stderr, "kdos update: removing %s needs root\n", name);
+		return 1;
+	}
+	int lock = update_lock();
+	if (lock < 0)
+		return 1;
+	rc = run_kpkg("remove", name) == 0 ? 0 : 1;
+	close(lock);
+	if (rc)
+		fprintf(stderr, "kdos update: kpkg remove %s failed\n", name);
+	else
+		printf("==> %s removed\n", name);
+	doc_refresh();
+	return rc;
+}
+
 /* ── theme ─────────────────────────────────────────────────────────────── */
 
 /*
@@ -6308,6 +6918,10 @@ out:
  */
 int kdt_update(int argc, char **argv, int (*theme)(int, char **))
 {
+	/* Line-buffered: a line on stdout explains the refusal or the child's
+	 * output that follows it on stderr or the same pipe, and fully
+	 * buffered into a file or a pipe it would arrive after both. */
+	setvbuf(stdout, NULL, _IOLBF, 0);
 	up_colours();
 
 	const char *what = argc > 0 ? argv[0] : "check";
@@ -6379,9 +6993,13 @@ int kdt_update(int argc, char **argv, int (*theme)(int, char **))
 		return cmd_groups(&c, rest, restv);
 	if (!strcmp(what, "notes"))
 		return cmd_notes(&c, rest, restv);
+	if (!strcmp(what, "removable"))
+		return cmd_removable(&c, rest, restv);
+	if (!strcmp(what, "remove"))
+		return cmd_remove(&c, rest, restv);
 
-	fprintf(stderr, "usage: kdos update {check|fetch|apply|install|groups|"
-			"notes|theme}\n"
+	fprintf(stderr, "usage: kdos update {check|fetch|apply|install|remove|"
+			"removable|groups|notes|theme}\n"
 			"  check   installed packages older than their "
 			"recipe, which of them the binhost\n"
 			"          holds, and what is offered; --json for a "
@@ -6409,6 +7027,11 @@ int kdt_update(int argc, char **argv, int (*theme)(int, char **))
 			"--dry-run installs nothing;\n"
 			"          --dev installs installed ports again with "
 			"their development files\n"
+			"  remove  one port somebody installed and nothing "
+			"installed needs; --dry-run\n"
+			"          says whether it would be removed\n"
+			"  removable  the installed ports `remove` takes; "
+			"--json for a program\n"
 			"  groups  every group of ports, installed or not, "
 			"and its download; --json\n"
 			"  notes   the release notes of the slot this boot "

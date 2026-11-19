@@ -1,0 +1,4 @@
+# fixture: three zones, none of them UTC
+AD	+4230+00131	Europe/Andorra
+AE,OM	+2518+05518	Asia/Dubai
+IN	+2232+08822	Asia/Kolkata

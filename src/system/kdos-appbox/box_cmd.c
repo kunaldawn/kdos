@@ -35,11 +35,14 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <pwd.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -129,28 +132,54 @@ typedef struct {
  * last launch recorded, "" when nothing is recorded) and `manager` (the
  * container's `manager` label: "distrobox" for one distrobox made, kdos-box's
  * own boxes included, "" for none).
+ *
+ * THE LABEL IS READ WITH `{{.Label "manager"}}`. `podman ps` formats a row
+ * through its reporter type, whose `Labels` METHOD returns the labels as one
+ * comma-joined string and shadows the map beneath it, so `index .Labels` and
+ * `.Labels.manager` both fail the template on every row; `Label <name>` is
+ * the reporter's own lookup, "" for a container without that label.
+ *
+ * A PODMAN THAT FAILS IS AN ERROR, NOT AN EMPTY MACHINE. Read as "no
+ * containers", a failed query would list every profiled box as `not
+ * created` — a running one included, which the Boxes page would then offer
+ * to start — and leave out every box with no profile. The whole rows podman
+ * printed before it failed are kept and listed, the row it stopped inside
+ * is not, podman's own sentence goes to stderr, a line saying the list is
+ * incomplete follows the rows, and the exit status is 1.
  */
 static int cmd_box_list(int json)
 {
-	char *buf = kb_calloc(1, 1 << 16);
+	KbBuf out = {0};
 	KbArgv a = {0};
 	char *line, *save;
 	char **profiles;
 	char *pdir = kb_calloc(1, MAX_LINE);
 	ListRow *rows = kb_calloc(256, sizeof(*rows));
-	int nrows = 0;
+	int nrows = 0, failed, verbose;
 	KbBuf j = {0};
 
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "ps");
 	kb_argv_add(&a, "--all");
 	kb_argv_add(&a, "--format");
-	kb_argv_add(&a, "{{.Names}}\t{{.State}}\t{{.Created.Unix}}\t{{index .Labels \"manager\"}}");
+	kb_argv_add(&a, "{{.Names}}\t{{.State}}\t{{.Created.Unix}}\t{{.Label \"manager\"}}");
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, 1 << 16) != 0)
-		buf[0] = 0;
+	verbose = kb_proc_verbose;
+	kb_proc_verbose = 1;
+	failed = kb_run_capture_buf(&a, &out) != 0;
+	kb_proc_verbose = verbose;
+	kb_buf_add(&out, "", 0);
+	/* Every whole row ends in a newline, so on a failure the text after
+	 * the last one is the row podman was printing when it stopped — cut
+	 * short anywhere, inside its last column included — and is not
+	 * listed. */
+	if (failed && out.n && out.p[out.n - 1] != '\n') {
+		char *nl = memrchr(out.p, '\n', out.n);
 
-	for (line = strtok_r(buf, "\n", &save); line && nrows < 256;
+		*(nl ? nl + 1 : out.p) = 0;
+	}
+
+	for (line = strtok_r(out.p, "\n", &save); line && nrows < 256;
 	     line = strtok_r(NULL, "\n", &save)) {
 		char *tab = strchr(line, '\t'), *tab2, *tab3 = NULL;
 
@@ -162,7 +191,7 @@ static int cmd_box_list(int json)
 			*tab2++ = 0;
 		if (tab2 && (tab3 = strchr(tab2, '\t')))
 			*tab3++ = 0;
-		if (!name_ok(line))
+		if (!name_ok(line) || (failed && !tab3))
 			continue;
 		kb_strlcpy(rows[nrows].name, line, sizeof(rows[0].name));
 		kb_strlcpy(rows[nrows].state, tab, sizeof(rows[0].state));
@@ -170,7 +199,7 @@ static int cmd_box_list(int json)
 		kb_strlcpy(rows[nrows].manager, tab3 ? tab3 : "", sizeof(rows[0].manager));
 		nrows++;
 	}
-	free(buf);
+	kb_buf_free(&out);
 
 	/*
 	 * A box with a profile and no container is still a box — it has been
@@ -265,6 +294,15 @@ static int cmd_box_list(int json)
 		kb_buf_free(&j);
 	}
 	free(rows);
+	if (failed) {
+		/* Last, after the rows: the Boxes page reports the final line
+		 * of a failed listing as its error. */
+		fflush(stdout);
+		kb_warn("podman ps failed, so this list is incomplete: a box "
+			"with no profile is missing and a box's state may be "
+			"wrong");
+		return 1;
+	}
 	return 0;
 }
 
@@ -438,13 +476,137 @@ static int enter_window;
  * rather than handed to a Konsole already running with another. Inside,
  * KDOS_BOX carries the name for a prompt to show; the shipped starship.toml
  * does not read it.
+ *
+ * Three cases, by what this process is:
+ *  - a bare `enter` typed at a shell in a terminal, or `--window` from a
+ *    launcher with no terminal at all: the accent's Konsole window, which
+ *    re-enters with `--shell`;
+ *  - the terminal's own program (`konsole -e kdos-box enter <box>`), which is
+ *    the leader of the session that terminal made, getsid(0) == getpid(),
+ *    where a command typed at a shell is the shell's child and never its
+ *    session's leader: in place, titled `<box> — KDOS box` first — a new
+ *    window would leave the calling terminal open and empty behind it.
+ *    Konsole's OSC 30 replaces the session's tab title format, which its
+ *    default "%d : %n" otherwise keeps over any OSC 0, and a later OSC 0
+ *    from the box's shell cannot undo it; OSC 0 titles other terminals,
+ *    which ignore OSC 30;
+ *  - input that is not a terminal, a command given, or KDOS_BOX_NOTERM set
+ *    (the window above re-entering): in place, the title left alone.
  */
+/*
+ * A BOX NOT YET READY IS WAITED FOR IN PLACE, AND SAYS SO PAST A GRACE. Its
+ * first start runs distrobox-init, which installs the box's user and
+ * packages and can take a minute or more on a slow mirror; podman exec
+ * before this start's `container_setup_done` lands in a half-built user. A
+ * restart of a box set up before is ready in about half a second, so the
+ * first ENTER_QUIET_WAIT seconds of the wait, by the monotonic clock, print
+ * nothing; a box still not ready then gets one line, picked by
+ * box_setup_ever: "setting up <box> for its first use; this can take a
+ * minute" when no start of it ever finished a setup, "waiting for <box> to
+ * start" when one did; a wait shorter than the grace prints it as its time
+ * runs out. The line comes from inside the one wait, under its wait mark, so
+ * a stop at any point of it is heard. Only the in-place cases wait: the
+ * window case opens its Konsole at once and the window's own `--shell`
+ * re-entry, an in-place case, waits there, under the title, with the line on
+ * its screen. The wait is ENTER_SETUP_WAIT seconds, or KDOS_BOX_SETUP_WAIT's
+ * (1 to 3600): a person is watching and can stop it, and a shorter wait
+ * would fail a first setup that a slow mirror stretches past it. A wait
+ * the time runs out on exits 1 naming where to look and never execs into
+ * the half-built box; in the window's re-entry it then holds the window
+ * until Enter, since Konsole closes it as the command exits and the line
+ * would go with it. One ended by `kdos-box stop` exits 1
+ * with a line of its own, so the shell reports a status and no
+ * "Terminated". The window case waits for its Konsole rather than exec'ing
+ * it, so the shell that typed the bare `enter` hears the outcome too: the
+ * re-entry finds KDOS_BOX_ENTER_STATUS, $XDG_RUNTIME_DIR/kdos/boxes/
+ * <box>.enter.<pid> of the waiting process, and writes `stopped` or
+ * `timeout <seconds>` there before it exits 1; the waiting process prints
+ * the same line on the calling terminal, removes the file and exits 1, and
+ * with no file exits with Konsole's status. SIGTERM is ignored around the
+ * wait, which makes box_wait_ready_note return -2 for it rather than re-raise
+ * it, and the disposition found is put back after, since an ignored signal
+ * stays ignored across the exec into the box.
+ */
+#define ENTER_SETUP_WAIT 120
+#define ENTER_QUIET_WAIT 3
+
+static int enter_shell;
+
+static void enter_say_stopped(const char *box)
+{
+	fprintf(stderr, "kdos-box: %s was stopped before it was ready\n", box);
+}
+
+static void enter_say_timeout(const char *box, int secs)
+{
+	fprintf(stderr, "kdos-box: %s did not finish setting up in %d s — its "
+			"init's output is in `podman logs %s`\n", box, secs, box);
+}
+
+static void enter_say_waiting(const char *box)
+{
+	if (box_setup_ever(box))
+		fprintf(stderr, "kdos-box: waiting for %s to start\n", box);
+	else
+		fprintf(stderr, "kdos-box: setting up %s for its first use; "
+				"this can take a minute\n", box);
+}
+
+static void enter_wait(const char *box)
+{
+	struct sigaction ign, old;
+	const char *env = getenv("KDOS_BOX_SETUP_WAIT");
+	const char *status = getenv("KDOS_BOX_ENTER_STATUS");
+	int rc, secs = ENTER_SETUP_WAIT;
+
+	if (box_setup_done(box))
+		return;
+	if (env && *env) {
+		char *end;
+		long v = strtol(env, &end, 10);
+
+		if (!*end && v >= 1 && v <= 3600)
+			secs = (int)v;
+	}
+	memset(&ign, 0, sizeof(ign));
+	ign.sa_handler = SIG_IGN;
+	sigemptyset(&ign.sa_mask);
+	sigaction(SIGTERM, &ign, &old);
+	rc = box_wait_ready_note(box, secs, ENTER_QUIET_WAIT, enter_say_waiting);
+	sigaction(SIGTERM, &old, NULL);
+	if (rc != 0 && enter_shell && status && *status) {
+		char rec[32];
+
+		if (rc == -2)
+			snprintf(rec, sizeof(rec), "stopped\n");
+		else
+			snprintf(rec, sizeof(rec), "timeout %d\n", secs);
+		kb_write_file(status, rec);
+	}
+	if (rc == -2) {
+		enter_say_stopped(box);
+		exit(1);
+	}
+	if (rc != 0) {
+		enter_say_timeout(box, secs);
+		if (enter_shell && isatty(STDIN_FILENO)) {
+			char line[8];
+
+			fprintf(stderr, "press Enter to close\n");
+			if (!fgets(line, sizeof(line), stdin))
+				line[0] = '\0';
+		}
+		exit(1);
+	}
+}
+
 static int cmd_box_enter(int argc, char **argv)
 {
 	Profile p;
 	KbArgv a = {0};
 	const char *box;
-	char theme[MAX_LINE];
+	char theme[MAX_LINE], title[MAX_LINE + 48];
+	int own;
 
 	if (argc < 1) {
 		fprintf(stderr, "usage: kdos-box enter <name> [command ...] "
@@ -460,15 +622,19 @@ static int cmd_box_enter(int argc, char **argv)
 		kb_die("%s does not exist — `kdos-box create %s`", box, box);
 	if (pack_box_start(box) != 0)
 		kb_die("could not start %s", box);
-	if (!box_setup_done(box))
-		box_wait_ready(box, 30);
 
-	/* In place when there is no terminal to replace (input is not a tty),
-	 * when a command is given, or under the Konsole window this opens below
-	 * (KDOS_BOX_NOTERM). A bare `enter` typed at a terminal opens a new
-	 * Konsole window in the box's accent and re-enters there. */
+	/* The three cases are in the comment above. */
+	own = isatty(STDIN_FILENO) && argc == 1 &&
+	      !getenv("KDOS_BOX_NOTERM") && getsid(0) == getpid();
 	if (!enter_window &&
-	    (!isatty(STDIN_FILENO) || argc > 1 || getenv("KDOS_BOX_NOTERM"))) {
+	    (!isatty(STDIN_FILENO) || argc > 1 || getenv("KDOS_BOX_NOTERM") ||
+	     own)) {
+		if (own && isatty(STDOUT_FILENO)) {
+			printf("\033]30;%s — KDOS box\007"
+			       "\033]0;%s — KDOS box\007", box, box);
+			fflush(stdout);
+		}
+		enter_wait(box);
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "exec");
 		kb_argv_add(&a, "--interactive");
@@ -511,7 +677,8 @@ static int cmd_box_enter(int argc, char **argv)
 		}
 	}
 	kb_argv_add(&a, "-p");
-	kb_argv_addf(&a, "LocalTabTitleFormat=%s — KDOS box", box);
+	snprintf(title, sizeof(title), "LocalTabTitleFormat=%s — KDOS box", box);
+	kb_argv_add(&a, title);
 	kb_argv_add(&a, "-e");
 	kb_argv_add(&a, "kdos-box");
 	kb_argv_add(&a, "enter");
@@ -519,9 +686,57 @@ static int cmd_box_enter(int argc, char **argv)
 	kb_argv_add(&a, "--shell");
 	kb_argv_end(&a);
 	setenv("KDOS_BOX_NOTERM", "1", 1);
-	execvp(a.v[0], (char *const *)a.v);
-	kb_die("konsole: not found");
-	return 1;
+	/* The window's terminal program writes to its own window: its output
+	 * and its diagnostics (Qt's warnings as the window closes) would
+	 * otherwise land in the calling terminal and interleave with its
+	 * prompt, so the Konsole child's stdout and stderr go to /dev/null and
+	 * this process keeps its own. `--separate` makes Konsole return when
+	 * its window closes, and the re-entry's outcome file (A BOX NOT YET
+	 * SET UP) is read after it. */
+	{
+		char sd[MAX_LINE], status[MAX_LINE + 80], rec[32] = "";
+		int have = box_state_dir(sd, sizeof(sd)) == 0;
+		int st = 0;
+		pid_t pid;
+
+		if (have) {
+			snprintf(status, sizeof(status), "%s/%s.enter.%ld", sd,
+				 box, (long)getpid());
+			unlink(status);
+			setenv("KDOS_BOX_ENTER_STATUS", status, 1);
+		}
+		fflush(stdout);
+		fflush(stderr);
+		pid = fork();
+		if (pid < 0)
+			kb_die("fork: %s", strerror(errno));
+		if (pid == 0) {
+			int devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
+
+			if (devnull >= 0) {
+				dup2(devnull, STDOUT_FILENO);
+				dup2(devnull, STDERR_FILENO);
+				close(devnull);
+			}
+			execvp(a.v[0], (char *const *)a.v);
+			_exit(127);
+		}
+		while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
+			;
+		if (have && kb_read_file(status, rec, sizeof(rec)) > 0) {
+			unlink(status);
+			if (!strncmp(rec, "stopped", 7))
+				enter_say_stopped(box);
+			else if (!strncmp(rec, "timeout ", 8))
+				enter_say_timeout(box, atoi(rec + 8));
+			return 1;
+		}
+		if (have)
+			unlink(status);
+		if (WIFEXITED(st) && WEXITSTATUS(st) == 127)
+			kb_die("konsole: not found");
+		return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+	}
 }
 
 /* ── apps, export ──────────────────────────────────────────────────────── */
@@ -1550,6 +1765,7 @@ int box_main(int argc, char **argv)
 		 * means "you are already in a terminal, do not open another". */
 		if (argc > 2 && !strcmp(argv[2], "--shell")) {
 			setenv("KDOS_BOX_NOTERM", "1", 1);
+			enter_shell = 1;
 			return cmd_box_enter(1, argv + 1);
 		}
 		if (argc == 3 && !strcmp(argv[2], "--window")) {

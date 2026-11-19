@@ -132,7 +132,7 @@ installer's runs find the same programs a terminal run does. A program the insta
 is logged as `cannot run <program>: <error>` and counts as exit status 127.
 
 Only `--dump`, `--save`, `--help` and `--version` work without root. The wizard, `--dry-run`
-included, stops on its first page with "kinstall must run as root — try: sudo kinstall" until it
+included, stops on its first page with "must run as root — try: sudo kinstall" until it
 runs as root. An `--unattended` run does not pass through that page; its first step, Prepare,
 fails with "kinstall must run as root" instead.
 
@@ -149,7 +149,7 @@ fails with "kinstall must run as root" instead.
 | Tab, Shift-Tab | Move between controls |
 | Arrows | Move inside a list or a field |
 | Enter, Space | Activate, toggle, choose |
-| Alt+Left, Alt+Right | Previous or next page |
+| Alt+B, Alt+N | Previous or next page. Alt+Left and Alt+Right do the same on a terminal that passes them through; on a Linux virtual console the kernel's keymap takes them to switch consoles, so the bottom bar names `Alt+B/N` |
 | Esc | Back a page, or close the help |
 | PgUp, PgDn | Scroll a page taller than the screen; in the full log, scroll ten lines |
 | F1 | Show or hide the key help |
@@ -158,14 +158,18 @@ fails with "kinstall must run as root" instead.
 | Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
 | Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
 
-Alt+Left, Alt+Right and Esc do nothing on the Install and Done pages, which have no navigation
-buttons.
+Alt+B, Alt+N, the two arrows with Alt and Esc do nothing on the Install and Done pages, which have
+no navigation buttons.
 
 The installer needs a terminal of at least 62 columns by 18 rows; below that it shows a
 screen-too-small notice instead of the wizard. The sidebar listing the pages appears only at 78
-columns or wider. On the 25-row Linux console some pages are taller than the screen; PgUp, PgDn
-and the mouse wheel scroll them, a scroll bar marks the overflow, and moving the focus with Tab
-scrolls the focused control into view.
+columns or wider. At 80 columns the page beside it is 54 cells wide and a key's value column 37: on
+every page a value, a note or a description wraps under its own column, and a list row longer than
+its column ends in an ellipsis, so no line is cut at the edge. `testing/selftest.sh` draws every
+page at 80x33 and refuses one that cuts a line (see
+[selftest.sh](../05-developer/testing.md#selftestsh)). On the 25-row Linux console some pages are
+taller than the screen; PgUp, PgDn and the mouse wheel scroll them, a scroll bar marks the
+overflow, and moving the focus with Tab scrolls the focused control into view.
 
 The mouse works everywhere, including on a bare console (see [The mouse works on a bare
 console](#the-mouse-works-on-a-bare-console)). Clicking a finished page in the sidebar walks back to
@@ -194,14 +198,15 @@ are in [The graphical installer](#the-graphical-installer).
 | 11 | `done` | Done | Reboot |
 
 Pressing **Next** runs the page's checks; a refusal is shown in the bottom bar for eight seconds
-and the page stays. The button on the page before the Summary reads **Review** rather than
+and the page stays ("no disk found to install to" on a machine with no disk). The bar's message
+runs to the column before **Back**, and one longer than that ends in an ellipsis. The button on the page before the Summary reads **Review** rather than
 **Next**.
 
 **Welcome.** Shows the machine: processor and thread count, memory, the number of disks, the
 install size, and the firmware (`UEFI` or `legacy BIOS`, with "32-bit firmware" and "Secure Boot
 enabled" added when they apply). A preflight list marks each item that fails:
 
-- running as root;
+- running as root (failing, the line reads "not running as root — start it with sudo kinstall");
 - at least one disk that is not read-only (the line reads "at least one writable disk");
 - `rsync` present;
 - `mkfs.ext4` and `mkfs.vfat` present;
@@ -212,14 +217,18 @@ warned about: a disk the installer partitions starts on both (see [Both
 firmwares](#both-firmwares)).
 
 **Keyboard.** Lists every keymap under `/usr/share/keymaps` and `/usr/share/kbd/keymaps`, with a
-filter field. Moving the selection applies the map at once with `loadkeys`, and a test field
+filter field (a name too long for the list ends in an ellipsis). Moving the selection applies
+the map at once with `loadkeys`, and a test field
 shows what the keys produce. The choice is written to `/etc/keymap` on the target, and the login
 screen and the session take the graphical layout nearest it (see
 [What the rest of the tree provides](#what-the-rest-of-the-tree-provides)).
 
 **Time.** Lists the zones in `/usr/share/zoneinfo/zone1970.tab` (`$KDOS_ZONEINFO` replaces the
-directory, for testing), with a filter and a preview of the local time in the selected zone. The
-hardware clock is left as it is. An image with no zone table offers `UTC` alone.
+directory, for testing), with a filter; a name too long for the list ends in an ellipsis. Beside the
+list, **SELECTED** holds the chosen zone, its `TZ string` (`:/etc/localtime`) and its `local time`,
+each label on a row of its own with the value wrapped under it. A filter that leaves one zone chooses it; otherwise the zone changes only when the selection is moved
+or a row is chosen, so tabbing through the list leaves the chosen zone (UTC, which the table does
+not list, included) as it was. The hardware clock is left as it is. An image with no zone table offers `UTC` alone.
 
 **Disk.** Lists every disk except loop, RAM, optical, zram, device-mapper, MD, floppy and NBD
 devices, with its size, transport (`sata`, `nvme`, `usb`, `virtio` or `mmc`) and model, and draws
@@ -297,16 +306,18 @@ most 63 characters; the hint beside it reads "letters, digits, inner -"), then *
 
 - **Set up my account now**: full name, user name (lowercase letters, digits, `-` and `_`,
   starting with a letter or `_`, at most 32 characters; the hint reads "lowercase, no leading digit
-  or -"), and the password twice, with a strength meter.
+  or -"), and the password twice, with a strength meter. It rates the password by its length
+  alone, as the graphical installer's hint does: under 8 characters `short`, 8 to 15 `fair`, 16
+  and over `long, good`, a 12-cell bar lit in three steps.
   **Administrator (member of wheel, may use sudo)** is ticked by default. Under **Login**, **Log in
   automatically after the disk passphrase** is offered only when the root is encrypted, and with it
-  **Start the session locked (unlock with this password)**, ticked by default. On an unencrypted
+  **Start the session locked**, ticked by default (unlocked with this password). On an unencrypted
   root the page says that the login screen asks for this password.
 - **Let the first person to start it set it up (OEM)**: no account is made. The first time the
   machine is started, the setup wizard asks for the language, keyboard, time zone and network and
   makes the account. See [An OEM install](#an-oem-install).
 
-**Lock the root account (log in as yourself, use sudo)** is ticked by default; unticked, a root
+**Lock the root account** is ticked by default (log in as yourself and use sudo); unticked, a root
 password is asked for twice. The page refuses a malformed hostname ("a host name is letters, digits and dashes, and does not
 start or end with a dash") or user name ("a user name is lowercase letters, digits, - and _, and
 starts with a letter or _"), a full name
@@ -317,16 +328,22 @@ is OEM), a user name that belongs to one of the accounts the image carries (`roo
 non-administrator while root is locked ("root is locked and <user> is not an administrator —
 nobody could ever gain privileges").
 
-**System.** The accent, as eight radio buttons with a swatch each; choosing one repaints the
-installer in it. The desk, the panel layout the first login lays out: `kdos` (the default), `dock` or
-`tiling`, the last with KWin's auto-tiling script on from the first login. **Install the alien app library** (the live user's
+**System.** The accent, as eight radio buttons; choosing one repaints the installer in it. On a
+terminal with 24-bit or 256-colour SGR each radio has a swatch of that accent's own accent, mid and
+warning colours. A Linux console and a plain ANSI terminal show only their eight palette colours,
+so they draw no swatch, and the repaint is the preview. The desk, the panel layout the first login lays out: `kdos` (the default), `dock` or
+`tiling`, the last with KWin's auto-tiling script on from the first login; each radio names the desk
+and its description wraps under it. **Install the alien app library** (the live user's
 container storage, with its size) is ticked by default. Then the five services of [the service
-table](#answer-files), each a checkbox.
+table](#answer-files), each a checkbox named by the service, with what it is wrapped under it.
 
 **Applications.** One list: the native groups first, each marked `native` with its number of
 ports, then the catalogue's boxed groups. Under it, `boxed` is the boxed selection and its
 estimated size, `how` the route the boxed groups take, `native` how many native groups are
-ticked, downloaded during the install, and `language`, when the keyboard or the time zone points at
+ticked and what happens to them: "downloaded during the install" when a binary host is named,
+and otherwise "recorded for later (no binary host)", with the command that installs them once a
+binary host answers, `sudo kdos update install --pending`, on a line of its own above the list
+(see [Native groups](#native-groups)), and `language`, when the keyboard or the time zone points at
 a language group, which one and why (`lang-ja ticked for the Japanese keyboard`). See [The
 applications step](#the-applications-step) and [Native groups](#native-groups).
 
@@ -334,19 +351,33 @@ applications step](#the-applications-step) and [Native groups](#native-groups).
 REVERSIBLE". **Next** is refused here ("press BEGIN INSTALL to start — Next does not"): the install
 starts from the **BEGIN INSTALL** button (**REHEARSE INSTALL** under `--dry-run`) and only from
 it. **Save answer file** writes the answers to `/tmp/kinstall.conf` and installs nothing. The
-Summary also says which firmwares the disk will start on.
+Summary also says which firmwares the disk will start on. Its swap row uses the Layout page's
+words: `swap volume` and `shared by both slots, <size> MiB` on the A/B layout, `swap` and `swap
+file, <size> MiB` or `swap partition, <size> MiB` on one root.
 
 **Install.** A bar over the whole install, each step counted by its
 [weight](#the-event-stream), each step with its state and time, the elapsed time, the
-warnings so far under **WARNINGS**, and the tail of the log. When a step fails, four buttons
-appear: **Retry step** runs the install again from the failed step, **View log** opens the full
+warnings so far under **WARNINGS**, and the tail of the log. The elapsed time stops when the
+install finishes or stops, and the status line under the page then reads `finished` or `stopped`
+in place of `writing to disk`. The warnings are a bulleted list, one bullet each, a repeated one
+once, each starting with a capital and without the backticks round its commands, with a blank row
+between two when the page has room. The running step's note (the copy's
+`364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15 left`) and a failed step's reason wrap under the
+column they start in; a log line wider than the page ends in an ellipsis, and **L** shows it whole.
+A line on the page has each tab set as spaces to the next multiple of 8 and every other control
+character dropped; `/var/log/kinstall.log` keeps the line as the program wrote it.
+When a step fails, four buttons
+appear: **Retry step** runs the install again from the failed step, its elapsed time still counted from
+the first start, **View log** opens the full
 log, **Shell** runs a login `bash` on the console, and **Abort** quits. When every step has
 finished, **Continue** appears and moves to the Done page.
 
-**Done.** The time taken, the disk and the log path, the warnings under **FINISHED WITH
-WARNINGS** when there were any, a reminder to remove the boot medium, and three buttons: **Reboot
-now** (after a confirmation), **Back to the live desktop** (quit), and **View log** (in `less`, or
-`more` where `less` is missing).
+**Done.** The time taken, the figure the Install page's elapsed time stopped at, in words that
+agree with their numbers (`took 1 minute 11 seconds`, `took 45 seconds`), the disk and the log
+path, the warnings under **FINISHED WITH WARNINGS** as the Install page lists them, when there
+were any, a reminder to remove the boot medium, and three buttons: **Reboot
+now** (after a confirmation) and **Back to the live desktop** (quit) on one row, and **View log**
+(in `less`, or `more` where `less` is missing) on the row under them.
 
 The Summary's install button, the Install page's Continue button and an unattended run all find
 their page by its identifier (`install`, `done`) rather than by its position, so adding a page in
@@ -364,11 +395,11 @@ rather than run.
 | # | Step | Does | Skipped when |
 |---|---|---|---|
 | 1 | Prepare | Checks the target and the tools, stops every swap area but zram, takes down anything holding the disk | — |
-| 2 | Partition | Writes the GPT layout: a 512 MiB ESP, a 1 MiB BIOS boot partition, an optional swap partition, then the root | The plan is not `wipe` |
+| 2 | Partition | Writes the GPT layout: a 512 MiB ESP, a 1 MiB BIOS boot partition, an optional swap partition, then the root, or with LVM the physical volume that holds the root (both slots' roots on the A/B layout), inside a LUKS container when encrypted. The plan's line for the step says which, in at most 80 characters, which the graphical Summary's value column wraps inside itself ("write the GPT layout: ESP, BIOS boot, LVM volume for both system slots", with "encrypted LVM volume" when encrypted and "the root" on one slot) | The plan is not `wipe` |
 | 3 | Format | Encrypts and creates the volume group and its volumes if asked, then makes the filesystems | — |
 | 4 | Mount | Mounts the root at `/mnt/kinstall`, the ESP at `/mnt/kinstall/boot/efi`, and on the A/B layout the shared home and the pack store | — |
 | 5 | Copy system | Copies the live tree with `rsync`, without the live session | — |
-| 6 | Packs | Installs the chosen native groups into the target, and records the chosen boxed applications for the first login | No native group chosen, and no application catalogue or no boxed group chosen |
+| 6 | Packs | Installs the chosen native groups into the target when the medium names a binary host, records them for `sudo kdos update install --pending` when it names none, and records the chosen boxed applications for the first login. The plan's line for the step says which, in at most 80 characters: "native groups downloaded and installed, boxed apps recorded for the first login", or "native groups and boxed apps recorded; the first login says how to install each", the first login's notice naming the command | No native group chosen, and no application catalogue or no boxed group chosen |
 | 7 | Firmware | Installs the firmware this machine's devices need and the medium does not carry, with `kdos firmware sync --root /mnt/kinstall` ([The firmware step](#the-firmware-step)) | — |
 | 8 | Configure | The swap file, `fstab`, hostname, time zone, keyboard, login screen, services, serial console | — |
 | 9 | Accounts | Users, passwords, groups, the new account's home | — |
@@ -445,14 +476,15 @@ The copy leaves out:
 live system. The excluded directories are then created empty, `/tmp` with mode `01777`. The step's
 note reads `<copied> of <total>, <rate>, about <H:MM:SS> left` ("364 MiB of 4.1 GiB, 25 MiB/s,
 about 0:03:15 left"), or `<copied> copied, <rate>, about … left` when the install size is
-unmeasured. The step's fraction done and the bytes left are of the bytes rsync copies,
+unmeasured; until the time left has settled (below) it reads `<copied> of <total>, <rate>,
+estimating time left`. The bytes left are of the bytes rsync copies,
 which are not the bytes its percentage is of: with `-H` its total counts every name of a
 hard-linked file, and it copies the first and makes the others links at no cost. On the live
 tree those names are about 15% of rsync's total, so its percentage stops near 85% as the copy
 ends. The payload walk adds up the bytes of every name of a file after its first (`st_nlink`
 above 1, one count per inode), and the total is rsync's, worked out from its percentage once that
 is 10% or more, less those bytes; before that, the install size less them. It is never less
-than the bytes done, and the step reaches 100% as the copy does. The note's `<total>` is the
+than the bytes done, so the bytes shown reach the total as the copy ends. The note's `<total>` is the
 install size less those bytes, the walk's own figure, which stays put: one worked out from rsync's
 whole-number percentage moves by a tenth of a GiB from line to line. Sizes are in the units the graphical installer's other pages use: KiB under a mebibyte,
 whole MiB under a gibibyte, GiB to one decimal. Only the byte count, the percentage and the file
@@ -462,26 +494,109 @@ time left are kinstall's own, on the monotonic clock, because rsync's time field
 on the line it prints as each file ends. The rate is the bytes over the seconds since rsync
 started, as a size per second (`45 MiB/s`), and `--` in the first second.
 
+The step's fraction done is of the time: the seconds so far over those and the time left shown,
+or the estimate while no figure is shown, once there is an estimate, and of the bytes before
+that, never less than the last one. The live
+tree's bytes are not spread like its time, two thirds of them going in the first third of the copy,
+so a bar of bytes would stand near its end through the half minute of small files and links. The
+time shown reaches 0 as the copy ends, and the step reaches 100% with it.
+
 The time left is two costs: the bytes still to go at a cost per byte plus the files still to go at
 a cost per file. The two costs, and an intercept that takes up the seconds rsync spends listing the
 tree before its first progress line, are fitted by least squares on up to 64 samples of the
-seconds, bytes and files done, thinned so they stay spread over the whole copy. A live tree copies
+seconds, bytes and files done, thinned so they stay spread over the whole copy, each weighing half
+as much for every twenty seconds it is older than the newest, so the costs are those of the part of
+the tree being copied now. A live tree copies
 its large files at the disk's speed and ends in many small ones, where the per-file cost sets the
 pace: scaled from bytes alone that tail reads seconds when it takes a minute, and scaled from files
 alone, at a rate that counts the large files' time as the files', the copy reads two or three times
 as long as it is. Both costs are fitted only once each quantity has moved by a two-hundredth of its
 total and the two have not moved in step. Until then, one cost is fitted with the other held at a
-floor of 0.1 ms a file or 2 ns a byte, about half of what each costs on the live medium's copy onto
-a virtual disk, and the lower of the two estimates is taken. A cost the copy has not shown yet is
-not known: through a tree whose large files all come before its small ones, the time left is low
-until the small ones start, and takes in their cost a few seconds later. The live tree mixes the
-two from its first seconds. Until the samples span two seconds the time left is the bytes' estimate
-from the first progress line, or the files' when that is lower, and `--:--:--` in the first second;
-the first fitted estimate replaces it as it is. The time shown does not rise while bytes or files
-advance, except for a cost the samples have just begun to show: it rises to the latest estimate
-only once every estimate for three seconds has stood more than a quarter above the time shown. A
-single high estimate, or one only a little above, is held. Slot B's copy says the same against the
-system without the box store.
+floor of 0.1 ms a file or 2 ns a byte, below what each costs on the live medium's copy onto a
+virtual disk (about 0.35 ms and 4 ns), and the lower of the two estimates is taken. A sample
+weighs nothing once its weight has halved past a millionth. A cost the copy has not shown yet is
+not known: through a tree whose large files all come before its small ones, the estimate is low
+until the small ones start and takes in their cost a few seconds later, but a figure once shown
+does not rise to it: it slows, and reads low through the tail. The live tree mixes the two from
+its first seconds. Until the samples span a second there is no estimate; the first estimate is a
+fitted one, since one from the first lines alone leaves one of the costs out.
+
+The time shown counts down while bytes or files advance, and once shown it never rises: each refit
+moves the estimate, and a figure that climbs while bytes go by reads as a copy going backwards, one
+that stands as a copy that has stopped. No figure is shown until the estimate has settled, and the
+note says `estimating time left`: the first fits are low on a slower disk and on a tree whose small
+files have not started, and high behind a slow start such as the 17 MiB/s of a graphical install's
+first hundred MiB, and a figure shown from them would have to rise or stand to meet the copy. The
+estimate has settled once the copy's own fraction, the seconds so far over those and the estimate,
+is 0.08 and the estimates of the last two seconds lie within 30% above the lowest of them, or once
+that fraction is 0.16 whatever they do. That fraction is of the estimate, so the forced settle comes
+before a fifth of the copy while the estimate is at most 1.31 times the real time left, and on
+every recorded copy below the estimate settles before it; an estimate higher than that whose
+two seconds still spread by more than 30% leaves the note estimating past a fifth. The first
+figure is the estimate then, and from it on only the countdown moves it; meanwhile the bar moves
+with the estimate.
+
+The countdown is set against the estimate, the highest of those that stood over the last tenth of
+a second.
+Above it, the time shown falls to it, at least as fast as the clock and at most eight times as
+fast, so a high first figure, or one the estimate has fallen below, is corrected within a second or
+two wherever it came from. Below it, the time shown counts at the clock while within 6% of the
+estimate, slower the further below, and at 0.58 of the clock from 16% below on, which lets the copy
+catch up with a figure that is low. An estimate a little above the figure is as often a slow
+stretch of the copy as a copy slower than shown, and the clock keeps the figure from following it
+up; one well above is the copy's own pace. rsync prints a line as each file ends and once a second
+through a large file, so when no line has come for 0.2 s kinstall's reader counts the figure down
+from the last line's estimate as a line would. A whole second then stands for at most 1/0.58 +
+0.2 s, under two, and a front end framing once a second never shows one figure three times while
+the copy moves. A copy whose bytes and files have not advanced for 1.5 s, longer than rsync's second
+between running lines, is not moving and keeps its figure. The figure is never below a second until
+the copy's last line (`to-chk=0/N`, or no bytes and no files left), which reads 0:00:00, so
+0:00:00 is never shown on a copy still running. Slot B's copy works the same against the system
+without the box store. The constants are held by replaying the rig's recorded copies (below).
+
+The files are counted by what they cost. rsync's `to-chk` counts every entry of its list, and a
+directory, a symbolic link or a later name of a hard-linked file costs a fraction of a regular
+file: fitted to the progress of the live medium's install onto a virtual disk, about 0.1 ms against
+0.35 ms, so each counts 0.3 of a file. The live tree keeps some twenty-five thousand links in its
+icon themes past the middle of its list; charged a file's cost, those links would read the rest of
+the copy as up to half again as long as it is. The payload walk visits the tree in
+rsync's own order (in each directory the entries that are not directories by name, then each
+directory by name followed by everything under it) and keeps the cost done after each 1/128 of the
+entries, with the box store and without it, the second being slot B's too; the files done and
+left the fit sees are that cost, read at the same fraction of rsync's list.
+
+With `KINSTALL_COPY_TRACE=<file>` in its environment, kinstall appends every line each copy's
+rsync prints to that file as `<seconds since the copy started> <line>`, after a `# root` or
+`# slot-b` line with the total and the hard-link bytes the time left is given and a `# prof` line
+holding the walk's profile. That is the stream the selftest's `harness copy` reads, and it reads
+the `# prof` line in place of a tree, so a copy on real hardware replays on the host as its time
+left was worked out, the reader's ticks given 0.2 s after each line that no other line follows
+sooner (`KI_HARNESS_TICKS`); a `# root` or `# slot-b` line starts the next copy with nothing
+carried over, so one trace replays both copies in turn. Eight such traces from the rig, five
+installs onto 30 GiB (both slots) and three onto 12 GiB (one slot), are kept thinned under
+`testing/fixtures/kinstall/`, and the selftest replays every copy in them, with the reader's ticks,
+and holds it to what a front end shows a frame a second (at twenty phases of the second) or two
+apart: no note reads `--:--:--`, until the estimate settles the note says `estimating time left`,
+from the first figure on no frame is without one or shows more than the frame before, and from a
+fifth of the copy on every frame shows a figure no more than a quarter (or 1.5 s) above the real
+time left, no figure for three frames above 1 s, no 0:00:01 for more than 4 s, and 0:00:00 at the
+end. The low bound is 0.6 of the real time less a second, the second for the note's whole
+seconds: on two of the slot B copies the estimate stands at 0.65 to 0.8 of the real time through
+the first half, and a figure that never rises keeps that start. The 12 GiB root copy also replays
+re-timed to the notes of two graphical installs on 12 GiB, whose disks were slower, under the same
+bounds. Each real copy also replays slowed two, three and five times over, as onto a disk that much
+slower, with a running line put in each second the slowed trace leaves without one, as rsync prints
+one a second through a large file; there every bound holds but the low one, which is 0.58 of the
+real time less 2 s, and 0:00:01 stands for 6 s at most. Each constant sits inside the range on
+which, varied alone, every replay passes but one, and `kinstall-core.h` names each range and what
+fails past it. That one is slot B's copy of `e2e10-30`, a 30 GiB install, which passes on no value:
+its estimate stands at 1.3 to 1.4 times the real time from 13 s to 17 s of its 28, through a
+stretch that copies slower than the rest, and the figure reads up to 1.33 times the real time
+there, so the selftest holds that copy to a third above. Fitting the constants on seven traces and
+replaying the eighth, each in turn, every held-out trace passes but two: `two30`, whose slot B
+estimate is low and then jumps, which the other seven would set to read under the low floor, and
+`e2e10-30`'s slot B. A disk or a tree unlike these eight copies can read below the low bound, and a
+figure that never rises keeps a low start to the end.
 
 The copy streams the tree through the page cache and can fire `kdos-oomd`'s pressure trigger on a
 machine with little memory. The daemon kills nothing while most of memory is still available, and
@@ -788,7 +903,8 @@ graphical installer reads all four, with `--config -` for the answers so far.
   graphical installer's Disk page shows where the swap is chosen. It also prints the `mkfs` command and the
   root's `fstab` line that the filesystem choice becomes, the services turned off, and for the
   boxed applications the selection, the route and an estimated size, and the native groups chosen
-  (`groups` in the text form, a `"groups"` array of ids in the JSON). It probes the firmware and the disks
+  (`groups` in the text form, a `"groups"` array of ids in the JSON, beside `"binhost"`, true when
+  `kdos update` has a binhost to fetch them from and false when they would only be recorded). It probes the firmware and the disks
   as the wizard does, so it names the partitions the install will use: the erase plan's ESP, BIOS
   boot partition and root by their device names, and on the reuse plan the disk's own BIOS boot
   partition, the MBR gap, or `none: the disk starts on UEFI only`. Whenever the answers name a
@@ -1087,10 +1203,10 @@ updates them like anything else installed on purpose, and starts with its releas
 place. When the fetch fails, every chosen group, and otherwise each group that did not install,
 is written to the target's `/var/lib/kdos/groups-pending` with a warning, never a failure: the
 system is installed and boots without them, and
-[`kdos update install --pending`](kdos-command.md#install-routes-and-groups) installs them later.
-A failed fetch's warning reads "the release's binary host index could not be fetched
-(/var/log/kinstall.log says why); the chosen groups are recorded and install later with `kdos
-update install --pending`", and the log holds the fetch's own reason. A medium that names no binary
+[`sudo kdos update install --pending`](kdos-command.md#install-routes-and-groups) installs them
+later; the file's header comment names the same command. A failed fetch's warning reads "the
+release's binary host index could not be fetched (/var/log/kinstall.log says why); the chosen
+groups are recorded and install later with `sudo kdos update install --pending`", and the log holds the fetch's own reason. A medium that names no binary
 host at all, whose `/ports/TREE` names no release and whose `/etc/kdos/update.conf` has no
 `binhost =` line, is no failed fetch: `kdos update fetch` says "no binhost is named", and the
 warning then begins "this image names no binary host" instead.
@@ -1337,7 +1453,7 @@ steps the install will run, skips included; every line the install's child sends
 same event in JSON; the last is the result:
 
 ```text
-{"t":"plan","steps":[{"index":0,"title":"Prepare","detail":"…","state":"pending","weight":1}, …]}
+{"t":"plan","steps":[{"index":0,"title":"Prepare","detail":"…","state":"pending","weight":3}, …]}
 {"t":"S","step":4,"title":"Copy system"}    a step begins
 {"t":"K","step":1}                          a step is skipped
 {"t":"P","step":4,"frac":0.42}              its progress, -1 unknown
@@ -1349,12 +1465,19 @@ same event in JSON; the last is the result:
 {"t":"exit","status":0}                     the last line, always
 ```
 
-A step's `weight` is its share of the whole install against a short step's 1, for a bar over the
-install that moves with its time rather than its step count: **Copy system** weighs one per
-0.6 GiB of what it copies, the box store included when it is copied, and **Slot B** one per
-1.5 GiB of the system less the box store, which its copy never enters, at least 1 each, as measured on the
-live medium's install onto a virtual disk, where a short step takes some seconds, the copy about a
-minute and slot B a third of that. A reader takes a missing weight as 1.
+A step's `weight` is the time it is expected to take, in tenths of a second, for a bar over the
+install that moves with the clock rather than the step count. Measured from `kinstall.log`'s
+timestamps on the live medium's graphical installs onto a virtual disk: Prepare, Partition, Format
+and Mount take about three seconds between them (0.3, 1, 1.5 and 0.2 s), the steps after the copy
+about four seconds in all (Packs 2 s, Firmware, Configure, Accounts and Finish 0.3 s each, Theme
+0.2 s, Bootloader 0.8 s), **Copy system** its install size at 90 MiB/s, the box store included
+when it is copied, and **Slot B** the system less the box store, which its copy never enters, at
+190 MiB/s; the live tree's 4.8 GiB took 50 to 56 seconds and slot B 21 to 28. When a binhost is named
+(`binhost =` in `update.conf`, `$KDOS_UPDATE_BINHOST`, or a release named in `/ports/TREE`, the
+order `kdos update` looks in), **Packs** adds 1 s for each port of the chosen native groups, an
+allowance no install has measured; with none named the groups go to `groups-pending`, nothing
+downloads, and Packs keeps its 2 s. A
+reader takes a missing weight as 1.
 
 Status 0 is a finished install, 1 a failed one, and 2 answers refused by the answers check before
 anything was written, with the reason in an `F` line whose step is -1. The process exits with the
@@ -1376,13 +1499,13 @@ already answered can be returned to by clicking it, and a step ahead cannot:
 | Welcome | The time zone, from `/usr/share/zoneinfo/zone1970.tab` with UTC first, narrowed by a typed filter (one match is chosen; a filter that matches nothing keeps the chosen zone, shown as "<zone> (no zone matches the filter)"), with the local time there; beside it the processor, memory, firmware, how many of the disks found can take the install, and the install size. With Secure Boot on, the firmware row adds ", Secure Boot on" and a warning says the installed computer will not start until Secure Boot is turned off in the firmware setup, because Limine's EFI loader is unsigned and KDOS enrols no keys |
 | Keyboard | The XKB layout and variant, from `xkeyboard-config`'s `evdev.lst`, with a search field; a layout with no file under `xkb/symbols` (such as `custom`) is not listed. The layout's name and the variant list sit in a form of one fixed width, so the labels do not move as the layout changes. The console keymap is the one nearest the layout |
 | Disk | Which disk, and how. Under each disk a line names what it holds, partition by partition with its type, label and size ("Holds: …"); for a disk with no partitions, the probe's whole-device `fstype` and `vg` ("LVM physical volume (volume group kdos)", "Holds: ext4 on the whole disk"); or "Empty", so two disks of one size are told apart; the rows take keyboard focus, Tab reaching them, Space choosing one, and the focused row framed in `Kirigami.Theme.focusColor` round both its lines. Choosing a disk with no partitions sets the erase plan, as the reuse plan has nothing there to use; erasing a physical volume adds a warning naming its group. Each disk that cannot take the install says why on its row, from the probe's `problem`, except that a disk too small says so in the page's own units, from the probe's `need_bytes`, with as many decimals as keep the two sizes apart. The page probes the disks again on every visit and, after a pause, whenever the swap or the box-images answer changes, since both move what a disk must hold; **Look Again** probes them at once, for a disk attached since (below). **Erase the disk and install KDOS** lays it out with `kinstall`, with **Two system slots** ticked and, on a disk that holds two, a line saying how an update uses them and that this disk holds two; on a disk that does not, the box stays and a warning says that two slots need more, that this disk gets one, that an update then cannot be undone, and that the box left ticked still puts the system on an LVM volume group, so a second slot can be added later; **Use partitions that already exist** offers an ESP (partitions typed as one or holding FAT, never the BIOS boot partition) and a root (never an ESP, the BIOS boot partition or an LVM physical volume; logical volumes too), with **Format it** for the ESP. A root list with nothing in it says why: no partition a root can go on (make one with Partition Manager), or LVM volumes not active yet (Look Again activates them on the live medium; elsewhere `vgchange -aay` as root, then Look Again). **Partition Manager…** opens Partition Manager; when it has run and closed the disks are probed again, and the page turns to the existing partitions if the chosen disk then holds partitions, and to the erase plan if it holds none. If it fails to start, the page says so and the plan is left as it was. Then the filesystem (ext4, btrfs, xfs or f2fs), the swap (none, a file, or a partition; the reuse plan offers none or a file) and its size. After a pause on each change of an answer the page asks `--dump plan` as the session's user and shows its `swap_problem`, the target check's swap rule alone, under the size; on the erase plan with a swap, Next waits for the plan made for the answers as they stand ("Checking that the swap fits…") and then until the swap fits |
-| Encryption | LUKS2 under the system and its passphrase twice, with a strength hint, Tab and Shift+Tab moving between the two fields as on the Account page. With the two system slots the whole volume group is inside the one container, so one passphrase at every boot opens all of it; the page says there is no recovery key before anyone types one |
-| Account | Your account (full name, user name, password twice with a strength hint, administrator), or an OEM install; automatic login on an encrypted root; the hostname, and whether root is locked or its password, twice, with the same strength hint. A strength hint takes room only once something is typed, and each second field's placeholder is "Password, again". Tab from a first password field goes to its second, past the first's reveal button, which Shift+Tab from the second field reaches. The page holds the core's name rules: a user name is lowercase letters, digits, `-` and `_`, starting with a letter or `_`; a hostname is letters, digits and dashes, not starting or ending with a dash, and an empty one reads "Give the computer a name." A user name of the image's own accounts is refused on the page |
+| Encryption | LUKS2 under the system and its passphrase twice, with a strength hint, Tab and Shift+Tab moving between the two fields as on the Account page. The hint rates by length alone, the tiers the terminal installer's meter uses: under 8 characters the short advice, 8 to 15 "Fair", 16 and over "Long, good". The strength hint is at least as wide as its short advice on one line, so the form's field column is laid out wide enough for "Short: a passphrase of several words is far harder to guess" not to wrap, up to the page's width; on a page too narrow for the labels and that column side by side, as at the window's minimum width, the form takes Kirigami's one-column layout inside the page and the advice wraps. With the two system slots the whole volume group is inside the one container, so one passphrase at every boot opens all of it; the page says there is no recovery key before anyone types one |
+| Account | Your account (full name, user name, password twice with a strength hint, administrator), or an OEM install; automatic login on an encrypted root; the hostname, and whether root is locked or its password, twice, with the same strength hint. A strength hint takes room only once something is typed, and each second field's placeholder is "Password, again". Tab from a first password field goes to its second, past the first's reveal button, which Shift+Tab from the second field reaches; Space there shows or hides the first field's text. The page holds the core's name rules: a user name is lowercase letters, digits, `-` and `_`, starting with a letter or `_`; a hostname is letters, digits and dashes, not starting or ending with a dash, and an empty one reads "Give the computer a name." A user name of the image's own accounts is refused on the page |
 | Look | The accent and the desk; each desk is drawn as a small screen in the colour scheme's roles: KDOS's panel along the bottom, Dock's top bar and floating dock, Tiling's top bar and three tiled windows |
-| Applications | From `kinstall --dump apps`, read once without the answers for the boxed preselection and then with them: under **KDOS applications**, the native groups as checkboxes, downloaded during the install, the language group the keyboard or time zone points at ticked and labelled "Ticked for the Japanese keyboard" (the page applies only what changed in that answer since its last dump, as the terminal wizard does); under **Boxed applications**, the catalogue's groups, recorded for the first login; and whether the live session's box images are kept. Each native group names how many ports it installs, a meta-port member counted as the ports it depends on |
-| Summary | `kinstall --dump plan` for these answers, so what it shows is what runs (the native groups as **KDOS applications**), and answers the core would refuse (the answers check, then the target check) are refused here |
-| Install | The steps and their progress, from the event stream, and a bar over the whole install: the weights of the steps done, and the running step's fraction of its own, over the weights of the steps not skipped |
-| Done | How it ended, the warnings, one bullet each, a repeated one once, each starting with a capital, and **Restart Now**; on a failure `kinstall`'s reason, the end of the log when `kinstall` sent any, and **Back to the Summary**; **Open the Log** whenever `kinstall` ran and the session may read the log, which opens it as `text/plain` through KIO in the default text editor, with no application chooser |
+| Applications | From `kinstall --dump apps`, read once without the answers for the boxed preselection and then with them: under **KDOS applications**, the native groups as checkboxes, downloaded during the install, or on a medium that names no binary host only recorded, which the line above them says with `sudo kdos update install --pending` on a line of its own, so the label's wrapping never splits the command, the language group the keyboard or time zone points at ticked and labelled "Ticked for the Japanese keyboard" (the page applies only what changed in that answer since its last dump, as the terminal wizard does); under **Boxed applications**, the catalogue's groups, recorded for the first login; and whether the live session's box images are kept. Each native group names how many ports it installs, a meta-port member counted as the ports it depends on |
+| Summary | `kinstall --dump plan` for these answers, so what it shows is what runs (the native groups as **KDOS applications**, "downloaded during the install" when the plan's `binhost` is true and otherwise "recorded; this installs it once a binary host answers:" with `sudo kdos update install --pending` on a line of its own), and answers the core would refuse (the answers check, then the target check) are refused here. Its labels sit beside their values: every value fills its column, wraps, and asks for at most 34 grid units, because Kirigami's form stacks every label above its value as soon as one value is wider than the room beside its label |
+| Install | The steps and their progress, from the event stream, and a bar over the whole install: the weights of the steps done, and the running step's fraction of its own, over the weights of the steps not skipped. The warnings so far are listed as the Done page lists them |
+| Done | How it ended, the warnings, one bullet each, a repeated one once, each starting with a capital and its commands set as code, and **Restart Now**; on a failure `kinstall`'s reason, the end of the log when `kinstall` sent any, and **Back to the Summary**; **Open the Log** whenever `kinstall` ran and the session may read the log, which opens it as `text/plain` through KIO in the default text editor, with no application chooser |
 
 A page taller than the window scrolls, and moving the focus with Tab scrolls the focused control
 into view, with a spacing to spare.
@@ -1470,23 +1593,28 @@ accents, the boot menu's colours and the console palette the Theme step writes c
 Giving `kinstall`, `kinstall-core` or any of those libraries a new dependency means moving the
 installer's build to a later phase.
 
-A recipe (`src/system/kdos-installer/kpkgbuild`, built by `build.sh`) sits beside the sources so
-a running KDOS can rebuild the installer natively; the [ports
-catalogue](../06-reference/ports-catalogue.md#built-by-script) lists it with the
-other packages the bootstrap phase builds by script. Both builds must compile every `.c` file in
-`src/system/kdos-installer` and `src/system/kinstall-core` by glob, plus `kdos-appbox`'s
-`catalogue.c`, so the bootstrap installer and the packaged one are always the same program. The
-graphical installer is its own port, `kdos-installer-gui`, built with CMake in the desktop phase;
-it does not depend on the installer's port, because the image's `kinstall` is the bootstrap
-phase's.
+A recipe (`src/system/kdos-installer/kpkgbuild`, built by `build.sh`) sits beside the sources, and
+`41_system` builds it as the `kdos-installer` package, listed last in its `src-system.txt`. The
+bootstrap step compiles the program first, for the trees before `41_system`, and installs it as a
+file no package owns; the package then adopts `/usr/bin/kinstall` (see [Who owns a
+file](../03-architecture/packaging.md#who-owns-a-file)), so the image carries the package's copy
+and the binhost carries the package, from which a machine updates its installer in place. Both
+builds must compile every `.c` file in `src/system/kdos-installer` and `src/system/kinstall-core`
+by glob, plus `kdos-appbox`'s `catalogue.c`, so the bootstrap installer and the packaged one are
+always the same program. The graphical installer is its own port, `kdos-installer-gui`, built with
+CMake in the desktop phase; it does not depend on the installer's port, because every tree it
+builds on already has a `kinstall`.
 
-The bootstrap step skips itself when its marker `build/mark/bootstrap/kinstall` exists, and
-`--rebuild` does not reach it because it is not a port. Removing the marker, or naming the step
-with `--steps 10_bootstrap:130_kinstall.sh`, runs it again; see [Known
-gaps](../06-reference/known-gaps.md#the-images-installer-is-rebuilt-only-when-its-mark-is-gone).
+The package's recipe hash covers `src/system/kdos-installer` and `src/libs`, not `kinstall-core`
+or `catalogue.c`, so an edit to either alone reaches the image with `--rebuild kdos-installer`
+(`make build BUILD_ARGS="--phases 41_system,70_image --rebuild kdos-installer"`). The bootstrap
+step skips itself when its marker `build/mark/bootstrap/kinstall` exists, and `--rebuild` does not
+reach it because it is not a port. Removing the marker, or naming the step with
+`--steps 10_bootstrap:130_kinstall.sh`, runs it again; see [Known
+gaps](../06-reference/known-gaps.md#the-installers-recipe-hash-leaves-out-its-backend-and-the-catalogue-reader).
 `testing/preflight.sh` checks that the installer in `build/fs/usr/bin/kinstall` carries a string
-`install.c` owns (the Limine path), and when it does not, says to remove the marker and rebuild the
-bootstrap phase. The check proves only that the binary names that path: one built from an earlier
+`install.c` owns (the Limine path), and when it does not, says to rebuild `kdos-installer` in
+`41_system`. The check proves only that the binary names that path: one built from an earlier
 edit of the same sources passes it.
 
 ### The file split
@@ -1540,7 +1668,11 @@ The Linux console has no mouse reporting at all, so on a console the input layer
 devices under `/dev/input` directly, with no gpm, and keeps its own pointer: relative devices are
 scaled by the real cell size worked out from the framebuffer's dimensions, absolute devices (a
 tablet, a virtual machine's pointer) are mapped straight through, and the pointer is drawn as an
-inverted cell. Under a terminal emulator it uses the terminal's ordinary mouse reporting instead
+inverted cell, clamped to the screen, until 8 seconds pass with no pointer event. An absolute
+pointer left at the screen's right edge sits in the last column, the page's scroll bar: there its
+inverted cell is a gap in the thumb or a block on the track, and on a page with no scroll bar a
+block in the text colour. The console's own text cursor is hidden and is hidden again in every
+frame, since kinstall draws a field's caret as a cell of its own. Under a terminal emulator it uses the terminal's ordinary mouse reporting instead
 and never touches the input devices. The sidebar footer shows `evdev`, `sgr` or `off`.
 
 ### The install runs in a child process

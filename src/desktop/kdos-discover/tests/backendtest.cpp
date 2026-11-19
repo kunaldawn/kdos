@@ -36,6 +36,7 @@
 #include <QPointer>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -58,6 +59,7 @@ private Q_SLOTS:
     void debianLane();
     void hostPorts();
     void hostCatalogueListing();
+    void unmarkedSuiteListing();
     void pendingAndCategories();
     void archiveFile();
     void packFile();
@@ -68,6 +70,7 @@ private Q_SLOTS:
     void urlBeforeFirstRefresh();
     void boxesCategoryNeedsABox();
     void failedCheckIsSaid();
+    void portRemovedOnRequest();
     void shippedExclusions();
 
 private:
@@ -217,11 +220,14 @@ extract-meta)
 verify)
 	echo "app.notes: signed by ab12cd34ef567890" ;;
 esac)");
-    writeTool(u"pkexec"_s, "");
+    // The helper's first line comes only once polkit has the password.
+    writeTool(u"pkexec"_s, R"(echo "==> $2 $3")");
     writeTool(u"kdos"_s, R"sh(if [ -n "$KDOS_TEST_REFUSE" ]; then echo "kdos update: 1 package needs a source build (kdos-addons)" >&2; exit 1; fi
 case "$*" in
 "update install --dry-run --prebuilt "*) cat "$KDOS_TEST_FIXTURES/install-prebuilt.txt" ;;
 "update install --dry-run --source "*) cat "$KDOS_TEST_FIXTURES/install-source.txt" ;;
+"update removable --json") [ -n "$KDOS_TEST_REMOVABLE" ] && printf '%s\n' "$KDOS_TEST_REMOVABLE" ;;
+"update remove --dry-run "*) [ -z "$KDOS_TEST_REMOVE_SILENT" ] && echo "remove $4" ;;
 esac)sh");
 
     QFile::copy(m_fixtures + u"/apps-pending"_s, m_dir.filePath(u"apps-pending"_s));
@@ -448,17 +454,20 @@ void BackendTest::debianLane()
     QVERIFY(find(f).isEmpty());
 
     // appstream:// links, as KRunner's software results open Discover: a
-    // host port is itself, a package a catalogue row packs is that row, and
-    // the rest of the archive is the Debian lane.
+    // host port is its two twins, the binhost's first, a package a catalogue
+    // row packs is that row, and the rest of the archive is the Debian lane.
     auto byUrl = [this](const QString &url) {
         Filters u;
         u.resourceUrl = QUrl(url);
         const QList<KdosResource *> r = find(u);
         return r.size() == 1 ? r.first() : nullptr;
     };
-    KdosResource *kate = byUrl(u"appstream://org.kde.kate"_s);
-    QVERIFY(kate);
-    QCOMPARE(kate->entry().lane, Lane::Port);
+    Filters kateUrl;
+    kateUrl.resourceUrl = QUrl(u"appstream://org.kde.kate"_s);
+    const QList<KdosResource *> kate = find(kateUrl);
+    QCOMPARE(kate.size(), 2);
+    QCOMPARE(kate.first()->entry().lane, Lane::Port);
+    QCOMPARE(kate.last()->entry().lane, Lane::PortSource);
     KdosResource *scribusLink = byUrl(u"appstream://net.scribus.Scribus"_s);
     QVERIFY(scribusLink);
     QCOMPARE(scribusLink->entry().lane, Lane::Catalogue);
@@ -486,8 +495,8 @@ void BackendTest::hostPorts()
     QCOMPARE(addons->state(), AbstractResource::None);
     QCOMPARE(addons->availableVersion(), u"1.0.0-1"_s);
     QVERIFY(addons->kdosNotice().contains(u"binary host"_s));
-    // Beside it, the same port built on this computer: a second origin for
-    // what is not installed, and none for kate, which is.
+    // Beside it, the same port built on this computer: a second origin,
+    // kept for kate, which is installed, with kate's state.
     KdosResource *addonsBuilt = resource(u"port-source"_s, u"kdos-addons"_s);
     QVERIFY(addonsBuilt);
     QCOMPARE(addonsBuilt->state(), AbstractResource::None);
@@ -495,7 +504,10 @@ void BackendTest::hostPorts()
     QCOMPARE(addonsBuilt->appstreamId(), addons->appstreamId());
     QVERIFY(addonsBuilt->kdosNotice().contains(u"on this computer"_s));
     QVERIFY(!addonsBuilt->isRemovable());
-    QVERIFY(!resource(u"port-source"_s, u"kate"_s));
+    KdosResource *kateBuilt = resource(u"port-source"_s, u"kate"_s);
+    QVERIFY(kateBuilt);
+    QCOMPARE(kateBuilt->state(), AbstractResource::Installed);
+    QCOMPARE(kateBuilt->installedVersion(), kate->installedVersion());
 
     // Which twin Discover opens follows `install =`: a list names that one
     // alone, and the application's link answers both, that one first, which
@@ -526,8 +538,17 @@ void BackendTest::hostPorts()
     qputenv("KDOS_UPDATE_CONF", conf.toUtf8());
     QCOMPARE(listedLanes(u"kdos-addons"_s), QList<Lane>{Lane::PortSource});
     QCOMPARE(linkLanes(), (QList<Lane>{Lane::PortSource, Lane::Port}));
-    // An installed port is one resource, whatever the route.
+    // An installed port is one row, whatever the route, and its link
+    // answers both twins, the binhost's first.
     QCOMPARE(listedLanes(u"kate"_s), QList<Lane>{Lane::Port});
+    {
+        QList<Lane> lanes;
+        Filters byUrl;
+        byUrl.resourceUrl = QUrl(u"appstream://org.kde.kate"_s);
+        for (KdosResource *r : find(byUrl))
+            lanes << r->entry().lane;
+        QCOMPARE(lanes, (QList<Lane>{Lane::Port, Lane::PortSource}));
+    }
     // Browsing an origin lists each of its resources.
     Filters byOrigin;
     byOrigin.origin = u"kdos-ports"_s;
@@ -536,6 +557,26 @@ void BackendTest::hostPorts()
         binhostTwin |= r->entry().id == "kdos-addons"_L1;
     QVERIFY(binhostTwin);
     qunsetenv("KDOS_UPDATE_CONF");
+    // An install and a removal keep both twins, the same two resources, so
+    // the page Discover holds open keeps its source picker through both;
+    // while the port is installed the built-here twin carries its state
+    // and a list leaves it out.
+    writeTool(u"kpkg"_s, R"([ "$1 $2" = "list --json" ] && printf '%s\n' '{"packages":[{"name":"kate","version":"26.08.2","release":"1"},{"name":"kdos-addons","version":"1.0.0","release":"1"}]}')");
+    m_backend->checkForUpdates();
+    QTRY_COMPARE_WITH_TIMEOUT(addons->state(), AbstractResource::Installed, 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+    QCOMPARE(resource(u"port-source"_s, u"kdos-addons"_s), addonsBuilt);
+    QCOMPARE(addonsBuilt->state(), AbstractResource::Installed);
+    QCOMPARE(addonsBuilt->installedVersion(), addons->installedVersion());
+    QCOMPARE(listedLanes(u"kdos-addons"_s), QList<Lane>{Lane::Port});
+    QCOMPARE(linkLanes(), (QList<Lane>{Lane::Port, Lane::PortSource}));
+    writeTool(u"kpkg"_s, R"([ "$1 $2" = "list --json" ] && cat "$KDOS_TEST_FIXTURES/kpkg-list.json")");
+    m_backend->checkForUpdates();
+    QTRY_COMPARE_WITH_TIMEOUT(addons->state(), AbstractResource::None, 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+    QCOMPARE(resource(u"port"_s, u"kdos-addons"_s), addons);
+    QCOMPARE(resource(u"port-source"_s, u"kdos-addons"_s), addonsBuilt);
+    QCOMPARE(addonsBuilt->state(), AbstractResource::None);
     // Debian's DEP-11 has a Kate too, under the same component id: the host
     // has it natively, so the Debian lane never offers it in a box.
     Filters f;
@@ -549,17 +590,13 @@ void BackendTest::hostPorts()
     QCOMPARE(debianKates, 0);
 }
 
-void BackendTest::hostCatalogueListing()
-{
-    // A binhost catalogue as kdos-discover-catalog writes one over a build
-    // tree: a package of several applications and an add-on, a console
-    // program, an add-on alone, and a host port whose legacy id Debian's
-    // DEP-11 spells with ".desktop" where the host's has none.
-    const QString root = m_dir.filePath(u"binhost-listing"_s);
-    QVERIFY(QDir().mkpath(root + u"/swcatalog/xml"_s));
-    QFile cat(root + u"/swcatalog/xml/kdos-binhost.xml"_s);
-    QVERIFY(cat.open(QIODevice::WriteOnly));
-    cat.write(R"(<?xml version="1.0" encoding="utf-8"?>
+// A binhost catalogue as kdos-discover-catalog writes one over a build
+// tree: a package of several applications and an add-on, a console
+// program, an add-on alone, and a host port whose legacy id Debian's
+// DEP-11 spells with ".desktop" where the host's has none, and a package
+// whose shortest-named application is metainfo with a .desktop id and no
+// description, which the mark says is no bare entry.
+static const char ListingCatalogue[] = R"(<?xml version="1.0" encoding="utf-8"?>
 <components version="1.0" origin="kdos-binhost">
   <component type="addon">
     <id>org.libreoffice.kde</id>
@@ -599,7 +636,8 @@ void BackendTest::hostCatalogueListing()
     <summary>The office suite</summary>
     <icon type="stock">libreoffice-startcenter</icon>
     <launchable type="desktop-id">libreoffice-startcenter.desktop</launchable>
-    <custom><value key="KDOS::Version">26.2.0.3-1</value></custom>
+    <project_license>MPL-2.0 AND LGPL-3.0-or-later</project_license>
+    <custom><value key="KDOS::Version">26.2.0.3-1</value><value key="KDOS::BareEntry">1</value></custom>
   </component>
   <component type="console-application">
     <id>org.freedesktop.appstream.cli</id>
@@ -628,13 +666,76 @@ void BackendTest::hostCatalogueListing()
     <project_license>LGPL-2.1-or-later</project_license>
     <custom><value key="KDOS::Version">1.94.9-1</value></custom>
   </component>
+  <component type="desktop-application">
+    <id>librewolf.desktop</id>
+    <pkgname>librewolf</pkgname>
+    <name>LibreWolf</name>
+    <project_license>MPL-2.0</project_license>
+    <launchable type="desktop-id">librewolf.desktop</launchable>
+    <custom><value key="KDOS::Version">147.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.fooview.desktop</id>
+    <pkgname>fooview</pkgname>
+    <name>Fooview</name>
+    <project_license>GPL-3.0-or-later</project_license>
+    <launchable type="desktop-id">org.example.fooview.desktop</launchable>
+    <custom><value key="KDOS::Version">2.0-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.fooview.editor</id>
+    <pkgname>fooview</pkgname>
+    <name>Fooview Editor</name>
+    <summary>Edits views</summary>
+    <description><p>An editor.</p></description>
+    <project_license>GPL-3.0-or-later</project_license>
+    <launchable type="desktop-id">org.example.fooview.editor.desktop</launchable>
+    <custom><value key="KDOS::Version">2.0-1</value></custom>
+  </component>
+</components>
+)";
+
+void BackendTest::hostCatalogueListing()
+{
+    const QString root = m_dir.filePath(u"binhost-listing"_s);
+    QVERIFY(QDir().mkpath(root + u"/swcatalog/xml"_s));
+    QFile cat(root + u"/swcatalog/xml/kdos-binhost.xml"_s);
+    QVERIFY(cat.open(QIODevice::WriteOnly));
+    cat.write(ListingCatalogue);
+    cat.close();
+    // The image's catalogue as kdos-ports-helper left it after installing
+    // LibreWolf, which `kpkg remove` has since taken off: kpkg's list, which
+    // has no librewolf, is what says it is installed.
+    QVERIFY(QDir().mkpath(root + u"/image/xml"_s));
+    QFile image(root + u"/image/xml/kdos-ports.xml"_s);
+    QVERIFY(image.open(QIODevice::WriteOnly));
+    image.write(R"(<?xml version="1.0" encoding="utf-8"?>
+<components version="1.0" origin="kdos-ports">
+  <component type="desktop-application">
+    <id>librewolf.desktop</id>
+    <pkgname>librewolf</pkgname>
+    <name>LibreWolf</name>
+    <project_license>MPL-2.0</project_license>
+    <launchable type="desktop-id">librewolf.desktop</launchable>
+    <custom><value key="KDOS::Version">147.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
 </components>
 )");
-    cat.close();
+    image.close();
 
     const QByteArray binhost = qgetenv("KDOS_BINHOST_CACHE");
+    const QByteArray swcatalog = qgetenv("KDOS_SWCATALOG");
     qputenv("KDOS_BINHOST_CACHE", root.toUtf8());
+    qputenv("KDOS_SWCATALOG", QByteArray(swcatalog + ':' + (root + u"/image"_s).toUtf8()));
     KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    // A failed check returns early: the shared backend, the cache and the
+    // catalogue path come back either way, or every later case reads these.
+    const auto restore = qScopeGuard([&] {
+        delete std::exchange(m_backend, shared);
+        qputenv("KDOS_BINHOST_CACHE", binhost);
+        qputenv("KDOS_SWCATALOG", swcatalog);
+        writeTool(u"kpkg"_s, R"([ "$1 $2" = "list --json" ] && cat "$KDOS_TEST_FIXTURES/kpkg-list.json")");
+    });
     m_backend->setName(u"kdos-backend"_s);
     QTRY_VERIFY_WITH_TIMEOUT(resource(u"debian"_s, u"gimp"_s), 30000);
     QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
@@ -659,6 +760,12 @@ void BackendTest::hostCatalogueListing()
     QVERIFY2(suite.contains(u"<li>Calc: Tables and charts</li>"_s), qPrintable(suite));
     QVERIFY2(suite.indexOf(u"Writer"_s) < suite.indexOf(u"Calc"_s), qPrintable(suite));
     QVERIFY2(!suite.contains(u"A spreadsheet."_s) && !suite.contains(u"A word processor."_s), qPrintable(suite));
+    // In a marked catalogue an unmarked component is metainfo, described or
+    // not, and never a suite's face.
+    KdosResource *fooview = resource(u"port"_s, u"fooview"_s);
+    QVERIFY(fooview);
+    QCOMPARE(fooview->name(), u"Fooview Editor"_s);
+    QCOMPARE(fooview->appstreamId(), u"org.example.fooview.editor"_s);
     // The package's other applications find it by their names and keywords.
     for (const QString &term : {u"writer"_s, u"letter"_s, u"LibreOffice"_s}) {
         Filters byTerm;
@@ -715,8 +822,103 @@ void BackendTest::hostCatalogueListing()
     QVERIFY(ports >= 1);
     QCOMPARE(debian, 0);
 
-    delete std::exchange(m_backend, shared);
-    qputenv("KDOS_BINHOST_CACHE", binhost);
+    // A port the image's catalogue names and kpkg does not list is not
+    // installed: the binhost offers it again, by both origins.
+    KdosResource *wolf = resource(u"port"_s, u"librewolf"_s);
+    QVERIFY(wolf);
+    QCOMPARE(wolf->state(), AbstractResource::None);
+    QCOMPARE(wolf->availableVersion(), u"147.0-1"_s);
+    QVERIFY(wolf->installedVersion().isEmpty());
+    QVERIFY(wolf->kdosNotice().contains(u"binary host"_s));
+    QVERIFY(!wolf->canExecute());
+    KdosResource *wolfBuilt = resource(u"port-source"_s, u"librewolf"_s);
+    QVERIFY(wolfBuilt);
+    QCOMPARE(wolfBuilt->state(), AbstractResource::None);
+    // A bare entry's recipe licence is its own; a suite's face takes its
+    // metainfo applications'.
+    QCOMPARE(wolf->entry().license, u"MPL-2.0"_s);
+
+    // A kpkg that exits 0 with no package array has not answered: the
+    // image's catalogue still says what is installed.
+    writeTool(u"kpkg"_s, R"([ "$1 $2" = "list --json" ] && echo "kpkg: database busy")");
+    delete std::exchange(m_backend, new KdosBackend(this));
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"debian"_s, u"gimp"_s), 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+    writeTool(u"kpkg"_s, R"([ "$1 $2" = "list --json" ] && cat "$KDOS_TEST_FIXTURES/kpkg-list.json")");
+    wolf = resource(u"port"_s, u"librewolf"_s);
+    QVERIFY(wolf);
+    QCOMPARE(wolf->state(), AbstractResource::Installed);
+    QCOMPARE(wolf->installedVersion(), u"147.0-1"_s);
+}
+
+void BackendTest::unmarkedSuiteListing()
+{
+    // The same catalogue as the published v0.2 binhost's is written: no
+    // KDOS::BareEntry value anywhere, no licence on the start centre, and
+    // beside each metainfo application a bare entry of the same id with
+    // neither description nor licence, and one for Math, which has no
+    // metainfo. The start centre is told from the metainfo applications by
+    // its missing description, the suite is still listed by it, and each
+    // application is named in its list once.
+    QByteArray xml(ListingCatalogue);
+    const QByteArray mark = R"(<value key="KDOS::BareEntry">1</value>)";
+    QVERIFY(xml.contains(mark));
+    xml.replace(mark, QByteArray());
+    QVERIFY(!xml.contains("KDOS::BareEntry"));
+    const QByteArray licence = "<project_license>MPL-2.0 AND LGPL-3.0-or-later</project_license>";
+    QVERIFY(xml.contains(licence));
+    xml.replace(licence, QByteArray());
+    QByteArray bare;
+    for (const char *app : {"writer", "calc", "math", "startcenter"}) {
+        const QByteArray id = QByteArray("libreoffice-") + app + ".desktop";
+        QByteArray name("LibreOffice");
+        if (qstrcmp(app, "startcenter") != 0)
+            name += ' ' + QByteArray(app).left(1).toUpper() + QByteArray(app).mid(1);
+        bare += R"(  <component type="desktop-application" priority="-2147483647">
+    <id>)" + id + R"(</id>
+    <pkgname>libreoffice</pkgname>
+    <name>)" + name + R"(</name>
+    <launchable type="desktop-id">)" + id + R"(</launchable>
+  </component>
+)";
+    }
+    QVERIFY(xml.contains("</components>"));
+    bare += "</components>";
+    xml.replace("</components>", bare);
+    const QString root = m_dir.filePath(u"binhost-unmarked"_s);
+    QVERIFY(QDir().mkpath(root + u"/swcatalog/xml"_s));
+    QFile cat(root + u"/swcatalog/xml/kdos-binhost.xml"_s);
+    QVERIFY(cat.open(QIODevice::WriteOnly));
+    cat.write(xml);
+    cat.close();
+
+    // A failed check returns early: the shared backend and the cache come
+    // back either way, or every later case reads this catalogue.
+    const QByteArray binhost = qgetenv("KDOS_BINHOST_CACHE");
+    qputenv("KDOS_BINHOST_CACHE", root.toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    const auto restore = qScopeGuard([&] {
+        delete std::exchange(m_backend, shared);
+        qputenv("KDOS_BINHOST_CACHE", binhost);
+    });
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"debian"_s, u"gimp"_s), 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+
+    KdosResource *office = resource(u"port"_s, u"libreoffice"_s);
+    QVERIFY(office);
+    QCOMPARE(office->name(), u"LibreOffice"_s);
+    QCOMPARE(office->appstreamId(), u"libreoffice-startcenter.desktop"_s);
+    QCOMPARE(office->comment(), u"The office suite"_s);
+    QCOMPARE(office->author(), u"The Document Foundation"_s);
+    const QString suite = office->longDescription();
+    QVERIFY2(suite.startsWith(u"<p>The suite holds:</p><ul><li>"_s), qPrintable(suite));
+    QVERIFY2(suite.contains(u"<li>Writer: Letters &amp; reports</li>"_s), qPrintable(suite));
+    QVERIFY2(suite.contains(u"<li>Calc: Tables and charts</li>"_s), qPrintable(suite));
+    QVERIFY2(!suite.contains(u"A spreadsheet."_s) && !suite.contains(u"A word processor."_s), qPrintable(suite));
+    QCOMPARE(suite.count(u"<li>"_s), 2);
+    QCOMPARE(office->entry().license, u"MPL-2.0"_s);
 }
 
 void BackendTest::pendingAndCategories()
@@ -921,16 +1123,30 @@ void BackendTest::removeRuns()
     QVERIFY(toolLog().contains(u"kdos-appbox uninstall deb:gimp"_s));
 
     // A host port the binhost holds goes through pkexec and the helper,
-    // after its dry run was asked about.
+    // after its dry run was asked about. While pkexec waits for the
+    // password the install is in SetupStatus, Discover's "Waiting", and
+    // Downloading only from the helper's first line: by then pkexec has run.
     clearLog();
-    QCOMPARE(runToEnd(m_backend->installApplication(addons)), Transaction::DoneStatus);
+    Transaction *install = m_backend->installApplication(addons);
+    QVERIFY(install);
+    QList<Transaction::Status> statuses;
+    bool pkexecRanFirst = false;
+    connect(install, &Transaction::statusChanged, this, [this, &statuses, &pkexecRanFirst](Transaction::Status s) {
+        if (s == Transaction::DownloadingStatus && !statuses.contains(s))
+            pkexecRanFirst = !toolLog().filter(u"pkexec "_s).isEmpty();
+        statuses << s;
+    });
+    QCOMPARE(runToEnd(install), Transaction::DoneStatus);
+    QVERIFY(statuses.contains(Transaction::DownloadingStatus));
+    QVERIFY(pkexecRanFirst);
+    QCOMPARE(statuses.value(statuses.indexOf(Transaction::DownloadingStatus) - 1), Transaction::SetupStatus);
     QStringList log = toolLog();
     QVERIFY(log.contains(u"kdos update install --dry-run --prebuilt kdos-addons"_s));
     QVERIFY(log.indexOf(u"kdos update install --dry-run --prebuilt kdos-addons"_s)
             < log.indexOf(u"pkexec /usr/libexec/kdos-discover/kdos-ports-helper install kdos-addons"_s));
     QCOMPARE(m_asked.size(), 2);
     QVERIFY(m_asked[0].contains(addons->name()));
-    QVERIFY(m_asked[1].startsWith(u"Downloads 3 packages"_s));
+    QVERIFY(m_asked[1].startsWith(u"Installs 3 packages; downloads "_s));
     // The size's number and unit never part at a line break. Discover's
     // dialog reads the text as Text.StyledText, which collapses a raw U+00A0
     // with the other white space and keeps only the entity's.
@@ -1095,6 +1311,35 @@ void BackendTest::failedCheckIsSaid()
     m_backend->checkForUpdates();
     QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
 
+    // A binhost result names the binhost the check was about, never the
+    // channel the tree comes from: a sentence that said GitHub publishes
+    // no index would send the reader to the wrong place.
+    write(R"({"problem":"binhost-absent","detail":"no binhost is published at file:///root/bh","binhost_base":"file:///root/bh","binhost":null,"channel":"https://github.com/kunaldawn/kdos/releases/latest/download","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QCOMPARE(message->message, u"No package index is published at file:///root/bh."_s);
+    QVERIFY(!message->message.contains(u"github"_s));
+    // With no base recorded, the index's own origin; with neither, words.
+    write(R"({"problem":"binhost-fetch-failed","detail":"curl: (22) 404","binhost_base":null,"binhost":"https://bh.example/rel","channel":"https://github.com/kunaldawn/kdos/releases/latest/download","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QVERIFY(message->message.contains(u"https://bh.example/rel"_s));
+    QVERIFY(!message->message.contains(u"github"_s));
+    write(R"({"problem":"binhost-no-network","detail":"","channel":"https://github.com/kunaldawn/kdos/releases/latest/download","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QVERIFY(message->message.contains(u"the binary host"_s));
+    QVERIFY(!message->message.contains(u"github"_s));
+
     write(R"({"problem":null,"detail":"","channel":"file:///mnt/bh","offer":null})");
     said.clear();
     m_backend->checkForUpdates();
@@ -1106,6 +1351,66 @@ void BackendTest::failedCheckIsSaid()
         qunsetenv("KDOS_UPDATE_DOC");
     else
         qputenv("KDOS_UPDATE_DOC", had);
+}
+
+void BackendTest::portRemovedOnRequest()
+{
+    // `kdos update removable` names a port installed on request that
+    // nothing installed needs: it has Remove, its notice says what goes, and
+    // the removal is the dry run, then the helper under pkexec. A port it
+    // names as needed says by what and has no Remove.
+    qputenv("KDOS_TEST_REMOVABLE", R"({"removable":["kate"],"needed":{}})");
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"port"_s, u"kate"_s) && m_backend->fetchingUpdatesProgress() == 100, 30000);
+    KdosResource *kate = resource(u"port"_s, u"kate"_s);
+    QCOMPARE(kate->state(), AbstractResource::Installed);
+    QVERIFY(kate->isRemovable());
+    QVERIFY(kate->kdosNotice().contains(u"Installed on request"_s));
+    QVERIFY(!kate->kdosNotice().contains(u"binary host"_s));
+    clearLog();
+    QCOMPARE(runToEnd(m_backend->removeApplication(kate)), Transaction::DoneStatus);
+    const QStringList log = toolLog();
+    QVERIFY(log.contains(u"kdos update remove --dry-run kate"_s));
+    QVERIFY(log.indexOf(u"kdos update remove --dry-run kate"_s) < log.indexOf(u"pkexec /usr/libexec/kdos-discover/kdos-ports-helper remove kate"_s));
+    // The dry run's `remove kate` is the question asked before the password.
+    QCOMPARE(m_asked.size(), 2);
+    QCOMPARE(m_asked[0], u"Remove %1?"_s.arg(kate->name()));
+    QVERIFY(m_asked[1].contains(u"removed from this computer"_s));
+    // Cancel removes nothing; a dry run that names no removal, or refuses,
+    // fails before pkexec, the refusal with its reason.
+    clearLog();
+    m_answer = false;
+    QCOMPARE(runToEnd(m_backend->removeApplication(kate)), Transaction::CancelledStatus);
+    m_answer = true;
+    QVERIFY(toolLog().filter(u"pkexec"_s).isEmpty());
+    clearLog();
+    qputenv("KDOS_TEST_REMOVE_SILENT", "1");
+    QCOMPARE(runToEnd(m_backend->removeApplication(kate)), Transaction::DoneWithErrorStatus);
+    qunsetenv("KDOS_TEST_REMOVE_SILENT");
+    QVERIFY(m_asked.isEmpty());
+    QVERIFY(toolLog().filter(u"pkexec"_s).isEmpty());
+    clearLog();
+    qputenv("KDOS_TEST_REFUSE", "1");
+    Transaction *refused = m_backend->removeApplication(kate);
+    QSignalSpy refusedSaid(refused, &Transaction::passiveMessage);
+    QCOMPARE(runToEnd(refused), Transaction::DoneWithErrorStatus);
+    qunsetenv("KDOS_TEST_REFUSE");
+    QVERIFY(m_asked.isEmpty());
+    QVERIFY(toolLog().filter(u"pkexec"_s).isEmpty());
+    QCOMPARE(refusedSaid.count(), 1);
+    QVERIFY(refusedSaid.first().first().toString().contains(u"was not removed"_s));
+
+    qputenv("KDOS_TEST_REMOVABLE", R"({"removable":[],"needed":{"kate":"kdevelop"}})");
+    delete std::exchange(m_backend, new KdosBackend(this));
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"port"_s, u"kate"_s) && m_backend->fetchingUpdatesProgress() == 100, 30000);
+    kate = resource(u"port"_s, u"kate"_s);
+    QVERIFY(!kate->isRemovable());
+    QVERIFY(kate->kdosNotice().contains(u"Needed by kdevelop"_s));
+
+    qunsetenv("KDOS_TEST_REMOVABLE");
+    delete std::exchange(m_backend, shared);
 }
 
 void BackendTest::shippedExclusions()

@@ -11,6 +11,7 @@
 
 patch -p1 -i "$PORT_SRC/rundir-mounts.patch"
 patch -p1 -i "$PORT_SRC/stopping-manager-readiness.patch"
+patch -p1 -i "$PORT_SRC/session-socket-cloexec.patch"
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \

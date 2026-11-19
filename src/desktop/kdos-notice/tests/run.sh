@@ -146,6 +146,65 @@ step action pending details
 	|| fail "pending details"
 ok "pending: said once per selection, withdrawn when Discover has installed it"
 
+# ── groups and boxed apps together, with the tree's own titles ─────────
+# The popup shows eight lines of 38 characters before it scrolls: each body
+# is wrapped there at word breaks, a character counted as one, and must fit
+# whole, the command on a line of its own and the boxed-app line last.
+fits() {
+	local body line w col n lines=0 cmd=0 last=
+	body=$(sed -n '/^  body /,/^  icon /p' "$D/out" | sed '1s/^  body //;$d')
+	while IFS= read -r line; do
+		lines=$((lines + 1)) col=0
+		[ "$line" = "sudo kdos update install --pending" ] && cmd=1
+		set -f
+		for w in $line; do
+			n=${#w}
+			if [ "$col" -gt 0 ] && [ $((col + 1 + n)) -gt 38 ]; then
+				lines=$((lines + 1)) col=$n
+			else
+				col=$((col + (col > 0) + n))
+			fi
+		done
+		set +f
+		last=$line
+	done <<< "$body"
+	[ "$lines" -le 8 ] || fail "$2: $lines popup lines"
+	[ "$cmd" = 1 ] || fail "$2: no command on a line of its own"
+	[ "$last" = "$1" ] || fail "$2: the last line is '$last'"
+	hasnt "more selection" "$2"
+}
+TREE=$HERE/../../../../ports/groups
+[ -f "$TREE" ] || fail "no ports/groups at $TREE"
+pend() { printf '%s\n' $1 > "$D/apps"; printf '%s\n' $2 > "$D/groups"
+	rm -rf "$D/state"; mkdir -p "$D/state"
+	step pending "$D/apps" "$D/groups" "$TREE"; }
+export LC_ALL=C.UTF-8
+pend org.kde.kate "kde-games nosuch-group kde-artwork"
+fits "1 boxed app also waits in Discover." "three groups, one unknown, and an app"
+has "body 3 KDOS application groups:" "a one-line header"
+pend essential "kde-games kde-system kde-artwork"
+fits "1 boxed app also waits in Discover." "a long title among three, and an app"
+pend "org.kde.kate app.kcalc" "kde-system kde-network"
+fits "2 boxed apps also wait in Discover." "two long titles and two apps"
+pend essential kde-artwork
+fits "1 boxed app also waits in Discover." "one group and an app"
+pend org.kde.kate "kde-system kde-network kde-pim kde-multimedia kde-utilities kde-devtools"
+fits "1 boxed app also waits in Discover." "six groups and an app"
+grep -qE '^and [0-9]+ more$' "$D/out" || fail "six groups: no 'and N more' line"
+pend "" "kde-system kde-network kde-pim kde-multimedia kde-utilities kde-devtools kde-games"
+has "body 7 KDOS application groups wait." "seven groups alone: the header"
+for t in "KDE disk usage, search, logs, wallets, characters and handbooks" \
+	"KDE torrents, remote desktop, file sharing and online accounts" \
+	"KDE mail, calendar and contacts" "KDE audio and video" "KDE utilities" \
+	"KDE development tools" "KDE games"; do
+	grep -qxF "$t" "$D/out" || fail "seven groups alone: '$t' not listed"
+done
+! grep -qE '^and [0-9]+ more$' "$D/out" || fail "seven groups alone: a title held back"
+grep -qx "sudo kdos update install --pending" "$D/out" \
+	|| fail "seven groups alone: no command line"
+unset LC_ALL
+ok "pending: groups and boxed apps fit the popup, command and boxed line above the scroll"
+
 # ── firmware the hardware asks for ────────────────────────────────────
 step firmware "$F/firmware-nvidia.json"
 has "firmware ok=1 ports=1" "one port parsed"

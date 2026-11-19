@@ -8,7 +8,8 @@
  *   InstallPage — the install, as kinstall's event stream tells it
  *
  * Entering the page starts it; there is no Back from here. The steps are the
- * plan kinstall sent first, and each moves as its events arrive.
+ * plan kinstall sent first, and each moves as its events arrive. A warning
+ * is listed as it arrives, as the Done page lists it (WarningList).
  */
 
 import QtQuick
@@ -88,10 +89,8 @@ WizardPage {
         }
     }
 
-    Kirigami.InlineMessage {
+    WarningList {
         Layout.fillWidth: true
-        type: Kirigami.MessageType.Warning
-        visible: page.events.warnings.length > 0
-        text: page.events.warnings.join("\n")
+        source: page.events.warnings
     }
 }

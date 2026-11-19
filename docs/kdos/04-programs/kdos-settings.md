@@ -216,24 +216,38 @@ The page never writes `kwinrc`, `kdeglobals` or a Konsole profile itself.
 
 ## System Versions
 
-System Versions shows KDOS's two root slots, A and B, with the version, build date, tree commit and
-kernel each holds and the state each is in: running, confirmed, on trial, failed or incomplete. Its one button,
-Start This Version Next Time, arms a one-boot trial of the other slot: the previous version after
-an update, or the new one again after a rollback. Its settings are where `kdos update` takes a
+System Versions shows KDOS's root slots, with the version, build date, tree commit and kernel each
+holds and the state each is in: running, confirmed, on trial, failed or incomplete. A machine
+installed with two slots shows both, A and B; one installed with a single slot shows that one,
+under "This computer has one version of KDOS" (below). Only where there are two does the page carry
+its one button, Start This Version Next Time, which arms a one-boot trial of the other slot: the
+previous version after an update, or the new one again after a rollback. Its settings are where `kdos update` takes a
 newer release from (the KDOS releases, a folder or removable medium, or another address) and how
 software is installed (below). Beside it
 the page shows what the update service reports (an update available, one already prepared in the
 other slot and waiting to be installed from Discover, and why the last one stopped) and opens
 Discover to act on it. The Discover buttons and Install KDOS start their program through KIO under
 its desktop name (`org.kde.discover`, `kdos-installer`), so its window comes to the front, a
-Discover window already open included. Start This Version Next Time asks first, in a prompt
-at most 24 grid units wide, its sentence wrapped inside. The prompt is a window of its own, modal
-to the whole program, so the sidebar and the footer take no input until it is answered; a click on
-them neither changes the page nor dismisses the prompt. The page behind it is faded toward the
-window's background, and the prompt has the view's background, square corners and an edge drawn
-halfway from that background to the view's text, so the fade and the edge set it apart from the
-page on a dark colour scheme as well as a light one. On a platform with no second window it falls
-back to a sheet with rounded corners drawn inside the page, which blocks only the page.
+Discover window already open included. Start This Version Next Time asks first, in a prompt titled
+"Start Next Time?", at most 24 grid units wide, whose sentence names the version and wraps inside.
+The prompt is a dialog window of System Settings: modal to the whole program, kept above its
+window by KWin, with no taskbar entry of its own and no maximise button, since it is held at its
+own size while open. Minimising it minimises System Settings with it, and restoring System
+Settings brings the prompt back. The sidebar and the footer take no input until it is answered; a
+click on them neither changes the page nor dismisses the prompt, and the prompt stays on top.
+Where KWin runs its compositing effects, its Dialog Parent effect dims the whole System Settings
+window, sidebar and footer included, while the prompt is open; under software rendering (a virtual
+machine's llvmpipe) that effect does not load and nothing is dimmed. The prompt draws no dim of its
+own in the page, which would darken the page alone and leave the sidebar looking live. Dimmed or
+not, the whole window refuses input until the prompt is answered. The prompt has the view's
+background, square corners and an edge drawn halfway from that background to the view's text, so
+the edge sets it apart from the page on a dark colour scheme as well as a light one. On a platform
+with no second window it falls back to a sheet with rounded corners drawn inside the page, which
+fades the page toward the window's background and blocks only the page. When the system versions
+service refuses Start Next Time or Keep (no administrator's password was given, or `kdos-bootctl`
+refused), the refusal is shown above the page until the trial it was about changes: once a trial is
+armed or called off by any route, the refusal is cleared and the banner says what the next restart
+does.
 
 A machine with no boot state shows no slot forms. One installed with a single system slot shows
 "This computer has one version of KDOS" and that there is no previous version to go back to; the

@@ -119,8 +119,9 @@ private:
     void startNext();
 
     KdosResource *upsert(const Entry &entry, QSet<QString> *seen);
-    // The twin of a port not installed that `install =` does not prefer
-    // (preferSource: it says `source`).
+    // The twin of a port that a list leaves out: the one `install =` does
+    // not prefer (preferSource: it says `source`), and the one built here
+    // once the port is installed.
     bool isSecondTwin(const KdosResource *res, bool preferSource) const;
     bool isOffered(const QString &id) const;
     // A box exists: one in the last refresh, or before the first a profile

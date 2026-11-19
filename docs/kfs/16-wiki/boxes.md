@@ -174,7 +174,7 @@ A launch starts the box if it is stopped, and composes a pack box's root first.
 kdos-box list                          # every box: base, state, persistence, disk use, accent
 kdos-box enter app.hugin               # a shell inside it, in a new terminal window
 kdos-box enter app.hugin ls /usr/bin   # one command, in place
-kdos-box stop app.hugin                # SIGTERM to it and its apps, 10 seconds, then SIGKILL
+kdos-box stop app.hugin                # hang up its shells, SIGTERM to it and its apps, 10 seconds, then SIGKILL
 kdos-box start app.hugin
 kdos-box remove app.hugin              # the profile and ~/.local/share/kdos/boxes/<name> stay
 ```
@@ -185,7 +185,10 @@ profile exists and whose container does not is `not created`, and a box with no 
 table and has no cgroup of its own, as every store box does, signals the box's init and its
 descendants and leaves its applications running: it signals the applications the box's launches
 started, every launch still waiting for the box, and the box's init itself, and an application
-that ignores SIGTERM is killed after ten seconds. See
+that ignores SIGTERM is killed after ten seconds. The box's exec shells (a `kdos-box enter`, a
+`distrobox enter`) are hung up first, so they end at once rather than at the end of the grace
+period, and whatever a dead init left under the container's main conmon is ended too. The stop
+returns once nothing of the box holds its storage, so the box starts again at once. See
 [kdos-box](../../kdos/04-programs/kdos-appbox.md#kdos-box).
 
 `remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
@@ -206,8 +209,24 @@ and any composed stack released, answers `<name> had no container — its profil
 exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
 and exits 1, after releasing any composed stack the same way.
 
-`kdos-box enter` with no command, from a terminal, opens a new Konsole window in the box's accent
-profile; with `KDOS_BOX_NOTERM` set to anything it runs in the current terminal.
+`kdos-box enter` with no command, typed at a shell in a terminal, opens a new Konsole window in the
+box's accent profile; run as a terminal's own program (`konsole -e kdos-box enter <box>`) it runs in
+that terminal and titles its tab `<box> — KDOS box`; with `KDOS_BOX_NOTERM` set to anything it runs
+in the current terminal. The window opens at once. Until the box's init has finished this start,
+the shell that runs in place waits up to 120 seconds (`KDOS_BOX_SETUP_WAIT=<seconds>` changes it),
+silently for the first 3; a restart of a box set up before, after a reboot too, is ready well
+within them, in about half a second. A box still not ready then prints one line: `kdos-box:
+setting up <box> for its first use; this can take a minute` when its log holds no
+`container_setup_done` from any start, `kdos-box: waiting for <box> to start` when it does
+(`/.containersetupdone` in the box answers only for a log podman cannot read back). A wait
+that runs out names `podman logs <box>` and, in the box's own window, waits for Enter before the
+window closes, and a
+`kdos-box stop <box>` meanwhile ends it with `kdos-box: <box> was stopped before it was ready` and
+exit status 1. When the wait ran in the box's own window, the `kdos-box enter` that opened it
+prints the same line in the shell you typed it in and exits 1 once the window closes. The box is
+ready when its log since the end of its previous run holds `container_setup_done`, so an earlier
+run's marker does not count; how the check bounds the start is in
+[the launch path](../../kdos/04-programs/kdos-appbox.md#the-launch-path), step 8.
 Inside, `KDOS_BOX` holds the box's name.
 
 ### Changing what a box may share

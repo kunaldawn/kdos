@@ -30,14 +30,15 @@ installer to a package phase and take it off every tree before that phase.
 
 The step names its sources and its output:
 
-<!-- kfs:include script/phases/10_bootstrap/130_kinstall.sh lines=34-37 pin=7862a95726b0 -->
+<!-- kfs:include script/phases/10_bootstrap/130_kinstall.sh lines=36-39 pin=7862a95726b0 -->
 
 and compiles everything in one invocation:
 
-<!-- kfs:include script/phases/10_bootstrap/130_kinstall.sh lines=53-62 pin=24667de5ad4a -->
+<!-- kfs:include script/phases/10_bootstrap/130_kinstall.sh lines=55-64 pin=24667de5ad4a -->
 
-The flags are those of [kpkg's compile line](120-kpkg.md#the-compile-line), for the same reason:
-no later phase rebuilds the binary, so the line carries the tree's hardening. The include paths are
+The flags are those of [kpkg's compile line](120-kpkg.md#the-compile-line): the binary is every
+tree's installer until `41_system` builds the package, so the line carries the tree's hardening
+itself. The include paths are
 the three libraries, the installer's own directory, `src/system/kinstall-core` for
 `kinstall-core.h`, and `src/system/kdos-appbox` for `catalogue.c`'s header.
 
@@ -48,7 +49,8 @@ only, and the two installers would stop being the same program.
 
 `install -Dm755` places the result at `/usr/bin/kinstall`. The step touches
 `build/mark/bootstrap/kinstall` and is skipped while that file exists. Unlike kpkg's, this mark
-is empty, so a change to the installer is built only when a build plan names the step; see
+is empty, so a change to the installer reaches this copy only when a build plan names the step;
+the image's copy comes from the package, rebuilt with `--rebuild kdos-installer`. See
 [Rebuilding one thing](../../kdos/05-developer/developing.md#rebuilding-one-thing).
 
 ## Contents of kinstall
@@ -57,9 +59,10 @@ is empty, so a change to the installer is built only when a build plan names the
 
 ## Built again later
 
-Not by the build. `src/system/kdos-installer` has a recipe, the
-[kdos-installer](#port-kdos-installer) port, so that a running KDOS can rebuild the installer
-natively, but no phase list names it: the kinstall on every image is this step's binary. The port
+In `41_system`. `src/system/kdos-installer` has a recipe, the
+[kdos-installer](#port-kdos-installer) port, the last name in that phase's `src-system.txt`. Its
+package adopts the `/usr/bin/kinstall` this step installed, a file no package owned, so the
+kinstall on the image and on the binhost is the package's. The port
 compiles the installer's backend, every `.c` file in `src/system/kinstall-core` with `catalogue.c`,
 into a static archive first, the backend the graphical installer
 [kdos-installer-gui](#port-kdos-installer-gui) shares, and then the terminal front end over it,

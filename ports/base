@@ -64,6 +64,11 @@ kde-inotify-survey kdesdk-thumbnailers ffmpegthumbs kdegraphics-thumbnailers
 kdegraphics-mobipocket markdownpart svgpart isoimagewriter
 firefox-esr
 
+# The everyday desktop programs beside them: a video player, a paint
+# program, the scanner, the disk-usage map, file search, the character map,
+# the clock and the wallet manager.
+haruna kolourpaint skanpage filelight kfind kcharselect kclock kwalletmanager
+
 # Accessibility: the screen reader Meta+Alt+S and the Welcome tour start,
 # and BRLTTY with the braille tables it and Orca read. BRLTTY's service
 # starts only once /etc/brltty.conf names a display.

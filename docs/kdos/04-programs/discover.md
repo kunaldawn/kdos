@@ -73,14 +73,19 @@ desktop entry that opens both in Discover.
 ### Where each answer comes from
 
 The backend keeps no database of its own. Every answer comes from the tool that owns it, asked at
-each refresh, and **Refresh** on Discover's Updates page is the same refresh:
+each refresh, and **Refresh** on Discover's Updates page is the same refresh. kpkg is the authority
+on which ports are installed; `kdos-ports.xml` only describes them, and a package it names that
+`kpkg list --json` does not list (one taken off with `kpkg remove`, which leaves the catalogue as it
+was) is not installed, so the binary host's catalogue offers it again. Only when kpkg does not
+answer, failing or printing no package list, does the catalogue's own version stand for the
+installed one:
 
 | Question | Asked of |
 |---|---|
 | What the catalogue offers, and what is installed | `kdos-appbox catalogue` |
 | What each box is made of | `kdos-box list --json`, a JSON array |
 | What the pack store and the medium hold | the [kdos-packd](daemons.md#kdos-packd) socket |
-| Which ports are installed | `kpkg list --json`, with `kdos-ports.xml` |
+| Which ports are installed | `kpkg list --json`, each described by its `kdos-ports.xml` component |
 | Which ports the binary host offers | `/var/lib/kdos/binhost/swcatalog/xml/kdos-binhost.xml`, read again at every refresh |
 | What the installer was asked for and could not install | `/var/lib/kdos/apps-pending` |
 | What a box is allowed | `kdos-box profile <box>`, asked only when its page opens |
@@ -184,59 +189,101 @@ Network, Office, Science, Settings, System or Utility), and each has one.
 
 ### Host software
 
-Host software arrives and leaves with the system version, so the `kdos-ports` origin lists what is
-installed and offers no removal. Once `kdos update fetch` has put the release's signed binary-host
-index and its catalogue in `/var/lib/kdos/binhost`, each taken where the release's signed
-[release index](../03-architecture/packaging.md#the-release-index) says and kept only with the
-hash it gives, a port that catalogue lists can be installed, by either of two origins:
+The `kdos-ports` origin lists the host software that is installed. Once `kdos update fetch` has put
+the release's signed binary-host index and its catalogue in `/var/lib/kdos/binhost`, each taken
+where the release's signed [release index](../03-architecture/packaging.md#the-release-index) says
+and kept only with the hash it gives, a port that catalogue lists can be installed, by either of
+two origins:
 
 | Origin | Shown as | Install runs, through `pkexec` | polkit action |
 |---|---|---|---|
 | `kdos-ports` | KDOS system | `kdos-ports-helper install <port>`, which runs `kdos update install --prebuilt <port>` | `io.kdos.ports.install`: an administrator's password, kept for a while |
 | `kdos-ports-source` | KDOS, built on this computer | `kdos-ports-builder install <port>`, which runs `kdos update install --source <port>` | `io.kdos.ports.build`: an administrator's password, asked every time |
 
+**What is part of the system is decided by the world set.** `/var/lib/kdos/world` lists the packages
+somebody installed on purpose, and a package of the image has no line there unless `kdos update
+install` named it. An installed port is part of the system when it has no world line, or when an
+installed package's recipe depends on it; it is updated with the system, its page says "Part of the
+KDOS system: it is updated with the system and is not removed on its own", or "Needed by <package>"
+for a world port something needs, and it has no Remove button. A world port nothing installed
+depends on is removable, whatever brought it: LibreWolf installed from the binary host, a port built
+here, or a package of the image that `kdos update install` named. Its page says "Installed on
+request. Removing it takes out this package alone; what it brought with it stays." The backend
+learns which at each refresh from `kdos update removable --json`, beside `kpkg list --json`; an
+answer that does not come leaves every port part of the system. Remove runs `kdos update remove
+--dry-run <port>` as the user, which refuses without a password when the machine changed since the
+list was read; its `remove <port>` line becomes Discover's question, "Remove <Name>?" with "<Name>
+is removed from this computer. Discover can install it again.", and output without that line fails
+the removal before the password. Only a yes runs `kdos-ports-helper remove <port>` through `pkexec`, under `io.kdos.ports.remove` (an
+administrator's password, kept for a while), which runs `kdos update remove <port>` and the
+catalogue writer again. `kdos update remove` refuses a port that is not in the world set or that an
+installed package needs, and runs `kpkg remove`, which takes the port off the world set and the
+origin record too, so the next update does not bring it back. The dependencies an install brought
+stay: each is a package of its own, listed under its own name. Remove is offered on the prebuilt
+resource's page alone: the `kdos-ports-source` twin of an installed port offers none, and one not
+installed has nothing to remove.
+
 A port is one resource per package, listed by its best component: a desktop application before a
 console application before any other kind, then one from the package's own metainfo (with a
-description and a project licence) before one read from a bare desktop entry, then one with an
-icon, then the shortest name, then the first in the catalogue. A suite is named by its face: when
-the package's shortest-named application is a bare desktop entry whose name begins the chosen
-component's, as LibreOffice's start centre "LibreOffice" begins "LibreOffice Base", the port takes
-that entry's name, icon and launchable, the chosen metainfo's licence, developer, categories and
-links, and a description of the suite: "The suite holds:" and each of the package's metainfo
-applications in catalogue order by its name less the suite's and its summary ("Writer: …",
-"Calc: …"), since any one application's description would describe that application under the
-suite's name. The entry's own summary is not repeated in it: Discover shows the summary as the
-heading above the description. LibreOffice is therefore listed as "LibreOffice", with The Document Foundation,
-MPL-2.0 and a page that lists each application the package ships metainfo for (Writer, Calc,
-Impress, Draw and Base), not as one of its
-applications; any other bare entry leaves
-the chosen component as it is, so a package's minor tool never names it. An `appstream://` link to another of
-its components, such as LibreOffice Writer, opens the same port, and a search finds the port by the
-name or a keyword of any of its package's components, so "writer" lists LibreOffice. The
-catalogue writer, `kdos-discover-catalog`, takes a metainfo component with no desktop-id
-launchable to launch `usr/share/applications/<id>` (or `<id>.desktop`) when its package owns that
-entry, and writes it with that launchable and, where the metainfo names none, the entry's icon and
-categories; the entry is not written again as a component of its own. The component's AppStream
-kind sets where Discover lists the port: `addon` under Add-ons, `desktop-application` (or no kind)
-under Applications, and a console application or any other kind under Application Support, as a
-technical package. A desktop application with no category at all is filed under Other, so the All
-Applications page, which matches by category, lists it and finds it in a search. A port whose icon
-the theme does not have, as for one whose only copy of its icon is in its own uninstalled package,
-shows `utilities-terminal` for a console application, `preferences-plugin` for an add-on, its first
-category's icon for an application, and for any other kind its category's icon or, with no
-category, one of its kind: `application-x-sharedlib` for a generic component such as libfprint or
-pcscd, `preferences-system-services` for a service, `hwinfo` for a driver or firmware,
+description) before one read from a bare desktop entry, then one with an icon, then the shortest
+name, then the first in the catalogue. A suite is named by its face: when the package's
+shortest-named application is a bare desktop entry whose name begins the chosen component's, as
+LibreOffice's start centre "LibreOffice" begins "LibreOffice Base", the port takes that entry's
+name, icon and launchable, the chosen metainfo's licence, developer, categories and links, and a
+description of the suite: "The suite holds:" and each of the package's metainfo applications in
+catalogue order by its name less the suite's and its summary ("Writer: …", "Calc: …"), since any one
+application's description would describe that application under the suite's name. The entry's own
+summary is not repeated in it: Discover shows the summary as the heading above the description.
+LibreOffice is therefore listed as "LibreOffice", with The Document Foundation, MPL-2.0 and a page
+that lists each application the package ships metainfo for (Writer, Calc, Impress, Draw and Base),
+not as one of its applications; any other bare entry leaves the chosen component as it is, so a
+package's minor tool never names it. An `appstream://` link to another of its components, such as
+LibreOffice Writer, opens the same port, and a search finds the port by the name or a keyword of any
+of its package's components, so "writer" lists LibreOffice. The catalogue writer,
+`kdos-discover-catalog`, takes a metainfo component with no desktop-id launchable to launch
+`usr/share/applications/<id>` (or `<id>.desktop`) when its package owns that entry, and writes it
+with that launchable and, where the metainfo names none, the entry's icon and categories; the entry
+is not written again as a component of its own. A component with no `<project_license>` takes its
+recipe's `license =` as written, an SPDX expression, and one with no homepage `<url>` its `homepage
+=`, read from the first `kpkgbuild` of the port under `/ports/core`, `/ports/src` or `/kdos/src` in
+the root it describes (the 70_image chroot binds the build's ports tree at `/ports` and the
+repository at `/kdos`), so LibreWolf, which installs a desktop entry and no metainfo, shows
+"Licenses: MPL-2.0", and so does every other bare desktop entry, Audacity's and Stellarium's among
+them. The writer marks each component read from a bare desktop entry with the custom value
+`KDOS::BareEntry=1` and gives no other component the key, and in a catalogue with any such value
+the mark alone is how the backend tells a suite's face from the package's metainfo applications;
+a licence tells nothing, since every component carries its recipe's. A catalogue with no mark
+anywhere (the published v0.2 binhost's, which a fresh machine reads until its own release's
+catalogue is fetched) is read by what a desktop entry lacks: a desktop application whose id is a
+`.desktop` name and which has no description is a bare entry, since the desktop-entry reader
+writes none, so such a catalogue still lists LibreOffice as the suite and names each of its
+metainfo applications once, beside the bare entries of the same ids it also holds. The developer
+comes only from a metainfo file the package installs; a recipe names no author, and a port without
+one shows "Unknown author". The component's AppStream kind sets where Discover lists the port:
+`addon` under Add-ons, `desktop-application` (or no kind) under Applications, and a console
+application or any other kind under Application Support, as a technical package. A desktop
+application with no category at all is filed under Other, so the All Applications page, which
+matches by category, lists it and finds it in a search. A port whose icon the theme does not have,
+as for one whose only copy of its icon is in its own uninstalled package, shows `utilities-terminal`
+for a console application, `preferences-plugin` for an add-on, its first category's icon for an
+application, and for any other kind its category's icon or, with no category, one of its kind:
+`application-x-sharedlib` for a generic component such as libfprint or pcscd,
+`preferences-system-services` for a service, `hwinfo` for a driver or firmware,
 `preferences-desktop-font` for a font. The Graphics category's icon is `image-x-generic`, not
 Breeze's `applications-graphics`, whose blue sphere reads as a missing icon in a list.
 
-Each port the binary host holds and the machine has not installed is two resources with one
-AppStream id, `kdos-backend://port/<id>` and `kdos-backend://port-source/<id>`, so Discover lists
-one application and offers both origins in its source picker; an installed port is one resource,
-"KDOS system". **The origin Discover opens follows `install =`** in `/etc/kdos/update.conf`, the
+Each port the binary host holds is two resources with one AppStream id, installed or not,
+`kdos-backend://port/<id>` and `kdos-backend://port-source/<id>`, so Discover lists one application
+and offers both origins in its source picker. The built-here twin of an installed port carries the
+port's state and installed version but no Remove, and a list leaves it out, so an installed port is one
+row, "KDOS system". Discover's application page keeps the most sources it has seen while it is
+open, so a twin that left with the install would leave the page after a removal with one source:
+no source picker, and an "Install from KDOS system" button. **The origin Discover opens follows `install =`** in `/etc/kdos/update.conf`, the
 route System Settings › System Versions sets and `kdos update install` takes at a terminal: under
 `install = source` the built-here resource, otherwise the prebuilt one. Discover keeps one resource
 per AppStream id in a list, and which of two that sort equal survives is not a backend's to decide,
-so a search or a category lists only the preferred one; the application's link answers both,
+so a search or a category lists only the preferred one, or the binary host's once the port is
+installed; the application's link answers both,
 preferred first, and Discover opens the first resource a link answers and fills the source picker
 from the same link. A list browsed by origin lists every resource of that origin. The file is read
 at every search, so a change on the settings page is what the next list shows. The prebuilt route downloads the port and every package it lacks from the binary
@@ -260,10 +307,15 @@ Both routes download, and each resource says so.
 **Discover says what an install will do before it asks for the password.** Install first runs
 `kdos update install --dry-run --prebuilt <port>` (or `--source`) as the user, which needs no
 root, and its `total` line becomes the question of Discover's confirmation dialog, "Install
-<name>?": "Downloads N packages (size)." for the prebuilt route, the number and unit of the size
-never split across lines, and for the built one "Builds N
-packages here, downloads M (size); building can take hours.", with the packages built here named.
-Proceed runs the helper through `pkexec`, which asks for the password; Cancel, or closing the
+<name>?". The line counts every prebuilt package and, in bytes, only the files not already in
+the binhost cache `/var/lib/kdos/binhost`, which keeps every package it downloaded, so the
+prebuilt route reads "Installs N packages; downloads (size).", or "Installs N packages, already
+downloaded." when the total has no bytes, the number and unit of the size never split across lines;
+the built one reads "Builds N packages here and installs M prebuilt, downloading (size); building
+can take hours." (or "and installs M prebuilt, already downloaded"), with the packages built here named.
+Proceed runs the helper through `pkexec`, which asks for the password; until the helper writes its
+first line, which it can only once polkit has the password, the install's status is Waiting, and
+Downloading from then on. Cancel, or closing the
 dialog, ends the install with nothing run. A dry run that refuses, such as a prebuilt install the
 binary host does not cover, ends it there with the dry run's reason, before any password. The
 reader is the model library's `parseInstallPreview`, tested over fixture outputs.
@@ -396,14 +448,14 @@ update apply` at a shell. The live medium is not updated at all; the system entr
 describes it as the live session, and installing KDOS gives a system that is.
 
 What `kdos update check` offers is exactly what `apply` will take: a newer signed slot image when
-the release publishes one, or else the release's packages, only when the signed binary host holds
-every one of them that is not built here, matched to this machine's build; a package whose origin is
-`source` is built again in the slot and counts as covered. A slot image carries the base alone, so
-the packages installed on purpose follow it into the slot from the same release's binary host, and
-an image is refused before the slot is written when that binary host does not cover one of them
-that came prebuilt. Either is offered only beside the cached
-release index that names it, which is where `apply` downloads every file from. A machine with a package the binary host does
-not match is told so before any slot is touched.
+the release publishes one and the machine has an inactive slot to write it into, or else the
+release's packages, only when the signed binary host holds every one of them that is not built here,
+matched to this machine's build; a package whose origin is `source` is built again in the slot and
+counts as covered. A slot image carries the base alone, so the packages installed on purpose follow
+it into the slot from the same release's binary host, and an image is refused before the slot is
+written when that binary host does not cover one of them that came prebuilt. Either is offered only
+beside the cached release index that names it, which is where `apply` downloads every file from. A
+machine with a package the binary host does not match is told so before any slot is touched.
 
 ### What the update page says
 
@@ -431,19 +483,29 @@ update document with no size leaves the field out of the page, since `127.0.0.1:
 service Discover asks then, has nothing listening.
 
 When the update document records a problem, the KDOS backend puts a warning above the Updates
-page's list that names where updates come from (the document's `channel`) and adds what failed (its
-`detail`), such as "Updates could not be fetched from file:///mnt/bh.
-(file:///mnt/bh/kdos-ports.tar.xz could not be downloaded)". Each code `kdos update check` reports
-has its sentence: the fetch's `no-network`, `fetch-failed` and `no-key`; the binary-host index's
-and the slot image's `binhost-` and `image-` codes (`no-network`, `fetch-failed`, `no-key`,
-`unverified`), each naming the package index or the system image; and the last apply's
-`unverified`, `build-failed` and `needs-source`, said as an update that installed nothing. A bare
-`no-network` or `fetch-failed` may be the fetch's or the apply's, so its sentence fits either.
-`no-tree` is not said: with no tree nothing can be behind. Nor is the fetch's `fetch-failed` whose
-detail is "the published tree … is older than this machine's": that machine is ahead of the
-release, not cut off from it, and an image the document offers is listed with no warning beside it.
-The backend knows the refusal by those words, as `kdos update`'s own binary-host fallback does. Without the warning the page would say
-"Up to date" about a release nothing could read. The next check with no problem takes it away; the
+page's list that names where the failed step looked and adds what failed (its `detail`) in
+brackets, such as
+"Updates could not be fetched from file:///mnt/bh. (file:///mnt/bh/kdos-ports.tar.xz could not be
+downloaded)". A tree or image problem names the document's `channel`. A `binhost-` problem names
+its `binhost_base`, the binary host `update.conf`, `$KDOS_UPDATE_BINHOST` or the tree's release
+names, else its `binhost`, where the index in place came from, else "the binary host"; never the
+channel, which is another place. A binary host at `/root/bh` that publishes nothing reads "No
+package index is published at file:///root/bh." with no detail after it: the tool's words for that
+code name the same URL again. Each
+code `kdos update check` reports has its sentence: the fetch's `no-network`, `fetch-failed` and
+`no-key`; the binary-host index's and the slot image's `binhost-` and `image-` codes
+(`no-network`, `fetch-failed`, `no-key`, `unverified`), each naming the package index or the system
+image, and `binhost-absent`, "No package index is published at …", for a named binary host that
+publishes none; and the last apply's `unverified`, `build-failed` and `needs-source`, said as an
+update that installed nothing. A bare `no-network` or `fetch-failed` may be the fetch's or the
+apply's, so its sentence fits either. `no-tree` is not said: with no tree nothing can be behind.
+Nor is the fetch's `fetch-failed` whose detail is "the published tree … is older than this
+machine's": that machine is ahead of the release, not cut off from it, and an image the document
+offers is listed with no warning beside it. `kdos update check` ranks that refusal below every
+other problem, so it is the document's problem only when nothing else is wrong, and a binary-host
+problem on a tree ahead of the release is still said. The backend knows the refusal by those words,
+as `kdos update`'s own binary-host fallback does. Without the warning the page would say "Up to
+date" about a release nothing could read. The next check with no problem takes it away; the
 backend reads the document at each refresh, and a change to `/var/lib/kdos` starts one.
 
 ### Restart, trial and confirmation
@@ -541,7 +603,8 @@ on, after which it outranks the snapshot and Discover refreshes its metadata at 
 
 Discover is one face of `kdos update`; the command is the other, and it does everything Discover
 does and two things more. `kdos update apply` with no flag acquires and arms in one step, preferring
-a slot image and falling back to the binary host; `--image` and `--binhost` choose a lane by name;
+a slot image and falling back to the binary host, which is the one lane a machine with one slot
+takes, since a slot image has nowhere to go there; `--image` and `--binhost` choose a lane by name;
 and `--source` builds the release's signed recipe tree on the machine instead, which needs no
 published binary at all and takes as long as the build. Every lane ends in the same armed trial and
 the same confirmation. See [The kdos command](kdos-command.md#kdos-update).

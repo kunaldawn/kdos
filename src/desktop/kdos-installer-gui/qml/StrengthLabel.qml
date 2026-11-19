@@ -11,7 +11,13 @@
  * the field is, and taking no room while it is empty, so an empty form has
  * no gap between a password and its second field. Given the `field` it
  * describes, it is as wide as that field and follows it, never narrower
- * than its fixed width; without one its width is fixed. Either way the
+ * than its fixed width; without one its width is fixed. The fixed width is
+ * the short advice's own width on one line, at least 18 grid units and at
+ * most `available`, the width of the page the form is in, so a form whose
+ * widest row is this label lays its field column out wide enough for the
+ * advice not to wrap. A page too narrow for labels and that column side by
+ * side puts the form in Kirigami's one-column layout, which keeps it inside
+ * the page, and the advice wraps at the page's width. Either way the
  * changing text never resizes the form's field column. Once it has text it
  * is as high as its longest advice wraps to at that width, so the fields
  * below it move once, at the first character, and not as a person goes on
@@ -32,12 +38,22 @@ QQC2.Label {
 
     /* The field whose width this follows; null keeps the fixed width. */
     property Item field: null
+    /* The width the form has, the page's: the most the fixed width is. */
+    property real available: Infinity
 
-    readonly property real fixedWidth: Kirigami.Units.gridUnit * 18
-    readonly property real lineWidth: field ? Math.max(field.width, fixedWidth) : fixedWidth
     readonly property string shortAdvice: passphrase
         ? i18nc("@info passphrase strength", "Short: a passphrase of several words is far harder to guess")
         : i18nc("@info password strength", "Short: a password of several words is far harder to guess")
+    /* The short advice on one line, in this label's font. */
+    readonly property TextMetrics adviceMetrics: TextMetrics {
+        font: label.font
+        text: label.shortAdvice
+    }
+    readonly property real fixedWidth: Math.min(
+        Math.max(Math.ceil(adviceMetrics.advanceWidth) + Kirigami.Units.smallSpacing * 2,
+                 Kirigami.Units.gridUnit * 18),
+        available > 0 ? available : Infinity)
+    readonly property real lineWidth: field ? Math.max(field.width, fixedWidth) : fixedWidth
 
     /* The short advice laid out at this label's width, never shown: its
      * height is the room the label keeps for any of its texts. */

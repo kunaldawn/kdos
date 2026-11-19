@@ -18,7 +18,6 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <ftw.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -1070,24 +1069,35 @@ static const char appbox_path[] = "/home/kdos/.local/share/containers";
 static const char livehome_path[] = "/home/kdos/";
 static const char batcache_path[] = "/home/kdos/.cache/bat";
 
+/* The kind of each entry the copy carries, in rsync's order (KI_ENT_*). */
+static unsigned char *walk_kind;
+static size_t walk_nkind, walk_kind_cap;
+
+static void walk_kind_add(unsigned char k)
+{
+	if (walk_nkind == walk_kind_cap) {
+		walk_kind_cap = walk_kind_cap ? walk_kind_cap * 2 : 65536;
+		walk_kind = kb_realloc(walk_kind, walk_kind_cap);
+	}
+	walk_kind[walk_nkind++] = k;
+}
+
 /*
  * WHAT THE COPY CARRIES, AND NOTHING ELSE. Of the live account's home the
  * install keeps the box store and the syntax cache the image built; the rest
  * is the live session's own (its desktop layout, its wallet, its indexes) and
  * is left on the medium, so it is not counted either.
  */
-static int walk_cb(const char *path, const struct stat *st, int type,
-		   struct FTW *ftw)
+static void walk_entry(const char *path, const struct stat *st)
 {
-	(void)type;
-	(void)ftw;
 	unsigned long long kb = (unsigned long long)st->st_blocks / 2;
 	int store = !strncmp(path, appbox_path, appbox_len);
+	int later = 0;
 
 	if (!store &&
 	    !strncmp(path, livehome_path, sizeof(livehome_path) - 1) &&
 	    strncmp(path, batcache_path, sizeof(batcache_path) - 1))
-		return 0;
+		return;
 	walk_kb += kb;
 	if (store)
 		walk_appbox_kb += kb;
@@ -1095,30 +1105,122 @@ static int walk_cb(const char *path, const struct stat *st, int type,
 	 * bytes of its percentage and makes it a link at no copy cost. */
 	if (S_ISREG(st->st_mode) && st->st_nlink > 1 &&
 	    walk_ino_seen(st->st_dev, st->st_ino)) {
+		later = 1;
 		walk_link_bytes += (unsigned long long)st->st_size;
 		if (store)
 			walk_link_appbox_bytes += (unsigned long long)st->st_size;
 	}
-	return 0;
+	walk_kind_add((unsigned char)((S_ISREG(st->st_mode) && !later
+					       ? KI_ENT_FILE
+					       : KI_ENT_OTHER) |
+				      (store ? KI_ENT_STORE : 0)));
+}
+
+typedef struct {
+	char *name;
+	struct stat st;
+} WalkEnt;
+
+/* rsync's order inside one directory: every entry that is not a directory,
+ * then the directories, each by its name's bytes. */
+static int walk_ent_cmp(const void *a, const void *b)
+{
+	const WalkEnt *x = a, *y = b;
+	int dx = S_ISDIR(x->st.st_mode), dy = S_ISDIR(y->st.st_mode);
+
+	if (dx != dy)
+		return dx - dy;
+	return strcmp(x->name, y->name);
+}
+
+/* The directory open at `fd`, whose path is `path` (`len` bytes, in a
+ * PATH_MAX buffer): its entries in rsync's order, each directory's own
+ * entries straight after it. Another filesystem is never entered. */
+static void walk_dir(int fd, char *path, size_t len, dev_t dev)
+{
+	DIR *d = fdopendir(fd);
+	struct dirent *de;
+	WalkEnt *e = NULL;
+	size_t n = 0, cap = 0;
+
+	if (!d) {
+		close(fd);
+		return;
+	}
+	while ((de = readdir(d))) {
+		struct stat st;
+
+		if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, ".."))
+			continue;
+		if (fstatat(dirfd(d), de->d_name, &st, AT_SYMLINK_NOFOLLOW) ||
+		    st.st_dev != dev)
+			continue;
+		if (n == cap) {
+			cap = cap ? cap * 2 : 64;
+			e = kb_realloc(e, cap * sizeof(*e));
+		}
+		e[n].name = kb_strdup(de->d_name);
+		e[n].st = st;
+		n++;
+	}
+	qsort(e, n, sizeof(*e), walk_ent_cmp);
+	for (size_t i = 0; i < n; i++) {
+		size_t nl = strlen(e[i].name);
+		size_t at = len > 1 ? len : 0;
+		int sub;
+
+		if (at + 1 + nl >= PATH_MAX)
+			continue;
+		path[at] = '/';
+		memcpy(path + at + 1, e[i].name, nl + 1);
+		walk_entry(path, &e[i].st);
+		if (S_ISDIR(e[i].st.st_mode)) {
+			sub = openat(dirfd(d), e[i].name,
+				     O_RDONLY | O_DIRECTORY | O_NOFOLLOW |
+					     O_CLOEXEC);
+			if (sub >= 0)
+				walk_dir(sub, path, at + 1 + nl, dev);
+		}
+		path[len] = 0;
+	}
+	for (size_t i = 0; i < n; i++)
+		free(e[i].name);
+	free(e);
+	closedir(d);
 }
 
 /* One pass over the live tree, once, before the screen is taken over. It is
  * the only honest input to "will this fit" — the squashfs knows its
  * compressed size and nothing on the system knows the expanded one.
  *
- * FTW_MOUNT does all the excluding that matters: /proc /sys /dev /run /tmp
- * are each their own filesystem, so the walk never enters them and there is
- * no path blacklist to keep in sync with fstab.
+ * Staying on the root's filesystem does all the excluding that matters:
+ * /proc /sys /dev /run /tmp are each their own filesystem, so the walk never
+ * enters them and there is no path blacklist to keep in sync with fstab.
+ *
+ * IN RSYNC'S ORDER, so the copy's profile (KiCopyProfile) lines up with its
+ * `to-chk` count: in each directory the entries that are not directories by
+ * name, then each directory by name followed by everything under it.
  *
  * SEPARATE FROM probe_system() because it is the one slow probe: seconds on
  * a live medium and minutes on a development machine. `--dump plan` asks
  * for it only when the answer depends on it. */
 void probe_payload(void)
 {
+	char path[PATH_MAX] = "/";
+	struct stat st;
+	int fd;
+
 	walk_kb = walk_appbox_kb = 0;
 	walk_link_bytes = walk_link_appbox_bytes = 0;
+	walk_nkind = 0;
 	appbox_len = sizeof(appbox_path) - 1;
-	nftw("/", walk_cb, 24, FTW_PHYS | FTW_MOUNT);
+	fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (fd >= 0 && !fstat(fd, &st)) {
+		walk_entry(path, &st);
+		walk_dir(fd, path, 1, st.st_dev);
+	} else if (fd >= 0) {
+		close(fd);
+	}
 	free(walk_inos);
 	walk_inos = NULL;
 	walk_ino_cap = walk_ino_n = 0;
@@ -1126,6 +1228,11 @@ void probe_payload(void)
 	ki_sys.appbox_kb = walk_appbox_kb;
 	ki_sys.link_extra_bytes = walk_link_bytes;
 	ki_sys.link_extra_appbox_bytes = walk_link_appbox_bytes;
+	ki_copy_profile(&ki_sys.copy_prof, walk_kind, walk_nkind, 1);
+	ki_copy_profile(&ki_sys.copy_prof_sys, walk_kind, walk_nkind, 0);
+	free(walk_kind);
+	walk_kind = NULL;
+	walk_nkind = walk_kind_cap = 0;
 }
 
 void probe_system(void)
@@ -1471,6 +1578,75 @@ static int member_ports(const char *dir, const char *name)
 	return n;
 }
 
+int ki_binhost_named;
+
+/* One `key = value` line's value in a file, into out; 0 when absent. */
+static int conf_line(const char *path, const char *key, char *out, size_t cap)
+{
+	char *data = kb_read_all(path, NULL);
+	size_t kl = strlen(key);
+	int found = 0;
+
+	for (char *l = data; l && *l && !found;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		while (*l == ' ' || *l == '\t')
+			l++;
+		if (*l != '#' && !strncmp(l, key, kl) &&
+		    (l[kl] == ' ' || l[kl] == '\t' || l[kl] == '=')) {
+			char *v = l + kl;
+			while (*v == ' ' || *v == '\t' || *v == '=')
+				v++;
+			v[strcspn(v, " \t\r")] = 0;
+			if (*v) {
+				kb_strlcpy(out, v, cap);
+				found = 1;
+			}
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return found;
+}
+
+/* A release name is made of the characters `kdos update` takes in one. */
+static int release_ok(const char *v)
+{
+	if (!*v || strlen(v) > 40)
+		return 0;
+	for (; *v; v++)
+		if (!((*v >= '0' && *v <= '9') || (*v >= 'a' && *v <= 'z') ||
+		      (*v >= 'A' && *v <= 'Z') || *v == '.' || *v == '+' ||
+		      *v == '-' || *v == '_' || *v == '~'))
+			return 0;
+	return 1;
+}
+
+/*
+ * WHETHER A BINHOST IS NAMED, in `kdos update`'s order: `binhost =` in
+ * /etc/kdos/update.conf, then $KDOS_UPDATE_BINHOST, then a `version` line in
+ * the TREE stamp beside the groups file, which only a published release's
+ * tree carries. With none, the Packs step downloads nothing and the chosen
+ * groups go to groups-pending, so the step's weight is its short one.
+ */
+static int binhost_named(const char *dir)
+{
+	char v[256];
+	const char *e = getenv("KDOS_UPDATE_BINHOST");
+	char *tree;
+	int named;
+
+	if (conf_line("/etc/kdos/update.conf", "binhost", v, sizeof(v)))
+		return 1;
+	if (e && *e)
+		return 1;
+	tree = kb_path_join(dir, "TREE");
+	named = conf_line(tree, "version", v, sizeof(v)) && release_ok(v);
+	free(tree);
+	return named;
+}
+
 /* The format is ports/groups': a `group <id> <title>` line, then member
  * ports up to the next group line; `#` starts a comment. */
 void probe_groups(void)
@@ -1487,6 +1663,7 @@ void probe_groups(void)
 	else
 		kb_strlcpy(dir, ".", sizeof(dir));
 
+	ki_binhost_named = binhost_named(dir);
 	ki_nnative = 0;
 	for (char *l = data; l && *l;) {
 		char *nl = strchr(l, '\n');

@@ -77,7 +77,8 @@ WizardPage {
             Accessible.name: i18nc("@label:textbox", "Disk passphrase")
             /* Tab goes to the second field, past this field's reveal
              * button, so what is typed after one Tab is the confirmation;
-             * Shift+Tab from the second field reaches the reveal button. */
+             * Shift+Tab from the second field reaches the reveal button
+             * (the second field's backtab handler). */
             KeyNavigation.tab: again
             onTextChanged: page.answers.luksPassphrase = text
         }
@@ -85,6 +86,7 @@ WizardPage {
             visible: pass.text.length > 0
             secret: pass.text
             field: pass
+            available: page.availableWidth
         }
         Kirigami.PasswordField {
             id: again
@@ -92,6 +94,23 @@ WizardPage {
             Layout.fillWidth: true
             placeholderText: i18nc("@info:placeholder", "Passphrase, again")
             Accessible.name: i18nc("@label:textbox", "Disk passphrase, again")
+            /* Shift+Tab goes to the first field's reveal button, which Tab
+             * from the first field passes over; the backtab the first
+             * field's KeyNavigation.tab sets here lands in the field itself.
+             * This handler takes the key first, KeyNavigation coming after
+             * the field's own handling, and the first field is the stop
+             * when it has no reveal button. */
+            KeyNavigation.backtab: pass
+            KeyNavigation.priority: KeyNavigation.AfterItem
+            Keys.onBacktabPressed: event => {
+                const reveal = pass.nextItemInFocusChain(true);
+                let inside = false;
+                for (let up = reveal; up && !inside; up = up.parent) {
+                    inside = up === pass;
+                }
+                (inside ? reveal : pass).forceActiveFocus(Qt.BacktabFocusReason);
+                event.accepted = true;
+            }
         }
     }
 }

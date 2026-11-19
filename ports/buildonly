@@ -63,5 +63,5 @@ python3-meson-python python3-pyproject-metadata python3-setuptools-scm
 fonttools fontforge perl-font-ttf zopfli
 
 # Documentation generators.
-pandoc typst doxygen python3-sphinx docbook-xsl docbook-xml asciidoc
+pandoc typst doxygen python3-sphinx asciidoc
 asciidoctor ruby lowdown xmlto scdoc

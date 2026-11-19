@@ -31,6 +31,7 @@ volatile sig_atomic_t ktui_resized;
 static struct termios saved_tio;
 static int tio_saved;
 static int tty_fd = -1;		/* for ioctls when stdin is not the tty     */
+static int pal_fd = -1;		/* the VT the console palette is set on     */
 static int out_fd = 1;
 static int active;
 
@@ -286,15 +287,60 @@ static void detect_caps(void)
 	}
 }
 
+/*
+ * THE PALETTE IS SET THROUGH A VT, WHICH /dev/tty MAY NOT BE. sudo runs its
+ * command on a fresh pseudo-terminal (use_pty), so TERM is still linux and
+ * the screen is still the console, but GIO_CMAP and PIO_CMAP fail on the pts
+ * and the screen keeps kdos-getty's palette: its slots 4-6 are VT blue,
+ * magenta and cyan where the installer's rules and hints belong. The colour
+ * map is console-wide, so any VT descriptor sets the one on screen: the
+ * terminal itself when it answers GIO_CMAP, else the VT sudo was started
+ * from ($SUDO_TTY, when it names /dev/ttyN), else /dev/tty0 when stdin is a
+ * pts under a sudo that set no SUDO_TTY. A sudo whose SUDO_TTY names a pts,
+ * and a pts outside sudo (ssh with TERM=linux), are not on this machine's
+ * screen and get no palette.
+ */
+static int palette_fd_open(void)
+{
+	unsigned char probe[48];
+	const char *st = getenv("SUDO_TTY");
+	int fd;
+
+	if (tty_fd >= 0 && ioctl(tty_fd, GIO_CMAP, probe) == 0)
+		return tty_fd;
+	if (st && !strncmp(st, "/dev/tty", 8) && st[8] >= '0' && st[8] <= '9') {
+		fd = open(st, O_RDWR | O_NOCTTY | O_CLOEXEC);
+		if (fd >= 0 && ioctl(fd, GIO_CMAP, probe) == 0)
+			return fd;
+		if (fd >= 0)
+			close(fd);
+	}
+	if (!st && getenv("SUDO_UID") && isatty(0)) {
+		const char *n = ttyname(0);
+
+		if (n && !strncmp(n, "/dev/pts/", 9)) {
+			fd = open("/dev/tty0", O_RDWR | O_NOCTTY | O_CLOEXEC);
+			if (fd >= 0 && ioctl(fd, GIO_CMAP, probe) == 0)
+				return fd;
+			if (fd >= 0)
+				close(fd);
+		}
+	}
+	return -1;
+}
+
 /* The console palette is ours for the duration and exactly restored after:
  * GIO_CMAP hands back what kdos-getty's setvtrgb loaded, PIO_CMAP puts the
  * installer's eight slots in its place. No external tool, no drift. */
 static void palette_install(void)
 {
-	if (!(ktui_caps & KT_CAP_LINUXVT) || tty_fd < 0)
+	if (!(ktui_caps & KT_CAP_LINUXVT))
+		return;
+	pal_fd = palette_fd_open();
+	if (pal_fd < 0)
 		return;
 
-	if (ioctl(tty_fd, GIO_CMAP, saved_cmap) == 0)
+	if (ioctl(pal_fd, GIO_CMAP, saved_cmap) == 0)
 		cmap_saved = 1;
 
 	unsigned char cm[48];
@@ -304,18 +350,22 @@ static void palette_install(void)
 		cm[i * 3 + 1] = c.g;
 		cm[i * 3 + 2] = c.b;
 	}
-	ioctl(tty_fd, PIO_CMAP, cm);
+	ioctl(pal_fd, PIO_CMAP, cm);
 }
 
 static void palette_restore(void)
 {
-	if (cmap_saved && tty_fd >= 0)
-		ioctl(tty_fd, PIO_CMAP, saved_cmap);
+	if (cmap_saved && pal_fd >= 0)
+		ioctl(pal_fd, PIO_CMAP, saved_cmap);
+	cmap_saved = 0;
+	if (pal_fd >= 0 && pal_fd != tty_fd)
+		close(pal_fd);
+	pal_fd = -1;
 }
 
 void ktui_term_repalette(void)
 {
-	if (!(ktui_caps & KT_CAP_LINUXVT) || tty_fd < 0)
+	if (!(ktui_caps & KT_CAP_LINUXVT) || pal_fd < 0)
 		return;
 	unsigned char cm[48];
 	for (int i = 0; i < 16; i++) {
@@ -324,7 +374,7 @@ void ktui_term_repalette(void)
 		cm[i * 3 + 1] = c.g;
 		cm[i * 3 + 2] = c.b;
 	}
-	ioctl(tty_fd, PIO_CMAP, cm);
+	ioctl(pal_fd, PIO_CMAP, cm);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -460,10 +510,16 @@ static void probe_terminal(void)
 	ktui_term_flush();
 }
 
+/* Where ktui_term_caret() last put the terminal's cursor; negative is hidden. */
+static int caret_x = -2, caret_y = -2;
+
 static void enter_screen(void)
 {
 	/* The Linux VT has no alternate buffer and ignores 1049; harmless. */
 	emit("\033[?1049h\033[?25l\033[2J\033[H");
+	/* The escape above hid the cursor, so a caret asked for at the
+	 * position it held before a suspend must be written again. */
+	caret_x = caret_y = -1;
 	/*
 	 * BRACKETED PASTE, ALWAYS. Without it a paste arrives as the keys it
 	 * spells and a line beginning with a chord runs the chord — and a
@@ -486,14 +542,13 @@ static void enter_screen(void)
  */
 void ktui_term_caret(int x, int y)
 {
-	static int last_x = -2, last_y = -2;
 	const KtuiBackend *b = ktui_backend();
 	char seq[48];
 
-	if (x == last_x && y == last_y)
+	if (x == caret_x && y == caret_y)
 		return;
-	last_x = x;
-	last_y = y;
+	caret_x = x;
+	caret_y = y;
 
 	/* A display server places it, and the escape is never written: this
 	 * surface's stdout is not the screen it is drawn on. */
@@ -523,6 +578,24 @@ void ktui_term_caret(int x, int y)
 	snprintf(seq, sizeof(seq), "\033[%d;%dH\033[?25h", y + 1, x + 1);
 	emit(seq);
 	ktui_term_flush();
+}
+
+/*
+ * ON A LINUX VT A HIDDEN CURSOR IS HIDDEN AGAIN IN EVERY FRAME. The console's
+ * cursor state belongs to the virtual console, not to this program, and
+ * anything else that writes to it (a kernel message, another program on the
+ * same VT, a reset) can turn it back on at wherever the last frame's write
+ * left it. Six bytes a frame keep that cell from showing a stray block; a
+ * terminal emulator keeps its own mode and is not sent them.
+ */
+void ktui_term_caret_hold(void)
+{
+	const KtuiBackend *b = ktui_backend();
+
+	if (!(ktui_caps & KT_CAP_LINUXVT) || (b && b->caret) ||
+	    ktui_offscreen() || (caret_x >= 0 && caret_y >= 0))
+		return;
+	emit("\033[?25l");
 }
 
 static void leave_screen(void)

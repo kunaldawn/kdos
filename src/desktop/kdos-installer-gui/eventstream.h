@@ -35,7 +35,9 @@ class EventStream : public QAbstractListModel
     /* The whole install's progress, 0..1: the finished steps' weights, plus
      * the running step's own fraction of its weight where it has one, over
      * the weights of every step not skipped. A step weighs what the plan
-     * line says, and 1 where it says nothing. */
+     * line says, its expected time in tenths of a second, and 1 where it
+     * says nothing; a copy's fraction is of its time, so the bar keeps to
+     * the clock. */
     Q_PROPERTY(double overall READ overall NOTIFY progressChanged)
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY warningsChanged)
     Q_PROPERTY(QStringList log READ log NOTIFY logChanged)

@@ -59,6 +59,26 @@
  * is NoDisplay or Hidden, or not an application, describes nothing a person
  * installs and is skipped.
  *
+ * THE RECIPE FILLS IN THE LICENCE AND THE HOMEPAGE, nothing else. A component
+ * with no <project_license> takes its port's `license =` as written, an SPDX
+ * expression, and one with no homepage <url> its `homepage =`, both read from
+ * the first <tree>/<shelf>/<package>/kpkgbuild of <root>/ports/core,
+ * <root>/ports/src (a machine's KDOS programs, by area) and <root>/kdos/src
+ * (the same recipes where the 70_image chroot binds the repository, before
+ * 105_ports.sh has copied them to /ports/src); the chroot binds the build's
+ * ports tree at /ports. A package whose recipe is in none of them gets
+ * neither. A value naming a `$` variable is left out: kpkgbuild is parsed,
+ * never sourced, and an unexpanded name is no licence. A component read from
+ * a bare desktop entry carries the custom value KDOS::BareEntry=1 and no
+ * other component carries the key; in a catalogue with any such value
+ * KdosBackend tells a suite's face (LibreOffice's start centre) from the
+ * package's metainfo applications by the mark alone, and in one with none it
+ * takes a desktop application with a .desktop id and no description for a
+ * bare entry. A licence is no sign of metainfo, since every component takes
+ * its recipe's. The <developer> comes only from a metainfo file the
+ * package installs; a recipe names no author, so a component without one is
+ * written without one and Discover says "Unknown author".
+ *
  * THE WHOLE FILE IS WRITTEN EVERY TIME, from what is on disk, to a temporary
  * name renamed into place, so a reader never sees half a catalogue and a
  * removed port leaves no component behind.
@@ -75,6 +95,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QSet>
 #include <QXmlStreamWriter>
 
@@ -165,6 +186,53 @@ AppStream::Icon iconFor(const QString &value)
         icon.setName(value);
     }
     return icon;
+}
+
+struct Recipe {
+    QString license;
+    QString homepage;
+};
+
+// <ports>/<shelf>/<name>/kpkgbuild for every port, read for its `license =`
+// and `homepage =` lines only.
+QHash<QString, Recipe> readRecipes(const QDir &ports)
+{
+    QHash<QString, Recipe> recipes;
+    const QStringList shelves = ports.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QString &shelf : shelves) {
+        const QDir dir(ports.filePath(shelf));
+        for (const QString &name : dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+            QFile f(dir.filePath(name + u"/kpkgbuild"_s));
+            if (!f.open(QIODevice::ReadOnly))
+                continue;
+            Recipe r;
+            while (!f.atEnd()) {
+                const QString line = QString::fromUtf8(f.readLine()).trimmed();
+                const qsizetype eq = line.indexOf(u'=');
+                if (line.startsWith(u'#') || eq < 0)
+                    continue;
+                const QString key = line.left(eq).trimmed();
+                const QString value = line.mid(eq + 1).trimmed();
+                if (value.isEmpty() || value.contains(u'$'))
+                    continue;
+                if (key == "license"_L1)
+                    r.license = value;
+                else if (key == "homepage"_L1)
+                    r.homepage = value;
+            }
+            if (!recipes.contains(name))
+                recipes.insert(name, r);
+        }
+    }
+    return recipes;
+}
+
+void fillFromRecipe(AppStream::Component &c, const Recipe &r)
+{
+    if (c.projectLicense().isEmpty() && !r.license.isEmpty())
+        c.setProjectLicense(r.license);
+    if (c.url(AppStream::Component::UrlKindHomepage).isEmpty() && !r.homepage.isEmpty())
+        c.addUrl(AppStream::Component::UrlKindHomepage, r.homepage);
 }
 
 bool hasIcon(const AppStream::Component &c)
@@ -322,6 +390,15 @@ int main(int argc, char **argv)
     catalog.setOrigin(origin);
     catalog.setWriteHeader(true);
 
+    QHash<QString, Recipe> recipes;
+    for (const QString &tree : {u"ports/core"_s, u"ports/src"_s, u"kdos/src"_s}) {
+        const QHash<QString, Recipe> more = readRecipes(QDir(root.filePath(tree)));
+        for (auto it = more.cbegin(); it != more.cend(); ++it) {
+            if (!recipes.contains(it.key()))
+                recipes.insert(it.key(), it.value());
+        }
+    }
+
     int components = 0, skipped = 0;
     const QStringList packages = db.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     // A package named and not installed is a binhost described wrong: its
@@ -336,6 +413,7 @@ int main(int argc, char **argv)
         if (pkg.startsWith(u'.') || (!wanted.isEmpty() && !wanted.contains(pkg)))
             continue;
         const Owned owned = ownedBy(db.filePath(pkg));
+        const Recipe recipe = recipes.value(pkg);
         QSet<QString> launched;
 
         for (const QString &rel : owned.metainfo) {
@@ -352,6 +430,7 @@ int main(int argc, char **argv)
             }
             c.setPackageNames({pkg});
             c.insertCustomValue(u"KDOS::Version"_s, owned.version);
+            fillFromRecipe(c, recipe);
             QStringList entries = c.launchable(AppStream::Launchable::KindDesktopId).entries();
             if (entries.isEmpty()) {
                 const QString implied = c.id().endsWith(".desktop"_L1) ? c.id() : c.id() + u".desktop"_s;
@@ -402,6 +481,8 @@ int main(int argc, char **argv)
             }
             c.setPackageNames({pkg});
             c.insertCustomValue(u"KDOS::Version"_s, owned.version);
+            c.insertCustomValue(u"KDOS::BareEntry"_s, u"1"_s);
+            fillFromRecipe(c, recipe);
             catalog.addComponent(c);
             components++;
         }

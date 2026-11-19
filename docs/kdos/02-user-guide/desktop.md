@@ -442,9 +442,9 @@ desktop and file manager shares. `kdos trash <file>` does the same from a prompt
 
 Double-clicking a file opens it with its type's default application. The defaults are KDE's
 applications unless a ported application is clearly better at the job: folders open in Dolphin,
-PDF in Okular, text in Kate, pictures in Gwenview, music in Elisa and web links in Firefox ESR.
-Video opens in Haruna once it is installed, and in VLC until then: the installation medium carries
-VLC, which Elisa plays through, and not Haruna. E-books open in Calibre's viewer once it is
+PDF in Okular, text in Kate, pictures in Gwenview, music in Elisa, video in Haruna and web links
+in Firefox ESR; the installation medium carries all of them, and VLC, which Elisa plays through,
+takes video when Haruna is removed. E-books open in Calibre's viewer once it is
 installed. Office documents open in LibreOffice and mail links in Thunderbird once those are
 installed; nothing on the medium handles either, so until then opening one shows the chooser. The
 full table is in

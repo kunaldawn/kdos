@@ -43,7 +43,7 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 installer writes its own lines, swap among them, ahead of the image's, in one of these two forms,
 from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2403-2412 pin=62a1ee6651cc -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2828-2837 pin=62a1ee6651cc -->
 
 The first is a swap partition, or on the A/B layout the `swap` volume beside the two root slots.
 The second, a swap file, is written only on a single-root layout: a file inside one slot's root

@@ -313,21 +313,32 @@ int  box_state(const char *box, char *buf, size_t n);
  * so the caller must create it again) or 4 (any other box, still stuck and
  * kept, because its writes are in the container). */
 int  box_unstick(const char *box, char *state, size_t n);
-/* `sig` to every process of the box but its init — the applications its
- * launches started, by the init's mount namespace or by KDOS_BOX once the
- * init is gone — and to every launch still waiting for the box, by its wait
- * mark ($XDG_RUNTIME_DIR/kdos/boxes/<box>.wait.<pid>). Signal 0 counts them.
- * Returns how many were signalled. */
+/* `sig` to every process of the box but its init and to every launch still
+ * waiting for the box, by its wait mark ($XDG_RUNTIME_DIR/kdos/boxes/
+ * <box>.wait.<pid>). A process is the box's when it is in the init's mount
+ * namespace; when the init is gone, when it carries the box's KDOS_BOX or is
+ * in a mount namespace a process under one of the box's conmons was found in
+ * during this stop; and when its parent chain reaches one of the container's
+ * conmons, except the main conmon's exit-command and runtime children. The
+ * main conmon is never signalled; the exec conmons only at SIGKILL. Signal 0
+ * counts all of them, the exec conmons and the main conmon included. Returns
+ * how many were signalled. */
 int  box_signal_all(const char *box, int sig);
-/* Stop boxes without `podman stop`: SIGTERM to the applications, the
- * launches still waiting for the box and the init, `grace` seconds, then
- * SIGKILL and three more. Returns how many are still up. box_unstick runs
- * the same sequence without the waiting launches. */
+/* Stop boxes without `podman stop`: SIGHUP then SIGTERM to the exec
+ * sessions, SIGTERM to the other applications, the waiting launches and the
+ * init, `grace` seconds for the box and its main conmon to be gone, then
+ * SIGKILL (never to the main conmon) and three more; a box left `stopped`
+ * with nothing alive gets `podman container cleanup`. Returns how many are
+ * still up. box_unstick runs the same sequence without the waiting
+ * launches. */
 int  box_stop_many(const char *const *boxes, int n, int grace);
 int  box_create(const Profile *p);
 int  box_list(void);
 int  box_setup_done(const char *box);
+int  box_setup_ever(const char *box);
 int  box_wait_ready(const char *box, int seconds);
+int  box_wait_ready_note(const char *box, int seconds, int quiet,
+			 void (*note)(const char *box));
 int  image_exists(const char *image);
 int  image_has_label(const char *image, const char *label);
 

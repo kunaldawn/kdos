@@ -59,6 +59,8 @@ struct Entry {
     EntryState state = EntryState::None;
     QString appstreamId;
     QString desktopId; // the host desktop entry a Port launches
+    bool removable = false; // a Port in the world set that no installed package depends on (`kdos update removable`)
+    QString neededBy; // for a Port in the world set that is not removable, an installed package that depends on it
     QStringList screenshots; // local image files only: nothing is fetched
     QString author;
     QStringList mimetypes;

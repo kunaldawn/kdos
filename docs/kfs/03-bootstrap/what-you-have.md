@@ -71,8 +71,9 @@ the libraries they depend on. It has two jobs.
 The first is ownership. When kpkg installs a package over a path no package claims, it adopts the
 path (see [Who owns a file](../../kdos/03-architecture/packaging.md#who-owns-a-file)), so each of
 those ports turns files this part left into files a package records in its manifest. `30_foundation`
-does the same for the rest of the bootstrap's programs, bash among them. kpkg and kinstall stay as
-this part built them: neither has a port in any phase list.
+does the same for the rest of the bootstrap's programs, bash among them, and `41_system`'s
+[kdos-installer](#port-kdos-installer) for kinstall. kpkg stays as this part built it: it has no
+port in any phase list.
 
 The second is [self-hosting]{.idx}. After `20_selfhost` the C library and the compiler are themselves
 compiled by a compiler running on KDOS, inside KDOS, and depend on nothing the container built.

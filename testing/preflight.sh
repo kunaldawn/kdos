@@ -701,8 +701,8 @@ echo "==> every port of OURS is built by something"
 # example: a daemon, an init script and a recipe, and one missing line in
 # script/phases/50_desktop/packages.txt between it and never running.
 #
-# A port a PHASE SCRIPT builds by name is fine — that is how kinstall is built,
-# in the bootstrap phase, long before any phase list is read.
+# A port a PHASE SCRIPT builds by name is fine: the bootstrap phase compiles
+# from src/ long before any phase list is read.
 unbuilt=0
 for d in src/*/*; do
     [ -f "$d/kpkgbuild" ] || continue
@@ -2727,12 +2727,12 @@ else
     note "iso boot structure" "skipped — 110_iso.sh not found"
 fi
 
-# A BINARY BUILT BY A PHASE STEP IS NOT REBUILT BY `--rebuild <port>`, because
-# it is not a port. kinstall comes out of 10_bootstrap/130_kinstall.sh, which
-# ALSO exits early when its marker exists — so editing the installer's sources,
-# rebuilding, and running 70_image produces an ISO carrying the binary from whenever
-# that marker was first written. Nothing fails: the build is green and the image
-# boots, and only the installed system is wrong.
+# THE INSTALLER'S RECIPE HASH LEAVES OUT ITS BACKEND. The kdos-installer
+# package 41_system builds owns build/fs/usr/bin/kinstall, and its hash covers
+# src/system/kdos-installer and src/libs but not src/system/kinstall-core, so an
+# edit to install.c alone, a build, and 70_image produce an ISO carrying the
+# installer from the last time the port was built. Nothing fails: the build is
+# green and the image boots, and only the installed system is wrong.
 #
 # The check is against a STRING THE SOURCE OWNS. Comparing timestamps cannot
 # work — build/fs is stamped to a fixed epoch for reproducibility — and
@@ -2751,7 +2751,7 @@ if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
     elif strings "$ki_bin" 2>/dev/null | grep -qF "$ki_want"; then
         note "kinstall freshness" "built binary carries $ki_want"
     else
-        bad "130_kinstall.sh" "build/fs/usr/bin/kinstall predates install.c — rm build/mark/bootstrap/kinstall and rebuild the bootstrap phase"
+        bad "kdos-installer" "build/fs/usr/bin/kinstall predates install.c — rebuild it: --phases 41_system --rebuild kdos-installer"
     fi
 else
     note "kinstall freshness" "skipped — no build tree"

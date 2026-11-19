@@ -678,9 +678,10 @@ Korean ship. The rule is in
 
 ### `texdoc` finds no manuals, and HTML and PDF manuals are not installed
 
-The manuals of the TeX packages are the `texlive-doc` port, which no phase builds, so `texdoc` has
-nothing local to open; read them on CTAN. `kpkg install texlive-doc` does not change that as the
-tree stands: the package-time prune removes its PDF manuals. Every other port's HTML and PDF manuals are removed as its package is made, and its
+The manuals of the TeX packages are the `texlive-doc` port, which the image does not carry, so
+`texdoc` has nothing local to open; read them on CTAN. Installing the package from the binhost does
+not change that as the tree stands: the package-time prune removes its PDF and HTML manuals, and
+it holds the examples and sources alone. Every other port's HTML and PDF manuals are removed as its package is made, and its
 manual pages and info pages ship instead. HTML a program opens itself stays: mednafen's manual,
 which upstream writes only in HTML, R's help index, the manuals behind the Help menus of geany,
 gimagereader, texstudio, WSJT-X, Wireshark and hatari, the pages FreeCAD's and SMPlayer's About
@@ -1314,19 +1315,19 @@ than the program does. Each of these builds in `43_toolkits`, after GTK and Qt, 
 `kdos-tools` builds in `42_graphics` because `kbd` depends on `libxkbcommon`, which the graphics
 stack provides. A build that stops before those phases has none of them.
 
-### The image's installer is rebuilt only when its mark is gone
+### The installer's recipe hash leaves out its backend and the catalogue reader
 
-The `kinstall` on the image is compiled by `10_bootstrap`'s `130_kinstall.sh`, straight from
-`src/system/kdos-installer` and `src/system/kdos-appbox/catalogue.c`. That step is skipped
-whenever `build/mark/bootstrap/kinstall` exists, whatever changed in either directory, so an edit
-to the installer or to `catalogue.c` reaches the image only when the step runs again: remove the
-mark, or name the step explicitly with `--steps 10_bootstrap:130_kinstall.sh`, which sets
-`KDOS_REPLAY=1` for it.
+The `kinstall` on the image and on the binhost is the `kdos-installer` package, which `41_system`
+builds from `src/system/kdos-installer`, `src/system/kinstall-core` and
+`src/system/kdos-appbox/catalogue.c`. Its recipe hash covers its own directory and `src/libs` but
+neither `kinstall-core` nor `catalogue.c`, so a build counts an edit to either alone as nothing to
+do; name the port, `--rebuild kdos-installer`, for it to be compiled again.
 
-The `kdos-installer` port builds the same program, with the backend in `src/system/kinstall-core`
-compiled into it, and no phase list names it. Its recipe hash covers its own directory and
-`src/libs` but neither `kinstall-core` nor `catalogue.c`, so a `kpkg` build of that port counts an
-edit to either alone as nothing to do.
+`10_bootstrap`'s `130_kinstall.sh` compiles the same program for the trees before `41_system`, and
+the package adopts the file it installs. That step is skipped whenever
+`build/mark/bootstrap/kinstall` exists, whatever changed, so those early trees keep the installer
+they were built with until the mark is removed or `--steps 10_bootstrap:130_kinstall.sh` names the
+step, which sets `KDOS_REPLAY=1` for it.
 
 ### The package store keys only what a port declares
 

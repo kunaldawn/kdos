@@ -27,7 +27,8 @@ five things:
   `kdos-debian-exclude.xml`, the `remove-component` merges that take the applications
   `debian-exclude` names out of every AppStream pool.
 - **`kdos-ports-helper`**, the root step behind installing host software prebuilt from the signed
-  binhost, run through `pkexec` under the polkit action `io.kdos.ports.install`.
+  binhost, run through `pkexec` under the polkit action `io.kdos.ports.install`, and behind
+  removing a port installed on request, under `io.kdos.ports.remove`.
 - **`kdos-ports-builder`**, the root step behind building host software on this computer, the
   `kdos-ports-source` origin, run through `pkexec` under `io.kdos.ports.build`.
 
@@ -79,15 +80,22 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   `uninstall deb:<package>` build and remove a box named `deb.<package>`, with each `+` in the
   package name spelled `_`; the backend reads that name back to tell a Debian application
   installed.
-- **Host software is read-only here until a binhost is fetched.** A port arrives and leaves with
-  the system version, so the `kdos-ports` lane lists what is installed and offers no removal. Once
-  `kdos update fetch` has put the release's signed binhost index and its catalogue in
-  `/var/lib/kdos/binhost`, a port that catalogue lists can be installed, prebuilt or built here.
-  A port not installed is two resources with one AppStream id, `kdos-ports` and
-  `kdos-ports-source`, so Discover lists one application with two origins in its source picker.
+- **Host software is read-only here until a binhost is fetched, and removable only when asked
+  for.** The `kdos-ports` lane lists what is installed. A port of the image has no line in
+  `/var/lib/kdos/world` and is part of the system, as is one an installed package depends on; only
+  a world port nothing installed needs, which `kdos update removable --json` names at each refresh,
+  gets Remove, which runs `kdos update remove --dry-run` as the user, asks "Remove <Name>?" when it
+  prints `remove <port>`, and only on a yes runs `kdos-ports-helper remove` under
+  `io.kdos.ports.remove`. Once `kdos update fetch` has put the release's signed binhost index and
+  its catalogue in `/var/lib/kdos/binhost`, a port that catalogue lists can be installed, prebuilt
+  or built here.
+  A port the binhost holds is two resources with one AppStream id, `kdos-ports` and
+  `kdos-ports-source`, installed or not, so Discover lists one application with two origins in its
+  source picker; Discover's application page keeps the most sources it has seen while it is open,
+  and a twin that came and went with the install would leave it after a removal with no picker.
   Which of two resources with one id a Discover list keeps is its sort's, not the backend's, so a
-  list carries only the one `install =` in `/etc/kdos/update.conf` prefers and a link answers both,
-  that one first. Before `pkexec`, the plan runs the install's `--dry-run` as the user and asks
+  list carries only the one `install =` in `/etc/kdos/update.conf` prefers, the `kdos-ports` one
+  once the port is installed, and a link answers both, that one first. Before `pkexec`, the plan runs the install's `--dry-run` as the user and asks
   through `Transaction::proceedRequest`, so the counts come before the password.
   `kdos-ports-helper` checks the name, clears the environment pkexec handed it and runs `kdos
   update install --prebuilt <port>`; `kdos-ports-builder` does the same with `--source`, passing
@@ -95,7 +103,9 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   otherwise. `kdos update install` owns the route: the binhost download and its checks, the
   build under `/etc/kdos/chroot.env`'s environment, the origin file and the world set. Then the
   helper writes the catalogue again. The helpers are separate programs because pkexec's grant
-  names a program and not its arguments: granting `/usr/bin/kdos` would grant every subcommand.
+  names a program and at most its first argument: granting `/usr/bin/kdos` would grant every
+  subcommand. The helper's two actions each name their verb in `exec.argv1`, since pkexec takes
+  the first action that matches and one naming the path alone would match either verb.
 - **Host software is read from its two catalogue files, not from the AppStream pool.** The pool
   keys every component of the OS catalogue by a data id with the origin `os`, so `org.kde.kate`
   from `kdos-ports.xml` and `org.kde.kate` from Debian's DEP-11 file would be one component,
@@ -115,4 +125,19 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
 - **The catalogue is written wherever packages change.** `kdos-discover-catalog` rewrites the
   whole of `kdos-ports.xml` from kpkg's manifests: a port's own metainfo is its component, given
   the package name, and a desktop entry no metainfo launches is read by libappstream's
-  desktop-entry reader. The image step runs it once over the finished tree.
+  desktop-entry reader. The image step runs it once over the finished tree. A component with no
+  licence or homepage takes its recipe's `license =` and `homepage =` from the first `kpkgbuild`
+  of the port under `<root>/ports/core`, `<root>/ports/src` or `<root>/kdos/src` (the 70_image
+  chroot binds the ports tree at `/ports` and the repository at `/kdos`). Every component read
+  from a bare desktop entry carries the custom value `KDOS::BareEntry=1` and no other component
+  carries the key, and in a catalogue with any such value the backend tells a suite's face,
+  LibreOffice's start centre, by that mark alone, never by a missing licence, which no component
+  with a recipe lacks. A catalogue with no mark anywhere, as the published v0.2 binhost's that a
+  fresh machine reads until its own release's is fetched, is read by what a desktop entry lacks:
+  a desktop application with a `.desktop` id and no description, which the desktop-entry reader
+  never writes, is a bare entry; read by the mark alone, it would list LibreOffice as Base. The
+  developer is copied only from a metainfo file the package installs, never made up; Discover says
+  "Unknown author" otherwise.
+- **The install confirmation counts the cache.** `kdos update install --dry-run`'s `total` counts
+  every prebuilt package and only the bytes not yet in `/var/lib/kdos/binhost`, so a total with no
+  bytes is said as "already downloaded", never as a download of 0 bytes.

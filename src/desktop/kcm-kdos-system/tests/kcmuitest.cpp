@@ -39,6 +39,7 @@
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QtMath>
 
 #include <memory>
 
@@ -221,6 +222,56 @@ bool namesStartingWith(QQuickItem *item, const QString &prefix)
     }
     return false;
 }
+
+/* The slot form under `item` that shows `info`. */
+QQuickItem *formFor(QQuickItem *item, QObject *info)
+{
+    if (item->metaObject()->indexOfSignal("startRequested(QVariant)") >= 0 && item->property("slotInfo").value<QObject *>() == info) {
+        return item;
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        if (QQuickItem *found = formFor(child, info)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+/* Records the size and bounds a window transient for `parent` has as it is
+ * shown: QWindow sends QShowEvent before it makes the platform window
+ * visible, which is when Qt's Wayland plugin sends the bounds with the
+ * window's first state. */
+class TransientShowWatch : public QObject
+{
+public:
+    explicit TransientShowWatch(QWindow *parent)
+        : m_parent(parent)
+    {
+    }
+    int shows = 0;
+    QSize size;
+    QSize minimum;
+    QSize maximum;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::Show) {
+            auto *w = qobject_cast<QWindow *>(watched);
+            if (w && w->transientParent() == m_parent) {
+                ++shows;
+                size = w->size();
+                minimum = w->minimumSize();
+                maximum = w->maximumSize();
+            }
+        }
+        return false;
+    }
+
+private:
+    QWindow *m_parent;
+};
 
 const QString RollbackHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart; if it does not start properly, the computer goes back by itself."_s;
 const QString OneSlotHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. On this computer it is installed from a terminal: “sudo kdos update fetch” downloads it and “sudo kdos update apply” installs it. It is written over the running system and takes effect after a restart, and there is no previous version to go back to if it does not start properly."_s;
@@ -421,8 +472,28 @@ private Q_SLOTS:
         auto *dialog = ui->findChild<QObject *>(u"startDialog"_s);
         QVERIFY(dialog);
         dialog->setProperty("slotInfo", QVariant::fromValue(slotList.at(1)));
+        TransientShowWatch watch(&window);
+        qApp->installEventFilter(&watch);
         QVERIFY(QMetaObject::invokeMethod(dialog, "open"));
         QTRY_VERIFY(dialog->property("opened").toBool());
+
+        /* The prompt's window is held from before it is shown, on every
+         * open, which leaves the window system nothing to maximise in the
+         * window's first state: a hold that arrives after the map leaves a
+         * dead close glyph where the maximise button was. */
+        QCOMPARE(watch.shows, 1);
+        QVERIFY2(!watch.minimum.isEmpty() && watch.minimum == watch.maximum,
+                 qPrintable(u"shown at %1x%2 with bounds %3x%4 to %5x%6"_s.arg(watch.size.width()).arg(watch.size.height())
+                                .arg(watch.minimum.width()).arg(watch.minimum.height())
+                                .arg(watch.maximum.width()).arg(watch.maximum.height())));
+        QMetaObject::invokeMethod(dialog, "close");
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        QVERIFY(QMetaObject::invokeMethod(dialog, "open"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        qApp->removeEventFilter(&watch);
+        QCOMPARE(watch.shows, 2);
+        QVERIFY(!watch.minimum.isEmpty());
+        QCOMPARE(watch.minimum, watch.maximum);
         QVERIFY(dialog->property("subtitle").toString().size() > 150);
         const qreal width = dialog->property("width").toReal();
         QVERIFY2(width > 0 && width <= bound, qPrintable(u"prompt %1 wide, bound %2"_s.arg(width).arg(bound)));
@@ -439,17 +510,26 @@ private Q_SLOTS:
         auto *card = dialog->property("contentItem").value<QQuickItem *>();
         QVERIFY(card);
         QCOMPARE(card->window(), prompt);
+        /* Held again at the size it settled at, which the window keeps:
+         * moving the bounds from the first hold does not fit the window
+         * back into them. */
+        QTRY_COMPARE(prompt->maximumSize(), prompt->size());
+        QCOMPARE(prompt->minimumSize(), prompt->size());
+        QVERIFY2(prompt->height() >= qFloor(dialog->property("implicitHeight").toReal()),
+                 qPrintable(u"prompt %1 tall for %2"_s.arg(prompt->height()).arg(dialog->property("implicitHeight").toReal())));
 
-        /* The page behind is dimmed by a wash of the background that
-         * shows on a dark scheme, and the prompt has an edge of its own.
-         * Whether that edge can be seen on a given scheme is a matter for
-         * a screenshot; this holds only that it is drawn and is not the
-         * fill's colour. */
+        /* As a window of its own the prompt draws no dim over the page:
+         * the page's scene is all it could dim, and a dimmed page beside a
+         * bright sidebar reads as a sidebar still in use. The prompt has an
+         * edge of its own. Whether that edge can be seen on a given scheme
+         * is a matter for a screenshot; this holds only that it is drawn
+         * and is not the fill's colour. */
         QVERIFY(dialog->property("modal").toBool());
         QQuickItem *dim = itemNamed(window.contentItem(), u"startDialogDim"_s);
-        QVERIFY2(dim, "the prompt has no dim of its own");
-        QTRY_VERIFY(dim->isVisible() && dim->opacity() > 0.99);
-        QVERIFY(dim->property("color").value<QColor>().alphaF() >= 0.5);
+        QVERIFY2(dim, "a modal prompt has no dim in the page's scene");
+        QTRY_VERIFY(dim->opacity() > 0.99);
+        QVERIFY2(!dim->isVisible() || dim->property("color").value<QColor>().alpha() == 0,
+                 qPrintable(u"the page is dimmed with %1"_s.arg(dim->property("color").value<QColor>().name(QColor::HexArgb))));
         auto *frame = dialog->property("background").value<QQuickItem *>();
         QVERIFY(frame);
         QCOMPARE(frame->objectName(), u"startDialogFrame"_s);
@@ -464,6 +544,149 @@ private Q_SLOTS:
         QCOMPARE(frame->window(), prompt);
         QCOMPARE(frame->property("radius").toReal(), 0.0);
         QMetaObject::invokeMethod(dialog, "close");
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+
+        /* Drawn in the page's own scene, where the platform has no second
+         * window, the prompt blocks only the page, and the page is faded
+         * behind it. */
+        QVERIFY(dialog->setProperty("popupType", 0 /* QQuickPopup::Item */));
+        QVERIFY(QMetaObject::invokeMethod(dialog, "open"));
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QCOMPARE(frame->window(), &window);
+        dim = itemNamed(window.contentItem(), u"startDialogDim"_s);
+        QVERIFY2(dim, "a prompt in the page's scene has no dim");
+        QTRY_VERIFY(dim->opacity() > 0.99);
+        QVERIFY(dim->isVisible());
+        QVERIFY2(dim->property("color").value<QColor>().alphaF() >= 0.5,
+                 qPrintable(u"the page is dimmed with %1"_s.arg(dim->property("color").value<QColor>().name(QColor::HexArgb))));
+        QVERIFY(frame->property("radius").toReal() > 0);
+        QMetaObject::invokeMethod(dialog, "close");
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+    }
+
+    /* A hold sets the prompt's bounds to its size and a release lifts
+     * them, and neither resizes the window, whichever way its size moved
+     * since the last hold: a window fitted back into an old hold shows a
+     * stale size. A window held by holdSize() but drawn in the page's own
+     * scene is not held. */
+    void holdKeepsTheWindowsSize()
+    {
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        const QSize unbounded(16777215, 16777215);
+        const auto hold = [&kcm](QWindow *prompt, QWindow *page) {
+            return QMetaObject::invokeMethod(kcm.get(), "holdSize", Q_ARG(QWindow *, prompt), Q_ARG(QWindow *, page));
+        };
+        const auto release = [&kcm] {
+            return QMetaObject::invokeMethod(kcm.get(), "releaseSize");
+        };
+
+        QWindow page;
+        QWindow prompt;
+        prompt.resize(432, 117);
+        QVERIFY(hold(&prompt, &page));
+        QCOMPARE(prompt.minimumSize(), QSize(432, 117));
+        QCOMPARE(prompt.maximumSize(), QSize(432, 117));
+
+        const QList<QSize> moves = {QSize(432, 60), QSize(500, 200), QSize(300, 250), QSize(600, 90)};
+        for (const QSize &to : moves) {
+            prompt.resize(to);
+            QVERIFY(hold(&prompt, &page));
+            QCOMPARE(prompt.size(), to);
+            QCOMPARE(prompt.minimumSize(), to);
+            QCOMPARE(prompt.maximumSize(), to);
+        }
+        for (const QSize &to : {QSize(400, 120), QSize(700, 50)}) {
+            prompt.resize(to);
+            QVERIFY(release());
+            QCOMPARE(prompt.size(), to);
+            QCOMPARE(prompt.minimumSize(), QSize(0, 0));
+            QCOMPARE(prompt.maximumSize(), unbounded);
+            QVERIFY(hold(&prompt, &page));
+        }
+
+        QVERIFY(hold(&page, &page));
+        QCOMPARE(prompt.minimumSize(), QSize(0, 0));
+        QCOMPARE(prompt.maximumSize(), unbounded);
+        QCOMPARE(page.minimumSize(), QSize(0, 0));
+        QCOMPARE(page.maximumSize(), unbounded);
+    }
+
+    /* In System Settings the page is drawn in an offscreen window that is
+     * never shown, and the prompt's window would take that for its parent
+     * and reach the window system with none. Started from a slot form, the
+     * prompt's parent chain ends at the program's own window, which is
+     * what the window system resolves its parent through; its caption
+     * carries no version, which is in the subtitle. Runs from the
+     * fixture's boot state. */
+    void promptBelongsToTheProgramWindow()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+        QTRY_VERIFY(kcm->property("configured").toBool());
+        const auto slotList = kcm->property("slotList").value<QList<QObject *>>();
+        QTRY_VERIFY(slotList.at(1)->property("bootable").toBool());
+
+        QWindow top;
+        top.resize(1100, 900);
+        top.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&top));
+        top.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &top);
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QQuickWindow scene;
+        scene.resize(1100, 1400);
+        ui->setParentItem(scene.contentItem());
+        ui->setSize(scene.size());
+        QTest::qWait(200);
+
+        QQuickItem *form = nullptr;
+        QTRY_VERIFY((form = formFor(ui, slotList.at(1))));
+        auto *dialog = ui->findChild<QObject *>(u"startDialog"_s);
+        QVERIFY(dialog);
+        QVERIFY(QMetaObject::invokeMethod(form, "startRequested", Q_ARG(QVariant, QVariant::fromValue(slotList.at(1)))));
+        QTRY_VERIFY(dialog->property("visible").toBool());
+
+        QCOMPARE(scene.transientParent(), &top);
+        auto *card = dialog->property("contentItem").value<QQuickItem *>();
+        QVERIFY(card);
+        QWindow *prompt = card->window();
+        QVERIFY(prompt && prompt != &scene);
+        QCOMPARE(prompt->modality(), Qt::ApplicationModal);
+        QCOMPARE(prompt->transientParent(), &scene);
+        QCOMPARE(dialog->property("title").toString(), u"Start Next Time?"_s);
+        QVERIFY(dialog->property("subtitle").toString().contains(slotList.at(1)->property("title").toString()));
+
+        /* Open, the prompt's window is held at the size it settled at,
+         * which leaves the window system nothing to maximise; closed, it is
+         * released. */
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QTRY_COMPARE(prompt->maximumSize(), prompt->size());
+        QCOMPARE(prompt->minimumSize(), prompt->size());
+        QVERIFY(!prompt->size().isEmpty());
+
+        QMetaObject::invokeMethod(dialog, "close");
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        QTRY_COMPARE(prompt->minimumSize(), QSize(0, 0));
+        QCOMPARE(prompt->maximumSize(), QWindow().maximumSize());
+
+        /* A shown window is the top level already and is left as it is. */
+        QQuickWindow shown;
+        shown.resize(200, 200);
+        shown.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&shown));
+        QVERIFY(QMetaObject::invokeMethod(kcm.get(), "holdOver", Q_ARG(QWindow *, &shown)));
+        QCOMPARE(shown.transientParent(), nullptr);
     }
 
     /* Installed with one system slot: the one-version message, the running

@@ -554,6 +554,26 @@ static int decode(KtuiEvent *ev)
 		return 1;
 	}
 
+	/* The Linux console sends F1-F5 as ESC [ [ A..E. Read as a CSI, the
+	 * second '[' would be its final byte and the letter would be typed;
+	 * any other byte after ESC [ [ is dropped with the sequence. */
+	if (ilen >= 3 && ibuf[2] == '[') {
+		if (ilen < 4)
+			return 0;
+		ev->type = KT_EVT_KEY;
+		ev->mods = 0;
+		switch (ibuf[3]) {
+		case 'A': ev->key = KT_K_F1; break;
+		case 'B': ev->key = KT_K_F2; break;
+		case 'C': ev->key = KT_K_F3; break;
+		case 'D': ev->key = KT_K_F4; break;
+		case 'E': ev->key = KT_K_F5; break;
+		default: ibuf_drop(4); return 0;
+		}
+		ibuf_drop(4);
+		return 1;
+	}
+
 	/* CSI */
 	int i = 2;
 	int sgr_mouse = 0;

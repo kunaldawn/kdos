@@ -336,12 +336,12 @@ own C, a client of `org.freedesktop.Notifications` linked to basu, started by
 | "Running KDOS 0.2.14 on trial" | `kdos-bootctl status --json` | no |
 | "Your last update didn't start" | `kdos-bootctl status --json` | no |
 | "firefox-esr in the box www was closed to free memory" | `status` on `/run/kdos-oomd.sock` | no |
-| "Software chosen during install is not installed yet", the body counting the selections ("1 selection", "3 selections") Discover lists under "Selected during install" | `/var/lib/kdos/apps-pending`, which the installer writes | yes |
+| "Software chosen during install is not installed yet", the body counting the boxed selections ("1 selection", "3 selections") Discover lists under "Selected during install" and naming each native group still to install by its title in `/ports/groups` (its id when the tree gives none), as in "KDE wallpapers and the Oxygen theme was chosen during the install and is not installed yet. Once a binary host answers, run:" with `sudo kdos update install --pending` alone on the line below it, so no wrap splits the command at a hyphen; several groups alone as the one-line count "2 KDOS application groups wait.", the command, "They are:" and each title on a line of its own, since a title may hold a comma or an "and", so the popup, which shows the top of a body and scrolls the rest, keeps the command on its third line and a scroll hides only titles; the wording is true whether the medium named no binary host and only recorded the groups or the install tried and the binary host did not answer; an id named for want of a title is quoted, its hyphens non-breaking, as in "The KDOS application group “nosuch‑group” was chosen during the install and is not installed yet."; with both kinds waiting, the groups' text (several as the one-line header "2 KDOS application groups:" and a title a line) and its command come first and the boxed apps follow as the body's last line, "1 boxed app also waits in Discover." ("2 boxed apps also wait in Discover."); that body is laid out to the eight lines the popup shows before it scrolls, each counted at 38 characters, the narrow end of the 38 to 41 its proportional font holds at 1920x1080, by its wrapped height, so the command and the boxed-app line stay above the scroll: when the titles would pass it, as many as fit are listed and then "and 3 more", and when not even one fits, the count alone; groups alone list every title whatever its length, since the notice is the one place on the desktop that names them; the line before the command is short enough not to wrap; Open Discover, and Discover's icon, only when a boxed selection waits, and the software-install icon for groups alone | `/var/lib/kdos/apps-pending` and `/var/lib/kdos/groups-pending`, which the installer writes, and `/ports/groups` for the titles | yes |
 | "This computer's hardware needs firmware-nvidia", with the device in the body and Install | `kdos firmware sync --dry-run --json` | yes |
 
 A notice is posted once per change of what it is about. Each kind reduces its facts to a key (the
 set of processes running replaced code, the set of findings, the boot and its slot, the failed
-slot, the pending applications, the firmware ports named) and posts only when the key differs from the last one posted, which
+slot, the installer's pending selections and groups, the firmware ports named) and posts only when the key differs from the last one posted, which
 `$XDG_STATE_HOME/kdos/notice` keeps across logins: the same vulnerability list is not announced at
 every login, and a changed one replaces the old notification. A notice whose state ends is
 withdrawn. A command that does not answer changes nothing. The file is read when kdos-notice
@@ -349,8 +349,9 @@ starts, so deleting it announces everything once more at the next login.
 
 Nothing polls a command. An inotify watch on `/var/lib/kpkg/db`, which sees a package entry
 written, created, moved in or deleted, and on `/var/lib/kdos/update.json` asks `kdos restarts`, `kdos cve` and `kdos firmware sync
---dry-run` ten seconds after the last change, so the firmware notice is withdrawn once its ports
-are installed, and one on
+--dry-run` and re-reads the installer's `apps-pending` and `groups-pending` ten seconds after the
+last change, so the firmware and pending-software notices are withdrawn once what they name is
+installed, and one on
 `/run/kdos/bootstate.json` asks `kdos-bootctl`. Only kdos-oomd's kill count is read on a timer,
 one line every ten seconds. Everything, the installer's pending list and the firmware included, is looked at
 twenty seconds after login, every six hours,
@@ -360,7 +361,8 @@ waiting for a person are posted again, because a restarted plasmashell lost them
 The actions are fixed argument vectors. Details on the vulnerability notice opens Konsole on
 `kdos cve`, and on the trial and rollback notices opens System Settings at System Versions. Show
 Programs on an updated-programs notice opens Konsole on `kdos restarts`. Open Discover on the
-pending-applications notice opens Discover at "Selected during install". Install on the firmware
+software-still-to-install notice, offered when a boxed selection waits, opens Discover at
+"Selected during install". Install on the firmware
 notice opens Konsole on `sudo kdos firmware sync`. The dry run behind the notice runs as the
 person logged in, who cannot read the kernel log, so it names what the devices' drivers declare;
 a failed load only the log records is found by `sudo kdos firmware sync --dry-run` (see
@@ -496,7 +498,14 @@ connection and **Refresh** on Discover's Updates page, with **Open Discover** an
 buttons. Refresh fetches it: Discover's `CheckNew` makes kdos-sysupdated fetch the release's
 binhost index, on a machine with no second slot as on one with two (see
 [kdos-sysupdated](daemons.md#kdos-sysupdated)). The page has no way to fetch the index itself,
-which needs root. With the index
+which needs root. When every row's `binhost` is false, nothing names a binhost for this tree
+(no `binhost =` in `update.conf`, no `$KDOS_UPDATE_BINHOST`, no release-named `TREE`) and no
+refresh can give it one: the last binhost step already found none named, the last fetch refused
+the published tree as older than this machine's, or the machine has no second slot, whose refresh
+fetches the index alone and never a tree that names its release. The page shows an information message in place of that advice:
+this release names no binary host, no group can be installed ready-made, and Discover can build
+programs on this computer, with **Open Discover**; the page's header then drops "downloaded ready
+to run" and says only that Discover has every program and can build them here. With the index
 in place, a group with no size has a package that is not prebuilt, and is left to Discover, which
 can build it here.
 

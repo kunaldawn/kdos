@@ -14,7 +14,7 @@
  * last is the result:
  *
  *   {"t":"plan","steps":[{"index":0,"title":"Prepare","detail":"…",
- *                         "state":"pending","weight":1}, …]}
+ *                         "state":"pending","weight":3}, …]}
  *   {"t":"S","step":4,"title":"Copy system"}    a step begins
  *   {"t":"K","step":1}                          a step is skipped
  *   {"t":"P","step":4,"frac":0.42}              its progress, -1 unknown
@@ -25,9 +25,12 @@
  *   {"t":"D"}                                   every step finished
  *   {"t":"exit","status":0}                     the last line, always
  *
- * A step's `weight` is its share of the whole install against a short
- * step's 1 (the copies weigh by their bytes), for a bar over the install
- * that moves with its time; a reader takes a missing one as 1.
+ * A step's `weight` is the time it is expected to take, in tenths of a
+ * second (the copies by their bytes at a measured rate; install.c, THE
+ * STEPS' WEIGHTS), for a bar over the install that moves with the clock;
+ * a reader takes a missing one as 1. The Copy step's and Slot B's `frac`
+ * is of the copy's time, not its bytes (THE FRACTION DONE IS OF THE TIME),
+ * so the bar keeps to the clock through the copy too.
  *
  * Status 0 is a finished install, 1 a failed one, 2 answers refused before
  * anything was written (the reason in an `F` line with step -1). The process

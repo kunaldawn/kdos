@@ -38,6 +38,37 @@ WirePlumber, `pipewire-pulse` and the user's timers, for every account from uid 
 - `-Dman=true` — Build `turnstiled(8)`, `pam_turnstile(8)` and `turnstiled.conf(5)` with
   [scdoc](#port-scdoc).
 
+## Patches
+
+The last logout's clear of the runtime directory leaves every mount point in it alone
+(`rundir-mounts.patch`). KDOS's pack daemon composes each box's root as an overlay under
+`/run/user/<uid>/kdos/boxes/<box>/root`, whose upper directory is the box's persistent state in
+the user's home, so a clear that descended into it would write a whiteout for every file of the
+box.
+
+A login that arrives while the previous manager is stopping waits for that manager to exit and
+for the next one to report ready (`stopping-manager-readiness.patch`). Upstream releases it on
+the stopping manager's readiness when that manager was still coming up as the last session
+closed, and SDDM's automatic login after `loginctl terminate-user` lands there: Plasma starts on
+the session bus that is being stopped, `kded6` and `plasmashell` lose it, and the screen stays
+black. The same patch closes a stopped manager's unreported readiness pipe when the next one
+starts, since an event on it would otherwise make `turnstiled` exit. The patch is to be offered
+upstream.
+
+`session-socket-cloexec.patch` opens the connection `pam_turnstile` makes to `turnstiled`, which
+is the login, close-on-exec. `turnstiled` counts a login as ended only when the last copy of that
+connection closes, and without the flag every program the PAM caller executes inherits one:
+SDDM's session, Plasma and every process started from it, a box's `kdos-appbox keeper`, `conmon`
+and `podman exec` included. A box or any other process from the session still running at Log Out
+then holds the login open, and the last logout never stops the user services or clears
+`/run/user/<uid>`. With the flag only the PAM caller holds the login: `sddm-helper` opens the PAM
+session and then forks and executes the session, and closes the PAM session when the session
+process exits; util-linux `login` opens it, forks the shell and closes it when the shell exits. A
+PAM caller that executes the session in its own process, with no parent left to call
+`pam_close_session`, would end the login at once; no PAM stack on KDOS that loads `pam_turnstile`
+belongs to one. The X server probe socket the module opens is made close-on-exec as well. The
+patch is to be offered upstream.
+
 ## Notes
 
 The recipe deletes `/etc/turnstile/turnstiled.conf`, which the build generates from its options. KDOS's own copy is in `fs/` and sets `backend = ksvc`, `manage_rundir = yes`,
@@ -55,18 +86,3 @@ which the backend starts inside it, and not only the login shell.
 `turnstiled` waits for the backend's readiness report for at most `login_timeout` seconds and then
 ends the user's service manager and closes the user's session connections, so a backend that
 never reports ready shows up as a login that hangs for that long and then has no user services.
-
-The last logout's clear of the runtime directory leaves every mount point in it alone
-(`rundir-mounts.patch`). KDOS's pack daemon composes each box's root as an overlay under
-`/run/user/<uid>/kdos/boxes/<box>/root`, whose upper directory is the box's persistent state in
-the user's home, so a clear that descended into it would write a whiteout for every file of the
-box.
-
-A login that arrives while the previous manager is stopping waits for that manager to exit and
-for the next one to report ready (`stopping-manager-readiness.patch`). Upstream releases it on
-the stopping manager's readiness when that manager was still coming up as the last session
-closed, and SDDM's automatic login after `loginctl terminate-user` lands there: Plasma starts on
-the session bus that is being stopped, `kded6` and `plasmashell` lose it, and the screen stays
-black. The same patch closes a stopped manager's unreported readiness pipe when the next one
-starts, since an event on it would otherwise make `turnstiled` exit. The patch is to be offered
-upstream.

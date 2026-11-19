@@ -121,7 +121,8 @@ The first two phases build a cross toolchain and use it to cross-compile a minim
 `build/fs`, including `kpkg`, the package manager, and `kinstall`, the installer. Both are compiled
 directly from `src/system/kdos-kpkg` and `src/system/kdos-installer` rather than installed as
 ports, because nothing can be installed as a port until `kpkg` exists. `kdos-kpkg` has no recipe
-at all, and `kdos-installer`'s recipe is named in no phase's list. The other ports of `src/system`
+at all; `kdos-installer`'s recipe is named in `41_system`'s list, and the package it builds there
+adopts the `/usr/bin/kinstall` the bootstrap left unowned. The other ports of `src/system`
 and `src/art` are built in `41_system`, `42_graphics`, `43_toolkits` and `50_desktop`, each where
 its dependencies first exist. From `20_selfhost` on, the
 build is self-hosting: the package phases are lists of ports that `kpkg` builds inside `build/fs`
@@ -241,13 +242,12 @@ Nine of the run's names repeat `20_selfhost`'s list: `fortify-headers`, `musl`, 
 `41_system` has no pinned run; a run goes there when a comment has to pin its order.
 No other userland phase has an order file.
 
-The lists install every recipe in the tree but two. `kdos-installer` is compiled directly by
-`10_bootstrap`, and `texlive-doc` is listed in `ports/unbuilt`, the recipes kept for a
-`kpkg install` on a machine that wants them and built by no phase; `040_orphans.sh` removes a
-package `ports/unbuilt` names from the image if an earlier build left it installed. The four ports
-no list names, `gmp`, `mpfr`, `mpc` and `xxhash`, are `20_selfhost`'s dependencies.
-`testing/bookcounts.py`, which `testing/docscheck.sh` runs, fails on a recipe no phase installs
-unless `ports/unbuilt` names it, and on a name there that a phase does install. [The ports
+The lists install every recipe in the tree. `ports/unbuilt` is the place for a recipe kept for a
+`kpkg install` on a machine that wants it and built by no phase, and it names none;
+`040_orphans.sh` removes a package `ports/unbuilt` names from the image if an earlier build left it
+installed. The four ports no list names, `gmp`, `mpfr`, `mpc` and `xxhash`, are `20_selfhost`'s
+dependencies. `testing/bookcounts.py`, which `testing/docscheck.sh` runs, fails on a recipe no
+phase installs unless `ports/unbuilt` names it, and on a name there that a phase does install. [The ports
 catalogue](../06-reference/ports-catalogue.md) lists every port by shelf with the phase that
 installs it. Shelves, and the recipe's own `group =` key, which is a different thing, are explained
 in [Packaging](../03-architecture/packaging.md#the-group-key).
@@ -847,7 +847,7 @@ the initramfs and ISO carry it into the image.
 
 | Step | Does |
 |---|---|
-| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, under a `PORT_REPO` of `/ports/core` and the four `src/` areas so a package of KDOS's own gets its recipe hash, making the key in `build/binhost-key/` on first use, then writes the AppStream catalogue and the directory's signed release index, `kdos-update.idx`, every name flat; without it, does nothing. The directory accumulates across runs and nothing empties it. The index gives the `E:` recipe hash only to the file whose version and release are the recipe's; a superseded file gets an empty one, stays in the directory and is left out of `kdos-update.idx`, so no release publishes it. A current package file larger than one release asset (`KDOS_PART_SIZE`, 1,900 MiB) fails the step. A package the build kept from an earlier recipe at the same version and release is indexed as if built from the current one. A complete binhost needs `build/binhost/` emptied by hand and then a build from nothing with the flag set: `--fresh` alone builds no port already installed in `build/fs`, so it makes no package for one (see [Building from scratch](developing.md#building-from-scratch)) |
+| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, under a `PORT_REPO` of `/ports/core` and the four `src/` areas so a package of KDOS's own gets its recipe hash, making the key in `build/binhost-key/` on first use, then writes the AppStream catalogue and the directory's signed release index, `kdos-update.idx`, every name flat; without it, does nothing. The directory accumulates across runs. The index gives the `E:` recipe hash only to the file whose version and release are the recipe's; a superseded file, or one of a port the tree has no recipe for, gets an empty one, and the step moves each such file and its `.sig` to `build/binhost-superseded/` and indexes again, so `PACKAGES`, the catalogue and `kdos-update.idx` name one set of files. A current package file larger than one release asset (`KDOS_PART_SIZE`, 1,900 MiB) fails the step. A package the build kept from an earlier recipe at the same version and release is indexed as if built from the current one. A binhost of nothing but this tree's builds needs `build/binhost/` emptied by hand and then a build from nothing with the flag set: `--fresh` alone builds no port already installed in `build/fs`, so it makes no package for one (see [Building from scratch](developing.md#building-from-scratch)) |
 | `015_pkgstore.sh` | With the package store on, runs `kpkg store gc` over `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used entries first; with it off, does nothing |
 | `017_stage.sh` | The first step in the [image stage](#the-image-stage). Refuses to run unless `/` is an overlay, checks `ports/base`, `ports/buildonly` and `ports/groups` with `script/lib/imageset.py --check`, removes every installed package `imageset.py --drop` names in one `kpkg remove` (whose index triggers rebuild the caches once for the trimmed tree), fails if any of them is still installed, prints the kept and dropped counts and sizes, and writes `build/image-stage.ok`. Under `KDOS_IMAGE=full` it does nothing |
 | `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below). Removes every file no package owns that the [size and language policy](writing-ports.md#size-and-language-policy) prunes from a package (a non-English message catalog, a translated manual page, an HTML or PDF manual under `/usr/share/doc`) and the gawk and binutils manuals those ports leave out, so a copy `10_bootstrap` installed and its port does not adopt never ships |

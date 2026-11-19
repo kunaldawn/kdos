@@ -85,7 +85,7 @@ and `STARTING SESSION`.
 | A service stage marked failed | That service script exited non-zero; the failed stage and up to six lines of its output stay on the splash for the rest of the boot | `/run/kdos-init.<name>.log`, and `/run/kdos-svc.<name>.log` for a supervised daemon |
 | A text login prompt on tty1 instead of the login screen | SDDM is missing, has no `sddm` account, or exited three times within a minute, and `kdos-dm` put a password prompt there instead | syslog under `kdos-dm`, `/var/log/sddm.log` and `sddm.log.old`; see [The display manager](#the-display-manager) |
 | A black screen after the splash | SDDM is running but its greeter does not draw | Press `Ctrl+Alt+F2` and log in on tty2; `/var/log/sddm.log` |
-| The login screen comes back after a password | The session did not start | `~/.local/share/sddm/wayland-session.log`; see [The session](session.md#what-kdos-session-wrapper-does) |
+| The login screen comes back after a password | The session did not start | syslog under `kdos-session`, whose lines for that login name the last stage it reached, and `~/.local/share/sddm/wayland-session.log`; see [A login that comes straight back](#a-login-that-comes-straight-back) |
 | A text login prompt with the wrong font or colours | The console setup did not complete | `/run/kdos-getty.<tty>.log` |
 
 Everything the initramfs prints goes to `/dev/console`, and where that is depends on the boot (see
@@ -270,8 +270,9 @@ shell on `tty1` as well as on `/dev/console` ([The rescue shell](#the-rescue-she
 - It writes the accent's sixteen console colours to `/etc/vtrgb`, which `kdos-getty` loads onto
   each virtual terminal before the login prompt. The change shows at the next login prompt.
 
-Both writes are temporary file, `fsync`, rename, `fsync` the directory. The ESP is FAT with no
-journal, and a zero-length `limine.conf` is a machine that shows no menu. An accent name that is
+Both writes are temporary file, `fsync`, rename. The `limine.conf` rewrite then `fsync`s the
+renamed file and `syncfs`es the ESP, as the [boot state](#counting-and-confirming) does: the ESP is FAT
+with no journal, and a zero-length `limine.conf` is a machine that shows no menu. An accent name that is
 not one of the compiled-in schemes is refused with exit status 2.
 
 [`kdos theme`](../04-programs/kdos-command.md#kdos-theme) reaches this through `kdos-powerd accent`, which also writes `/etc/kdos/accent` for
@@ -866,9 +867,20 @@ candidate for `try`'s count of boots.
 
 The state file lives on the ESP, which is FAT and has no journal. A torn write there does more
 than fail an update: it leaves the machine unbootable, because the initramfs cannot tell which
-slot to boot. So every write is temporary file, `fsync` the **file**, rename, then `fsync` the
-**directory**. The directory `fsync` is the step most often left out, and without it the rename
-can be lost while the data survives.
+slot to boot. So every write is temporary file, `fsync` the file, rename, then `fsync` the
+**renamed file** and `syncfs` the ESP. The same settle follows every other change `kdos-bootctl`
+makes there: `limine.conf` and the trial copy beside its own Limine binary, a kernel or initramfs
+copied into a slot's directory, the record of what a slot holds, and the unlinks and `rmdir` that
+clear the trial directory.
+
+A directory `fsync` alone is not enough on Linux's vfat. A rename over an existing file reuses the
+target's directory slot and records the moved file there through the moved file's inode, and only
+that inode's writeback writes the entry; a directory `fsync` writes neither it nor the inode. It
+does flush the FAT, where the replaced file's clusters are already free while the entry still
+names them, and `fsck.fat` then makes the file zero bytes at cluster 0. The renamed file's own
+`fsync` writes its inode, and with it the entry; the `syncfs` writes every other dirty inode, the
+FAT and the device cache, which is what carries an unlink, `rmdir` or `mkdir`. An interruption
+before the settle leaves the old file, which is the good failure.
 
 A state file that does not parse is treated as absent, never as partial. Absent means "use the
 `root=` the command line already carries", which is what a single-root machine does anyway. A
@@ -1836,6 +1848,40 @@ write `99-plasma-setup.conf`, so SDDM logs that account into a Plasma session wh
 the wizard. The wizard makes the first real account, writes `/etc/plasma-setup-done` and removes the
 file, so the next boot shows the login screen and the step does nothing. The live medium never runs
 it.
+
+### A login that comes straight back
+
+SDDM runs `/usr/local/bin/kdos-session-wrapper` as the session and reports a session that ends at
+once only as `sddm-helper exited with N` in `/var/log/sddm.log`, `N` being the session's own exit
+status or, when a signal ended it, the signal's number; the greeter returns with nothing on the
+screen. So the wrapper writes each login's
+stages to syslog under `kdos-session`, and to the session log, every line naming the login's pid:
+
+| Line | Written |
+|---|---|
+| `login <pid>: entered as <user> under shell '<shell>'; runtime dir '<dir>', bus socket present\|absent` | First, before the login shell is started |
+| `login <pid>: profile read; …` | Once `/etc/profile` and the user's profile have been read; the wrapper reads them itself, in the login shell's own order, so a profile script that exits is logged |
+| `login <pid>: the previous login's teardown (ksvc stop, pid …) is still running; waiting up to 10s` | Only when the last logout's stop is still running, then `… is over` once it ends |
+| `login <pid>: starting <command>` | Last, as Plasma is started |
+
+Every way out between the first line and the last logs at `user.err`: a refusal (no runtime
+directory of the user's, no session bus, a teardown still running after ten seconds, a session
+command that names no program) says why, and any other exit, a profile script's `exit` included, or
+a `SIGTERM`, `SIGHUP` or `SIGINT` logs its status or its signal. A login with the first line and not
+the second ended inside a profile script; one with no line at all never ran the wrapper's first
+command. A `SIGKILL` logs nothing at any stage, and leaves only `sddm-helper exited with 9`.
+
+**The last logout's teardown is over before Plasma starts.** At a user's last logout turnstile runs
+its backend's `stop`, which stops the user's boxes (within fifteen seconds, in `40_boxes.sh`) and
+user services, and then clears `/run/user/<uid>`. A login that arrives meanwhile is held by
+`pam_turnstile` until that stop is over and the next services are ready, so the wrapper should never
+see one running; one that is would clear the runtime directory and the bus from under the new
+session, so the wrapper waits for that stop process to end and refuses the session if it is still
+running after ten seconds. turnstiled clears the directory only once it has reaped the process, which
+the wrapper cannot see, so after a wait it allows the clear one more second before it checks the
+runtime directory and the bus; a clear later than that is prevented only by `pam_turnstile`'s
+hold. See [The session](session.md#what-kdos-session-wrapper-does) for the rest of what the
+wrapper does.
 
 ## The console
 

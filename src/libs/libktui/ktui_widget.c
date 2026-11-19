@@ -1178,7 +1178,30 @@ void ktui_field_draw(KRect r, const KtuiField *f, int focus, int bg)
 			ktui_draw_text(r.x + 2 + i, r.y, 1,
 				       ktui_glyph[KT_G_BULLET], fg, bg, 0);
 	} else {
-		ktui_draw_text(r.x + 2, r.y, room, buf + sbyte, fg, bg, 0);
+		/* Only the codepoints that fit the field are handed over, so
+		 * a value longer than the field is shown, not counted as a
+		 * cut row. */
+		char shown[1024];
+		const char *s = buf + sbyte;
+		int cells = 0;
+		size_t n = 0;
+
+		while (*s) {
+			uint32_t cp;
+			const char *nx = ktui_utf8_next(s, &cp);
+			int cw = ktui_wcwidth(cp);
+
+			if (cw < 0)
+				cw = 0;
+			if (cells + cw > room || n + (size_t)(nx - s) >= sizeof(shown))
+				break;
+			memcpy(shown + n, s, (size_t)(nx - s));
+			n += (size_t)(nx - s);
+			cells += cw;
+			s = nx;
+		}
+		shown[n] = 0;
+		ktui_draw_text(r.x + 2, r.y, room, shown, fg, bg, 0);
 	}
 
 	if (focus) {

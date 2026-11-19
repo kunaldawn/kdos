@@ -65,7 +65,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2381-2415 pin=3700d7bc6497 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2806-2840 pin=3700d7bc6497 -->
 
 So an installed `fstab` begins with the root by its filesystem UUID and the EFI system partition
 at `/boot/efi` with `umask=0077` and pass 2. On the A/B layout, which an erased disk under LVM gets

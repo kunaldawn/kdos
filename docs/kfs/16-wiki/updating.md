@@ -146,7 +146,7 @@ directory above the first repository it names. See [kpkg](kpkg.md#etckpkgconf).
 | `/var/lib/kdos/image/MANIFEST` | `apply` by the image lane | The manifest of the image the root was written from, which the next image lane reads to pick its delta |
 | [`/var/lib/kdos/world`]{.idx} | `install` | The world set: each port installed on purpose, one name per line, which every update keeps installed |
 | [`/var/lib/kdos/origin`]{.idx} | `install`, `apply` | One `<package> prebuilt\|source` line for each package an install or an update added; a package with no line came prebuilt, as everything the image brought did. Carried into a slot beside the world set |
-| [`/var/lib/kdos/groups-pending`]{.idx} | the installer | The groups chosen at install time that could not be installed then, one id per line, for `install --pending` |
+| [`/var/lib/kdos/groups-pending`]{.idx} | the installer | The groups chosen at install time and not installed yet (recorded without an attempt when the medium names no binary host), one id per line, for `install --pending` |
 
 A freshly booted image has none of them. The first `fetch` or `apply` writes `update.state` and its
 lock, and `update.json` appears at the nightly check's first run, or sooner when a `fetch` or an
@@ -185,8 +185,14 @@ did.
    `kdos update` with no verb does the same. It lists each installed package whose version, or
    release, is older than its recipe in `/ports`, and which of them the verified binhost index
    covers; counts the installed packages that have no recipe there; names the tree's commit; says
-   whether a verified slot image of a newer release is cached; and reports the last problem a fetch
-   or an apply recorded.
+   whether a verified slot image of a newer release is cached, which a machine with one slot is
+   never offered; and reports the last problem a fetch or an apply recorded. Its `binhost:` line
+   says how much of what is behind the verified index covers, or, with no index, the step that
+   takes one. When the index in place came from another base than the one named now, as after
+   `binhost =` changed and the fetch of the new base found nothing, a further `binhost:` line
+   names both, the last fetch of the named base and that installs still read the index in place.
+   A tree fetch that refused the published tree as older than this machine's ranks below every
+   other problem, so on a tree ahead of the release a binhost problem is still the one reported.
 
 2. Read the exit status: 0 nothing is behind, 1 something is behind, 2 there is no tree or no
    package database. A recorded problem does not change it: the check above exits 0.
@@ -198,10 +204,11 @@ did.
    kdos update check --out ~/update.json
    ```
 
-   The document's `offer` is the version an update would make this system and `lane` is where it
-   comes from: `image`, or `binhost` when every package behind is covered by a verified index or
-   was built here. `builds` counts the packages behind that the update builds here, because their
-   origin is `source`; they count as covered. With neither lane, nothing is offered to Discover,
+   The document's `binhost_base` is the binhost named now, which a `binhost-` problem is about,
+   and `binhost` where the index in place came from. Its `offer` is the version an update would
+   make this system and `lane` is where it comes from: `image`, or `binhost` when every package
+   behind is covered by a verified index or was built here. `builds` counts the packages behind
+   that the update builds here, because their origin is `source`; they count as covered. With neither lane, nothing is offered to Discover,
    and `apply --source` is the way.
 
 ### Fetching a newer tree
@@ -312,8 +319,11 @@ archive is, `<tag>/<asset>`, in its place, and like any variable it has to be se
    Reboot to try it.
 
 4. On a machine with one root, `apply` prints `no A/B slots — updating the running root in place`
-   and updates the running root. On a machine with two slots, `--in-place` updates the running
-   root instead of the slot, and gives up the rollback.
+   and updates the running root. A slot image has nowhere to go there, so the image lane is never
+   taken: `check` offers no image, and `apply` prints `a slot image is on offer, but this machine
+   has one slot; installing from the binhost` and takes the binhost lane; `--image` is refused. On
+   a machine with two slots, `--in-place` updates the running root instead of the slot, passes an
+   image over the same way, and gives up the rollback.
 
 `apply --acquire` does only the long half, the download, the write and the check, and records the
 slot as `acquired`; `apply --arm` does the rest. Discover runs the two as its download and its
@@ -418,8 +428,12 @@ kdos update groups --json
 
 Each line names the group, its title, and either `installed` or how many of its members are
 missing, how many packages that is, and the download size from the cached index (`not all
-prebuilt` when the binhost does not hold every one; no size at all without an index). Install one
-as you would a port:
+prebuilt` when the binhost does not hold every one; no size at all without an index). The JSON
+rows carry the same facts, with `size` `null` where no size can be given and `binhost` `false`
+where no index is in place, nothing names a binhost for the tree and no refresh can name one (the
+last binhost step found none named, the last fetch refused the published tree as older, or there is
+no second slot, whose refresh fetches no tree); Welcome Center's Make It Yours page reads that to say this release installs no group
+ready-made rather than to ask for a refresh. Install one as you would a port:
 
 ```bash
 sudo kdos update install office
@@ -443,6 +457,8 @@ sudo kdos update install --pending
 ```
 
 Each group that installs leaves the file; with nothing recorded it prints `nothing is pending`.
+The first login's notice names the groups still waiting and this command, and goes once they are
+installed.
 
 On the live medium, `kdos update install` works the same way, into the overlay in RAM: what it
 installs is gone at the next restart, unless the medium has a persistence store (see
@@ -550,8 +566,11 @@ out is installed there as on an installed machine, into the same overlay; see
 
 Discover offers no system update, or `kdos update check` reports a problem
 : `check` names the first of `no-tree`, then the last fetch's `no-key`, `no-network` or
-  `fetch-failed`, then
-  the last apply's `no-network`, `fetch-failed` or `build-failed`. The sentence beside it is in
+  `fetch-failed`, then the binhost's `binhost-no-key`, `binhost-no-network`, `binhost-fetch-failed`,
+  `binhost-unverified`, or `binhost-absent` when the base `update.conf` or `$KDOS_UPDATE_BINHOST`
+  names publishes none (a result recorded for another base than the one named now is passed
+  over), then the image's `image-<code>` other than `image-absent`, then the last apply's
+  `no-network`, `fetch-failed` or `build-failed`. The sentence beside it is in
   `/var/lib/kdos/update.state`, which also has the `binhost` and `image` lines:
 
   ```bash
@@ -578,7 +597,8 @@ Discover offers no system update, or `kdos update check` reports a problem
   or run `sudo kdos update fetch` to take a published tree that names its release. When the line
   says the published tree is older than this machine's, that fetch is refused, and `binhost =` is
   the one way. ``<base> names a
-  binhost the last fetch did not see`` means one has been named since: run
+  binhost the last fetch did not see`` means one has been named since, or the base named now is
+  another than the last fetch's: run
   `sudo kdos update fetch --binhost-only`.
 
 `the packages to download take <size> and <cache> has <size> free`

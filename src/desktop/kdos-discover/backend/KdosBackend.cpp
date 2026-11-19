@@ -31,8 +31,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QProcess>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -84,16 +86,25 @@ static QString updateDocumentPath()
 
 // What the Updates page says above its list when the update document records
 // a problem (update.c's problem(): a `fetch`, `binhost-<code>`, `image-<code>`
-// or `apply` code), with where updates come from and the tool's own words:
-// without it the page says "Up to date" about a release nothing could read.
-// A bare no-network or fetch-failed is the fetch's or the apply's, so its
-// sentence fits either. no-tree is not said: with no tree nothing can be
-// behind, and the fetch's own code says why none arrived. Nor is a tree
-// fetch-failed whose detail is update.c's "the published tree … is older than
-// this machine's": that machine is ahead of the release, not cut off from it,
-// and would carry the warning beside every offer until the release caught up.
-// update.c's published_older() knows the refusal by the same words. Empty
-// when nothing is recorded or the code is unknown.
+// or `apply` code), with where the failed step looked and the tool's own
+// words: without it the page says "Up to date" about a release nothing could
+// read. A tree or image step names the channel, the tree source in effect. A
+// binhost step names `binhost_base`, the binhost update.conf, the environment
+// or the tree's release names, then `binhost`, where the index in place came
+// from, then the binary host in words; never the channel, which is another
+// place, so the sentence would send the reader where the index was not
+// looked for. A bare no-network or fetch-failed is the fetch's or the
+// apply's, so its sentence fits either. binhost-absent (a named binhost that
+// publishes none) has its own sentence, without the tool's words, which only
+// name the same URL again. no-tree is not said: with no tree
+// nothing can be behind, and the fetch's own code says why none arrived. Nor
+// is a tree fetch-failed whose detail is update.c's "the published tree … is
+// older than this machine's": that machine is ahead of the release, not cut
+// off from it, and would carry the warning beside every offer until the
+// release caught up. update.c's published_older() knows the refusal by the
+// same words, and problem() ranks it below every other code, so it is the
+// document's problem only when there is no other. Empty when nothing is
+// recorded or the code is unknown.
 static QString updateProblemText()
 {
     QFile f(updateDocumentPath());
@@ -102,9 +113,6 @@ static QString updateProblemText()
     const QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
     QString code = doc.value("problem"_L1).toString();
     const QString detail = doc.value("detail"_L1).toString();
-    QString origin = doc.value("channel"_L1).toString();
-    if (origin.isEmpty())
-        origin = i18nc("@info where updates come from, when no origin is recorded", "the release's update server");
     enum { Tree, Binhost, Image } step = Tree;
     if (code.startsWith("binhost-"_L1)) {
         step = Binhost;
@@ -115,6 +123,18 @@ static QString updateProblemText()
     }
     if (step == Tree && code == "fetch-failed"_L1 && detail.contains("is older than this machine's"_L1))
         return {};
+    QString origin;
+    if (step == Binhost) {
+        origin = doc.value("binhost_base"_L1).toString();
+        if (origin.isEmpty())
+            origin = doc.value("binhost"_L1).toString();
+        if (origin.isEmpty())
+            origin = i18nc("@info where the package index comes from, when no origin is recorded", "the binary host");
+    } else {
+        origin = doc.value("channel"_L1).toString();
+        if (origin.isEmpty())
+            origin = i18nc("@info where updates come from, when no origin is recorded", "the release's update server");
+    }
     QString said;
     if (code == "no-network"_L1)
         said = step == Binhost ? i18nc("@info:status %1 is a URL or a directory", "The release's package index could not be fetched from %1: no network was found.", origin)
@@ -142,7 +162,10 @@ static QString updateProblemText()
         said = i18nc("@info:status", "The last update installed nothing: building it from source failed.");
     else if (code == "needs-source"_L1)
         said = i18nc("@info:status", "The last update installed nothing: the release's package index does not cover it, and it needs building from source.");
-    if (said.isEmpty() || detail.isEmpty())
+    else if (step == Binhost && code == "absent"_L1)
+        said = i18nc("@info:status %1 is a URL or a directory", "No package index is published at %1.", origin);
+    // An absent binhost's detail names the URL the sentence already names.
+    if (said.isEmpty() || detail.isEmpty() || (step == Binhost && code == "absent"_L1))
         return said;
     return i18nc("@info:status %1 is a sentence saying what failed, %2 is the update tool's own words", "%1 (%2)", said, detail);
 }
@@ -224,6 +247,8 @@ struct KdosBackend::Snapshot {
     QHash<QString, QString> packIcons; // pack id -> its icon, extracted to the cache
     QHash<QString, QString> ports;
     bool portsOk = false;
+    QSet<QString> removable; // `kdos update removable --json`: world ports nothing installed needs
+    QHash<QString, QString> neededBy; // world ports an installed package needs, and one that does
     int outstanding = 0;
 };
 
@@ -516,15 +541,40 @@ static bool isHostComponent(const QSet<QString> &keys, const AppStream::Componen
     return false;
 }
 
+// Whether kdos-discover-catalog read a component from a bare desktop entry
+// rather than a metainfo file. In a `marked` catalogue, one in which any
+// component carries KDOS::BareEntry, the writer marked every such component
+// KDOS::BareEntry=1 and nothing else, so the mark alone decides: a metainfo
+// application with a .desktop id and no description is still metainfo. A
+// licence decides nothing, since the writer gives every component its
+// recipe's. A catalogue with no mark anywhere, as the published v0.2
+// binhost's, which a fresh machine reads until its own release's catalogue
+// is fetched, is read by what a desktop entry lacks: a desktop application
+// whose id is a .desktop name and which has no description is a bare entry,
+// since libappstream's desktop-entry reader writes none. Read by the mark
+// alone, such a catalogue would list LibreOffice as Base, with Base's
+// description.
+static bool isBareEntry(const AppStream::Component &c, bool marked)
+{
+    if (marked)
+        return c.customValue(u"KDOS::BareEntry"_s) == "1"_L1;
+    return c.kind() == AppStream::Component::KindDesktopApp && c.id().endsWith(".desktop"_L1) && c.description().isEmpty();
+}
+
+// Whether a component is one of its package's own metainfo applications:
+// not a bare entry, and described.
+static bool isMetainfo(const AppStream::Component &c, bool marked)
+{
+    return !c.description().isEmpty() && !isBareEntry(c, marked);
+}
+
 // Which of a package's components it is listed by: a desktop application
 // before a console one before anything else, then one with the package's
-// own metainfo (a description and a project licence; a component read from
-// a bare desktop entry has neither, and its page would say "Unknown author"
-// and "Licenses: Unknown"), then one with an icon, then the shortest name.
+// own metainfo (isMetainfo), then one with an icon, then the shortest name.
 // LibreOffice's package has seven applications, of which the start centre
 // is only a desktop entry (isSuiteFace gives the suite its name back), and
 // Okular's has its comic-book add-on beside Okular itself.
-static bool listsBetter(const AppStream::Component &a, const AppStream::Component &b)
+static bool listsBetter(const AppStream::Component &a, const AppStream::Component &b, bool marked)
 {
     auto rank = [](const AppStream::Component &c) {
         switch (c.kind()) {
@@ -536,13 +586,10 @@ static bool listsBetter(const AppStream::Component &a, const AppStream::Componen
             return 0;
         }
     };
-    auto metainfo = [](const AppStream::Component &c) {
-        return !c.description().isEmpty() && !c.projectLicense().isEmpty();
-    };
     if (rank(a) != rank(b))
         return rank(a) > rank(b);
-    if (metainfo(a) != metainfo(b))
-        return metainfo(a);
+    if (isMetainfo(a, marked) != isMetainfo(b, marked))
+        return isMetainfo(a, marked);
     if (a.icons().isEmpty() != b.icons().isEmpty())
         return !a.icons().isEmpty();
     return a.name().size() < b.name().size();
@@ -550,17 +597,17 @@ static bool listsBetter(const AppStream::Component &a, const AppStream::Componen
 
 // Whether a suite's package is listed by `face`, its shortest-named
 // application, rather than `listed`, the metainfo application listsBetter
-// picks: when the face is a bare desktop entry whose name begins the listed
-// one's. The suite is then named, iconed and launched by its face and
-// described as a suite (describeFace): LibreOffice's start centre,
-// "LibreOffice", carries no description, licence or developer, and Base, Calc
-// and Draw, which do, would each stand for the whole suite under its own
-// name. Any other face is left alone, so a package's minor tool never names
-// the application beside it.
-static bool isSuiteFace(const AppStream::Component &listed, const AppStream::Component &face)
+// picks: when the face is a bare desktop entry (isBareEntry) whose name
+// begins the listed one's. The suite is then named, iconed and launched by
+// its face and described as a suite (describeFace): LibreOffice's start
+// centre, "LibreOffice", carries no description or developer, and Base,
+// Calc and Draw, which do, would each stand for the whole suite under its
+// own name. Any other face is left alone, so a package's minor tool never
+// names the application beside it.
+static bool isSuiteFace(const AppStream::Component &listed, const AppStream::Component &face, bool marked)
 {
-    return !face.id().isEmpty() && face.id() != listed.id() && face.description().isEmpty() && face.projectLicense().isEmpty()
-        && !listed.description().isEmpty() && listed.name().startsWith(face.name() + u' ');
+    return !face.id().isEmpty() && face.id() != listed.id() && isBareEntry(face, marked) && isMetainfo(listed, marked)
+        && listed.name().startsWith(face.name() + u' ');
 }
 
 // One application of a suite as its description lists it: its name less
@@ -637,6 +684,9 @@ static QHash<QString, AppStream::Component> readCatalogueFile(const QString &pat
     QHash<QString, AppStream::Component> faces; // each package's shortest-named application
     QHash<QString, QList<SuiteMember>> members; // each package's metainfo applications, for describeFace
     const AppStream::ComponentBox box = md.components();
+    bool marked = false;
+    for (const AppStream::Component &c : box)
+        marked |= !c.customValue(u"KDOS::BareEntry"_s).isEmpty();
     for (const AppStream::Component &c : box) {
         addHostKeys(keys, c);
         const QString pkg = c.packageNames().value(0);
@@ -648,12 +698,12 @@ static QHash<QString, AppStream::Component> readCatalogueFile(const QString &pat
                 t << term;
         }
         const auto have = out.constFind(pkg);
-        if (have == out.constEnd() || listsBetter(c, *have))
+        if (have == out.constEnd() || listsBetter(c, *have, marked))
             out.insert(pkg, c);
         const auto face = faces.constFind(pkg);
         if (c.kind() == AppStream::Component::KindDesktopApp && (face == faces.constEnd() || c.name().size() < face->name().size()))
             faces.insert(pkg, c);
-        if (c.kind() == AppStream::Component::KindDesktopApp && !c.description().isEmpty() && !c.projectLicense().isEmpty())
+        if (c.kind() == AppStream::Component::KindDesktopApp && isMetainfo(c, marked))
             members[pkg].append({c.name(), c.summary()});
     }
     // The setters below run only on components nothing else holds (see
@@ -662,7 +712,7 @@ static QHash<QString, AppStream::Component> readCatalogueFile(const QString &pat
     QHash<QString, AppStream::Component> describers;
     for (auto it = out.begin(); it != out.end(); ++it) {
         const auto face = faces.constFind(it.key());
-        if (face != faces.constEnd() && isSuiteFace(it.value(), *face)) {
+        if (face != faces.constEnd() && isSuiteFace(it.value(), *face, marked)) {
             describers.insert(it.key(), it.value());
             it.value() = *face;
         }
@@ -934,7 +984,7 @@ void KdosBackend::refresh(std::function<void()> then)
             cb();
     };
 
-    snap->outstanding = 6;
+    snap->outstanding = 7;
     runTool(this, u"kdos-appbox"_s, {u"catalogue"_s}, [snap, landed](const QByteArray &out, bool ok) {
         snap->listing = parseCatalogueListing(out);
         snap->listingOk = ok;
@@ -954,7 +1004,25 @@ void KdosBackend::refresh(std::function<void()> then)
     });
     runTool(this, u"kpkg"_s, {u"list"_s, u"--json"_s}, [snap, landed](const QByteArray &out, bool ok) {
         snap->ports = parseKpkgList(out);
-        snap->portsOk = ok;
+        // kpkg answered only when it exited 0 and printed a package array:
+        // an empty or garbled answer taken for "nothing installed" would
+        // drop every image port off the installed list.
+        snap->portsOk = ok && QJsonDocument::fromJson(out).object().value(u"packages"_s).isArray();
+        landed();
+    });
+    // Which installed ports a person may remove: a world port nothing
+    // installed depends on. An answer that did not come leaves every port
+    // part of the system, which offers no Remove that would refuse.
+    runTool(this, u"kdos"_s, {u"update"_s, u"removable"_s, u"--json"_s}, [snap, landed](const QByteArray &out, bool ok) {
+        const QJsonObject doc = ok ? QJsonDocument::fromJson(out).object() : QJsonObject();
+        const QJsonArray removable = doc.value("removable"_L1).toArray();
+        for (const QJsonValue &v : removable)
+            if (isSafeId(v.toString()))
+                snap->removable.insert(v.toString());
+        const QJsonObject needed = doc.value("needed"_L1).toObject();
+        for (auto it = needed.constBegin(); it != needed.constEnd(); ++it)
+            if (isSafeId(it.key()) && isSafeId(it.value().toString()))
+                snap->neededBy.insert(it.key(), it.value().toString());
         landed();
     });
 
@@ -1286,17 +1354,24 @@ void KdosBackend::apply(const Snapshot &snap)
     }
 
     // ── host ports ──
-    // What is installed comes from the image's catalogue and kpkg's versions;
-    // what a binhost could add, from its catalogue, only for a package kpkg
-    // answered is absent, so a kpkg that did not answer offers nothing. Both
-    // catalogues are read again here: kdos-ports-helper rewrites the first
-    // after every install, and `kdos update fetch` replaces the second.
+    // kpkg is the authority on what is installed; the image's catalogue only
+    // describes it. A package of that catalogue is installed when kpkg lists
+    // it, or when kpkg did not answer, by the catalogue's own version; one
+    // kpkg answered is absent is not listed from it, since `kpkg remove`
+    // leaves the catalogue as it was and Discover would offer to launch what
+    // is gone. What a binhost could add comes from its catalogue, only for a
+    // package kpkg answered is absent, so a kpkg that did not answer offers
+    // nothing. Both catalogues are read again here: kdos-ports-helper
+    // rewrites the first after every install, and `kdos update fetch`
+    // replaces the second.
     readHostCatalogues();
     {
-        auto portEntry = [this](const QString &pkg, const AppStream::Component &c) {
+        auto portEntry = [this, &snap](const QString &pkg, const AppStream::Component &c) {
             Entry e;
             e.lane = Lane::Port;
             e.id = pkg;
+            e.removable = snap.removable.contains(pkg);
+            e.neededBy = snap.neededBy.value(pkg);
             e.name = c.name().isEmpty() ? pkg : c.name();
             e.appstreamId = c.id();
             e.kind = AppStream::Component::kindToString(c.kind());
@@ -1337,8 +1412,10 @@ void KdosBackend::apply(const Snapshot &snap)
         for (auto it = m_portsByPackage.cbegin(); it != m_portsByPackage.cend(); ++it) {
             if (!isSafeId(it.key()))
                 continue;
-            Entry e = portEntry(it.key(), *it);
             const QString version = snap.ports.value(it.key());
+            if (snap.portsOk && version.isEmpty())
+                continue;
+            Entry e = portEntry(it.key(), *it);
             e.installedVersion = version.isEmpty() ? it->customValue(u"KDOS::Version"_s) : version;
             e.availableVersion = e.installedVersion;
             e.state = EntryState::Installed;
@@ -1346,21 +1423,33 @@ void KdosBackend::apply(const Snapshot &snap)
         }
         if (snap.portsOk) {
             for (auto it = m_binhostByPackage.cbegin(); it != m_binhostByPackage.cend(); ++it) {
-                if (!isSafeId(it.key()) || m_portsByPackage.contains(it.key()))
+                if (!isSafeId(it.key()))
                     continue;
                 Entry e = portEntry(it.key(), *it);
                 const QString version = snap.ports.value(it.key());
                 e.availableVersion = it->customValue(u"KDOS::Version"_s);
                 e.installedVersion = version;
                 e.state = version.isEmpty() ? EntryState::None : EntryState::Installed;
-                upsert(e, &seen)->setSearchTerms(searchTerms(*it));
-                // The same port, built here: a second origin in Discover's
-                // source picker, offered only while it is not installed, so
-                // an installed port is one resource.
-                if (e.state == EntryState::None) {
-                    e.lane = Lane::PortSource;
+                // An installed port the image's catalogue lists is that
+                // catalogue's resource, read above; the twin takes its state.
+                const KdosResource *listed = m_resources.value(u"port/"_s + it.key());
+                if (m_portsByPackage.contains(it.key()) && !version.isEmpty() && listed) {
+                    e.state = listed->entry().state;
+                    e.installedVersion = listed->entry().installedVersion;
+                    e.availableVersion = listed->entry().availableVersion;
+                    e.removable = listed->entry().removable;
+                    e.neededBy = listed->entry().neededBy;
+                } else {
                     upsert(e, &seen)->setSearchTerms(searchTerms(*it));
                 }
+                // The same port, built here: a second origin in Discover's
+                // source picker, kept whether or not the port is installed.
+                // Discover's application page keeps the most sources it has
+                // seen while it is open, so a twin that came and went with
+                // the install would leave the page with one source after a
+                // removal: no picker, and an "Install from" button.
+                e.lane = Lane::PortSource;
+                upsert(e, &seen)->setSearchTerms(searchTerms(*it));
             }
         }
     }
@@ -1589,18 +1678,23 @@ QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
     return found;
 }
 
-// A port not installed is two resources with one AppStream id, the binhost's
-// and the one built here. Discover's lists keep one resource per id, and
-// which of two equal rows survives its sort no backend decides; the
-// application page then offers the rest in its source picker, which it
-// fills by asking for the application's URL, and a link opens the first
-// resource that answers. So a list names only the twin `install =` prefers,
-// and a URL answers both, that one first: the other is the second twin.
+// A port the binhost holds is two resources with one AppStream id, the
+// binhost's and the one built here, installed or not. Discover's lists keep
+// one resource per id, and which of two equal rows survives its sort no
+// backend decides; the application page then offers the rest in its source
+// picker, which it fills by asking for the application's URL, and a link
+// opens the first resource that answers. So a list names only the twin
+// `install =` prefers, the binhost's once the port is installed, and a URL
+// answers both, that one first: the other is the second twin.
 bool KdosBackend::isSecondTwin(const KdosResource *res, bool preferSource) const
 {
     const Entry &e = res->entry();
-    if (e.lane == Lane::PortSource)
-        return !preferSource;
+    if (e.lane == Lane::PortSource) {
+        if (!preferSource)
+            return true;
+        const KdosResource *port = m_resources.value(u"port/"_s + e.id);
+        return port && port->entry().state != EntryState::None;
+    }
     if (e.lane == Lane::Port && preferSource && e.state == EntryState::None)
         return m_resources.contains(u"port-source/"_s + e.id);
     return false;

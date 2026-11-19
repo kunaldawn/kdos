@@ -78,7 +78,7 @@ process on a working desktop and says where each kind of state is kept.
 The host is compiled in this repository from about 2,400 recipes under `ports/core` for upstream
 software and a few dozen under `src/` for the tools, the daemons and the Plasma components written
 for KDOS, and from two scripts: one builds `kpkg` itself, which has no recipe, and the other builds
-the installer, `kinstall`, whose recipe exists but is named in no phase list.
+the installer, `kinstall`, for the trees before its recipe's phase, `41_system`.
 
 The build runs in thirteen phases, numbered in bands of ten from `00_cross` to `70_image`. It starts
 with a cross toolchain (`00_cross`), builds a base userland on musl (`10_bootstrap`), rebuilds that
@@ -90,16 +90,15 @@ applications (`40_lang` to `44_apps`), then the desktop (`50_desktop`), then the
 `10_bootstrap`: `120_kpkg.sh` compiles `kpkg` from `src/system/kdos-kpkg`, and `130_kinstall.sh`
 compiles `kinstall` from `src/system/kdos-installer`. `kpkg` is built this way because nothing can
 be installed as a package until it exists, and `kinstall` because it links nothing but the C
-library, so it can be cross-compiled that early and is on every tree from the first bootable one.
+library, so it can be cross-compiled that early and is on every tree from the first bootable one;
+the `kdos-installer` package `41_system` builds from the same sources then owns the file.
 The finished system stands on no other distribution's packages: the container the build runs
 in, an Alpine 3.23 image with a host compiler, supplies the tools that build the cross toolchain
 and the first userland, and nothing from it is installed. Every recipe that a phase list
 (`script/phases/*/packages.txt` or `packages.d/`) names is built and installed into the build
-tree, together with everything those recipes depend on. That reaches every upstream recipe but
-one: `texlive-doc`, the TeX Live manuals, is named in `ports/unbuilt`, keeps its recipe for a
-machine that wants to build it with `kpkg install`, and is built by no phase. The ISO carries part
-of what the build made, the *base*: the ports [`ports/base`](../../../ports/base) names and their
-dependencies, about 850 of the build's about 2,430 packages, with the session, the core KDE
+tree, together with everything those recipes depend on, and that reaches every upstream recipe.
+The ISO carries part of what the build made, the *base*: the ports
+[`ports/base`](../../../ports/base) names and their dependencies, about 900 of the build's about 2,440 packages, with the session, the core KDE
 applications, Firefox ESR, networking, printing and the box stack among them, and no compiler. Every
 package the build made, the base's included, goes into the release's signed package host, the
 *binhost*, from which a machine installs the rest. A *phase* is
@@ -305,7 +304,7 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 | Port recipes in `ports/core` | about 2,400 |
 | Port recipes under `src/` for KDOS's own software | a few dozen, in `src/system`, `src/art`, `src/desktop` and `src/daemons` |
 | Shelves the upstream recipes are filed on | 102 |
-| Upstream recipes that no phase list or dependency reaches, and so are not built | the ones named in `ports/unbuilt`, `texlive-doc` among them; `testing/bookcounts.py` refuses any other |
+| Upstream recipes that no phase list or dependency reaches, and so are not built | none; `ports/unbuilt` names the ones kept on purpose and lists none, and `testing/bookcounts.py` refuses any recipe nothing builds that it does not name |
 | C libraries written for this system, under `src/libs` | 9 |
 | Plasma's own modules left out | 13, each because it needs systemd, KDE Frameworks 5, Flatpak, GRUB, Plymouth or another firewall, or is a shell for phones and televisions |
 | KDE Gear modules left out | 4: kjournald, kmag, kmousetool and plasma-settings |

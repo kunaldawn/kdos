@@ -12,7 +12,9 @@
 
 # kinstall is C with no library dependencies at all — not even ncurses — so it
 # cross-compiles here in 10_bootstrap, against nothing but musl and the kernel
-# headers, and exists on every tree from the first bootable image onward.
+# headers, and exists on every tree from the first bootable image onward. The
+# kdos-installer package 41_system builds from the same sources adopts the file
+# this step installs, so this copy serves only the trees before that phase.
 #
 # libkbase, libktui and libkcolor are ours and link nothing either, so the
 # terminal toolkit costs that property nothing: their sources simply join the

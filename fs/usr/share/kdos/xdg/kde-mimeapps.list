@@ -178,9 +178,9 @@ image/wmf=org.inkscape.Inkscape.desktop
 # claim it too, and only preview it.
 image/x-xcf=gimp.desktop
 
-# Video: Haruna, then VLC. Haruna is installed from the binhost and the
-# installation medium does not carry it; VLC is on the medium for Elisa,
-# which plays through libvlc. vlc.desktop declares no type, so its place
+# Video: Haruna, then VLC. The installation medium carries both: Haruna as
+# the video player, VLC for Elisa, which plays through libvlc, and for video
+# once Haruna is removed. vlc.desktop declares no type, so its place
 # behind Haruna on each row is the only thing that offers it. Dragon claims
 # the same types, and the three that close the list besides.
 video/mp4=org.kde.haruna.desktop;vlc.desktop;

@@ -20,10 +20,14 @@
  *
  *   /var/lib/kpkg/db changes       a package was installed or removed: ask
  *   /var/lib/kdos/update.json      `kdos restarts`, `kdos cve` and `kdos
- *                                  firmware sync --dry-run`, once the
- *                                  database has been quiet for ten seconds,
- *                                  so an update of three hundred packages is
- *                                  one question and not three hundred
+ *                                  firmware sync --dry-run`, and read the
+ *                                  installer's records, once the database
+ *                                  has been quiet for ten seconds, so an
+ *                                  update of three hundred packages is one
+ *                                  question and not three hundred; `kdos
+ *                                  update install --pending` rewrites
+ *                                  groups-pending right after each group's
+ *                                  packages, inside that quiet time
  *   /run/kdos/bootstate.json       the slots changed: ask `kdos-bootctl`
  *   every ten seconds              kdos-oomd's kill count, one line over its
  *                                  socket, which is what a kill is visible by
@@ -35,8 +39,9 @@
  *   every six hours                everything, for a secdb or a trial that
  *                                  changed under a watch that missed it, for
  *                                  the installer's apps-pending file, which
- *                                  Discover empties, and for a firmware load
- *                                  the kernel logged since
+ *                                  Discover empties, for a record emptied
+ *                                  by hand, and for a firmware load the
+ *                                  kernel logged since
  *
  * WHAT IT RUNS. The facts' commands, and the action a person clicked —
  * Konsole on `kdos cve` or `kdos restarts`, Konsole on `sudo kdos firmware
@@ -535,6 +540,7 @@ static int serve(int once)
 		if (t_pkgs >= 0 && now >= t_pkgs) {
 			look_packages();
 			look_firmware();
+			look_pending();
 			t_pkgs = -1;
 		}
 		if (now >= t_oom) {

@@ -9,9 +9,17 @@
  *
  * Two kinds, as kinstall reads them. The native groups (/ports/groups) are
  * downloaded prebuilt into the new system during the install when the
- * network answers, and recorded for `kdos update install --pending` when it
- * does not; the language group the keyboard or the time zone points at
- * starts ticked, and says so; each names how many ports it installs, a
+ * medium names a binary host and the network answers, and recorded for
+ * `kdos update install --pending` otherwise; the header and each row's
+ * accessible name say which, from the plan's `binhost`, and call it a
+ * binary host in every variant, as the Summary and the terminal installer
+ * do. The header puts the command on a line of its own. The page asks for
+ * the plan as it opens (Backend.checkPlan): the Disk page asks only on the
+ * erase plan, and the Summary's comes after this page. Until the plan
+ * answers, the fact is unknown and the text names both routes, since a
+ * missing key read as "no binary host" would tell a medium that names one it
+ * downloads nothing. The language group the keyboard or the time zone
+ * points at starts ticked, and says so; each names how many ports it installs, a
  * meta-port member counted by kinstall as the ports it depends on. The
  * catalogue's groups are boxed applications, recorded and offered by the
  * first login, which builds them. The page says how each arrives, because a
@@ -32,7 +40,13 @@ WizardPage {
     readonly property var groups: Backend.apps.groups || []
     readonly property var nativeGroups: Backend.apps.native || []
 
-    onEntered: Backend.refreshApps()
+    /* true, false, or undefined while the plan has not said. */
+    readonly property var binhost: Backend.plan.binhost
+
+    onEntered: {
+        Backend.refreshApps();
+        Backend.checkPlan();
+    }
 
     Kirigami.Heading {
         level: 3
@@ -44,7 +58,15 @@ WizardPage {
         Layout.fillWidth: true
         visible: page.nativeGroups.length > 0
         wrapMode: Text.Wrap
-        text: i18n("Native programs, downloaded prebuilt into the new system during the install. This needs a network; without one the choice is kept, and “kdos update install --pending” installs it later.")
+        /* With no binary host named nothing is downloaded during the
+         * install: the header says what the Summary page says, before the
+         * choice. The command stands on a line of its own, so the label's
+         * wrapping never splits it at a space. */
+        text: page.binhost === true
+            ? i18n("Native programs, downloaded prebuilt into the new system during the install. This needs a network; without one the choice is kept, and this installs it later:\nsudo kdos update install --pending")
+            : page.binhost === false
+            ? i18n("Native programs. This system names no binary host, so the install only records the groups chosen here, and this installs them once a binary host answers:\nsudo kdos update install --pending")
+            : i18n("Native programs, downloaded prebuilt into the new system during the install when this system names a binary host and the network answers; otherwise the choice is kept, and this installs it later:\nsudo kdos update install --pending")
     }
 
     Repeater {
@@ -61,11 +83,17 @@ WizardPage {
                 ? (checked ? i18nc("@info %1 the Japanese keyboard", "Ticked for %1", modelData.why)
                            : i18nc("@info %1 the Japanese keyboard", "Suggested for %1", modelData.why))
                 : ""
+            /* With no binary host named the install only records the group. */
+            readonly property string fate: page.binhost === true
+                ? i18n("downloaded during the install")
+                : page.binhost === false
+                ? i18n("recorded; sudo kdos update install --pending installs it once a binary host answers")
+                : i18n("downloaded during the install when a binary host answers, recorded otherwise")
             Accessible.name: why
-                ? i18ncp("@info:whatsthis %2 group %1 count %3 reason", "%2, %1 port, downloaded during the install; %3",
-                         "%2, %1 ports, downloaded during the install; %3", modelData.ports || 0, text, why)
-                : i18ncp("@info:whatsthis %2 group %1 count", "%2, %1 port, downloaded during the install",
-                         "%2, %1 ports, downloaded during the install", modelData.ports || 0, text)
+                ? i18ncp("@info:whatsthis %2 group %1 count %3 fate %4 reason", "%2, %1 port, %3; %4",
+                         "%2, %1 ports, %3; %4", modelData.ports || 0, text, fate, why)
+                : i18ncp("@info:whatsthis %2 group %1 count %3 fate", "%2, %1 port, %3",
+                         "%2, %1 ports, %3", modelData.ports || 0, text, fate)
             onToggled: {
                 page.answers.setGroupChosen(modelData.id, checked);
                 Backend.refreshApps();

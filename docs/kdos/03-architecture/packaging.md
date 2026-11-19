@@ -126,7 +126,7 @@ operate on the tree rather than recipes: `fetch` and `publish` for sources, `src
 library both share), `releaselib.sh` (the [release index](#the-release-index)'s writer, shared by
 `publish` and the image phase), `update` for upstream version checks, `hackage-vendor` for Haskell vendor
 bundles, `Containerfile.fetch` for the container that generates vendor bundles, the source
-index `sources.idx`, and `unbuilt`, the recipes no phase builds (see
+index `sources.idx`, and `unbuilt`, the recipes no phase builds on purpose (see
 [Phases, package lists and shelves](#phases-package-lists-and-shelves)). Each of these tools names a port by its bare name and finds it on any shelf.
 
 ### The recipes under src/
@@ -156,8 +156,10 @@ Three directories under `src/system` are special:
   `script/phases/10_bootstrap/120_kpkg.sh` cross-compiles it, because nothing can read a recipe
   before `kpkg` exists. It is therefore not an installed package and is not in the package
   database.
-- `kdos-installer` has a recipe but is built by the bootstrap step `130_kinstall.sh`, from the
-  same sources, rather than from a package list.
+- `kdos-installer` is compiled twice from the same sources: by the bootstrap step
+  `130_kinstall.sh`, for the trees before any package phase, and as a package by `41_system`,
+  whose list names it last. The package adopts the `/usr/bin/kinstall` the step left unowned (see
+  [Who owns a file](#who-owns-a-file)), so the image and the binhost carry the package.
 - `kinstall-core` is the installer's one backend, with no recipe of its own: `kdos-installer`
   compiles it into the terminal installer, and the graphical installer in `src/desktop` runs that
   same binary headless and reads its event stream, so the two front ends cannot disagree about what
@@ -183,19 +185,18 @@ as one list. A phase has one or the other, never both.
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 185 | 185 |
-| `41_system` | `packages.d/`, 98 files | 1,044 | 1,044 |
-| `42_graphics` | `packages.d/`, 53 files | 188 | 188 |
+| `41_system` | `packages.d/`, 98 files | 1,045 | 1,045 |
+| `42_graphics` | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | `packages.d/`, 61 files | 422 | 422 |
 | `50_desktop` | `packages.txt` | 91 | 91 |
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,436 distinct ports and install 2,440:
-2,398 of the 2,399 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
-the bootstrap builds by name. The one recipe in `ports/core` no list reaches is `texlive-doc`,
-which `ports/unbuilt` names: a recipe kept for `kpkg install` and built by no phase, and removed
-from the image by the orphan sweep if an earlier build left it installed. Any other recipe no list
+that no earlier phase did. Between them the lists name 2,438 distinct ports and install 2,442:
+2,399 of the 2,399 in `ports/core`, and every recipe under `src/`. `ports/unbuilt` is where a
+recipe kept for `kpkg install` and built by no phase would be named, removed from the image by the
+orphan sweep if an earlier build left it installed; it names none. Any other recipe no list
 reaches would never be built, so `testing/bookcounts.py`, run by `testing/docscheck.sh`, refuses
 one, and refuses a name in `ports/unbuilt` that a phase does install.
 
@@ -367,8 +368,8 @@ decide the set:
 
 | File | What it says |
 |---|---|
-| `ports/base` | The seeds. Each line names ports (any number to a line), `phase <dir>` (every port that phase's list names) or `src <area>` (every recipe under `src/<area>`). It names the run time the system's scripts need (`musl`, `gcc` for `libstdc++` and `libgcc_s`, `python3`, `perl`), KDOS's own ports by name in `src/system` but `kdos-kfs`, and the `art`, `desktop` and `daemons` areas whole; the Plasma session, which is `kde-plasma`'s list without the KDE wallpaper and Oxygen collections, the Chinese, Japanese and Korean input engines and `fcitx5-gtk`; the applications every desk pins and the KIO workers, Dolphin plugins and thumbnailers they use, and ISO Image Writer (`isoimagewriter`), which an `.iso` file and the menu's burn route open; `firefox-esr` (the desks pin it); the accessibility ports, the Orca screen reader, BRLTTY and `liblouis`'s braille tables, which Meta+Alt+S and the welcome tour start (BRLTTY's service skips until `/etc/brltty.conf` names a display); the kernel and firmware, the base userland with `plocate`, whose `locate` index `kdos-updatedb` rebuilds at every login and nightly; the login, networking, disks and filesystems, the box stack, the hardware plumbing with `adwaita-icon-theme` (Adwaita is in both KDOS icon themes' `Inherits`, and is seeded here rather than by a `depends =` of `kdos-icons`, which builds in `41_system`, a phase before the `44_apps` that GTK puts Adwaita in), PipeWire, printing and scanning, the archivers, the tools `70_image` runs on the stage (`squashfs-tools`, `erofs-utils`, `libisoburn`) and the fonts. Ports reach the base through `depends =` too: `kdos-tools` depends on `wl-clipboard`, whose `wl-copy` and `wl-paste` `kdos-shot` and `kdos-share` reach the clipboard with |
-| `ports/buildonly` | Ports the closure does not follow a `depends =` edge into unless `ports/base` names them: the compilers and their bootstraps, among them `clang`, `libclc` and `spirv-llvm-translator`, which Mesa compiles its Intel and NVIDIA kernels with and does not load, and `binutils`; the build systems and generators (`cmake`, `meson`, `ninja`, `make`, `autoconf`, `automake`, `pkgconf`, `bison`, `flex` and the rest); the headers, protocol files and shader compilers a build reads (`vulkan-headers`, `spirv-tools`, `shaderc`, `boost` and others; not `glslang`, whose library `libplacebo` links); the Python build backends; the font builders; and the documentation generators (`doxygen`, `python3-sphinx`, `docbook-xsl`, `asciidoctor` with `ruby`, `pandoc`, `typst`). `llvm` is not listed, because Mesa loads `libLLVM`, nor `gcc`, whose package carries `libstdc++` and `libgcc_s`, nor `libtool`, which carries `libltdl` |
+| `ports/base` | The seeds. Each line names ports (any number to a line), `phase <dir>` (every port that phase's list names) or `src <area>` (every recipe under `src/<area>`). It names the run time the system's scripts need (`musl`, `gcc` for `libstdc++` and `libgcc_s`, `python3`, `perl`), KDOS's own ports by name in `src/system` but `kdos-kfs`, and the `art`, `desktop` and `daemons` areas whole; the Plasma session, which is `kde-plasma`'s list without the KDE wallpaper and Oxygen collections, the Chinese, Japanese and Korean input engines and `fcitx5-gtk`; the applications every desk pins and the KIO workers, Dolphin plugins and thumbnailers they use, and ISO Image Writer (`isoimagewriter`), which an `.iso` file and the menu's burn route open; the everyday programs beside them, `haruna`, the default video player, `kolourpaint`, `skanpage`, `filelight`, `kfind`, `kcharselect`, `kclock` and `kwalletmanager`; `firefox-esr` (the desks pin it); the accessibility ports, the Orca screen reader, BRLTTY and `liblouis`'s braille tables, which Meta+Alt+S and the welcome tour start (BRLTTY's service skips until `/etc/brltty.conf` names a display); the kernel and firmware, the base userland with `plocate`, whose `locate` index `kdos-updatedb` rebuilds at every login and nightly; the login, networking, disks and filesystems, the box stack, the hardware plumbing with `adwaita-icon-theme` (Adwaita is in both KDOS icon themes' `Inherits`, and is seeded here rather than by a `depends =` of `kdos-icons`, which builds in `41_system`, a phase before the `44_apps` that GTK puts Adwaita in), PipeWire, printing and scanning, the archivers, the tools `70_image` runs on the stage (`squashfs-tools`, `erofs-utils`, `libisoburn`) and the fonts. Ports reach the base through `depends =` too: `kdos-tools` depends on `wl-clipboard`, whose `wl-copy` and `wl-paste` `kdos-shot` and `kdos-share` reach the clipboard with |
+| `ports/buildonly` | Ports the closure does not follow a `depends =` edge into unless `ports/base` names them: the compilers and their bootstraps, among them `clang`, `libclc` and `spirv-llvm-translator`, which Mesa compiles its Intel and NVIDIA kernels with and does not load, and `binutils`; the build systems and generators (`cmake`, `meson`, `ninja`, `make`, `autoconf`, `automake`, `pkgconf`, `bison`, `flex` and the rest); the headers, protocol files and shader compilers a build reads (`vulkan-headers`, `spirv-tools`, `shaderc`, `boost` and others; not `glslang`, whose library `libplacebo` links); the Python build backends; the font builders; and the documentation generators (`doxygen`, `python3-sphinx`, `asciidoctor` with `ruby`, `pandoc`, `typst`). `llvm` is not listed, because Mesa loads `libLLVM`, nor `gcc`, whose package carries `libstdc++` and `libgcc_s`, nor `libtool`, which carries `libltdl` |
 | `ports/groups` | Not part of the set: the named sets of applications a machine installs in one step (see [Groups](#groups)) |
 | `script/lib/imageset.py` | The closure of the seeds over each recipe's first `depends =` line, not followed into `ports/buildonly`. `--keep` and `--drop` print the installed packages a root's database holds inside and outside it, `--sizes` their counts and bytes, `--why <port>` the shortest dependency path from a seed to a port (or "not in the base"), `--ledger` every installed package with its bytes and that path, largest first, which `70_image/088_ledger.sh` writes to `build/image-ledger` and `110_iso.sh`'s size gate prints, `--check` refuses a name in any of the three files that is not a port, a phase or area that does not exist, and a group id that is a port's name; preflight runs `--check` as "the installation medium's base names ports that exist". `--verify` fails a kept package whose [run-time needs](#run-time-needs) only a package outside the base provides; `087_gates.sh` runs it on the stage |
 
@@ -389,7 +390,7 @@ packages is met inside the base; the edges it found outside are `libplacebo`'s `
 the base) and three left by builds older than their recipes (Mesa's `libclang-cpp`,
 `kdeplasma-addons`' two Qt WebEngine libraries).
 
-Measured on a full build tree, the base is 853 of 2,430 packages and 5.5 GB of their 49.8 GB of
+Measured on a full build tree, the base is 899 of 2,440 packages and 5.5 GB of their 48.9 GB of
 files, about 4.5 GB once the development and documentation facets are left out. The largest are
 `linux-firmware` (0.6 GB), Firefox ESR, `gcc` (0.34 GB, of which the run-time libraries every
 C++ program loads are 15 MB and the compiler, its drivers and its static libraries the rest),
@@ -405,7 +406,7 @@ What the base leaves out is one install away, prebuilt from the binhost:
 |---|---|
 | The compilers and build tools | `kdos update install build-tools` (a group, below) |
 | Chinese, Japanese and Korean input and fonts | the `lang-zh`, `lang-ja` and `lang-ko` groups |
-| The rest of KDE Gear: torrents, remote desktop, Samba sharing, online accounts, Filelight, KFind, the Help Center and the others | the `kde-network`, `kde-system` and `kde-*` subject groups |
+| The rest of KDE Gear: torrents, remote desktop, Samba sharing, online accounts, Sweeper, KSystemLog, the Help Center and the others | the `kde-network`, `kde-system` and `kde-*` subject groups |
 | The KDE wallpaper collection and Oxygen | the `kde-artwork` group |
 | *KDOS from Scratch*, the build book | `sudo kdos update install kdos-kfs` |
 | OpenCL | `kdos update install mesa-opencl`, Mesa's rusticl with clang |
@@ -1578,15 +1579,17 @@ phase writes is the directory's [release index](#the-release-index), `kdos-updat
 the binhost key, which names each file at the path a client asks for (`binhost/PACKAGES`,
 `binhost/<package>`, `binhost/swcatalog/xml/kdos-binhost.xml`) with its size and SHA-256. The
 directory, copied to a stick or served as it is, is a place `binhost =` in `update.conf` can name. The directory
-accumulates: each run adds the packages it built and keeps what earlier runs left, and neither a
-later run nor `--fresh` removes anything from it. `kpkg index` takes each package's `E:` from the
+accumulates: each run adds the packages it built and keeps the current ones earlier runs left, and
+`--fresh` removes nothing from it. `kpkg index` takes each package's `E:` from the
 ports tree it runs on, looked up by package name, and writes it only for the file whose version and
 release are the ones that recipe declares. The step indexes with `PORT_REPO` set to every
 repository the build installs from, `/ports/core` and the four `src/` areas, so a package of
 KDOS's own carries its recipe hash like any other; a machine finds the same recipes under
-`/ports/src/<area>` and computes the same hash. A superseded file an earlier run left gets an
-empty `E:`, is listed in `PACKAGES`, and matches no client, so a client is only ever handed the
-current recipe's build.
+`/ports/src/<area>` and computes the same hash. A superseded file an earlier run left, or a file of
+a port the tree has no recipe for, gets an empty `E:`; the step moves each such file and its `.sig` to
+`build/binhost-superseded/`, outside the directory, and indexes again, so `PACKAGES`, the catalogue
+and the release index name the same files and a client is only ever handed the current recipe's
+build. A delta (a stanza with `O:`) stays.
 
 **Each package's `N:` line names the build-only ports it needs at run time.** The step runs
 `kpkg index --buildonly /ports/buildonly` over the build tree's database: for a file of the
@@ -1594,17 +1597,16 @@ version and release installed there, `kpkg index` reads the package's
 [run-time needs](#run-time-needs) record, resolves each edge to the installed package that
 provides it, and writes the ones `ports/buildonly` lists, in that file's order, as `N:<port> …`.
 An empty `N:` says the package was measured and needs none of them; a stanza with no `N:` (a
-superseded file, or a package installed with no needs record) is unmeasured. `kcharselect`'s line
+package installed with no needs record) is unmeasured. `kcharselect`'s line
 is empty, so a prebuilt install of it takes no `cmake`; `wesnoth`'s names `boost`.
 `70_image/087_gates.sh` fails a `KDOS_MAKE_BINHOST=1` build that leaves a current stanza (one with
 an `E:` and no `O:`) without an `N:` line.
 
-**The release index leaves the superseded files out.** A package stanza with no `O:` (which
-marks a delta) and an empty `E:` is a file no client takes, so it and its `.sig` stay in
-`build/binhost` and are not named in `kdos-update.idx`, and a release carries exactly its own
-tree's packages. A current package file larger than one release asset (`KDOS_PART_SIZE`,
-1,900 MiB) fails the step, because `kdos update install` takes a package whole and the release
-could not carry it.
+**The release index names what `PACKAGES` names.** Both are written over the directory once the
+superseded files are out of it, so a release carries exactly its own tree's packages and a
+client is never pointed by `PACKAGES` at a file no release holds. A package file larger than one
+release asset (`KDOS_PART_SIZE`, 1,900 MiB) fails the step, because `kdos update install` takes a
+package whole and the release could not carry it.
 
 **The binhost is the release's package repository.** It holds every port the release built, the
 ones its [base image](#the-base-image) leaves out included, and a machine takes the binhost of
@@ -1814,7 +1816,7 @@ updates beside them, published the way the source archive is:
 | Release | Holds |
 |---|---|
 | `<tag>` | The ISO, `sources.sha256`, `kdos-ports.tar.xz` and its signature, `SHA256SUMS` and its signature, `kdos-release.pub`, and `kdos-update.idx` with `kdos-update.idx.sig` |
-| `binhost-<tag>-01`, `-02`, … | The binhost (`--binhost`, default `build/binhost`): every file its release index names, superseded packages not among them, sorted by path and split into releases of at most 1,000 assets, GitHub's limit |
+| `binhost-<tag>-01`, `-02`, … | The binhost (`--binhost`, default `build/binhost`): every file its release index names, sorted by path and split into releases of at most 1,000 assets, GitHub's limit |
 | `image-<tag>` | The slot image (`--image`, default `build/release/<tag>/image`), which `script/release-image.sh` makes for version `<tag>` |
 
 Each lane is taken from its directory's own `kdos-update.idx`, and every file is hashed against it

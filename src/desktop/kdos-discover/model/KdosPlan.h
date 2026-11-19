@@ -12,12 +12,12 @@
  * over, so each is checked against the id rule before it is placed in a step,
  * and a step is run with a program and its arguments, no shell between.
  *
- * A HOST PORT IS SHOWN BEFORE IT IS INSTALLED. Its plan opens with the dry
- * run of the same install, which needs no root: what it prints becomes the
- * question Discover asks (Transaction::proceedRequest), and only a yes
- * reaches pkexec and the password. A dry run that refuses ends the plan
- * there, with its reason, and nobody is asked for a password for an install
- * that would refuse.
+ * A HOST PORT IS SHOWN BEFORE IT IS INSTALLED OR REMOVED. Its plan opens
+ * with the dry run of the same install or removal, which needs no root: what
+ * it prints becomes the question Discover asks (Transaction::proceedRequest),
+ * and only a yes reaches pkexec and the password. A dry run that refuses ends
+ * the plan there, with its reason, and nobody is asked for a password for a
+ * change that would refuse.
  *
  * THE PLAN PREFERS A PACK TO A BUILD. A catalogue row whose pack is already in
  * the pack store, or on the medium, becomes a box over that pack in seconds

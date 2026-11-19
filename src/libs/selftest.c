@@ -3670,6 +3670,72 @@ static void lay_form_cursor(KRect b)
 	ktui_note(f.x, f.y, b.w, "an indented note");
 }
 
+/* Both installers rate a password by length alone, the graphical one's
+ * StrengthLabel tiers; and a cut text draw is counted where a fitted one is
+ * not. */
+static void test_ktui_pw_and_cuts(void)
+{
+	printf("libktui password strength and the cut counter\n");
+	ok(ktui_pw_score("Secret1") == 0, "7 characters are short");
+	ok(ktui_pw_score("Secret123") == 1,
+	   "Secret123 is fair, as the graphical installer's 8 to 15");
+	ok(ktui_pw_score("aaaaaaaaaaaaaaa") == 1, "15 characters are fair");
+	ok(ktui_pw_score("correct horse ba") == 2, "16 characters are long");
+	ok(ktui_pw_score("\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9") == 0,
+	   "and the length is in characters, not bytes");
+
+	ktui_offscreen_init(20, 2);
+	ktui_draw_init();
+	ktui_draw_clear();
+	ktui_draw_cut_reset();
+	ktui_draw_text(0, 0, 4, "abcd", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 0, "a string that fits is no cut");
+	ktui_draw_text(0, 0, 3, "abcd", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 1, "a string wider than its width is one");
+	ktui_draw_text(18, 1, 10, "abcd", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 2, "and so is one run past the clip's edge");
+	int fit = ktui_draw_text_fit(0, 1, 5, "abcdefgh", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 2 && fit == 5 && tc_ch(0, 1) == 'a' &&
+	   tc_ch(4, 1) != 'e' && tc_ch(5, 1) != 'f',
+	   "a fitted string with its ellipsis is not, and stays in its width");
+	ktui_draw_cut_reset();
+	ok(ktui_draw_cut_count() == 0, "the reset clears it");
+
+	/* A control byte sent as a glyph moves the terminal's cursor instead
+	 * of painting one cell, and every cell after it lands in the wrong
+	 * column: a TAB is one blank cell and the rest take none. */
+	ktui_draw_clear();
+	int cw = ktui_draw_text(0, 0, 20, "a\tb\x01" "c", KT_TEXT, KT_BG, 0);
+	ok(cw == 4 && tc_ch(0, 0) == 'a' && tc_ch(1, 0) == ' ' &&
+	   tc_ch(2, 0) == 'b' && tc_ch(3, 0) == 'c' && tc_ch(4, 0) == ' ' &&
+	   ktui_utf8_width("a\tb\x01" "c") == 4,
+	   "a TAB draws as one blank cell and a C0 byte as none");
+	uint32_t ell_cp;
+	int ew = ktui_utf8_width(ktui_glyph[KT_G_ELLIPSIS]);
+	ktui_utf8_next(ktui_glyph[KT_G_ELLIPSIS], &ell_cp);
+	ktui_draw_clear();
+	fit = ktui_draw_text_fit(0, 1, 5 + ew, "ab\tcd\x1b" "efgh", KT_TEXT,
+				 KT_BG, 0);
+	ok(fit == 5 + ew && tc_ch(2, 1) == ' ' && tc_ch(3, 1) == 'c' &&
+	   tc_ch(4, 1) == 'd' && tc_ch(5, 1) == ell_cp &&
+	   ktui_draw_cut_count() == 0,
+	   "and a fitted line with a TAB ends in its ellipsis");
+	ktui_draw_cut_reset();
+
+	ktui_offscreen_init(24, 4);
+	ktui_draw_init();
+	ktui_draw_clear();
+	int pl = ktui_para(0, 0, 24, "America/Argentina/Buenos_Aires", KT_TEXT);
+	ok(pl == 2 && tc_ch(17, 0) == '/' && tc_ch(18, 0) == ' ' &&
+	   tc_ch(0, 1) == 'B' && tc_ch(11, 1) == 's',
+	   "a word longer than the line breaks after its last '/'");
+	ktui_draw_clear();
+	pl = ktui_para(0, 0, 24, "off at /etc/service.disabled", KT_TEXT);
+	ok(pl == 2 && tc_ch(6, 0) == ' ' && tc_ch(0, 1) == '/' &&
+	   tc_ch(1, 1) == 'e',
+	   "and a space still beats a slash, so a path starts its line");
+}
+
 static void test_ktui_layout(void)
 {
 	KtuiEvent ev;
@@ -4009,7 +4075,11 @@ static void test_grid(void)
 	ok(only_three, "wcwidth answers 0, 1 or 2 for every codepoint");
 
 	ok(ktui_wcwidth('A') == 1 && ktui_wcwidth(' ') == 1 &&
-	   ktui_wcwidth(0x7f) == 1, "ASCII is one cell");
+	   ktui_wcwidth('~') == 1, "printable ASCII is one cell");
+	ok(ktui_wcwidth('\t') == 1 && ktui_wcwidth(0x01) == 0 &&
+	   ktui_wcwidth(0x1b) == 0 && ktui_wcwidth(0x7f) == 0 &&
+	   ktui_wcwidth(0x9b) == 0 && ktui_wcwidth(0xa0) == 1,
+	   "a TAB is one cell, every other C0, DEL and C1 none");
 	ok(ktui_wcwidth(0x00e9) == 1 && ktui_wcwidth(0x0410) == 1,
 	   "Latin-1 and Cyrillic are one cell");
 	ok(ktui_wcwidth(0x2500) == 1 && ktui_wcwidth(0x2591) == 1,
@@ -6209,6 +6279,25 @@ static void test_bracketed_paste(void)
 		ktui_input_next(&ev, 5);
 	ok(out != NULL, "a control byte inside a paste stays in the paste");
 
+	/* The Linux console's F1-F5 are ESC [ [ A..E: read as CSI, the second
+	 * '[' is the final byte and the letter is typed. */
+	const char *fk = "\033[[A\033[[E";
+	int f1 = 0, f5 = 0, typed = 0;
+
+	w = write(pfd[1], fk, strlen(fk));
+	for (int i = 0; i < 10; i++) {
+		if (ktui_input_next(&ev, 5) <= 0 || ev.type != KT_EVT_KEY)
+			continue;
+		if (ev.key == KT_K_F1 && !f5)
+			f1 = 1;
+		else if (ev.key == KT_K_F5 && f1)
+			f5 = 1;
+		else
+			typed = 1;
+	}
+	ok(f1 && f5 && !typed,
+	   "the console's ESC [ [ A and ESC [ [ E are F1 and F5, and type nothing");
+
 	dup2(saved, 0);
 	close(saved);
 	close(pfd[0]);
@@ -6530,6 +6619,7 @@ int main(void)
 	test_rows();
 	test_ktui_ids();
 	test_ktui_layout();
+	test_ktui_pw_and_cuts();
 	test_ktui_anim();
 	test_pack();
 	test_portup();

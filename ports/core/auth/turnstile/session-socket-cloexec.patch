@@ -1,0 +1,36 @@
+Subject: Open the PAM session socket close-on-exec
+
+The connection pam_sm_open_session makes to turnstiled is the login:
+turnstiled counts the session as ended only when the last copy of that
+connection closes. Opened without SOCK_CLOEXEC, it is inherited by every
+program the PAM caller executes for the session (the display manager's
+session process, the desktop, and every process it starts), so any one
+of them still running after the user logs out holds the login open: the
+last logout never stops the user's service manager and the runtime
+directory is never cleared.
+
+Open it close-on-exec, so only the PAM caller holds it, until
+pam_close_session or pam_end closes it. Open the X server probe socket
+the same way, so a caller that executes a program while the probe is
+open does not pass it on either.
+---
+--- a/src/pam_turnstile.cc
++++ b/src/pam_turnstile.cc
+@@ -71,7 +71,7 @@
+     }
+ 
+     /* blocking socket and a simple protocol */
+-    *sock = socket(AF_UNIX, SOCK_STREAM, 0);
++    *sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+     if (*sock == -1) {
+         return false;
+     }
+@@ -269,7 +269,7 @@
+         return 0;
+     }
+ 
+-    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
++    int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+     if (sock < 0) {
+         return 0;
+     }

@@ -8,9 +8,8 @@
  *   DonePage — how it ended, and what next
  *
  * A finished install offers the restart; the warnings, things the installed
- * system will lack though it installed, are listed with it, one bullet each,
- * a warning sent twice listed once, each starting with a capital, and the
- * commands in them set as code. A failed one
+ * system will lack though it installed, are listed with it as WarningList
+ * sets them out, the same list the Install page shows. A failed one
  * says why in kinstall's words, shows the last of the log where kinstall
  * sent any, and goes back to the summary, where the answers can be changed
  * and the install run again. The log file is named, and offered, only when
@@ -33,15 +32,6 @@ WizardPage {
     heading: ok ? i18nc("@title", "KDOS is installed") : i18nc("@title", "The install did not finish")
     complete: false
 
-    /* A warning as rich text: escaped, and each `command` span set as code
-     * that never breaks, its hyphens and spaces the non-breaking kind, so
-     * `--pending` is not split across two lines. */
-    function rich(text) {
-        const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        return esc.replace(/`([^`]*)`/g, (m, code) =>
-            "<code>" + code.replace(/-/g, "\u2011").replace(/ /g, "&nbsp;") + "</code>");
-    }
-
     Kirigami.PlaceholderMessage {
         Layout.fillWidth: true
         icon.name: page.ok ? "data-success" : "data-error"
@@ -57,26 +47,10 @@ WizardPage {
             : page.events.started ? i18n("The full log is %1 on this live system.", Backend.logPath) : ""
     }
 
-    /* kinstall's warnings, once each, as sentences: each is a clause that
-     * starts in lower case, to follow whatever a front end puts before it. */
-    readonly property var warnings: {
-        const out = [];
-        const ws = events.warnings;
-        for (let i = 0; i < ws.length; i++) {
-            const w = ws[i].length > 0 ? ws[i].charAt(0).toUpperCase() + ws[i].slice(1) : ws[i];
-            if (w.length > 0 && out.indexOf(w) < 0) {
-                out.push(w);
-            }
-        }
-        return out;
-    }
-
-    Kirigami.InlineMessage {
+    WarningList {
         Layout.fillWidth: true
-        type: Kirigami.MessageType.Warning
-        visible: page.warnings.length > 0
-        text: "<p>" + i18n("Installed, with these exceptions:") + "</p><ul>"
-              + page.warnings.map(w => "<li>" + page.rich(w) + "</li>").join("") + "</ul>"
+        source: page.events.warnings
+        lead: i18n("Installed, with these exceptions:")
     }
 
     RowLayout {

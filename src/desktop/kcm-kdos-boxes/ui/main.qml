@@ -20,6 +20,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls as QQC2
+import QtQuick.Layouts
 import org.kde.kcmutils as KCM
 import org.kde.kirigami as Kirigami
 import org.kde.kirigami.delegates as KD
@@ -56,10 +57,25 @@ KCM.ScrollViewKCM {
         showBox(name);
     }
 
-    header: Kirigami.SearchField {
-        id: search
-        Accessible.name: i18nc("@label:textbox", "Search boxes")
-        KeyNavigation.down: boxView
+    /* A listing that fails after a good one leaves the last rows on screen,
+     * so the error is shown above them; with no rows the placeholder says it. */
+    header: ColumnLayout {
+        spacing: 0
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            position: Kirigami.InlineMessage.Position.Header
+            type: Kirigami.MessageType.Error
+            text: i18nc("@info", "The boxes could not be listed again, so their states may be out of date: %1", kcm.boxes.error)
+            visible: kcm.boxes.error !== "" && boxView.count > 0
+        }
+
+        Kirigami.SearchField {
+            id: search
+            Layout.fillWidth: true
+            Accessible.name: i18nc("@label:textbox", "Search boxes")
+            KeyNavigation.down: boxView
+        }
     }
 
     view: ListView {

@@ -50,7 +50,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3286-3298 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3714-3726 pin=d5c38affc180 -->
 
 `slot_b` is empty unless the installer made the A/B layout. `kdos-bootctl` writes every later
 version, under a header of its own
@@ -76,9 +76,12 @@ unfilled =
 
 The keys are described in
 [A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection).
-Edit the file only through `kdos-bootctl`: it writes through a temporary file and two `fsync`s
-because the ESP is FAT and has no journal, and a file it cannot parse is treated as absent, which
-boots the `root=` of the menu entry.
+Edit the file only through `kdos-bootctl`: it writes a temporary file, `fsync`s it, renames it,
+then `fsync`s the renamed file and `syncfs`es the ESP, because the ESP is FAT and has no journal. A
+directory `fsync` alone is not enough there: on Linux's vfat the entry a rename reuses is written
+through the renamed file's inode, so an editor's save can reach the disk as a zero-length file
+after a power cut. A file it cannot parse is treated as absent, which boots the `root=` of the menu
+entry.
 
 ### The ESP layout
 

@@ -2344,9 +2344,9 @@ def main():
             t = "%d. Ports no phase builds" % chapter
             md = ("## %s {#%s}\n\nThese recipes are in the tree, and no phase list names "
                   "them. %s names the ones kept on purpose for a machine that wants them; "
-                  "any other is a program of KDOS's own that a step script compiles without "
-                  "kpkg, as `10_bootstrap` compiles the installer, so that a running system "
-                  "can rebuild it from its recipe.\n\n"
+                  "any other is a program of KDOS's own that only a step script compiles, "
+                  "without kpkg, kept so that a running system can rebuild it from its "
+                  "recipe.\n\n"
                   % (esc(t), cid, link(code("ports/unbuilt"), GITHUB + "ports/unbuilt")))
             # Inserted after the part's own pages, at the end of the book.
             book.add_unit(cid, t, 2, "chapter", number=str(chapter), parent=unphased_part, md=md)

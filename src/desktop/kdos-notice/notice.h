@@ -9,7 +9,8 @@
  *
  *   facts.c    what the system says: `kdos restarts --json`, `kdos cve
  *              --json`, `kdos-bootctl status --json`, kdos-oomd's status,
- *              the installer's /var/lib/kdos/apps-pending,
+ *              the installer's /var/lib/kdos/apps-pending and
+ *              /var/lib/kdos/groups-pending, the tree's /ports/groups,
  *              `kdos firmware sync --dry-run --json`
  *   decide.c   facts plus what was already said -> what to post or close
  *   state.c    what was already said, kept across logins
@@ -35,7 +36,7 @@ enum {
 	KN_TRIAL,		/* this boot is a trial slot          */
 	KN_ROLLBACK,		/* the last trial did not start       */
 	KN_OOM,			/* kdos-oomd closed something         */
-	KN_PENDING,		/* selections chosen at install wait   */
+	KN_PENDING,		/* choices made at install still wait  */
 	KN_FIRMWARE,		/* a firmware port the hardware needs  */
 	KN_COUNT
 };
@@ -93,8 +94,16 @@ typedef struct {
 } KnOom;
 
 typedef struct {
-	int n;			/* selection ids the file names       */
-	char key[32];		/* its content, hashed                */
+	int n;			/* selection ids apps-pending names   */
+	int ngroups;		/* group ids groups-pending names     */
+	char groups[384];	/* those groups by their titles, or by
+				 * id when the tree gives no title;
+				 * one name a line, joined with "\n";
+				 * markup-escaped; "" when they do not
+				 * fit                                 */
+	int untitled;		/* of those, named by id alone        */
+	char key[32];		/* both files' ids, hashed: a changed
+				 * title posts nothing new             */
 } KnPending;
 
 #define KN_FW_PORTS 16
@@ -112,9 +121,16 @@ int kn_parse_cve(const char *json, KnCve *out);
 int kn_parse_boot(const char *json, KnBoot *out);
 int kn_parse_oom(const char *line, KnOom *out);
 int kn_parse_firmware(const char *json, KnFirmware *out);
-/* The installer's selection file, as Discover reads it: one id a line,
- * `group <id>` lines and `#` comments named but not counted. */
-void kn_parse_pending(const char *text, KnPending *out);
+/* The installer's two records, one id a line in each. `apps`, the boxed
+ * selections, is read as Discover reads it: a line with a space (`group
+ * <id>`) or a `#` comment is not counted. `groups`, the native groups, is
+ * read as `kdos update install --pending` reads it: each line cut at its
+ * first space, tab or `#`, and counted when a package name is left.
+ * `titles` is the tree's groups file (/ports/groups), whose `group <id>
+ * <title>` lines name each group as the installer offered it. NULL is an
+ * empty file. */
+void kn_parse_pending(const char *apps, const char *groups,
+		      const char *titles, KnPending *out);
 
 /* Run the command and parse it. */
 void kn_read_restarts(KnRestarts *out);

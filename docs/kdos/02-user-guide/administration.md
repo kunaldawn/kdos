@@ -1229,12 +1229,14 @@ sudo kdos update install <port>   # one more port, or a group; see Installing ho
 redirect to plain HTTP is refused.
 
 **The three lanes.** `kdos update apply` takes the first that applies, and `--image`, `--binhost`
-or `--source` names one:
+or `--source` names one. A machine with one slot never takes the slot image, which has nowhere to
+go: `check` offers none, and `apply` says `a slot image is on offer, but this machine has one slot;
+installing from the binhost` and installs the binary packages into the running system.
 
 | Lane | What arrives | Network |
 |---|---|---|
 | The slot image | The release's base as it was built and tested: a signed manifest of every file with its hash, and the bundles that carry the files. Files the slot or the running system already hold are copied and checked; then the delta from the version this machine runs, which holds only what changed, often as a patch against the same file; then the full image for whatever is still missing. Every file is checked against the signed manifest before it is kept, so a damaged or altered bundle is refused and the full image used instead. Then everything installed on purpose (the world set) and what it needs goes into the slot, prebuilt from the same release's binhost or, for a package that was built here, built in the slot. Before anything is written, a prebuilt package the binhost does not hold refuses this lane and names how many | The delta, usually far smaller than the release, and the packages of the world set |
-| The binary packages | When no newer image is published: each package behind its recipe, installed into the slot by the way it came, prebuilt from the release's signed binary index, or fetched and built in the slot when it was built here. Used only when the index covers every package behind it that came prebuilt; `kdos update check --json` counts the builds as `builds` | The packages that changed, as deltas where the previous package is still cached, and the sources of those built here |
+| The binary packages | When no newer image is published, or the machine has one slot: each package behind its recipe, installed into the slot by the way it came, prebuilt from the release's signed binary index, or fetched and built in the slot when it was built here. Used only when the index covers every package behind it that came prebuilt; `kdos update check --json` counts the builds as `builds` | The packages that changed, as deltas where the previous package is still cached, and the sources of those built here |
 | `--source` | Every source the newer recipes name, then every package that is behind, compiled here | Every changed source; a large set takes hours to build |
 
 Whatever the lane, arming a slot carries this machine's own state into it: a configuration file you

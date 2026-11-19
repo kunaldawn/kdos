@@ -84,6 +84,7 @@ qt_add_qml_module(kdos-installer-gui
         qml/SummaryPage.qml
         qml/InstallPage.qml
         qml/DonePage.qml
+        qml/WarningList.qml
 )
 
 target_link_libraries(kdos-installer-gui PRIVATE

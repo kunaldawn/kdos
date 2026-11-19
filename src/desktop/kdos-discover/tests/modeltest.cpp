@@ -359,8 +359,23 @@ void ModelTest::installPreview()
     QCOMPARE(p.builds, 0);
     QVERIFY(p.built.isEmpty());
     QString said = installPreviewText(p);
-    QVERIFY(said.startsWith(u"Downloads 3 packages ("_s));
+    QVERIFY(said.startsWith(u"Installs 3 packages; downloads 50"_s));
     QVERIFY(!said.contains(u"hours"_s));
+
+    // Every package already in the binhost cache: the total counts it and
+    // no bytes, and the text says so instead of "0 bytes".
+    p = parseInstallPreview("librewolf prebuilt librewolf-158.0.1-1.tar.xz 92274688\ntotal 1 0 0\n");
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 1);
+    QCOMPARE(p.bytes, quint64(0));
+    QCOMPARE(installPreviewText(p), u"Installs 1 package, already downloaded."_s);
+
+    // Some cached, some not: the size is only what is still to download.
+    p = parseInstallPreview("a prebuilt a-1-1.tar.xz 2048\nb prebuilt b-1-1.tar.xz 1048576\ntotal 2 1048576 0\n");
+    said = installPreviewText(p);
+    QVERIFY(said.startsWith(u"Installs 2 packages; downloads 1"_s));
+    QVERIFY(said.contains(u"&nbsp;"_s));
+    QVERIFY(!said.contains(u"already"_s));
 
     // Built here: the builds and the restores counted, the builds named,
     // and the warning.
@@ -371,7 +386,7 @@ void ModelTest::installPreview()
     QCOMPARE(p.builds, 2);
     QCOMPARE(p.built, (QStringList{u"libfoo"_s, u"bat"_s}));
     said = installPreviewText(p);
-    QVERIFY(said.startsWith(u"Builds 2 packages here, downloads 2 ("_s));
+    QVERIFY(said.startsWith(u"Builds 2 packages here and installs 2 prebuilt, downloading 1"_s));
     QVERIFY(said.contains(u"building can take hours"_s));
     QVERIFY(said.contains(u"Built here: libfoo, bat"_s));
 
@@ -382,6 +397,11 @@ void ModelTest::installPreview()
     QCOMPARE(p.builds, 1);
     QVERIFY(installPreviewText(p).contains(u"a&lt;b"_s));
     QVERIFY(!installPreviewText(p).contains(u"a<b"_s));
+    QVERIFY(installPreviewText(p).startsWith(u"Builds 1 package here and installs 1 prebuilt, downloading 10"_s));
+
+    // Built here beside a package already in the cache.
+    p = parseInstallPreview("c prebuilt c-1-1.tar.xz 4096\nd source 1.0-1\ntotal 1 0 1\n");
+    QVERIFY(installPreviewText(p).startsWith(u"Builds 1 package here and installs 1 prebuilt, already downloaded; building can take hours."_s));
 
     // Nothing to do, and no dry run at all.
     p = parseInstallPreview("total 0 0 0\nkate is already installed\n");
@@ -642,11 +662,47 @@ void ModelTest::plansRemove()
     QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
     QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove box.work"_s}));
 
+    // A port of the system (no world line) is refused, and so is a world
+    // port an installed package needs. One installed on request that nothing
+    // needs is a dry run of the removal, asked about before the helper runs
+    // under pkexec.
     Entry port;
     port.lane = Lane::Port;
     port.id = u"kate"_s;
+    port.name = u"Kate"_s;
+    port.state = EntryState::Installed;
+    p = removePlan(port, ctx);
+    QVERIFY(!p.isValid());
+    QVERIFY(p.refusal.contains(u"part of the KDOS system"_s));
+    port.neededBy = u"kdevelop"_s;
+    p = removePlan(port, ctx);
+    QVERIFY(!p.isValid());
+    QVERIFY(p.refusal.contains(u"needed by kdevelop"_s));
+    port.neededBy.clear();
+    port.id = u"librewolf"_s;
+    port.removable = true;
+    p = removePlan(port, ctx);
+    QCOMPARE(p.steps.size(), 2);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Preview);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos"_s, u"update"_s, u"remove"_s, u"--dry-run"_s, u"librewolf"_s}));
+    QCOMPARE(p.steps[1].kind, Step::Kind::Run);
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-helper"_s, u"remove"_s, u"librewolf"_s}));
+    QVERIFY(!p.steps[1].downloads);
+    port.state = EntryState::None;
     QVERIFY(!removePlan(port, ctx).isValid());
+    // The built-here twin of an installed port removes the same package by
+    // the same steps; not installed, it has nothing to remove.
+    port.state = EntryState::Installed;
     port.lane = Lane::PortSource;
+    p = removePlan(port, ctx);
+    QCOMPARE(p.steps.size(), 2);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Preview);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos"_s, u"update"_s, u"remove"_s, u"--dry-run"_s, u"librewolf"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-helper"_s, u"remove"_s, u"librewolf"_s}));
+    port.removable = false;
+    QVERIFY(removePlan(port, ctx).refusal.contains(u"part of the KDOS system"_s));
+    port.removable = true;
+    port.state = EntryState::None;
     QVERIFY(!removePlan(port, ctx).isValid());
 
     Entry deb;

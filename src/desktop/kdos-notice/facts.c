@@ -14,12 +14,23 @@
  *                              cannot open the state file itself
  *   /run/kdos-oomd.sock        `status`: how many processes kdos-oomd has
  *                              killed since it started, and the last
- *   /var/lib/kdos/apps-pending the selections (applications or groups)
- *                              the installer was asked for and could not
- *                              install; a file, because
- *                              it is the installer's record and Discover
- *                              reads the same one ($KDOS_APPS_PENDING
- *                              moves it for both)
+ *   /var/lib/kdos/apps-pending the boxed selections (an application or a
+ *                              set of them) the installer recorded for
+ *                              the first login, which Discover offers;
+ *                              a file,
+ *                              because it is the installer's record and
+ *                              Discover reads the same one
+ *                              ($KDOS_APPS_PENDING moves it for both)
+ *   /var/lib/kdos/groups-pending
+ *                              the native groups chosen during the
+ *                              install and not installed yet (recorded
+ *                              without an attempt when the medium names
+ *                              no binary host), which `kdos update
+ *                              install --pending` installs and empties
+ *                              ($KDOS_GROUPS_PENDING moves it here)
+ *   /ports/groups              the tree's groups, whose titles name those
+ *                              groups as the installer offered them
+ *                              ($KDOS_NOTICE_GROUPS moves it)
  *   kdos firmware sync --dry-run --json
  *                              the vendor firmware ports this machine's
  *                              devices and kernel log ask for and it has
@@ -458,12 +469,24 @@ void kn_name_procs(KnRestarts *r)
 	free(apps);
 }
 
+static char *read_record(const char *env, const char *path)
+{
+	const char *p = getenv(env);
+
+	return kb_read_whole(p && *p ? p : path, NULL);
+}
+
 void kn_read_pending(KnPending *out)
 {
-	const char *p = getenv("KDOS_APPS_PENDING");
-	char *text = kb_read_whole(p && *p ? p : "/var/lib/kdos/apps-pending",
-				   NULL);
+	char *apps = read_record("KDOS_APPS_PENDING",
+				 "/var/lib/kdos/apps-pending");
+	char *groups = read_record("KDOS_GROUPS_PENDING",
+				   "/var/lib/kdos/groups-pending");
+	char *titles = groups ? read_record("KDOS_NOTICE_GROUPS",
+					    "/ports/groups") : NULL;
 
-	kn_parse_pending(text, out);
-	free(text);
+	kn_parse_pending(apps, groups, titles, out);
+	free(apps);
+	free(groups);
+	free(titles);
 }

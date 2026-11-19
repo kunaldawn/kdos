@@ -956,16 +956,21 @@ key ships the ring empty, and its image takes no prebuilt package and no slot im
 | Built here | The port's own `build.sh`, and every dependency's that the install builds, for as long as the build takes | The signed ports tree and the `sha256 =` lines of its recipes; the build is root on the running system, and a recipe can do anything root can |
 
 So a source install is as trusted as the tree it builds from, and runs that tree's code as root.
-Discover keeps the two routes under two programs and two polkit actions, each program the one
-`org.freedesktop.policykit.exec.path` of its action, so neither grant reaches the other:
+Discover keeps the two routes under two programs and the helper's two verbs under two actions.
+Each action names its program in `org.freedesktop.policykit.exec.path` and the helper's actions
+its verb in `org.freedesktop.policykit.exec.argv1`; pkexec takes the first action whose path, and
+first argument where the action names one, match, so no grant reaches another's step:
 
 | Program | Action | Answer |
 |---|---|---|
-| `/usr/libexec/kdos-discover/kdos-ports-helper` | `io.kdos.ports.install` | An administrator's password, kept for a few minutes at the machine |
+| `/usr/libexec/kdos-discover/kdos-ports-helper install` | `io.kdos.ports.install` | An administrator's password, kept for a few minutes at the machine |
+| `/usr/libexec/kdos-discover/kdos-ports-helper remove` | `io.kdos.ports.remove` | An administrator's password, kept for a few minutes at the machine |
 | `/usr/libexec/kdos-discover/kdos-ports-builder` | `io.kdos.ports.build` | An administrator's password every time, everywhere: a password kept from a prebuilt install must not cover running a recipe as root |
 
-Each runs `kdos update install` with its own route flag (`--prebuilt` or `--source`, the builder
-also taking `--build-deps=prebuilt|source`) and the port, and nothing else. Which
+Each install runs `kdos update install` with its own route flag (`--prebuilt` or `--source`, the
+builder also taking `--build-deps=prebuilt|source`) and the port, and nothing else; the removal
+runs `kdos update remove <port>`, which refuses a port of the system (no line in the world set) and
+one an installed package needs. Which
 route the terminal takes by default is `install =` in `/etc/kdos/update.conf`, which System
 Settings writes through `kdos-sysupdated` under `io.kdos.slots.install-route`.
 

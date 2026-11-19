@@ -166,15 +166,27 @@ static void draw_nav(int y)
 
 	ktui_draw_hline(0, y - 1, ktui_w, KT_G_HL, KT_DIM, KT_BG);
 
-	if (nav_err[0] && kb_now_s() - nav_err_at < 8.0)
-		ktui_draw_textf(1, y, ktui_w - 40, KT_ERR, KT_BG, 0, "! %s", nav_err);
-	else if (p->subtitle)
-		ktui_draw_text(1, y, ktui_w - 40, p->subtitle, KT_MID, KT_BG, 0);
+	/* The status line runs to the column before Back, or to the edge on a
+	 * page with no buttons, and a message longer than that ends in an
+	 * ellipsis rather than under a button. The Install page's line says
+	 * whether the install is still writing, finished or stopped. */
+	int bx = ktui_w - 34;
+	int sw = p->hide_nav ? ktui_w - 2 : bx - 2;
+	const char *sub = p->subtitle;
+
+	if (!strcmp(p->id, "install"))
+		sub = inst.done ? "finished" : inst.failed ? "stopped" : sub;
+	if (nav_err[0] && kb_now_s() - nav_err_at < 8.0) {
+		char m[sizeof(nav_err) + 4];
+
+		snprintf(m, sizeof(m), "! %s", nav_err);
+		ktui_draw_text_fit(1, y, sw, m, KT_ERR, KT_BG, 0);
+	} else if (sub)
+		ktui_draw_text_fit(1, y, sw, sub, KT_MID, KT_BG, 0);
 
 	if (p->hide_nav)
 		return;
 
-	int bx = ktui_w - 34;
 	if (ktui_button(krect(bx, y, 14, 1), "Back", ki_page > 0, 0))
 		nav_back();
 	/* The page before the summary says "Review", not "Next" — the label is
@@ -190,7 +202,7 @@ static void draw_hints(int y)
 	if (ki_pages[ki_page]->hide_nav)
 		hint = " Tab move   Enter activate   L log   F1 help   ^Q quit ";
 	else
-		hint = " Tab move   Enter activate   Alt+</> page   F1 help   ^Q quit ";
+		hint = " Tab move   Enter activate   Alt+B/N page   F1 help   ^Q quit ";
 
 	ktui_draw_fill(krect(0, y, ktui_w, 1), KT_SURFACE);
 	ktui_draw_text(1, y, ktui_w - 2, hint, KT_MID, KT_SURFACE, 0);
@@ -214,7 +226,7 @@ static void draw_help(void)
 		{ "Tab / Shift-Tab", "move between controls" },
 		{ "Arrows", "move inside a list or a field" },
 		{ "Enter / Space", "activate, toggle, choose" },
-		{ "Alt + Left/Right", "previous / next page" },
+		{ "Alt+B / Alt+N", "previous / next page" },
 		{ "Esc", "back a page, or close this" },
 		{ "F1", "this help" },
 		{ "L", "full log, on the install and done pages" },
@@ -272,10 +284,22 @@ static void global_keys(KtuiEvent *ev)
 	}
 	if (ki_pages[ki_page]->hide_nav)
 		return;
-	if ((ev->mods & KT_MOD_ALT) && ev->key == KT_K_RIGHT) {
+	/*
+	 * ALT+N AND ALT+B PAGE, BECAUSE THEY REACH THE PROGRAM ON A VT. The
+	 * Linux console's keymap binds Alt+Left and Alt+Right to
+	 * Decr_Console and Incr_Console, so on the installer's own tty they
+	 * switch virtual consoles and never arrive here; Alt+letter arrives
+	 * as an ESC prefix on every terminal. The arrows stay as aliases for
+	 * a terminal that passes them through, and the hint bar names the
+	 * letters, which work everywhere.
+	 */
+	int alt = (ev->mods & KT_MOD_ALT) != 0;
+
+	if (alt && (ev->key == 'n' || ev->key == 'N' || ev->key == KT_K_RIGHT)) {
 		nav_next();
 		ktui_consume();
-	} else if ((ev->mods & KT_MOD_ALT) && ev->key == KT_K_LEFT) {
+	} else if (alt && (ev->key == 'b' || ev->key == 'B' ||
+			   ev->key == KT_K_LEFT)) {
 		nav_back();
 		ktui_consume();
 	} else if (ev->key == KT_K_ESC) {

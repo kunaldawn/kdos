@@ -1,11 +1,11 @@
 ## About
 `texlive-doc` is the documentation half of [texlive](#port-texlive): the English manuals and
 examples of every TeX Live package that port ships, under `/usr/share/texmf-dist/doc`, where
-`texdoc` looks for them. It compiles nothing. It is listed in `ports/unbuilt`, so no phase builds
-it and the image does not carry it; `kpkg install texlive-doc` builds it on a machine. The
-package-time prune removes every PDF and HTML file under that directory, so built as the tree
-stands the package holds the examples and the plain-text and source files, and `texdoc` still has
-no PDF to open; see
+`texdoc` looks for them. It compiles nothing. `42_graphics` builds it after `texlive`, and the
+binhost carries it; `ports/base` does not name it, so the image does not carry it, and
+`sudo kdos update install texlive-doc` adds it to a machine. The package-time prune removes every
+PDF and HTML file under that directory, so built as the tree stands the package holds the
+examples and the plain-text and source files, and `texdoc` still has no PDF to open; see
 [`texdoc` finds no manuals](../../../../docs/kdos/06-reference/known-gaps.md#texdoc-finds-no-manuals-and-html-and-pdf-manuals-are-not-installed).
 
 ## Notes

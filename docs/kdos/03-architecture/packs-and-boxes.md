@@ -695,7 +695,9 @@ any other container image is a distrobox container, created and initialised by d
 and it shares the session's runtime directory as distrobox does. In every case podman handles the
 hard parts of a container (user-namespace mapping, seccomp, cgroups, and the `conmon` monitor
 process that KDOS tools identify a box by), and a launch waits for the same readiness marker,
-`container_setup_done`.
+`container_setup_done`, in the box's log for the container's current start, read whole; how the
+check bounds that start, and its fallback for a log podman cannot read, are in
+[the launch path](../04-programs/kdos-appbox.md#the-launch-path), step 8.
 
 A box is created with the flag set distrobox uses for the same job, so an application behaves the
 same whatever its box is made of, and one flag distrobox does not have. The box shares a user

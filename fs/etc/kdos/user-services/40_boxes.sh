@@ -28,12 +28,14 @@
 # podman's _PODMAN_PAUSE=1, so a pid the kernel has given to something else
 # since is left alone.
 #
-# Bounded, because the backend's whole stop has to fit turnstile's kill
-# timeout (60 s), past which turnstiled signals the user's services again and
-# then gives up on them: thirty seconds here — ten for the containers to take
-# their SIGTERM, then SIGKILL and three more — then the stop grace of each
-# service stopped after this one: five seconds for five of them, mpd's three
-# and ssh-agent's one.
+# Bounded, because a login that arrives during the last logout's stop waits
+# for all of it (pam_turnstile holds it), and the whole stop has to fit
+# turnstile's kill timeout (60 s), past which turnstiled signals the user's
+# services again and then gives up on them: fifteen seconds here — kdos-box
+# stop's ten for the containers to take their SIGTERM, then SIGKILL and three
+# more, and its podman calls — then the stop grace of each service stopped
+# after this one: five seconds for five of them, mpd's three and ssh-agent's
+# one.
 
 NAME="boxes"
 
@@ -57,9 +59,9 @@ case "$1" in
         if [ "${#_boxes[@]}" -gt 0 ]; then
             echo "[KDOS] Stopping $NAME: ${#_boxes[@]} running container(s)"
             if [ -x /usr/local/bin/kdos-box ]; then
-                timeout 30 /usr/local/bin/kdos-box stop "${_boxes[@]}" >/dev/null
+                timeout 15 /usr/local/bin/kdos-box stop "${_boxes[@]}" >/dev/null
             else
-                timeout 30 podman stop --all --time 10 >/dev/null
+                timeout 15 podman stop --all --time 10 >/dev/null
             fi
         fi
         stop_pause

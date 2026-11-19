@@ -47,12 +47,16 @@ and the command a session is started with, and its `[X11]` group offers no X ses
 
 SDDM runs `kdos-session-wrapper` as the user, after PAM has opened the session, with the
 `Exec=` line of `plasma.desktop` as its one argument. The wrapper re-runs itself as a login shell
-so `/etc/profile`, `/etc/profile.d` and `~/.bash_profile` reach Plasma; checks that the session
-bus at `$XDG_RUNTIME_DIR/bus` answers and points `DBUS_SESSION_BUS_ADDRESS` at it, refusing to start
-the session when it does not, so the greeter comes back; and settles the environment before
-anything reads it, from `fs/usr/local/bin/kdos-session-wrapper`:
+that reads no startup file, then reads that shell's login files itself, so `/etc/profile`,
+`/etc/profile.d` and `~/.bash_profile` reach Plasma and a profile script that exits is logged with
+its status; logs each stage of the login to syslog under `kdos-session`; waits out a previous
+logout's `ksvc stop` if one is still running; checks that the session bus at
+`$XDG_RUNTIME_DIR/bus` answers and points `DBUS_SESSION_BUS_ADDRESS` at it, refusing to start the
+session when it does not, so the greeter comes back; settles the environment before anything
+reads it; and refuses an `Exec=` line whose first word names no program, from
+`fs/usr/local/bin/kdos-session-wrapper`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=124-137 pin=003f91a5c8f0 -->
+<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=255-271 pin=97e9f551b9c5 -->
 
 `kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below), the
 `QT_IM_MODULE` and `GTK_IM_MODULE` variables are cleared so Qt and GTK reach the input method

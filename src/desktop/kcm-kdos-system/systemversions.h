@@ -29,9 +29,12 @@
 #include <KQuickConfigModule>
 
 #include <QList>
+#include <QPointer>
 #include <QString>
 
 #include "slotsclient.h"
+
+class QWindow;
 
 namespace Kdos
 {
@@ -134,6 +137,43 @@ public:
     Q_INVOKABLE void openInstaller();
     Q_INVOKABLE void dismissMessage();
 
+    /* Makes the program's own top-level window the transient parent of
+     * `scene`, the window the page is drawn in, when that window is never
+     * shown: System Settings draws a KCM offscreen and composites it into
+     * its main window, and a prompt opened as a window of its own takes
+     * the page's window for its parent. The window system resolves a
+     * parent through that chain, so the prompt opens as a dialog of System
+     * Settings: kept above it, without a taskbar entry of its own, and
+     * with the whole program dimmed behind it. Called before the prompt's
+     * first open, since a parent reaches the window system only when the
+     * prompt's window is mapped. A shown `scene` is the top level already
+     * (kcmshell6, the tests) and is left as it is. */
+    Q_INVOKABLE void holdOver(QWindow *scene);
+
+    /* Holds the prompt's window at its own size (its minimum and maximum
+     * are its size) when it is a window of its own and not `page`, the
+     * page's window it falls back into; releaseSize() lets it take any
+     * size again. KWin offers a window whose minimum is its maximum no
+     * maximise: a maximised prompt would cover System Settings with a
+     * stretched sentence and two buttons. KWin offers or withdraws
+     * maximise every time the bounds change, and a mapped window that
+     * loses its maximise button keeps a dead close glyph in its title bar,
+     * so the bounds that withdraw it must be on the window in its first
+     * commit, which QtWayland sends as it maps the window: the prompt is
+     * held before it is mapped, at the size Qt has given it then, and held
+     * again once it is open, at the size it settled at. A re-hold that
+     * grows the window keeps it unmaximisable throughout. A re-hold that
+     * shrinks it in either dimension cannot: KWin applies the new minimum
+     * before the new maximum, so for that moment the window is resizable
+     * and maximise is offered and withdrawn on a mapped window. The
+     * prompt's width is fixed and its height only grows from the size it
+     * is mapped at, so the re-hold grows. The bounds are hints to the
+     * compositor and clamp no resize Qt makes, so a hold at an unsettled
+     * size does not hold the prompt to it. Neither a hold nor its release
+     * resizes the window. Released as it closes. */
+    Q_INVOKABLE void holdSize(QWindow *prompt, QWindow *page);
+    Q_INVOKABLE void releaseSize();
+
     SlotsClient *client() const;
 
 public Q_SLOTS:
@@ -157,6 +197,11 @@ private:
     void updateSaveState();
     void setMessage(const QString &text, MessageType type);
     void onRequestFinished(SlotsClient::Request request, const QString &errorName, const QString &errorMessage);
+    /* Whether a trial is armed and of which slot, as one comparable key. */
+    QString trialKey() const;
+    /* Clears a refused Try or CancelTry's message once the armed trial is
+     * no longer the one it was refused against. */
+    void dropStaleTrialMessage();
 
     SlotsClient *m_client = nullptr;
     QList<SlotInfo *> m_slots;
@@ -171,6 +216,12 @@ private:
     bool m_awaitingRoute = false;
     QString m_message;
     MessageType m_messageType = NoMessage;
+    /* The message is a refused Try or CancelTry, and trialKey() when it
+     * was refused. */
+    bool m_trialMessage = false;
+    QString m_trialKeyAtMessage;
+    /* The prompt window holdSize() holds, for releaseSize(). */
+    QPointer<QWindow> m_heldPrompt;
 };
 
 }

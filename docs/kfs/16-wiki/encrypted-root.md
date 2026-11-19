@@ -16,7 +16,7 @@ this page does not repeat it.
 device mapper. It is on the live medium as well as on an installed system, because three programs
 use it:
 
-- The installer, [kdos-installer](#port-kdos-installer) (built in
+- The installer, [kdos-installer](#port-kdos-installer) (built first in
   [130_kinstall](../03-bootstrap/130-kinstall.md)) and its graphical front end
   [kdos-installer-gui](#port-kdos-installer-gui), which share one backend, creates the container and opens it while it
   installs.
@@ -50,7 +50,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3008-3026 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3436-3454 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -62,7 +62,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3286-3298 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3714-3726 pin=d5c38affc180 -->
 
 On the A/B layout both root slots are volumes of one LVM group inside the one container, so
 `crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The

@@ -33,8 +33,9 @@ is over.
 
 Like LFS's temporary tools, almost nothing here is meant to last. `20_selfhost` and `30_foundation`
 rebuild the toolchain and the userland as ports, and the `linux` port in `60_kernel` takes over the
-API headers. kpkg and kinstall are the exception: no phase builds them again, and the copies made
-here are the ones the image ships. Each page of this part ends with a section saying how the later
+API headers. kpkg is the exception: no phase builds it again, and the copy made here is the one
+the image ships. kinstall lasts until `41_system`, whose [kdos-installer](#port-kdos-installer)
+package adopts its file. Each page of this part ends with a section saying how the later
 build differs, or why there is none.
 
 ## The shape of a step

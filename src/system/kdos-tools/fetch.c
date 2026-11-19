@@ -20,6 +20,12 @@
  * THE BOX IS CREATED WITH --no-entry. distrobox otherwise writes a launcher
  * for the box itself into ~/.local/share/applications, which `podman rm`
  * never takes away: the menu would keep an entry for a box that is gone.
+ *
+ * --remove UNPINS WHAT IT DELETES. The task manager keeps an
+ * `applications:` launcher whose desktop file is gone, and draws it as a
+ * blank document; so every launcher the remove deleted is taken out of each
+ * task manager's General/launchers through plasmashell's scripting
+ * (unpin_launchers). Outside a session there is nothing to unpin.
  * ---------------------------------
  */
 
@@ -357,12 +363,149 @@ out:
 	free(exp);
 }
 
-static void remove_alias(const char *box, const char *stem)
+/*
+ * THE ALIAS IS DECIDED BEFORE THE EXPORT IS DELETED. `distrobox-export --app
+ * <x> --delete` removes `applications/<stem>.desktop` as well as the box's
+ * `<box>-<stem>.desktop` — the name the alias has — so the alias is gone by
+ * the time the export's delete returns, and a check made then finds nothing
+ * and leaves the alias's pin behind as a blank icon. alias_take looks at the
+ * name first, without following a link: this box's alias (a regular file,
+ * as write_alias leaves it) is noted for alias_put to unlink and unpin; any
+ * other file of that name (the user's own entry, another box's alias) is
+ * kept, bytes and mode, and a symbolic link is kept as its target, for
+ * alias_put to put back as it was. A file that cannot be read is named in a
+ * warning, since the delete takes it.
+ */
+typedef struct {
+	char *path;
+	char *text;	/* a file that is not this box's alias, or NULL */
+	char *link;	/* the target of a symbolic link of that name, or NULL */
+	mode_t mode;
+	int ours;
+} AliasHold;
+
+static void alias_take(AliasHold *h, const char *box, const char *stem)
 {
-	char *alias = alias_path(stem);
-	if (alias_ours(alias, box) && unlink(alias) != 0)
-		kb_warn("could not remove %s: %s", alias, strerror(errno));
-	free(alias);
+	struct stat st;
+
+	h->path = alias_path(stem);
+	h->text = NULL;
+	h->link = NULL;
+	h->mode = 0644;
+	h->ours = 0;
+	if (lstat(h->path, &st) != 0)
+		return;
+	if (S_ISLNK(st.st_mode)) {
+		char t[4096];
+		ssize_t n = readlink(h->path, t, sizeof(t) - 1);
+		if (n < 0 || (size_t)n >= sizeof(t) - 1) {
+			kb_warn("could not read the link %s; removing the "
+				"export removes it", h->path);
+			return;
+		}
+		t[n] = '\0';
+		h->link = strdup(t);
+		return;
+	}
+	if (!S_ISREG(st.st_mode))
+		return;
+	h->ours = alias_ours(h->path, box);
+	if (h->ours)
+		return;
+	h->text = kb_read_whole(h->path, NULL);
+	h->mode = st.st_mode & 07777;
+	if (!h->text)
+		kb_warn("could not read %s; removing the export removes it",
+			h->path);
+}
+
+/* 1 when this box's alias was there: a pin of `<stem>.desktop` is then this
+ * box's launcher, and goes with it. */
+static int alias_put(AliasHold *h)
+{
+	struct stat st;
+	int ours = h->ours;
+
+	if (ours && unlink(h->path) != 0 && errno != ENOENT)
+		kb_warn("could not remove %s: %s", h->path, strerror(errno));
+	if ((h->text || h->link) && lstat(h->path, &st) != 0) {
+		if (h->link ? symlink(h->link, h->path) != 0
+			    : (kb_write_file_atomic(h->path, h->text) != 0 ||
+			       chmod(h->path, h->mode) != 0))
+			kb_warn("could not put back %s: %s", h->path,
+				strerror(errno));
+	}
+	free(h->link);
+	free(h->text);
+	free(h->path);
+	return ours;
+}
+
+/*
+ * THE PINS OF DELETED LAUNCHERS, OUT OF EVERY TASK MANAGER. `drop` is a JS
+ * array literal of the launcher URLs, each built by kb_json_str and never
+ * spliced in as raw text: a desktop file's name is the package's, and a
+ * quote in it would otherwise end the string and run as script. An entry
+ * is matched on its URL: a pin kept to some activities is stored as
+ * `[<activity ids>]\n<url>`, and compared whole it would survive the
+ * removal as a blank icon in those activities. A list is written back, and
+ * the applet told to reread it, only where it changed.
+ */
+static const char UNPIN_JS[] =
+	"let n = 0;"
+	"panels().concat(desktops()).forEach(c => c.widgets().forEach(x => {"
+	" if (x.type != 'org.kde.plasma.icontasks' &&"
+	"     x.type != 'org.kde.plasma.taskmanager') return;"
+	" x.currentConfigGroup = ['General'];"
+	" let v = x.readConfig('launchers', []);"
+	" let a = typeof v == 'string' ? v.split(',').filter(u => u)"
+	"  : Array.from(v, String);"
+	" let k = a.filter(u =>"
+	"  drop.indexOf(u.replace(/^\\[[^\\]]*\\]\\n/, '')) < 0);"
+	" if (k.length == a.length) return;"
+	" x.writeConfig('launchers', k); x.reloadConfig(); n++; }));"
+	"print(n);";
+
+/* `applications:<file>` and the file:// URL of its path in the user's
+ * applications directory, the two forms a pin of it takes. */
+static void unpin_add(KbBuf *drop, const char *file)
+{
+	KbBuf u = {0};
+	char *dir = alias_path("x");
+	char *slash = strrchr(dir, '/');
+	if (slash)
+		*slash = 0;
+	kb_buf_printf(&u, "applications:%s", file);
+	if (drop->n && drop->p[drop->n - 1] != '[')
+		kb_buf_str(drop, ",");
+	kb_json_str(drop, u.p);
+	u.n = 0;
+	kb_buf_printf(&u, "file://%s/%s", dir, file);
+	kb_buf_str(drop, ",");
+	kb_json_str(drop, u.p);
+	kb_buf_free(&u);
+	free(dir);
+}
+
+/* Quiet when plasmashell is not answering: no session, nothing pinned. */
+static void unpin_launchers(KbBuf *drop)
+{
+	KdtBus *b = kdt_bus_open(0);
+	if (b && kdt_bus_has_owner(b, "org.kde.plasmashell") == 1) {
+		char err[256] = "";
+		KbBuf js = {0};
+		kb_buf_printf(&js, "%s];%s", drop->p, UNPIN_JS);
+		char *out = kdt_bus_call_s(b, "org.kde.plasmashell",
+					   "/PlasmaShell", "org.kde.PlasmaShell",
+					   "evaluateScript", err, sizeof(err),
+					   "s", js.p);
+		if (out && atoi(out) > 0)
+			printf("==> Unpinned from %d task manager%s\n",
+			       atoi(out), atoi(out) == 1 ? "" : "s");
+		free(out);
+		kb_buf_free(&js);
+	}
+	kdt_bus_close(b);
 }
 
 /* `distrobox enter <box> -- distrobox-export <kind> <what> [extra]`. */
@@ -557,15 +700,28 @@ int fetch_app_main(int argc, char **argv)
 		/* Quiet: distrobox-export's errors for an export the user
 		 * already deleted by hand say nothing the line below does not. */
 		pkg_exports(box, app, &x);
+		KbBuf drop = {0};
+		kb_buf_str(&drop, "let drop = [");
 		for (int i = 0; i < x.napp; i++) {
-			char stem[256];
+			char stem[256], file[512];
 			printf("==> Removing exported launcher '%s'\n",
 			       app_stem(x.app[i], stem, sizeof(stem)));
+			AliasHold hold;
+			alias_take(&hold, box, stem);
 			if (box_export(box, "--app", x.app[i], "--delete",
 				       NULL) != 0)
 				printf("    (no launcher export to remove)\n");
-			remove_alias(box, stem);
+			snprintf(file, sizeof(file), "%s-%s", box,
+				 kb_basename(x.app[i]));
+			unpin_add(&drop, file);
+			if (alias_put(&hold)) {
+				snprintf(file, sizeof(file), "%s.desktop", stem);
+				unpin_add(&drop, file);
+			}
 		}
+		if (x.napp)
+			unpin_launchers(&drop);
+		kb_buf_free(&drop);
 		for (int i = 0; i < x.nbin; i++) {
 			printf("==> Removing CLI wrapper '%s'\n",
 			       kb_basename(x.bin[i]));

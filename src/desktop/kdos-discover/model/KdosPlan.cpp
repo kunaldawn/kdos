@@ -66,20 +66,32 @@ QString installPreviewText(const InstallPreview &p)
     // raw U+00A0 with the other white space, so the text goes out
     // HTML-escaped and the no-break space as the entity &nbsp;.
     const QString size = QLocale().formattedDataSize(qint64(p.bytes)).replace(u' ', QChar::Nbsp);
+    // `downloads` counts every prebuilt package and `bytes` only what is not
+    // in the binhost cache yet, so a total of no bytes is a reinstall from
+    // that cache: it is said to be downloaded already, never "0 bytes".
     QString said;
     if (p.builds == 0 && p.downloads == 0) {
         said = i18n("Everything it needs is installed already.");
     } else if (p.builds == 0) {
-        said = i18np("Downloads %1 package (%2).", "Downloads %1 packages (%2).", p.downloads, size);
+        said = p.bytes == 0 ? i18np("Installs %1 package, already downloaded.", "Installs %1 packages, already downloaded.", p.downloads)
+                            : i18np("Installs %1 package; downloads %2.", "Installs %1 packages; downloads %2.", p.downloads, size);
     } else {
         const QString builds = i18np("Builds %1 package here", "Builds %1 packages here", p.builds);
-        said = p.downloads == 0 ? i18nc("@info %1 says how many packages are built", "%1; building can take hours.", builds)
-                                : i18ncp("@info %2 says how many packages are built, %3 is a size",
-                                         "%2, downloads %1 (%3); building can take hours.",
-                                         "%2, downloads %1 (%3); building can take hours.",
-                                         p.downloads,
-                                         builds,
-                                         size);
+        if (p.downloads == 0)
+            said = i18nc("@info %1 says how many packages are built", "%1; building can take hours.", builds);
+        else if (p.bytes == 0)
+            said = i18ncp("@info %2 says how many packages are built",
+                          "%2 and installs %1 prebuilt, already downloaded; building can take hours.",
+                          "%2 and installs %1 prebuilt, already downloaded; building can take hours.",
+                          p.downloads,
+                          builds);
+        else
+            said = i18ncp("@info %2 says how many packages are built, %3 is a size",
+                          "%2 and installs %1 prebuilt, downloading %3; building can take hours.",
+                          "%2 and installs %1 prebuilt, downloading %3; building can take hours.",
+                          p.downloads,
+                          builds,
+                          size);
     }
     said = said.toHtmlEscaped().replace(QChar::Nbsp, u"&nbsp;"_s);
     if (!p.built.isEmpty()) {
@@ -329,9 +341,30 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         plan.steps << run(u"kdos-box"_s, {u"stop"_s, e.id}) << run(u"kdos-box"_s, {u"remove"_s, e.id, u"--purge"_s});
         return plan;
 
-    case Lane::Port:
     case Lane::PortSource:
-        return refuse(i18n("Host software arrives and leaves with the system version; it is not removed one program at a time."));
+        // An installed port is one package whichever twin's page asks: the
+        // same removal as the binhost's twin. Not installed, nothing of it
+        // is here to remove.
+        if (e.state == EntryState::None)
+            return refuse(i18n("Host software arrives and leaves with the system version; it is not removed one program at a time."));
+        [[fallthrough]];
+    case Lane::Port:
+        // Only a port installed on request that nothing installed needs. The
+        // dry run is a Preview step before pkexec, which needs no root: what
+        // it prints becomes the question Discover asks, and `kdos update
+        // remove` refuses there, with its reason and without the password,
+        // when the machine changed since the list was read.
+        if (!isSafeId(e.id))
+            return refuse(i18n("“%1” is not a port name.", e.id));
+        if (e.state == EntryState::None)
+            return refuse(i18n("%1 is not installed.", e.name));
+        if (!e.neededBy.isEmpty())
+            return refuse(i18n("%1 is needed by %2, which is installed.", e.name, e.neededBy));
+        if (!e.removable)
+            return refuse(i18n("%1 is part of the KDOS system; it arrives and leaves with the system version.", e.name));
+        plan.steps << preview({u"update"_s, u"remove"_s, u"--dry-run"_s, e.id});
+        plan.steps << run(u"pkexec"_s, {ctx.portsHelper, u"remove"_s, e.id});
+        return plan;
 
     case Lane::Archive:
     case Lane::PackFile:

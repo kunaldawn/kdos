@@ -39,3 +39,8 @@ kdos-doc
 # HTML come from the package database, so they name only what is installed
 # by the time it builds.
 kdos-kfs
+
+# kinstall as a package, so the binhost carries the installer a one-slot
+# machine updates in place. 10_bootstrap compiles the same sources first, for
+# the trees before kpkg can install anything; this package adopts that file.
+kdos-installer
