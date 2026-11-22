@@ -17,6 +17,8 @@
 #include <KLocalizedString>
 #include <KNotification>
 
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
 
@@ -61,6 +63,7 @@ AccentSync::AccentSync(QObject *parent)
             });
 
     m_accent = readAccent(accentFile());
+    m_firstLogin = !QFileInfo::exists(decidedMarker());
 
     /* Once at load: a login whose scheme was chosen while this was not
      * running — a first login, a scheme set from a terminal — is brought into
@@ -101,6 +104,32 @@ QString AccentSync::accentFile()
         + QStringLiteral("/kdos/accent");
 }
 
+QString AccentSync::decidedMarker()
+{
+    /* Under the state directory, which /etc/skel does not seed: `kdos theme`
+     * writes the skeleton's home files and nothing under it. */
+    return QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)
+        + QStringLiteral("/kdos/accent-synced");
+}
+
+void AccentSync::markDecided()
+{
+    if (!m_firstLogin) {
+        return;
+    }
+    m_firstLogin = false;
+
+    /* A marker that cannot be written leaves the next session a first login
+     * again; that one brings the account into step and nothing else, which
+     * a choice made in it would then have to repeat. */
+    const QString path = decidedMarker();
+    QFile f(path);
+
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()) || !f.open(QIODevice::WriteOnly)) {
+        qCWarning(KDOS_KDED) << "cannot write" << path << f.errorString();
+    }
+}
+
 QDateTime AccentSync::accentStamp()
 {
     /* `kdos theme` writes the file beside and renames it over, so every
@@ -130,6 +159,17 @@ void AccentSync::evaluate()
     const QString scheme = m_globals->group(QStringLiteral("General"))
                                .readEntry(QStringLiteral("ColorScheme"), QString());
     const QString accent = accentFromScheme(scheme);
+    /* The first evaluation in an account that has never had one is its first
+     * login, whatever scheme it finds: its scheme is the global theme
+     * startplasma applied from the machine's default before kded started,
+     * not a choice anybody made, so the run brings only this account into
+     * step and leaves the boot menu, splash and login screen on the accent
+     * chosen for the machine. The accent file cannot tell: /etc/skel carries
+     * one, so every new home starts with it. Every later evaluation, in this
+     * session or any other, runs the whole switch. */
+    const bool firstLogin = m_firstLogin;
+
+    markDecided();
 
     if (accent.isEmpty()
         || !isShippedScheme(scheme,
@@ -152,6 +192,8 @@ void AccentSync::evaluate()
 
     const bool force = m_force;
     const QString current = readAccent(accentFile());
+    /* A forced run is a request to bring everything into step. */
+    const bool account = firstLogin && !force;
 
     m_force = false;
     if (accent == current && !force) {
@@ -168,10 +210,10 @@ void AccentSync::evaluate()
         m_error.clear();
         return;
     }
-    run(accent);
+    run(accent, account);
 }
 
-void AccentSync::run(const QString &accent)
+void AccentSync::run(const QString &accent, bool account)
 {
     const QString program = kdosProgram();
 
@@ -186,7 +228,13 @@ void AccentSync::run(const QString &accent)
     auto *proc = new QProcess(this);
 
     proc->setProgram(program);
-    proc->setArguments({QStringLiteral("theme"), QStringLiteral("--from-plasma"), accent});
+    QStringList args{QStringLiteral("theme"), QStringLiteral("--from-plasma")};
+
+    if (account) {
+        args << QStringLiteral("--account");
+    }
+    args << accent;
+    proc->setArguments(args);
     proc->setProcessChannelMode(QProcess::MergedChannels);
     proc->setStandardInputFile(QProcess::nullDevice());
     /* Each handler acts only for the run in progress: a run is concluded
@@ -207,8 +255,9 @@ void AccentSync::run(const QString &accent)
     });
     m_proc = proc;
     m_timedOut = false;
-    qCInfo(KDOS_KDED) << "the colour scheme names" << accent << "; running" << program
-                      << proc->arguments();
+    qCInfo(KDOS_KDED) << "the colour scheme names" << accent
+                      << (account ? "; first login, this account only; running" : "; running")
+                      << program << proc->arguments();
     m_timeout.start();
     proc->start();
 }

@@ -44,6 +44,25 @@ reviews. A search lists by relevance whatever that key says, because Discover se
 every search and never stores it, and the Installed page sorts by `installedPageSorting`, which
 Discover's own default leaves at name.
 
+The KDOS backend scores each result, a result takes the best rank it earns, and Discover breaks a
+tie by name. Highest first: the name is the whole term; a keyword or a component name of the
+package is the whole term; the application's category is the one the term stands for (`browser`
+and `web` for WebBrowser, `mail` and `email` for Email, `office` for Office, and a few more in
+`searchQuery`), raised when its summary says a word for that category and again when its name
+holds the term; the name starts with the term; the name holds it as a whole word; the name holds it
+at all; the package name; a keyword holds it; the summary holds it. A search for "browser"
+therefore lists the web browsers before AT-SPI Browser, "chrome" lists Chromium, whose keyword it
+is, before mkchromecast, and "mail" lists the mail clients (KMail, Thunderbird, Claws Mail) ahead
+of the tools that only file themselves under Email, such as Account Wizard and KTnef. A catalogue
+row or a pack names one main category, Network rather than WebBrowser, so for one of those a
+summary that says a word for the category counts as the category: Surf's "Simple web browser"
+lists it with the web browsers. A program that runs only in a terminal (category `ConsoleOnly`, or
+an AppStream console application) takes the keyword and category ranks below every name match, so
+"mail" lists the mail clients that draw a window ahead of aerc, which "aerc" still lists first. A
+terminal program reaches that rank only through `ConsoleOnly`: a desktop entry that sets
+`Terminal=true` without it, as w3m's and Lagrange's do, ranks for "browser" with the graphical
+browsers.
+
 No source on KDOS has ratings or reviews, and the `discover` port's `ratings-need-reviews.patch`
 shows an application's rating row and its Reviews section, with Write a Review, only for a
 resource whose backend has a reviews backend. The same patch leaves the Home page's Highest-Rated
@@ -116,6 +135,13 @@ the file after a run with no failure, and the category goes with it. `kdos-notic
 category
 ([The Plasma shell](plasma-shell.md#kdos-notice)).
 
+Each page under Sets is one group of the box catalogue, named after it, such as *Office set*, and installs that
+group's boxed applications. The backend has no resource for a native group of ports, the
+`/ports/groups` lists `kdos update groups` shows: a native group is installed with
+`sudo kdos update install <group>` or in the installer, and Discover offers only each of its
+ports on its own page
+([Native groups](../02-user-guide/applications.md#native-groups)).
+
 An `appstream://` link, which KRunner's software results and other programs hand to Discover,
 opens the KDOS resource with that component id. For an application only Debian's catalogue knows,
 it opens the catalogue row that packs its package when there is one, and otherwise the Debian
@@ -138,13 +164,21 @@ A size nobody knows, such as an installed host port's, is not shown.
 When an install or a removal fails, the application's page shows an error notice, "<Name> was not
 installed: <reason>" or "<Name> was not removed: <reason>", which stays through the refresh after
 it until the next install or removal of that resource starts. Discover's own dialog says only
-"Please try again later", with the same reason behind See Technical Details. An install that needs the
-network while the computer is offline gives the reason "it needs a network connection, and this
-computer is offline".
+"Please try again later", with the same reason behind See Technical Details. The reason is the
+failed tool's last standard-error lines, each a clause, joined with "; ". A step that downloads is
+refused before it starts whenever Qt's network information says anything but online, the same test
+as Discover's own "Discover is Offline" sheet (a network with no route out, or NetworkManager with
+networking switched off, counts as offline), and gives the reason "it needs a network connection,
+and this computer is offline".
 
 Removing an application that runs in a box stops the box first and then removes it, because a box
 stays up for a while after its application's last window closes and `kdos-box remove` refuses a
-running one. How a box is built and launched is in [kdos-appbox](kdos-appbox.md), and the pack store in
+running one. A box of the `kdos-boxes` origin, one no application accounts for, is asked about
+first, before anything runs: "Remove the box <name>?", saying that the container goes with every
+package installed in it, its profile and every launcher exported from it, and that the files in the
+home folder stay; for a box made over a pack, its writable layer, snapshots and private home in
+`~/.local/share/kdos/boxes/<name>` stay too. Cancel leaves the box as it was; Proceed runs
+`kdos-box stop` and `kdos-box remove <name> --purge`. How a box is built and launched is in [kdos-appbox](kdos-appbox.md), and the pack store in
 [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 A `.ktar` set or a `.kpack` opened from Dolphin, from the stick offer of
@@ -159,7 +193,10 @@ damaged."; neither installs anything.
 The `kdos-store` origin lists Debian desktop applications from the DEP-11 catalogue the
 `debian-dep11` port installs at `/usr/share/swcatalog/yaml/debian-trixie-main.yml.gz`, a dated
 snapshot of Debian trixie's `main`. The catalogue holds thousands of applications, so a resource is
-made for one only when a search or a category asks for it, or when its box exists. Installing one
+made for one only when a search or a category asks for it, or when its box exists. A search offers
+a Debian application only when every word of the query, case-folded, occurs in its name, its
+component id, its package name or one of its keywords; AppStream's own search also matches
+summaries and descriptions, which over thousands of applications answers almost any query. Installing one
 runs `kdos-appbox install deb:<package>`, which builds a box named `deb.<package>` (each `+` in the
 package name spelled `_`); the backend reads that name back to tell the application is installed.
 A Debian application whose component id or desktop-id launchable matches any component of the
@@ -183,6 +220,10 @@ Disks, which the host ships, keep theirs), which takes them out of every AppStre
 and without it would offer, as "Get …", an application this lane refuses. Debian's icons and screenshots are not installed, so a Debian application
 shows its stock icon when the host's icon theme has it, otherwise the icon of its category, and no
 screenshot; KRunner's and Kickoff's "Get …" results, which take the pool's cached icon, show none.
+Those results come from Plasma's own Software Center runner, which searches the pool's summaries
+and descriptions as well as its names, so it offers a Debian application for a query that only its
+description contains, even `12*7`, where Discover's own search needs every word of the query in
+the name, id, package or keywords.
 A catalogue application with no AppStream icon shows its category's icon too: every catalogue
 category is a main desktop-entry category (AudioVideo, Development, Education, Game, Graphics,
 Network, Office, Science, Settings, System or Utility), and each has one.
@@ -212,16 +253,19 @@ request. Removing it takes out this package alone; what it brought with it stays
 learns which at each refresh from `kdos update removable --json`, beside `kpkg list --json`; an
 answer that does not come leaves every port part of the system. Remove runs `kdos update remove
 --dry-run <port>` as the user, which refuses without a password when the machine changed since the
-list was read; its `remove <port>` line becomes Discover's question, "Remove <Name>?" with "<Name>
-is removed from this computer. Discover can install it again.", and output without that line fails
+list was read; its `remove <port>` line becomes Discover's question, "Remove?" with "**<Name>**
+is removed from this computer. Discover can install it again.", or, when the dry run names N more
+`remove <pkg>` lines, "**<Name>** is removed from this computer, with N packages it brought that nothing
+else needs. Discover can install it again.", and output without the port's line fails
 the removal before the password. Only a yes runs `kdos-ports-helper remove <port>` through `pkexec`, under `io.kdos.ports.remove` (an
 administrator's password, kept for a while), which runs `kdos update remove <port>` and the
 catalogue writer again. `kdos update remove` refuses a port that is not in the world set or that an
 installed package needs, and runs `kpkg remove`, which takes the port off the world set and the
-origin record too, so the next update does not bring it back. The dependencies an install brought
-stay: each is a package of its own, listed under its own name. Remove is offered on the prebuilt
-resource's page alone: the `kdos-ports-source` twin of an installed port offers none, and one not
-installed has nothing to remove.
+origin record too, so the next update does not bring it back. It takes the packages the install
+brought with it as well, each one that nothing else installed needs, and the downloaded files of
+every package not installed leave the binhost cache (see [Removing a port](../02-user-guide/applications.md#removing-a-port)). Both resources of an installed port
+offer Remove and remove the same package by the same steps; one not installed has nothing to
+remove.
 
 A port is one resource per package, listed by its best component: a desktop application before a
 console application before any other kind, then one from the package's own metainfo (with a
@@ -275,7 +319,7 @@ Breeze's `applications-graphics`, whose blue sphere reads as a missing icon in a
 Each port the binary host holds is two resources with one AppStream id, installed or not,
 `kdos-backend://port/<id>` and `kdos-backend://port-source/<id>`, so Discover lists one application
 and offers both origins in its source picker. The built-here twin of an installed port carries the
-port's state and installed version but no Remove, and a list leaves it out, so an installed port is one
+port's state, installed version, notice and Remove, and a list leaves it out, so an installed port is one
 row, "KDOS system". Discover's application page keeps the most sources it has seen while it is
 open, so a twin that left with the install would leave the page after a removal with one source:
 no source picker, and an "Install from KDOS system" button. **The origin Discover opens follows `install =`** in `/etc/kdos/update.conf`, the
@@ -306,17 +350,34 @@ Both routes download, and each resource says so.
 
 **Discover says what an install will do before it asks for the password.** Install first runs
 `kdos update install --dry-run --prebuilt <port>` (or `--source`) as the user, which needs no
-root, and its `total` line becomes the question of Discover's confirmation dialog, "Install
-<name>?". The line counts every prebuilt package and, in bytes, only the files not already in
-the binhost cache `/var/lib/kdos/binhost`, which keeps every package it downloaded, so the
-prebuilt route reads "Installs N packages; downloads (size).", or "Installs N packages, already
-downloaded." when the total has no bytes, the number and unit of the size never split across lines;
-the built one reads "Builds N packages here and installs M prebuilt, downloading (size); building
-can take hours." (or "and installs M prebuilt, already downloaded"), with the packages built here named.
+root, and its `total` line becomes the question of Discover's confirmation dialog, titled
+"Install?", and every confirmation text opens with the program's name in bold, "**<Name>**: ",
+since the dialog is narrow and elides a long title where its text wraps. The line counts every
+prebuilt package and, in bytes, only the files not already in the binhost cache
+`/var/lib/kdos/binhost`, which keeps every package it downloaded until a removal clears those not
+installed, so after the name the prebuilt route reads "Installs N packages; downloads (size).", or
+"Installs N packages, already downloaded." when the total has no bytes, the number and unit of the
+size never split across lines; the built one reads "Builds N packages here and installs M
+prebuilt, downloading (size); building can take hours." (or "and installs M prebuilt, already
+downloaded"), with the packages built here named.
+The total also counts the `<pkg> dev <file> <bytes>` lines, each restoring the development files of
+a package already installed so a build here finds its headers; they are said apart, "and restores
+the development files of K installed packages", M is the prebuilt count without them, and the size
+stays the whole download.
 Proceed runs the helper through `pkexec`, which asks for the password; until the helper writes its
-first line, which it can only once polkit has the password, the install's status is Waiting, and
-Downloading from then on. Cancel, or closing the
-dialog, ends the install with nothing run. A dry run that refuses, such as a prebuilt install the
+first line, which it can only once polkit has the password, the install's status is Waiting,
+Downloading from then on, and Installing from the first `==> installing <pkg>` or `==> restoring
+the development files of <pkg>` line, since `kdos update install` fetches everything before it
+installs or builds anything. Its first line comes as the first download starts, `==> downloading
+<file> (<size>)`, so a slow download reads Downloading, not Waiting. Cancel, or closing the
+dialog, ends the install with nothing run. Cancel once the helper runs closes its standard input,
+the one stop a user can give a root process: the helper sends SIGTERM to the process group it
+runs `kdos update` in, so kpkg, the build and its compilers stop with it, then SIGKILL after 60
+seconds, and exits 130 without writing the catalogue. The packages installed before the stop stay
+installed, the dependencies a source install built on the way among them; those are not in the
+world set, so `kdos update remove` refuses them as part of the system. Discover disables the cancel button, keeps the status and ends the install Cancelled
+only when the helper has exited, so the refresh after it never meets a run still holding the
+package lock. A dry run that refuses, such as a prebuilt install the
 binary host does not cover, ends it there with the dry run's reason, before any password. The
 reader is the model library's `parseInstallPreview`, tested over fixture outputs.
 
@@ -338,7 +399,11 @@ the new headers.
 
 ## Nothing downloads on its own
 
-Opening Discover reaches no server. Each of Discover's own paths to the network is closed:
+Opening Discover asks the release server for one thing: its signed indexes (the tree, the
+binary-host index and the image manifest, or the binary-host index alone on a machine with one
+root slot), at most once an hour, through the same `CheckNew` that
+**Refresh** calls ([below](#checking-for-an-update)). It downloads no package and no source. Each of
+Discover's own paths to the network is closed:
 
 | Path | Closed by |
 |---|---|
@@ -348,9 +413,8 @@ Opening Discover reaches no server. Each of Discover's own paths to the network 
 | Screenshots | Only a screenshot that is a file on the machine is shown |
 | KNewStuff add-ons from `store.kde.org` | The KNewStuff backend is not built, and `ghns=false` in `kdeglobals` turns off every Get New download: the settings pages show no Get New button, the wallpaper dialog's Get New Plugins is greyed, and Add Widgets' Get New menu holds only Install Widget From Local File |
 
-What does reach the network is what a person starts: a store-lane box, a host port from the binary
-host or the sources of one built here, a firmware install, a system update, and a system update check made with
-**Refresh** on the Updates page ([below](#checking-for-an-update)). [Principles](../01-philosophy/principles.md#offline-by-construction)
+Everything else that reaches the network is what a person starts: a store-lane box, a host port from the binary
+host or the sources of one built here, a firmware install and a system update. [Principles](../01-philosophy/principles.md#offline-by-construction)
 states the rule.
 
 ## System updates
@@ -426,9 +490,10 @@ and exit statuses, and how it is started are in [The daemons](daemons.md#kdos-sy
 
 The nightly timer runs `kdos update check --out /var/lib/kdos/update.json`, which reads only the
 recipe tree, binary-host index and image manifest already on the machine. `CheckNew`, which
-Discover calls when a person presses **Refresh** on its Updates page, fetches the signed tree and the release
+Discover calls when it opens and when a person presses **Refresh** on its Updates page, fetches the signed tree and the release
 index, and through that index the binary-host index and image manifest, at most once an hour, then
-answers from the document. A document belongs to the
+answers from the document. A fetch that found no network counts as none, so the first Refresh once
+the machine is online asks again at once. A document belongs to the
 root that wrote it, because `/var/lib/kdos` is in each slot: one whose `installed` version is not
 the running one offers nothing, and the daemon rewrites it at start without downloading.
 
@@ -491,7 +556,14 @@ its `binhost_base`, the binary host `update.conf`, `$KDOS_UPDATE_BINHOST` or the
 names, else its `binhost`, where the index in place came from, else "the binary host"; never the
 channel, which is another place. A binary host at `/root/bh` that publishes nothing reads "No
 package index is published at file:///root/bh." with no detail after it: the tool's words for that
-code name the same URL again. Each
+code name the same URL again. The tool's words follow the sentence in brackets only when they add
+something: never for a `no-network` code, whose sentence says what its words say, and never when
+they name the URL the sentence names, so the URL is said once. `no-network` is recorded for a name
+that did not resolve, or for a refused or timed-out connection on a machine with no default route;
+a server that refused the connection or did not answer while a default route exists is a
+`fetch-failed` whose words are "the server at <host:port> did not answer", and
+the page reads "The release's package index could not be fetched from https://10.0.2.2:18999.
+(the server at 10.0.2.2:18999 did not answer)". Each
 code `kdos update check` reports has its sentence: the fetch's `no-network`, `fetch-failed` and
 `no-key`; the binary-host index's and the slot image's `binhost-` and `image-` codes
 (`no-network`, `fetch-failed`, `no-key`, `unverified`), each naming the package index or the system
@@ -516,14 +588,16 @@ boot is confirmed by two marks under `/run/kdos/bless/`, both regular files owne
 | Mark | Written when |
 |---|---|
 | `userspace` | The end of `rcS`: every service started |
-| `graphical` | A Plasma session answered on the bus for a minute (`kdos-notice --bless` calls `io.kdos.Slots1.Bless`), or the login screen stayed up for a minute on a machine nobody logs in to |
+| `graphical` | A Plasma session answered on the bus for a minute (`kdos-notice --bless` calls `io.kdos.Slots1.Bless`), or the login screen stayed up for a minute on a machine SDDM does not log in automatically |
 
 When both exist, `kdos-sysupdated` runs `kdos-bootctl mark-good` once and writes
 `/run/kdos/bless/confirmed`. Either mark alone confirms nothing: a system that boots with a desktop
 that crashes is the failure a trial exists to catch. polkit grants `io.kdos.slots.bless` to the
 active local session alone, with no password. The login screen counts only where nobody has logged
 in this boot and SDDM logs nobody in automatically, so a login screen that came back because a
-session crashed never confirms the slot that crashed it. A machine whose `inittab` starts no
+session crashed never confirms the slot that crashed it. There the login screen is the graphical
+check, and a desktop that fails only after a login is kept; System Settings > System Versions >
+Start This Version Next Time on the other slot is the way back from it. A machine whose `inittab` starts no
 display manager needs only the first mark. A trial that never gets confirmed uses up its attempts,
 and the next boot falls back to the slot that worked; `kdos-notice` then says "Your last update
 didn't start". How the slots are chosen at boot is in
@@ -554,8 +628,8 @@ tray's to say: `kdos-notice` posts that notice ([The Plasma shell](plasma-shell.
 
 A slot armed at the running version or an older one, as "Start This Version Next Time" on the
 System Versions page arms it, is a switch between versions and no pending restart here: Discover
-would answer it with "The system needs to be restarted for the updates to take effect" and "Update
-and Restart", for an update there is none of. System Versions and `kdos-notice`'s trial notice speak
+would answer it with "The system needs to be restarted for the updates to take effect", for an
+update there is none of. System Versions and `kdos-notice`'s trial notice speak
 for that switch.
 
 When an update arms a slot, Discover's notifier posts the persistent "Restart is
@@ -565,6 +639,10 @@ once. It is shown, and sent once, only through the `discover` port's
 send of its own before Discover sends it again, posts it as a default event, which KNotification
 looks up in `plasma_workspace`, whose notifyrc has no such event, and its own notifyrc misspells the
 event's group; KNotification shows nothing for an event its component does not declare.
+Its two buttons, "Restart" and "Shut Down", open the logout prompt's restart and shut-down pages;
+the update is already staged in the other slot, so neither installs anything, and the `discover`
+port's `notifier-restart-labels.patch` gives them those labels where upstream's read "Update and
+Restart" and "Update and Shut Down".
 The notifier says when the staged update comes or goes, and the `discover` port's
 `notifier-reboot-clears.patch` makes Discover follow it both ways. An open Discover window's
 sysupdate1 backend reads `io.kdos.Slots1`'s `State` when it starts and follows it both ways after.

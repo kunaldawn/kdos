@@ -486,6 +486,37 @@ rm -f "$F/next.json"
 [ "$fail" = 0 ] || exit 1
 echo "  CheckNew fetches the signed tree and index once an hour at most, and answers from them"
 
+# A fetch inside the hour that found no network is no fetch: the Refresh
+# pressed once the machine is online asks the network again.
+{ grep -v '^fetch ' "$R/var/lib/kdos/update.state"
+  printf 'fetch no-network %s the network is not reachable\n' "$(date +%s)"; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+doc 0.2.17 > "$F/next.json"
+: > "$F/calls"
+start_daemon --refresh-after 3600
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/fetch.txt"
+want "$F/fetch.txt" 's "0.2.17"'
+want "$F/calls" "update check --fetch --out $R/var/lib/kdos/update.json"
+grep -q '^fetch ok ' "$R/var/lib/kdos/update.state" ||
+    { echo "  FAIL  a CheckNew after a no-network fetch inside the hour did not fetch"; fail=1; }
+stop_daemon
+# A fetch the server answered with a refusal (a published tree older than
+# this machine's) holds the next CheckNew for the hour like an ok one.
+{ grep -v '^fetch ' "$R/var/lib/kdos/update.state"
+  printf 'fetch fetch-failed %s the published tree is older than this machine%ss\n' "$(date +%s)" "'"; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+: > "$F/calls"
+start_daemon --refresh-after 3600
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/fetch.txt"
+grep -q -- '--fetch' "$F/calls" &&
+    { echo "  FAIL  a CheckNew inside the hour after a fetch-failed asked the network"; cat "$F/calls"; fail=1; }
+stop_daemon
+rm -f "$F/next.json"
+[ "$fail" = 0 ] || exit 1
+echo "  a fetch that found no network does not hold the next CheckNew for the hour; a refused one does"
+
 # ── a trial boot: the slot an update would fill is the way back ────────────
 # Slot b is armed; booting it makes this boot its trial. Nothing is offered
 # and Acquire is refused before `kdos update` runs, until the trial ends.

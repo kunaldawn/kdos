@@ -38,8 +38,11 @@
 # Compilers and their bootstraps. Mesa builds its own OpenCL C kernels for
 # the Intel and NVIDIA drivers with clang, libclc and the SPIR-V translator
 # and loads none of them; mesa-opencl, which loads them, is not in the base.
+# Chromium builds with compiler-rt, crubit, esbuild and typescript-go and
+# runs none of them, so its empty `N:` line keeps them, and crubit's rust,
+# out of a prebuilt Chromium.
 lldb rust go ghc ocaml zig nodejs clang libclc spirv-llvm-translator
-binutils
+binutils compiler-rt crubit esbuild typescript-go
 
 # Build systems, generators and the helpers over them.
 cmake meson muon ninja make bmake scons pkgconf autoconf automake

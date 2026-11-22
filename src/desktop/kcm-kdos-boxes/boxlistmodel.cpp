@@ -22,6 +22,7 @@
 #include <KService>
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QJsonArray>
@@ -65,6 +66,18 @@ QString asSentence(const QString &clause)
     return s;
 }
 
+/* `kdos-box remove` puts this line at the top of a profile it keeps
+ * (BOX_KEPT_MARK in box_cmd.c); the next create's save drops it. */
+constexpr QLatin1StringView KeptMark("# kept by kdos-box remove");
+
+/* An exported launcher is named `<Name> (<box>)`; the subtitle names the
+ * program alone, the box being already the row. */
+QString programName(const QString &entryName, const QString &box)
+{
+    const QString suffix = u" ("_s + box + u')';
+    return entryName.endsWith(suffix) ? entryName.chopped(suffix.size()) : entryName;
+}
+
 }
 
 bool BoxRow::isRunning() const
@@ -75,6 +88,14 @@ bool BoxRow::isRunning() const
 bool BoxRow::hasContainer() const
 {
     return !state.isEmpty() && state != "not created"_L1 && state != "absent"_L1;
+}
+
+bool BoxRow::isAppBox() const
+{
+    /* A pack box over its own pack, a store box over the image built for
+     * it (box_lane's `image:kdos/`), or an application's box whose first
+     * launch has not recorded its pack yet. */
+    return base == u"pack:"_s + name || base == u"image:kdos/"_s + name || (base.isEmpty() && name.startsWith(u"app."_s));
 }
 
 QString BoxRow::exportId() const
@@ -134,7 +155,7 @@ QVariant BoxListModel::data(const QModelIndex &index, int role) const
     case StateRole:
         return r.state;
     case StateTextRole:
-        return stateText(r.state);
+        return stateText(r.state, r.kept);
     case RunningRole:
         return r.isRunning();
     case CreatedRole:
@@ -152,17 +173,27 @@ QVariant BoxListModel::data(const QModelIndex &index, int role) const
     case ConfinementReasonRole:
         return r.confinementReason;
     case SubtitleRole: {
-        QStringList parts{stateText(r.state)};
+        QStringList parts{stateText(r.state, r.kept)};
         if (r.isRunning() && !r.confinement.isEmpty()) {
             parts << confinementText(r.confinement);
         }
         if (r.displayName != r.name) {
             parts << r.name;
         }
+        if (!r.exports.isEmpty()) {
+            /* Two programs by name, and an ellipsis for the rest. */
+            QStringList shown = r.exports.mid(0, 2);
+            if (r.exports.size() > 2) {
+                shown << u"…"_s;
+            }
+            parts << i18nc("@info %1 the programs exported from a box", "Box for %1", shown.join(u", "_s));
+        }
         return parts.join(u" · "_s);
     }
     case ExportIdRole:
         return r.exportId();
+    case KeptRole:
+        return r.kept;
     }
     return {};
 }
@@ -186,6 +217,7 @@ QHash<int, QByteArray> BoxListModel::roleNames() const
         {ConfinementReasonRole, "confinementReason"},
         {SubtitleRole, "subtitle"},
         {ExportIdRole, "exportId"},
+        {KeptRole, "kept"},
     };
 }
 
@@ -215,13 +247,13 @@ const BoxRow *BoxListModel::row(const QString &name) const
     return i < 0 ? nullptr : &m_rows.at(i);
 }
 
-QString BoxListModel::stateText(const QString &state)
+QString BoxListModel::stateText(const QString &state, bool kept)
 {
     if (state == "running"_L1) {
         return i18nc("@info box state", "Running");
     }
     if (state == "not created"_L1 || state.isEmpty() || state == "absent"_L1) {
-        return i18nc("@info box state", "Not created yet");
+        return kept ? i18nc("@info box state", "Removed — settings kept") : i18nc("@info box state", "Not created");
     }
     if (state == "exited"_L1 || state == "stopped"_L1 || state == "created"_L1 || state == "configured"_L1) {
         return i18nc("@info box state", "Stopped");
@@ -282,34 +314,77 @@ QList<BoxRow> BoxListModel::parseListing(const QString &output)
             r.confinementReason = i18nc("@info why a box is not confined",
                                         "It is a distrobox, which shares your home and the session's runtime directory, display and bus.");
         }
+        r.kept = !r.hasContainer() && profileIsKept(r.name);
         rows << r;
     }
     return rows;
 }
 
-void BoxListModel::decorate(BoxRow &row) const
+bool BoxListModel::profileIsKept(const QString &box)
+{
+    QFile f(boxProfileDir() + u'/' + box + u".conf"_s);
+    return f.open(QIODevice::ReadOnly) && f.readLine(256).startsWith(QByteArrayView(KeptMark));
+}
+
+void BoxListModel::nameRow(BoxRow &row, const QList<BoxEntry> &entries)
 {
     row.displayName = row.name;
     row.iconName = u"preferences-security"_s;
+    row.exports.clear();
 
-    KService::Ptr service = KService::serviceByDesktopName(row.name);
-    if (!service) {
-        const QString box = row.name;
-        const KService::List found = KApplicationTrader::query([&box](const KService::Ptr &s) {
-            return s->property<QString>(u"X-KDOS-Box"_s) == box;
-        });
-        if (!found.isEmpty()) {
-            service = found.first();
+    bool named = false;
+    bool iconed = false;
+    for (const BoxEntry &e : entries) {
+        if (e.exported) {
+            if (!e.name.isEmpty()) {
+                row.exports << programName(e.name, row.name);
+            }
+        } else if (row.isAppBox() && !named && !e.name.isEmpty()) {
+            row.displayName = e.name;
+            named = true;
+            if (!e.icon.isEmpty()) {
+                row.iconName = e.icon;
+                iconed = true;
+            }
         }
     }
-    if (service) {
-        if (!service->name().isEmpty()) {
-            row.displayName = service->name();
-        }
-        if (!service->icon().isEmpty()) {
-            row.iconName = service->icon();
+    if (!iconed) {
+        for (const BoxEntry &e : entries) {
+            if (!e.icon.isEmpty()) {
+                row.iconName = e.icon;
+                break;
+            }
         }
     }
+    /* An application's box whose application has gone is still named
+     * after it, without the catalogue's `app.` prefix; the subtitle keeps
+     * the box's own name. */
+    if (!named && row.isAppBox() && row.name.startsWith(u"app."_s) && row.name.size() > 4) {
+        row.displayName = row.name.mid(4);
+    }
+}
+
+void BoxListModel::decorate(BoxRow &row) const
+{
+    /* The box's own entry first, then every entry that names it. */
+    KService::List services;
+    if (KService::Ptr own = KService::serviceByDesktopName(row.name)) {
+        services << own;
+    }
+    const QString box = row.name;
+    services += KApplicationTrader::query([&box](const KService::Ptr &s) {
+        return s->property<QString>(u"X-KDOS-Box"_s) == box;
+    });
+    QList<BoxEntry> entries;
+    QStringList seen;
+    for (const KService::Ptr &s : std::as_const(services)) {
+        if (seen.contains(s->storageId())) {
+            continue;
+        }
+        seen << s->storageId();
+        entries.append({s->desktopEntryName(), s->name(), s->icon(), s->property<QString>(u"X-KDOS-Export"_s) == "true"_L1});
+    }
+    nameRow(row, entries);
     if (!row.isRunning()) {
         row.confinement.clear();
         row.confinementReason.clear();

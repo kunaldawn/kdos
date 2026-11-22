@@ -361,7 +361,8 @@ The running machine keeps the same rule. Nothing KDOS ships downloads anything o
   with the tree, cache or medium already on the machine, and fwupd lists firmware from the LVFS
   metadata snapshot each release carries.
 
-The network is used when the person at the machine asks for it: Discover's "Check for updates",
+The network is used when the person at the machine asks for it: opening Discover or pressing its
+Refresh, which fetch the release's signed indexes at most once an hour and no package,
 `kdos update fetch`, `kdos update apply`, `fwupdmgr refresh`, installing a native port, which
 downloads it from the release's binhost or, built here, its sources, and installing a catalogue
 application, which builds its box from Debian's archive. The cost is freshness: firmware metadata is

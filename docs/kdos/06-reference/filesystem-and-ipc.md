@@ -75,7 +75,7 @@ and `/etc/kpkg.conf`, the host package manager's, under
 | `world` | The packages somebody installed on purpose, one name per line, which every update installs into the new slot as well: the binhost lane keeps them, and the image lane installs them over the image from the same release's binhost. `kpkg remove` (`kpkgdel`) drops a removed package's line from the root it removes from; a slot an update has already armed keeps its own copy | `kdos update install`, a group's install (each member it adds, by its own name; a member already installed is not recorded), and Discover's ports backend; `kpkgdel` removes lines |
 | `origin` | How each package an install or an update added arrived, one `<package> prebuilt\|source` line; a package with no line is `prebuilt`, as everything the image brought is. An update takes each package by its route again, building a `source` one in the slot. Carried into a slot at the arm with `world`, and a removed package's line dropped by `kpkgdel` the same way | `kdos update install` and `apply`; `kpkgdel` removes lines |
 | `update.json` | What `kdos update check --json` found, what is offered and the last problem; Discover's update notifier, the System Versions page and `kdos-notice` read it. Its `image` and `binhost` fields are where each lane's bytes come from, and `kdos-sysupdated`'s update text says *to copy* when the offered lane's is a directory or a `file://` URL and *to download* otherwise | The update-check timer, nightly at 04:17, and `kdos update fetch` and `apply` when they finish |
-| `update.state` | The outcome of the last `fetch`, of the binhost and image surveys and of the last `apply`, each with a time and a sentence. A `binhost-at` line, written in the same rewrite as the `binhost` line, names the base that result was fetched from (`-` for none); `kdos update check`, `install` and the fetch hints pass over a `binhost` result for a base other than the one `update.conf`, `$KDOS_UPDATE_BINHOST` or the tree names. On a machine with no second root slot `kdos-sysupdated` fetches the binhost index at most once per `--refresh-after` judged by the `binhost` line, whose `no-network` and `fetch-failed` codes count as no fetch; with slots it judges by the `fetch` line | `kdos update` |
+| `update.state` | The outcome of the last `fetch`, of the binhost and image surveys and of the last `apply`, each with a time and a sentence. A `binhost-at` line, written in the same rewrite as the `binhost` line, names the base that result was fetched from (`-` for none); `kdos update check`, `install` and the fetch hints pass over a `binhost` result for a base other than the one `update.conf`, `$KDOS_UPDATE_BINHOST` or the tree names. On a machine with no second root slot `kdos-sysupdated` fetches the binhost index at most once per `--refresh-after` judged by the `binhost` line, whose `no-network` and `fetch-failed` codes count as no fetch; with slots it judges by the `fetch` line, whose `no-network` code counts as no fetch | `kdos update` |
 | `update.state.lock` | The lock `fetch` and `apply` hold, so a tree is never replaced under a build | `kdos update fetch` and `apply` |
 | `update.state.sig` | The signature of the tree last installed; a published signature equal to it is the same tree, and the tree is not downloaded again | `kdos update fetch` |
 | `binhost/` | The signed binhost index of the tree in place, `PACKAGES` and `PACKAGES.sig`, the signed release index it was fetched by, `INDEX` and `INDEX.sig`, with `ORIGIN` (where that came from), and its AppStream catalogue under `swcatalog/` | `kdos update fetch` |
@@ -94,6 +94,7 @@ and `/etc/kpkg.conf`, the host package manager's, under
 | `reasons/` | The explanations `kdos why` and `kdos explain` print |
 | `xdg/` | KDOS's defaults for Plasma and the KDE programs, the last directory on `XDG_CONFIG_DIRS`; see [Plasma's files KDOS ships](configuration.md#plasmas-files-kdos-ships) |
 | `xdg-vm/`, `xdg-live/` | The overlays put in front of `/etc/xdg` in a virtual machine and on the live medium |
+| `data-live/` | Put in front of `XDG_DATA_DIRS` on the live medium alone: `applications/org.kde.plasma-welcome.desktop`, Welcome Center's entry started with `--live-environment`, which replaces the image's there |
 | `greeter/<accent>/` | The login screen's look in each accent: the files the image (for the default accent), the installer and `kdos-powerd` copy into the `sddm` account's home |
 | `keycard-groups.conf` | How the key card groups KWin's shortcuts |
 | `update/io.kdos.system.metainfo.xml` | The AppStream component Discover shows the system update as |
@@ -218,7 +219,7 @@ Emptied at every boot.
 | `user/<uid>/` | Each logged-in user's runtime directory, made by `turnstiled` at the first login and removed after the last; see [`$XDG_RUNTIME_DIR`](#xdg_runtime_dir--per-user) |
 | `kdos/kdos-dm.starts` | The times `kdos-dm` last started SDDM, from which it decides that SDDM keeps exiting |
 | `kdos/bless/userspace`, `graphical`, `confirmed` | The two marks a trial boot is confirmed by, and the record that it was; see [Boot files](#boot-files) |
-| `kdos/bootstate.json`, `kdos/boot-entries.json` | The boot state and the boot entries, published by `kdos-bootctl` for programs that are not root: `kdos-notice`, the System Versions page, the logout screen's boot menu |
+| `kdos/bootstate.json`, `kdos/bootstate.txt`, `kdos/boot-entries.json` | The boot state (as `status --json` and as `status`'s text) and the boot entries, published by `kdos-bootctl` for programs that are not root: `kdos-notice`, the System Versions page, the logout screen's boot menu, a user's `kdos-bootctl status` |
 | `kdos/sysupdate/io.kdos.system.metainfo.xml` | The AppStream text of the offered system update, which `kdos-sysupdated` serves to Discover |
 | `kdos/slot-<a\|b>/` | Where `kdos update apply --mount` mounts an inactive slot nobody mounted |
 | `systemd/reboot-to-boot-loader-entry` | The boot entry the logout screen's *Restart into* chose for the next boot; `kdos-bootctl` reads it. Only the path is systemd's |
@@ -229,6 +230,7 @@ Emptied at every boot.
 | Path | Holds |
 |---|---|
 | `/var/lib/sddm/` | The `sddm` account's home: the greeter's `kdeglobals`, `plasmarc` and `kcminputrc` in the accent, and `kdos-background.png`. The image ships the default accent's; the installer and `kdos-powerd` (as that account) replace them |
+| `/var/log/kdos-update-check.log` | Every line of the last slot check `kdos update apply` ran (`kpkg check --all --log`), each `config` and `unowned` file included; the apply itself prints only the faults and the summary |
 | `/var/log/sddm.log`, `sddm.log.old` | SDDM's own log; a session's output is in its user's `~/.local/share/sddm/wayland-session.log` |
 | `/var/lib/elogind/linger/` | One file per user whose services keep running with nobody logged in (`loginctl enable-linger`) |
 | `/var/spool/cron/` | Each user's crontab, kept by `cronie` |
@@ -241,7 +243,7 @@ for that boot; otherwise the next boot returns to the active slot. `kdos-sysupda
 both marks under `/run/kdos/bless/` exist: `userspace`, which the end of `rcS` writes when every
 service has started, and `graphical`, which a Plasma session that stayed up for a minute writes
 through `io.kdos.Slots1.Bless` (`kdos-notice --bless`), or the login screen staying up for a minute
-on a machine nobody logs in to. See
+on a machine SDDM does not log in automatically. See
 [A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection).
 
 | Path | Is |
@@ -455,6 +457,13 @@ under `/usr/share` for the host and under `~/.local/share/kdos/packs` for boxes,
 link in `/var/lib/kdos/packs/pack-manifest`; `ungraft` removes only links, only those the manifest
 names.
 
+### UDP `127.0.0.1:5380`
+
+`kdos-mdnsd`, running as `nobody`: plain DNS over UDP, on the loopback address only, for
+NetworkManager's `dnsmasq`, which forwards the `local` domain to it. It answers `A` and `AAAA`
+questions for `.local` names from Avahi's `/run/avahi-daemon/socket` and refuses every other
+name; see [kdos-mdnsd](../04-programs/daemons.md#kdos-mdnsd).
+
 ## D-Bus names
 
 KDOS's own names are under `io.kdos`. Three daemons also serve names systemd defines, so that
@@ -512,10 +521,10 @@ Neither configuration nor storage: these files are how one program tells another
 | `~/.config/kwinrulesrc`, groups `kdos-box-<box>` | `kdos-box profile` and `kdos-appbox genlaunchers`, which rewrite only those groups | KWin: each box's title-bar colour |
 | `/var/lib/kdos/packs/pack-manifest` | The pack daemon, under `flock` of `pack-manifest.lock`, each change written whole and renamed into place | Itself, so ungrafting removes exactly what was added and every slot's start grafts what it names; `kio-library`, for the pack an item came from |
 | `/var/lib/kdos/update.json` | The update-check timer, and `kdos update fetch` and `apply` when they finish | Discover's update notifier, `kdos-sysupdated`, the System Versions page and `kdos-notice` |
-| `/run/kdos/bootstate.json` | `kdos-bootctl`, at every change of boot state | `kdos-notice` and the System Versions page |
+| `/run/kdos/bootstate.json`, `/run/kdos/bootstate.txt` | `kdos-bootctl`, at every change of boot state | `kdos-notice` and the System Versions page (the JSON); a user's `kdos-bootctl status` (the text) |
 | `/run/kdos/bless/*` | The end of `rcS` (`userspace`); `kdos-sysupdated` for a session's `Bless` or a greeter that stayed up (`graphical`), and after `mark-good` (`confirmed`) | `kdos-sysupdated` |
-| `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | About this System, and anything else that identifies the system |
-| `/etc/kdos-release` | The build, and `kdos image unpack` with each slot it writes | `kdos update`, `kdos version` and the About page's slot row |
+| `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | About this System, `kdos version` (`VERSION_ID` and `BUILD_ID`), `ports/publish --release` (`VERSION_ID` against the tag), and anything else that identifies the system |
+| `/etc/kdos-release` | The build, and `kdos image unpack` with each slot it writes | `kdos update`, `kdos-bootctl` (copied to the ESP as each slot's `release`, which names the slot's release in the boot menu), the installer's first boot menu and the About page's slot row |
 | `<file>.kdos-new` under `/etc`, `.<file>.kdos-new` inside a directory whose name ends in `.d` | `kdos image carry`, when a file you edited has a newer default in the new slot | You: the new default, beside your copy, to compare. Inside a `.d` directory it is a dotfile, because a program that reads every file of the directory (SDDM's `sddm.conf.d`, `cron.d`) would read the new default after your copy and take it |
 | `/boot/initramfs.modules` | The initramfs build step, one module per line | The `linux` package's post-install, which carries a new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
 | `/boot/initramfs-kdos.cpio.gz` | The `linux` post-install: the image's initramfs with the new kernel's modules appended | `kdos-bootctl deploy` and `kinstall`, which use it in place of `/boot/initramfs.cpio.gz` |
@@ -563,6 +572,7 @@ set only between KDOS's own programs are left out.
 | `KDOS_TREE_KEYS=<dir>` | The keyring `kdos update fetch` verifies a tree against, instead of `/etc/kdos/keys/tree` |
 | `KDOS_UPDATE_STATE=<file>` | Where `kdos update` records and reads its outcome, instead of `/var/lib/kdos/update.state`; set, `fetch` and `apply` leave the update document alone |
 | `KPKG_FETCH=1` | Every `kpkg` build downloads the sources it lacks before verifying them; `kdos update apply --source` sets it |
+| `KPKG_CLEAN_FAILED` | Set to anything but `0`, a `kpkg` build that fails removes its work directory `$WORK_DIR/<name>`, says so, and writes `<name> <free bytes> <total bytes>` of the work directory's filesystem, measured before the removal, to `$WORK_DIR/.kpkg-failed`. `kdos update` sets it for every build it starts; unset, a failed build keeps its directory |
 | `KDOS_SOURCES=<dir>` | The KDOS tree `kdos rebuild` builds from; otherwise the first of `/mnt/iso/sources`, `/kdos` and the current directory that is one |
 | `KDOS_WHISPER_MODEL=<file>` | One speech model, named exactly. When set, no directory is searched after it |
 | `KDOS_NO_ANIM=1` | Skip the login banner's animation |
@@ -632,7 +642,7 @@ Read by `make build` and the build scripts on the build machine; see
 | `KDOS_GIT_DATE` | The commit's date, `YYYY-MM-DD`, set by `make build`; stamped into `/etc/os-release` as `KDOS_BUILD_DATE` |
 | `KDOS_GIT_TIME` | The commit's time in Unix seconds, set by `make build`; stamped into `/ports/TREE`, which `kdos update fetch` orders two trees by |
 | `KDOS_GIT_TAG` | The release tag on `HEAD`, set by `make build` from `git tag --points-at HEAD --list 'v[0-9]*'` (a tag named `v<digit>…`; the archive tags `sources-N`, `src-*` and `packs-*` never name a release), or by hand to pick one of several; empty when `HEAD` has none, or with `KDOS_GIT_TAG=none`. `make build` refuses several release tags with none picked, a name that is not a release tag on `HEAD` and one outside `ports/publish --release`'s names; see [The release tag](../05-developer/build-system.md#the-release-tag) |
-| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh`, never by hand: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty. `70_image/105_ports.sh` writes it into `/ports/TREE` as `version <tag>` |
+| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh`, never by hand: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty. `70_image/045_identity.sh` stops the build when it is not `/etc/os-release`'s `VERSION_ID` with a `v` before it, and `70_image/105_ports.sh` writes it into `/ports/TREE` as `version <tag>` |
 | `KDOS_SNAPSHOT_PATHS`, `KDOS_SNAPSHOT_EXCLUDE`, `KDOS_PHASE_TITLE`, `KDOS_PHASE_DESC` | A phase's metadata block in its `script/phases/<phase>/phase.env`. The orchestrator parses these keys from the file's own text without sourcing it, so it follows none of the file's `source` lines and each `phase.env` sets them itself; the phase's steps source the whole file as shell. Each `KDOS_SNAPSHOT_EXCLUDE` pattern is matched with `fnmatch(3)`, no flags, against an entry's whole path relative to `build/`, so `*` crosses `/`, and an excluded directory is left out whole |
 | `KDOS_RES=WxH` | The virtual screen size for `make run` and its variants; default `1920x1080` |
 

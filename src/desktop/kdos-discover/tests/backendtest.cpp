@@ -23,6 +23,8 @@
 #include <Transaction/Transaction.h>
 #include <Transaction/TransactionModel.h>
 
+#include <AppStreamQt/component.h>
+
 #include <KTar>
 
 #include <algorithm>
@@ -33,6 +35,7 @@
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QNetworkInformation>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -47,6 +50,11 @@ using namespace Qt::StringLiterals;
 using namespace Kdos;
 
 using Filters = AbstractResourcesBackend::Filters;
+
+namespace Kdos
+{
+bool debianMatches(const AppStream::Component &c, const QStringList &words);
+}
 
 class BackendTest : public QObject
 {
@@ -66,12 +74,17 @@ private Q_SLOTS:
     void installMetered();
     void installFails();
     void removeRuns();
+    void offlineRefuses();
+    void debianNameMatch();
     void refusals();
     void urlBeforeFirstRefresh();
     void boxesCategoryNeedsABox();
     void failedCheckIsSaid();
     void portRemovedOnRequest();
+    void cancelClosesHelperStdin_data();
+    void cancelClosesHelperStdin();
     void shippedExclusions();
+    void searchRanking();
 
 private:
     QList<KdosResource *> find(const Filters &filter);
@@ -192,11 +205,11 @@ catalogue)
 	case "$2" in
 	--groups) cat "$KDOS_TEST_FIXTURES/groups.tsv" ;;
 	--chain) cat "$KDOS_TEST_FIXTURES/chain.tsv" ;;
-	*) cat "$KDOS_TEST_FIXTURES/catalogue.tsv" ;;
+	*) cat "${KDOS_TEST_CATALOGUE:-$KDOS_TEST_FIXTURES/catalogue.tsv}" ;;
 	esac ;;
 install)
 	echo "==> building kdos/base"
-	if [ -n "$KDOS_TEST_FAIL" ]; then echo "  $2: the image did not build" >&2; exit 1; fi
+	if [ -n "$KDOS_TEST_FAIL" ]; then echo "  $2: the image did not build." >&2; echo "1 of 1 did not install" >&2; exit 1; fi
 	echo "    kdos/rt-kde is already here"
 	echo "==> building kdos/$2"
 	echo "==> $2 installed" ;;
@@ -221,13 +234,26 @@ verify)
 	echo "app.notes: signed by ab12cd34ef567890" ;;
 esac)");
     // The helper's first line comes only once polkit has the password.
-    writeTool(u"pkexec"_s, R"(echo "==> $2 $3")");
+    // With KDOS_TEST_BLOCK it is a build the user's signal cannot reach, as
+    // root's cannot: it ignores SIGTERM, leaves only when its standard input
+    // closes, and marks the file named when it has. Its first line is
+    // KDOS_TEST_FIRST's, the package named after it.
+    writeTool(u"pkexec"_s, R"sh(if [ -n "$KDOS_TEST_BLOCK" ]; then
+	trap '' TERM
+	echo "==> $KDOS_TEST_FIRST $3 (built here)"
+	cat > /dev/null
+	sleep 1
+	: > "$KDOS_TEST_BLOCK"
+	echo "==> $3: cancelled"
+	exit 130
+fi
+echo "==> $2 $3")sh");
     writeTool(u"kdos"_s, R"sh(if [ -n "$KDOS_TEST_REFUSE" ]; then echo "kdos update: 1 package needs a source build (kdos-addons)" >&2; exit 1; fi
 case "$*" in
 "update install --dry-run --prebuilt "*) cat "$KDOS_TEST_FIXTURES/install-prebuilt.txt" ;;
 "update install --dry-run --source "*) cat "$KDOS_TEST_FIXTURES/install-source.txt" ;;
 "update removable --json") [ -n "$KDOS_TEST_REMOVABLE" ] && printf '%s\n' "$KDOS_TEST_REMOVABLE" ;;
-"update remove --dry-run "*) [ -z "$KDOS_TEST_REMOVE_SILENT" ] && echo "remove $4" ;;
+"update remove --dry-run "*) [ -z "$KDOS_TEST_REMOVE_SILENT" ] && echo "remove $4" && for p in $KDOS_TEST_REMOVE_ALSO; do echo "remove $p"; done ;;
 esac)sh");
 
     QFile::copy(m_fixtures + u"/apps-pending"_s, m_dir.filePath(u"apps-pending"_s));
@@ -508,6 +534,9 @@ void BackendTest::hostPorts()
     QVERIFY(kateBuilt);
     QCOMPARE(kateBuilt->state(), AbstractResource::Installed);
     QCOMPARE(kateBuilt->installedVersion(), kate->installedVersion());
+    // Installed, the twin is the same package: same Remove, same notice.
+    QCOMPARE(kateBuilt->isRemovable(), kate->isRemovable());
+    QCOMPARE(kateBuilt->kdosNotice(), kate->kdosNotice());
 
     // Which twin Discover opens follows `install =`: a list names that one
     // alone, and the application's link answers both, that one first, which
@@ -1089,6 +1118,9 @@ void BackendTest::installFails()
     qunsetenv("KDOS_TEST_FAIL");
     QCOMPARE(txSaid.count(), 1);
     QVERIFY(txSaid.first().first().toString().contains(u"the image did not build"_s));
+    // Two tools' last lines are two clauses, never one run-on sentence.
+    QVERIFY(txSaid.first().first().toString().contains(u"the image did not build; 1 of 1 did not install"_s));
+    QVERIFY(!txSaid.first().first().toString().endsWith(u'.'));
     // Discover shows that message only behind a generic error, so the page's
     // notice says it, through the refresh the failure caused, until the next
     // install of the resource starts.
@@ -1113,10 +1145,31 @@ void BackendTest::removeRuns()
     QVERIFY(toolLog().contains(u"kdos-box remove work --purge"_s));
     QVERIFY(m_packdRequests.contains(u"remove box.work"_s));
 
+    // A box on its own is asked about before anything runs: Cancel leaves
+    // it, and the transaction waits at the question until proceed().
     clearLog();
-    QCOMPARE(runToEnd(m_backend->removeApplication(scratch)), Transaction::DoneStatus);
+    m_answer = false;
+    QCOMPARE(runToEnd(m_backend->removeApplication(scratch)), Transaction::CancelledStatus);
+    m_answer = true;
+    QCOMPARE(m_asked.value(0), u"Remove the box scratch?"_s);
+    QVERIFY(m_asked.value(1).contains(u"every package installed in it"_s));
+    QVERIFY(toolLog().filter(u"kdos-box s"_s).isEmpty());
+    QVERIFY(toolLog().filter(u"kdos-box remove"_s).isEmpty());
+
+    clearLog();
+    Transaction *boxRemoval = m_backend->removeApplication(scratch);
+    QVERIFY(boxRemoval);
+    TransactionModel::global()->addTransaction(boxRemoval);
+    QSignalSpy question(boxRemoval, &Transaction::proceedRequest);
+    QTRY_COMPARE_WITH_TIMEOUT(question.count(), 1, 10000);
+    QTest::qWait(300);
+    QVERIFY(toolLog().filter(u"kdos-box s"_s).isEmpty());
+    QCOMPARE(boxRemoval->status(), Transaction::SetupStatus);
+    QPointer<Transaction> boxGuard(boxRemoval);
+    boxRemoval->proceed();
+    QTRY_VERIFY_WITH_TIMEOUT(toolLog().contains(u"kdos-box remove scratch --purge"_s), 10000);
     QCOMPARE(toolLog().filter(u"kdos-box s"_s), QStringList{u"kdos-box stop scratch"_s});
-    QVERIFY(toolLog().contains(u"kdos-box remove scratch --purge"_s));
+    QTRY_VERIFY_WITH_TIMEOUT(!boxGuard, 20000);
 
     clearLog();
     QCOMPARE(runToEnd(m_backend->removeApplication(gimp)), Transaction::DoneStatus);
@@ -1145,8 +1198,10 @@ void BackendTest::removeRuns()
     QVERIFY(log.indexOf(u"kdos update install --dry-run --prebuilt kdos-addons"_s)
             < log.indexOf(u"pkexec /usr/libexec/kdos-discover/kdos-ports-helper install kdos-addons"_s));
     QCOMPARE(m_asked.size(), 2);
-    QVERIFY(m_asked[0].contains(addons->name()));
-    QVERIFY(m_asked[1].startsWith(u"Installs 3 packages; downloads "_s));
+    // The narrow dialog elides its title, so the name opens the body, which
+    // wraps.
+    QCOMPARE(m_asked[0], u"Install?"_s);
+    QVERIFY(m_asked[1].startsWith(u"<b>%1</b>: Installs 3 packages; downloads "_s.arg(addons->name().toHtmlEscaped())));
     // The size's number and unit never part at a line break. Discover's
     // dialog reads the text as Text.StyledText, which collapses a raw U+00A0
     // with the other white space and keeps only the entity's.
@@ -1181,6 +1236,84 @@ void BackendTest::removeRuns()
     QVERIFY(toolLog().filter(u"pkexec"_s).isEmpty());
     QCOMPARE(txSaid.count(), 1);
     QVERIFY(txSaid.first().first().toString().contains(u"needs a source build"_s));
+}
+
+void BackendTest::cancelClosesHelperStdin_data()
+{
+    QTest::addColumn<QString>("first");
+    QTest::newRow("installing") << u"installing"_s;
+    QTest::newRow("restoring") << u"restoring the development files of"_s;
+}
+
+void BackendTest::cancelClosesHelperStdin()
+{
+    // Cancel during a build here closes the helper's standard input and
+    // leaves the button disabled; the transaction is Cancelled only once the
+    // helper has gone, and it said Installing from the helper's first
+    // `==> installing` or `==> restoring the development files of` line.
+    QFETCH(QString, first);
+    KdosResource *addonsBuilt = resource(u"port-source"_s, u"kdos-addons"_s);
+    QVERIFY(addonsBuilt);
+    const QString gone = m_dir.filePath(u"helper-gone"_s);
+    QFile::remove(gone);
+    qputenv("KDOS_TEST_BLOCK", gone.toUtf8());
+    qputenv("KDOS_TEST_FIRST", first.toUtf8());
+    Transaction *t = m_backend->installApplication(addonsBuilt);
+    QVERIFY(t);
+    QList<Transaction::Status> statuses;
+    bool heldAfterCancel = false;
+    bool goneWhenCancelled = false;
+    connect(t, &Transaction::statusChanged, this, [&statuses, &heldAfterCancel, &goneWhenCancelled, gone, t](Transaction::Status s) {
+        statuses << s;
+        if (s == Transaction::CommittingStatus && statuses.count(s) == 1) {
+            QTimer::singleShot(100, t, [&heldAfterCancel, t] {
+                t->cancel();
+                heldAfterCancel = t->status() == Transaction::CommittingStatus && !t->isCancellable();
+            });
+        }
+        if (s == Transaction::CancelledStatus)
+            goneWhenCancelled = QFile::exists(gone);
+    });
+    QCOMPARE(runToEnd(t), Transaction::CancelledStatus);
+    qunsetenv("KDOS_TEST_BLOCK");
+    qunsetenv("KDOS_TEST_FIRST");
+    QVERIFY(heldAfterCancel);
+    QVERIFY(goneWhenCancelled);
+    QVERIFY(statuses.contains(Transaction::DownloadingStatus));
+    QVERIFY(statuses.indexOf(Transaction::CommittingStatus) > statuses.indexOf(Transaction::DownloadingStatus));
+}
+
+void BackendTest::offlineRefuses()
+{
+    // Discover's offline sheet shows for every reachability but Online, and
+    // a step that downloads is refused for each of them before it starts:
+    // NetworkManager with networking off is asleep, which Qt calls Unknown.
+    using R = QNetworkInformation::Reachability;
+    for (const R r : {R::Disconnected, R::Local, R::Site, R::Unknown})
+        QVERIFY2(KdosTransaction::offline(r), qPrintable(QString::number(int(r))));
+    QVERIFY(!KdosTransaction::offline(R::Online));
+}
+
+void BackendTest::debianNameMatch()
+{
+    // A Debian component a search offers is one every word names, by its
+    // name, id, package or keywords; a hit in its description alone is not.
+    AppStream::Component c;
+    c.setKind(AppStream::Component::KindDesktopApp);
+    c.setId(u"galculator.desktop"_s);
+    c.setName(u"Galculator"_s);
+    c.setSummary(u"Scientific calculator"_s);
+    c.setDescription(u"<p>Computes 12*7 and keeps the previous version of a result.</p>"_s);
+    c.setPackageNames({u"galculator"_s});
+    c.setKeywords({u"Arithmetic"_s});
+    QVERIFY(debianMatches(c, {u"galculator"_s}));
+    QVERIFY(debianMatches(c, {u"arithmetic"_s}));
+    QVERIFY(debianMatches(c, {u"galc"_s}));
+    QVERIFY(!debianMatches(c, {u"12*7"_s}));
+    QVERIFY(!debianMatches(c, {u"previous"_s, u"version"_s}));
+    QVERIFY(!debianMatches(c, {u"scientific"_s}));
+    QVERIFY(!debianMatches(c, {u"galculator"_s, u"tile"_s}));
+    QVERIFY(!debianMatches(c, {}));
 }
 
 void BackendTest::refusals()
@@ -1274,8 +1407,9 @@ void BackendTest::failedCheckIsSaid()
     auto message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
     QVERIFY(message);
     QCOMPARE(message->type, InlineMessage::Warning);
-    QVERIFY(message->message.contains(u"file:///mnt/bh"_s));
-    QVERIFY(message->message.contains(u"could not be downloaded"_s));
+    // The tool's words name the channel the sentence names, so they are
+    // left out, and the URL is said once.
+    QCOMPARE(message->message, u"Updates could not be fetched from file:///mnt/bh."_s);
 
     // An offline Refresh and a binhost index that does not verify are said
     // too, each in its own words.
@@ -1340,6 +1474,28 @@ void BackendTest::failedCheckIsSaid()
     QVERIFY(message->message.contains(u"the binary host"_s));
     QVERIFY(!message->message.contains(u"github"_s));
 
+    // A server that did not answer on a machine with a route out is no
+    // missing network: its words follow in brackets, and name no URL.
+    write(R"({"problem":"binhost-fetch-failed","detail":"the server at 10.0.2.2:18999 did not answer","binhost_base":"https://10.0.2.2:18999","binhost":null,"channel":"https://github.com/kunaldawn/kdos/releases/latest/download","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QCOMPARE(message->message,
+             u"The release's package index could not be fetched from https://10.0.2.2:18999. (the server at 10.0.2.2:18999 did not answer)"_s);
+    // No network: the sentence says it, and the tool's words, which name the
+    // same URL again, are left out.
+    write(R"({"problem":"binhost-no-network","detail":"the network could not be reached for the release index at https://10.0.2.2:18999","binhost_base":"https://10.0.2.2:18999","binhost":null,"channel":"https://github.com/kunaldawn/kdos/releases/latest/download","offer":null})");
+    said.clear();
+    m_backend->checkForUpdates();
+    QTRY_VERIFY_WITH_TIMEOUT(said.size() >= 1, 30000);
+    message = said.last().at(0).value<QSharedPointer<InlineMessage>>();
+    QVERIFY(message);
+    QVERIFY(message->message.contains(u"no network"_s));
+    QCOMPARE(message->message.count(u"https://10.0.2.2:18999"_s), 1);
+    QVERIFY(!message->message.contains(u'('));
+
     write(R"({"problem":null,"detail":"","channel":"file:///mnt/bh","offer":null})");
     said.clear();
     m_backend->checkForUpdates();
@@ -1375,8 +1531,18 @@ void BackendTest::portRemovedOnRequest()
     QVERIFY(log.indexOf(u"kdos update remove --dry-run kate"_s) < log.indexOf(u"pkexec /usr/libexec/kdos-discover/kdos-ports-helper remove kate"_s));
     // The dry run's `remove kate` is the question asked before the password.
     QCOMPARE(m_asked.size(), 2);
-    QCOMPARE(m_asked[0], u"Remove %1?"_s.arg(kate->name()));
+    QCOMPARE(m_asked[0], u"Remove?"_s);
+    QVERIFY(m_asked[1].startsWith(u"<b>%1</b> is removed"_s.arg(kate->name().toHtmlEscaped())));
     QVERIFY(m_asked[1].contains(u"removed from this computer"_s));
+    QVERIFY(!m_asked[1].contains(u"it brought"_s));
+    // The packages the dry run takes with the port are counted in the
+    // question.
+    clearLog();
+    qputenv("KDOS_TEST_REMOVE_ALSO", "libkate-extra kate-data");
+    QCOMPARE(runToEnd(m_backend->removeApplication(kate)), Transaction::DoneStatus);
+    qunsetenv("KDOS_TEST_REMOVE_ALSO");
+    QCOMPARE(m_asked.size(), 2);
+    QVERIFY(m_asked[1].contains(u"with 2 packages it brought that nothing else needs"_s));
     // Cancel removes nothing; a dry run that names no removal, or refuses,
     // fails before pkexec, the refusal with its reason.
     clearLog();
@@ -1430,6 +1596,184 @@ void BackendTest::shippedExclusions()
     }
     for (const QString &name : {u"galternatives"_s, u"synaptic"_s, u"gdebi"_s, u"configure-debian"_s, u"kmag"_s})
         QVERIFY2(names.contains(name), qPrintable(name));
+}
+
+// Applications a search for a word people type should rank by what they mean,
+// not by where the word stands in a name.
+static const QByteArray RankingCatalogue = R"(<?xml version="1.0" encoding="utf-8"?>
+<components version="1.0" origin="kdos-binhost">
+  <component type="desktop-application">
+    <id>org.example.atspibrowser.desktop</id>
+    <pkgname>rank-atspi</pkgname>
+    <name>AT-SPI Browser</name>
+    <summary>Inspect the accessibility tree</summary>
+    <categories><category>Development</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.falkon.desktop</id>
+    <pkgname>rank-falkon</pkgname>
+    <name>Falkon</name>
+    <summary>Web Browser</summary>
+    <categories><category>Network</category><category>WebBrowser</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.chromium.desktop</id>
+    <pkgname>rank-chromium</pkgname>
+    <name>Chromium</name>
+    <summary>Browse the World Wide Web</summary>
+    <categories><category>Network</category><category>WebBrowser</category></categories>
+    <keywords><keyword>web</keyword><keyword>browser</keyword><keyword>chrome</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.mkchromecast.desktop</id>
+    <pkgname>rank-mkchromecast</pkgname>
+    <name>mkchromecast</name>
+    <summary>Cast audio and video to a Chromecast</summary>
+    <categories><category>AudioVideo</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.thunderbird.desktop</id>
+    <pkgname>rank-thunderbird</pkgname>
+    <name>Thunderbird</name>
+    <summary>Thunderbird is a free and open source email, newsfeed, chat, and calendaring client</summary>
+    <categories><category>Office</category><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.kmail.desktop</id>
+    <pkgname>rank-kmail</pkgname>
+    <name>KMail</name>
+    <summary>A feature-rich email application</summary>
+    <categories><category>Office</category><category>Network</category><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.accountwizard.desktop</id>
+    <pkgname>rank-accountwizard</pkgname>
+    <name>Account Wizard</name>
+    <summary>Configure accounts</summary>
+    <categories><category>Office</category><category>Network</category><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.ktnef.desktop</id>
+    <pkgname>rank-ktnef</pkgname>
+    <name>KTnef</name>
+    <summary>A viewer/extractor for TNEF files</summary>
+    <categories><category>Office</category><category>Network</category><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.w3m.desktop</id>
+    <pkgname>rank-w3m</pkgname>
+    <name>Web Browser (w3m)</name>
+    <summary>Browse the web on the grid</summary>
+    <categories><category>Network</category><category>WebBrowser</category><category>ConsoleOnly</category></categories>
+    <keywords><keyword>web</keyword><keyword>browser</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.aerc.desktop</id>
+    <pkgname>rank-aerc</pkgname>
+    <name>aerc</name>
+    <summary>Read and send mail in a terminal</summary>
+    <categories><category>Network</category><category>Email</category><category>ConsoleOnly</category></categories>
+    <keywords><keyword>mail</keyword><keyword>email</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+</components>
+)";
+
+void BackendTest::searchRanking()
+{
+    const QString root = m_dir.filePath(u"binhost-ranking"_s);
+    QVERIFY(QDir().mkpath(root + u"/swcatalog/xml"_s));
+    QFile cat(root + u"/swcatalog/xml/kdos-binhost.xml"_s);
+    QVERIFY(cat.open(QIODevice::WriteOnly));
+    cat.write(RankingCatalogue);
+    cat.close();
+    // Catalogue rows name one main category, as the shipped catalogue does.
+    const QString listing = root + u"/catalogue.tsv"_s;
+    QFile rows(listing);
+    QVERIFY(rows.open(QIODevice::WriteOnly));
+    rows.write("app.rank-surf\tSurf\tNetwork\t275196928\trt-gtk\tavailable\tSimple web browser by the suckless community\n"
+               "app.rank-claws\tClaws Mail\tNetwork\t11681792\trt-gtk\tavailable\tA lightweight GTK email client\n");
+    rows.close();
+    const QByteArray binhost = qgetenv("KDOS_BINHOST_CACHE");
+    qputenv("KDOS_BINHOST_CACHE", root.toUtf8());
+    qputenv("KDOS_TEST_CATALOGUE", listing.toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    const auto restore = qScopeGuard([&] {
+        delete std::exchange(m_backend, shared);
+        qputenv("KDOS_BINHOST_CACHE", binhost);
+        qunsetenv("KDOS_TEST_CATALOGUE");
+    });
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"port"_s, u"rank-chromium"_s), 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"catalogue"_s, u"app.rank-surf"_s), 30000);
+
+    // The binary host's ports a search lists, in Discover's order: by score,
+    // then by name.
+    auto ranked = [this](const QString &term) {
+        Filters f;
+        f.search = term;
+        QVector<StreamResult> got;
+        QPointer<ResultsStream> stream = m_backend->search(f);
+        connect(stream, &ResultsStream::resourcesFound, this, [&got](const QVector<StreamResult> &found) {
+            got << found;
+        });
+        for (int i = 0; stream && i < 500; i++)
+            QTest::qWait(20);
+        std::stable_sort(got.begin(), got.end(), [](const StreamResult &a, const StreamResult &b) {
+            if (a.sortScore != b.sortScore)
+                return a.sortScore > b.sortScore;
+            return a.resource->nameSortKey() < b.resource->nameSortKey();
+        });
+        QStringList ids;
+        for (const StreamResult &r : std::as_const(got)) {
+            auto *res = qobject_cast<KdosResource *>(r.resource);
+            if (res && res->entry().lane == Lane::Port && res->entry().id.startsWith("rank-"_L1))
+                ids << res->entry().id.mid(5);
+            else if (res && res->entry().lane == Lane::Catalogue && res->entry().id.startsWith("app.rank-"_L1))
+                ids << res->entry().id.mid(9);
+        }
+        return ids;
+    };
+    auto before = [](const QStringList &ids, const QString &a, const QString &b) {
+        return ids.contains(a) && ids.contains(b) && ids.indexOf(a) < ids.indexOf(b);
+    };
+
+    // A web browser, by its category or its keyword, before an application
+    // that has the word in its name.
+    QStringList ids = ranked(u"browser"_s);
+    QVERIFY2(before(ids, u"chromium"_s, u"atspi"_s), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"falkon"_s, u"atspi"_s), qPrintable(ids.join(u' ')));
+    // A catalogue row's one main category is Network: its summary says it
+    // is a web browser.
+    QVERIFY2(before(ids, u"surf"_s, u"atspi"_s), qPrintable(ids.join(u' ')));
+    // A browser that runs in a terminal after the ones that draw a window,
+    // though it carries the keyword.
+    QVERIFY2(before(ids, u"falkon"_s, u"w3m"_s), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"surf"_s, u"w3m"_s), qPrintable(ids.join(u' ')));
+    // A keyword that is the whole term before a name it is part of.
+    ids = ranked(u"chrome"_s);
+    QVERIFY2(!ids.isEmpty() && ids.first() == "chromium"_L1, qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"chromium"_s, u"mkchromecast"_s), qPrintable(ids.join(u' ')));
+    // A mail application that draws a window before a terminal one whose
+    // keyword the term is; the terminal client is still found, and first
+    // for its own name.
+    // The mail clients lead the applications that only file themselves under
+    // Email: a summary that says mail, and a name that holds it, rank higher.
+    ids = ranked(u"mail"_s);
+    QVERIFY2(ids.mid(0, 3) == (QStringList{u"claws"_s, u"kmail"_s, u"thunderbird"_s}), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"thunderbird"_s, u"accountwizard"_s), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"ktnef"_s, u"aerc"_s), qPrintable(ids.join(u' ')));
+    ids = ranked(u"aerc"_s);
+    QVERIFY2(!ids.isEmpty() && ids.first() == "aerc"_L1, qPrintable(ids.join(u' ')));
 }
 
 int main(int argc, char **argv)

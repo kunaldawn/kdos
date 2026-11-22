@@ -13,16 +13,20 @@
  * plates are opaque and sit on the screen edge, so the edge stays a target
  * the pointer cannot overshoot.
  *
- * A panel does not wrap or scroll. Short of room it narrows the pinned apps
- * and the meters' lines; what still does not fit is cut off at the screen's
- * edge, the clock and Show Desktop first. Everything but the pinned apps is
- * about 69 grid units wide at its preferred width; the pinned apps bring the
- * full desk to about 78. A screen narrower in logical pixels than that
- * drops parts of it when it is laid out: under 78 grid units the Start
- * label and the network meter, under 64 the pager as well. Under 50 grid
- * units even that does not fit, and the Dock or Tiling desk is the one to
- * use. The widths are the screen's when the desk is laid out; `kdos desk
- * kdos` lays it out again after a change of scale.
+ * A panel does not wrap or scroll. Short of room it takes the meters'
+ * lines first, then narrows the pinned apps; what still does not fit is
+ * cut off at the screen's edge, the clock and Show Desktop first.
+ * Everything but the pinned apps is about 69 grid units wide at its
+ * preferred width; the pinned apps bring the full desk to about 78. A
+ * screen narrower in logical pixels than that drops parts of it when it is
+ * laid out: under 78 grid units the Start label and the network meter,
+ * under 64 the pager as well. Under 50 grid units even that does not fit,
+ * and the Dock or Tiling desk is the one to use. These widths are the
+ * screen's when the desk is laid out, and `kdos desk kdos` lays it out
+ * again after a change of scale. The network meter of a full desk also
+ * steps out at run time: its face, org.kdos.meters, is given stepOutBelow
+ * 78 and draws it one pixel wide while the screen is narrower than that,
+ * so a scale raised after the layout leaves its room to the task manager.
  *
  * THE PINNED APPS ARE THE FIRST WORDS OF ~/.config/kdos/favorites. That file
  * is also the list of boxes warmed at login, and a launcher here that it does
@@ -122,11 +126,15 @@ for (var s = 0; s < screenCount; s++) {
 
     panel.addWidget("org.kde.plasma.marginsseparator");
 
-    // The meter strip's face is ksystemstats-kdos's org.kdos.meters.
+    // The meter strip's face is ksystemstats-kdos's org.kdos.meters. A face
+    // setting lives in the applet's [<face id>][General] group, where the
+    // face controller's config loader reads its main.xml keys.
     addMeter(panel, "org.kde.plasma.systemmonitor.cpu", "org.kdos.meters", "cpu/all/usage");
     addMeter(panel, "org.kde.plasma.systemmonitor.memory", "org.kdos.meters", "memory/physical/used");
     if (full) {
-        addMeter(panel, "org.kde.plasma.systemmonitor.net", "org.kdos.meters", "network/all/download");
+        var net = addMeter(panel, "org.kde.plasma.systemmonitor.net", "org.kdos.meters", "network/all/download");
+        net.currentConfigGroup = ["org.kdos.meters", "General"];
+        net.writeConfig("stepOutBelow", 78);
     }
 
     // KDE's own rule for the input-method panel, by the locale's language.

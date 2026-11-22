@@ -689,7 +689,8 @@ on the image and on the binhost; that step runs again only when its mark is gone
 writes one manual page for every `kdos-*` command in [the command index](../06-reference/command-index.md),
 and for the commands of ours named without the prefix (`kpkg`, `kpkgadd`, `kpkgdel`, `kpkgbuild`,
 `kpkgdepends`, `ksvc`, `service`, `kinstall`, `xdg-terminal-exec`, listed in `mkbook.py`), whose
-DESCRIPTION is the book section that command's row links to. Its NAME line, which `whatis` and
+DESCRIPTION is the book section that command's row links to, with the section's "this chapter"
+read as "this page". Its NAME line, which `whatis` and
 `apropos` print, is that row's description cell as plain ASCII text: lowdown renders every manual
 page with smart typography off (`--out-no-smarty`), the markdown specials in the cell are escaped,
 and typographic dashes, quotes and ellipses become their ASCII forms, so `--json` and
@@ -880,7 +881,8 @@ with no key takes no tree.
 
 ```sh
 kpkg keygen build/keys/kdos-release          # once; build/keys survives both cleans
-$EDITOR ports/RELEASE && git add ports/RELEASE && git commit -m "RELEASE: <tag>"   # this version's notes, at most 16 KiB
+$EDITOR ports/RELEASE fs/etc/os-release     # this version's notes, at most 16 KiB; VERSION and VERSION_ID = <tag> without its v
+git add ports/RELEASE fs/etc/os-release && git commit -m "RELEASE: <tag>"
 git tag <tag> && git push origin <tag>        # exactly one release tag (v<digit>…) on the commit
 git switch --detach <tag>                     # build from the tag, not the working tree
 git status --porcelain                        # must print nothing: untracked files count
@@ -894,7 +896,7 @@ make release TAG=<tag>                          # a DRAFT release with every ass
 make release-publish TAG=<tag>                  # make it public and Latest
 ```
 
-Five conditions make the build a release:
+Six conditions make the build a release:
 
 1. `ports/RELEASE` holds the notes of the version being built, in Markdown with no top-level
    title, at most 16 KiB, committed in the tagged commit. `105_ports.sh` copies it to
@@ -908,6 +910,14 @@ Five conditions make the build a release:
    (see [The release tag](build-system.md#the-release-tag)).
 4. The `70_image` log says `/ports/TREE names release <tag>`.
 5. `ports/publish --release` is given the same tag; it refuses an ISO that does not name it.
+6. `fs/etc/os-release` says `VERSION` and `VERSION_ID` are the tag without its `v` (`0.2.1` for
+   `v0.2.1`), committed in the tagged commit. About this System, `kdos version`, the boot menus,
+   What's New and `/etc/kdos-release` all name the release from that file. `045_identity.sh`
+   stops a release build with `FATAL: release <tag> but /etc/os-release says VERSION_ID=<v> —
+   bump fs/etc/os-release, or run 10_bootstrap:000_file_system.sh again if it is bumped`, and `ports/publish --release` refuses an ISO whose `/etc/os-release` says another
+   `VERSION_ID`. The build root takes the file from `fs/` in `10_bootstrap`'s
+   `000_file_system.sh`, so a tree built before the bump needs that step run again
+   (`--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh`).
 
 The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`. A
 tag that is also a branch name on `origin` is refused: GitHub creates its draft untagged, so a rerun
@@ -941,10 +951,13 @@ above. Under `KDOS_IMAGE=full` that root is `build/fs`.
    `kdos-<tag>.iso.part01`, `.part02`, … under `build/release/<tag>/`, since GitHub refuses an
    asset of 2 GiB. The parts are deleted when the run ends and cut again on the next.
 4. Checks the ISO and the tag against each other before anything is hashed or sent. It reads the
-   ISO's `/ports/TREE` and `/ports/RELEASE` from `system.sfs` in place, with `xorriso` and
+   ISO's `/ports/TREE`, `/ports/RELEASE` and `/etc/os-release` from `system.sfs` in place, with `xorriso` and
    `unsquashfs`, and needs those two and `xxd`. It refuses an ISO whose `TREE` names another
    commit, names no release or names another one, since a machine installed from it would never
-   find this release's prebuilt packages; an ISO with no `/ports/RELEASE`; and a tag with no
+   find this release's prebuilt packages; an ISO with no `/ports/RELEASE`; an ISO whose
+   `/etc/os-release` says a `VERSION_ID` other than the tag without its `v`
+   (`<iso>'s /etc/os-release says VERSION_ID=<v>, not <tag without v> for <tag>: bump
+   fs/etc/os-release in the release commit`); and a tag with no
    `ports/RELEASE`, or one over 16 KiB. It also works out the disk two slots need for the notes
    (step 9). Each refusal is a `FAILED` line, and the real run then stops with `ports/publish:
    <iso> is not a release image of <tag>; build the ISO from a clean checkout of the tag, then run
@@ -983,13 +996,14 @@ above. Under `KDOS_IMAGE=full` that root is `build/fs`.
    About this release, the tag's `ports/RELEASE` with each of its headings one level down; the live
    ISO `kdos-<tag>.iso`, which starts logged in as `kdos` (password `kdos`, also root's), and the
    joining of its parts when there are several; what a machine needs: x86-64, UEFI or BIOS, 4 GB
-   of memory and Secure Boot off, a sentence left out when `ports/RELEASE` has a `What it needs`
-   section of its own, whose place the medium and disk lines then take under Download; the disk two slots
+   of memory and Secure Boot off; the medium the ISO fits; the disk two slots
    need, worked out from the ISO's `system.sfs` and the tag's `src/system/kinstall-core` (the
-   limits and `KI_DISK_MARGIN` of `kinstall-core.h`, and `KI_VOLUME_META_MB` and the default
-   `cfg.swap_mb` of `conf.c`), for the current base about 24.5 GiB with the default 4 GiB swap,
-   20.5 GiB with none and 5.5 GiB for one root, and left out, with a `FAILED` line, when a figure
-   cannot be read; links to the tag's Getting started and Installation guides; the check; and the
+   limits, `KI_DISK_MARGIN` and `KI_ROOT_FREE_MB` of `kinstall-core.h`, and `KI_VOLUME_META_MB`
+   and the default `cfg.swap_mb` of `conf.c`), for the current base about 24.5 GiB with the
+   default 4 GiB swap, 20.5 GiB with none and 7.5 GiB for one root, and left out, with a `FAILED` line, when a figure
+   cannot be read. When `ports/RELEASE` has a `What it needs` section of its own, that section is
+   the release's requirements and names the live account: the machine sentence, the disk sentence
+   and the password clause are left out, and only the medium line stays, under Download; links to the tag's Getting started and Installation guides; the check; and the
    signature check with OpenSSL 3, below.
 10. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
    `kdos-update.idx` and its `.sig`, `SHA256SUMS`, `SHA256SUMS.sig` and `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
@@ -1013,7 +1027,9 @@ because that root holds files only root can read. For a `KDOS_IMAGE=base` build 
 image stage: `--upper build/image-upper` has the script mount that layer read-only over `--root
 build/fs` in a mount namespace of its own run, so the image holds the base and nothing else.
 Without `--upper` the root is `build/fs` itself, which is right for a `KDOS_IMAGE=full` build and
-makes an image of every package for a base one.
+makes an image of every package for a base one. A layer of the run's own goes on top with `/mnt`,
+`/media` and an empty `/boot/efi`, so the manifest names the ESP mount point that a v0.2 machine's
+apply, which makes no fstab mount points, would otherwise delete.
 
 ```sh
 script/release-image.sh --root build/fs --upper build/image-upper --out build/release/<tag>/image \

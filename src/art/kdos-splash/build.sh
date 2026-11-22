@@ -16,3 +16,7 @@ install -Dm755 kdos-splash "$PKG/usr/bin/kdos-splash"
 
 gzip -dc /usr/share/consolefonts/ter-v16n.psf.gz > splash.psf
 install -Dm644 splash.psf "$PKG/usr/share/kdos/splash.psf"
+
+install -d "$PKG/usr/share/licenses/$name/terminus-font"
+cp -R /usr/share/licenses/terminus-font/. "$PKG/usr/share/licenses/$name/terminus-font/"
+chmod -R u=rwX,go=rX "$PKG/usr/share/licenses/$name"

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Release Notes
+Comment=What is new in this version of KDOS
+Exec=plasma-welcome --pages 90-WhatsNew.qml
+TryExec=plasma-welcome
+Icon=distributor-logo-kdos
+Categories=System;
+Keywords=release notes;what's new;version;changelog;

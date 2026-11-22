@@ -131,6 +131,10 @@ The *Containers* menu entry runs [`podman-tui`]{.idx} through it:
 
 `podman ps -a` also lists the boxes. Leave those to `kdos-box`, which keeps their profiles and
 composed roots in step: removing one with `podman rm` leaves its profile and its pack mounts behind.
+A box's image is kept when the box is removed, so it can be made again offline;
+`kdos-box remove <name> --purge` runs `podman rmi` on it when no other box names it, and
+`podman rmi <image>` releases one left behind. The `kdos/…` images belong to `kdos app`, whose
+`remove` releases them.
 
 ### A distrobox
 

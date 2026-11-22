@@ -11,6 +11,8 @@
 
 patch -p1 -i "$PORT_SRC/early-distro-pages.patch"
 patch -p1 -i "$PORT_SRC/shortcut-texts.patch"
+patch -p1 -i "$PORT_SRC/description-focus.patch"
+patch -p1 -i "$PORT_SRC/kdos-powerful-cards.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

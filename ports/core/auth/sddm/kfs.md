@@ -79,6 +79,19 @@ second Plasma session for the same account. The patch matches both services. The
 `Relogin=true`, and so does an installed machine whose Login Screen page has "log in again after
 logging off" ticked. The patch is to be offered upstream.
 
+`sddm-restart-greeter.patch` keeps the login screen through a trip to a text console. The
+greeter's KWin can drop every output across a VT switch, and the greeter quits with its last
+window: `Ctrl+Alt+F2` and back to `tty1` then ends it with a clean exit, which upstream's daemon
+does not restart, so the screen stays black and takes no password until `sddm` itself is restarted.
+The patch makes the greeter quit only when the daemon stops it, its socket closes or a login
+succeeds (`setQuitOnLastWindowClosed(false)` and `setQuitLockEnabled(false)`, outside test
+mode), so it draws again when the outputs come back. And a greeter that ends while nobody logs in
+on its display and nobody asked it to stop (a crash, a KWin that died) is started again, but only
+once the display's VT is in front again: `sddm-helper` activates the greeter's VT as it starts it,
+and would pull the user off the console they switched to. Three exits in a row, each within a
+minute of its start, end the retries and leave the display to `tty2`. The patch is to be offered
+upstream.
+
 ## Notes
 
 Alpine's 0.21.0-r10 carries three patches, and none is applied here.

@@ -16,7 +16,9 @@
  * the probe activates LVM and the plan sees the volume groups that only
  * root can read. Nothing
  * here partitions, formats or writes a file of the target, so the two front
- * ends cannot disagree about what an install is.
+ * ends cannot disagree about what an install is. The one thing it changes on
+ * the live medium itself is the session's keyboard layout, the Keyboard
+ * page's choice, through KConfig and D-Bus.
  *
  * NO SHELL. Every program runs from an argument list through QProcess; a
  * disk path, a user name or a password is an argument or a line on a pipe,
@@ -25,6 +27,7 @@
 
 #pragma once
 
+#include <QDBusMessage>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -110,6 +113,73 @@ public:
      * decides on root's figures and a root probe measures again. */
     static QStringList dumpArgs(const QString &what, bool withAnswers, const QVariantMap &rootPayload, bool asRoot = false);
     Q_INVOKABLE QString planForDisk(const QString &plan, int partitions) const { return diskPlan(plan, partitions); }
+    /* `probe` with root's copy figures (`copy_system_bytes`,
+     * `copy_store_bytes` in `rootPayload`) where it has none, as a probe
+     * handed root's payload has. */
+    static QVariantMap withCopyBytes(const QVariantMap &probe, const QVariantMap &rootPayload);
+    /* The install size a probe names: what the copy writes, the totals its
+     * progress line counts to. The system's size alone, or with a box
+     * store "<whole> — <system> system and <store> boxed-app store"; "—"
+     * before a probe has measured. */
+    static QString installSize(const QVariantMap &probe);
+    Q_INVOKABLE QString installSizeText(const QVariantMap &probe) const { return installSize(probe); }
+    /* A plan's swap and the kind it makes: none, a file in the root, a
+     * partition, or a volume in the group (the A/B layout's swap, whatever
+     * kind was asked for). */
+    static QString swapText(const QVariantMap &plan);
+    Q_INVOKABLE QString planSwapText(const QVariantMap &plan) const { return swapText(plan); }
+    /* A probed disk (one of the probe's `disks`) as every page names it:
+     * model, size and node, so the one disk among others of its size is
+     * the one named. */
+    static QString diskTitle(const QVariantMap &disk);
+    /* A partition as a disk's contents list it: its type (EFI system, BIOS
+     * boot, an LVM physical volume by its group, or the filesystem), its
+     * label in quotes when it has one, and its size. */
+    static QString partitionText(const QVariantMap &part);
+    /* What erasing a disk destroys: its partitions, joined by ", ", or the
+     * signature on the whole device of a disk with none; a disk the probe
+     * marks `iso_image` (a written stick, its partitions all the image's
+     * hybrid windows) by the image's label and size; "" for an empty
+     * disk. A disk repartitioned over a stick keeps the iso9660 `fstype`
+     * of its stale descriptor but not `iso_image`, and lists its
+     * partitions. */
+    static QString diskContents(const QVariantMap &disk);
+    /* The line under a disk's row: "Holds: " and its contents, the
+     * physical volume of a whole-disk PV, or "Empty". */
+    static QString diskHolds(const QVariantMap &disk);
+    /* diskTitle() and diskContents() of the probed disk at `path`: the
+     * path itself and "" for a disk the last probe did not list. */
+    Q_INVOKABLE QString diskName(const QString &path) const;
+    Q_INVOKABLE QString diskErased(const QString &path) const;
+    /* The partition at `path` on a disk of `probe` by its node and, in
+     * brackets, partitionText(): "/dev/vda1 (EFI system 512 MiB)"; the
+     * path alone for one the probe does not list, a logical volume among
+     * them. partitionName() asks the last probe. */
+    static QString partitionNamed(const QVariantMap &probe, const QString &path);
+    Q_INVOKABLE QString partitionName(const QString &path) const { return partitionNamed(m_probe, path); }
+    /* The ESP the reuse plan chooses unasked among `candidates` (the Disk
+     * page's ESP list): the only one, when it is typed as an EFI system
+     * partition; "" otherwise, as a lone FAT partition may hold data or
+     * another system's boot files and formatting it is on by default. */
+    static QString soleEsp(const QVariantList &candidates);
+    Q_INVOKABLE QString onlyEsp(const QVariantList &candidates) const { return soleEsp(candidates); }
+    Q_INVOKABLE QString holds(const QVariantMap &disk) const { return diskHolds(disk); }
+    /* The layout `layout` (and `variant`, which may be empty) as the
+     * session under `configHome` types: kxkbrc's [Layout] lists it first,
+     * with `us` after it when it is not `us`. False, with nothing written,
+     * for a name outside XKB's character set (letters, digits, `_+:.-`) or
+     * a file that cannot be written. */
+    static bool writeLiveLayout(const QString &configHome, const QString &layout, const QString &variant);
+    /* KConfig's ConfigChanged notice for kxkbrc's [Layout] keys, the one
+     * signal on which KWin loads the layout list again. */
+    static QDBusMessage layoutNotice();
+    /* On the live medium only: writeLiveLayout() on this session's
+     * configuration, then layoutNotice() on the session bus, so KWin's
+     * keymap, and fcitx5 decoding with it, is the chosen layout and every
+     * field after the Keyboard page holds what the chosen keys type on the
+     * installed machine. Anywhere else it does nothing: the layout is the
+     * install's answer, not this session's setting. */
+    Q_INVOKABLE void applyLiveLayout(const QString &layout, const QString &variant);
 
     /* What the machine is: its disks and partitions, its firmware, whether
      * this is the live medium. The first on the live medium runs as root,
@@ -193,13 +263,15 @@ private:
     void runProbe(bool asRoot);
     void orphanRootDump(QProcess *p);
     void setError(const QString &e);
+    QVariantMap probedDisk(const QString &path) const;
 
     Answers *m_answers;
     EventStream *m_events;
     KeyboardModel *m_keyboards;
 
     QVariantMap m_probe, m_look, m_apps, m_plan;
-    /* payload_kb and appbox_kb from the last probe that ran as root. */
+    /* payload_kb, appbox_kb and the copy figures from the last probe that
+     * ran as root. */
     QVariantMap m_rootPayload;
     QString m_error;
     QHash<QString, QProcess *> m_dumps;

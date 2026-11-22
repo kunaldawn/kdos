@@ -669,7 +669,7 @@ inside it:
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE` | The short commit, `1` when the tree had unrecorded changes, and the commit's date as `YYYY-MM-DD` | `70_image/045_identity.sh`, which stamps them into `/etc/os-release` |
 | `KDOS_GIT_TIME` | The commit's time in Unix seconds | `70_image/105_ports.sh`, which stamps it with the commit into `/ports/TREE` |
 | `KDOS_GIT_TAG` | The release tag (`v<digit>…`) on `HEAD`, or empty when it has none or `KDOS_GIT_TAG=none` was given | `70_image/105_ports.sh`, which stops the step with `FATAL: tag '<t>' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40` for a tag outside `ports/publish --release`'s alphabet, and otherwise only reports why `/ports/TREE` names no release |
-| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh` itself: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty | `70_image/105_ports.sh`, which writes it into `/ports/TREE` as `version <tag>` |
+| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh` itself: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty | `70_image/045_identity.sh`, which stops the build when it is not `/etc/os-release`'s `VERSION_ID` with a `v` before it, and `70_image/105_ports.sh`, which writes it into `/ports/TREE` as `version <tag>` |
 
 A variable the `Makefile` passes into the build container but `script/chroot/exec.sh` does not
 name reaches the container phases and none of the chroot ones. `70_image` is a chroot phase, so an
@@ -953,8 +953,10 @@ alone (the rules above and gcc's `facet_dev` line), 4.51 GB of files, measured t
 Both base sets are larger than the one the v0.2 image was built from: its `system.sfs` is
 1,517 MiB at zstd:19 and its ISO 1,573 MiB, 327 MiB under the 1,900 MiB gate, so the kernel,
 the initramfs, the boot loader and the `/ports` append beside `system.sfs` take about 56 MiB.
-The base `ports/base` names, with Orca, BRLTTY, plocate, ISO Image Writer and Adwaita added,
-measures 1,662,947,328 bytes (1,585 MiB) of ISO, 315 MiB under the gate. A build that lands over
+The base with Orca, BRLTTY, plocate, ISO Image Writer and Adwaita added measures
+1,775,599,616 bytes (1,693 MiB) of ISO, 207 MiB under the gate; noto-fonts-extra (Indic and
+Southeast Asian scripts, 13 MB unpacked), which `ports/base` also names, has not been measured in
+an ISO. A build that lands over
 the gate either cuts the base further, which the ledger guides, or sets `KDOS_ISO_COMP=xz-bcj`,
 about 6% smaller.
 

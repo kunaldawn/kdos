@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pwd.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -755,8 +756,20 @@ static void launch_prepare(const Profile *p, const char *launcher,
  *
  * `wait` runs the application as a child and returns its exit status, which
  * is what a throwaway box needs in order to remove itself; otherwise this
- * process BECOMES `podman exec`, and its pid is the launch's for the ledger.
+ * process BECOMES `podman exec`, unless it titles its terminal (below) and
+ * waits for podman to put the title back, and either way its pid is the
+ * launch's for the ledger.
  */
+/* The titled launch's podman, which a SIGTERM or SIGHUP to the launch is
+ * handed to (run_pack). */
+static volatile pid_t g_titled_child;
+
+static void titled_forward(int sig)
+{
+	if (g_titled_child > 0)
+		kill(g_titled_child, sig);
+}
+
 static int run_pack(int argc, char **argv, int wait)
 {
 	Profile p;
@@ -764,7 +777,7 @@ static int run_pack(int argc, char **argv, int wait)
 	Launch l;
 	char id[128];
 	const char *launcher;
-	int i;
+	int i, titled = 0;
 
 	profile_load(&p, g_box);
 	launcher = resolve_launcher(argc, argv);
@@ -808,13 +821,55 @@ static int run_pack(int argc, char **argv, int wait)
 	tracef("entering");
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "exec");
-	kb_argv_add(&a, "--interactive");
-	/* A terminal program asked for from a terminal gets one. Without
+	/*
+	 * A TERMINAL PROGRAM ASKED FOR FROM A TERMINAL GETS ONE. Without
 	 * `--tty` the app's stdin is a pipe: R refuses to start, and every
 	 * REPL in the catalogue loses line editing and its prompt. A launcher
-	 * has no tty and takes the plain exec. */
-	if (isatty(0))
+	 * has no tty and takes `--interactive` alone, which hands the app
+	 * whatever stdin is, a pipe included.
+	 *
+	 * A BACKGROUND JOB (`zathura f.pdf &`) TAKES NEITHER. podman puts a
+	 * terminal it is given into raw mode, and a process outside the
+	 * terminal's foreground group that changes its modes is stopped by
+	 * SIGTTOU before the window opens; one that reads it, by SIGTTIN. So
+	 * a terminal stdin is passed on only from the foreground group
+	 * (tty_foreground), and a background launch gets /dev/null on its
+	 * stdin and the plain exec, which podman never sets a mode on.
+	 *
+	 * AND THE FOREGROUND TERMINAL IS TITLED `<app> — KDOS box`: OSC 30
+	 * for Konsole's tab, whose default "%d : %n" format keeps the
+	 * foreground program's name, `podman`, over any OSC 0, and OSC 0 for
+	 * every other terminal. OSC 30 replaces the tab's title FORMAT, which
+	 * stays after the program exits, so a titled launch runs podman as its
+	 * child rather than becoming it, and puts Konsole's default "%d : %n"
+	 * back when it ends. A terminal cannot be asked for its format, so a
+	 * tab whose profile set another one reads Konsole's default after a
+	 * boxed terminal program. SIGINT and SIGQUIT, which the terminal sends
+	 * the whole foreground group, are the app's and are ignored while it
+	 * waits; SIGTERM and SIGHUP are passed on to podman, so the wait still
+	 * ends and the format is still put back.
+	 */
+	if (tty_foreground(STDIN_FILENO)) {
+		kb_argv_add(&a, "--interactive");
 		kb_argv_add(&a, "--tty");
+		if (!wait && tty_foreground(STDOUT_FILENO)) {
+			const char *app = kb_basename(argv[0]);
+
+			printf("\033]30;%s — KDOS box\007"
+			       "\033]0;%s — KDOS box\007", app, app);
+			fflush(stdout);
+			titled = 1;
+		}
+	} else if (isatty(STDIN_FILENO)) {
+		int null = open("/dev/null", O_RDONLY | O_CLOEXEC);
+
+		if (null >= 0) {
+			dup2(null, STDIN_FILENO);
+			close(null);
+		}
+	} else {
+		kb_argv_add(&a, "--interactive");
+	}
 	kb_argv_addf(&a, "--user=%u:%u", (unsigned)getuid(), (unsigned)getgid());
 	kb_argv_addf(&a, "--workdir=%s", kb_home_dir());
 	kb_argv_add(&a, g_box);
@@ -828,8 +883,10 @@ static int run_pack(int argc, char **argv, int wait)
 
 	if (!wait) {
 		box_ledger_add(g_box, launcher, argc, argv);
-		execvp(a.v[0], (char *const *)a.v);
-		kb_die("podman: not found");
+		if (!titled) {
+			execvp(a.v[0], (char *const *)a.v);
+			kb_die("podman: not found");
+		}
 	}
 	{
 		pid_t pid = fork();
@@ -842,8 +899,19 @@ static int run_pack(int argc, char **argv, int wait)
 			execvp(a.v[0], (char *const *)a.v);
 			_exit(127);
 		}
+		if (titled) {
+			g_titled_child = pid;
+			signal(SIGINT, SIG_IGN);
+			signal(SIGQUIT, SIG_IGN);
+			signal(SIGTERM, titled_forward);
+			signal(SIGHUP, titled_forward);
+		}
 		while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
 			;
+		if (titled) {
+			printf("\033]30;%%d : %%n\007");
+			fflush(stdout);
+		}
 		return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
 	}
 }
@@ -884,7 +952,7 @@ static int run_common(int argc, char **argv, int wait)
 
 	resolve_box(argc, argv);
 	if (!box_name_ok(g_box))
-		kb_die("'%s' is not a box name — [A-Za-z0-9._-]", g_box);
+		kb_die("'%s' is not a box name — " BOX_NAME_RULE, g_box);
 	profile_load(&p, g_box);
 	box_state(g_box, state, sizeof(state));
 
@@ -1398,13 +1466,13 @@ int main(int argc, char **argv)
 		    !strcmp(argv[i + 2], "--user")) {
 			if (i + 3 < argc)
 				kb_die("usage: kdos-appbox genlaunchers --packs --user");
-			store_launchers();
+			store_launchers(1);
 			return 0;
 		}
 		/* `--packs-dir <root> <fs-root>`: the BUILD's form — one extracted
 		 * pack per subdirectory of <root>, named after the pack. */
 		if (i + 3 < argc && !strcmp(argv[i + 1], "--packs-dir"))
-			return cmd_genlaunchers(argv[i + 2], argv[i + 3], 0, 1);
+			return cmd_genlaunchers(argv[i + 2], argv[i + 3], 0, 1, 1);
 		if (i + 1 < argc && !strcmp(argv[i + 1], "--packs")) {
 			/* AN EXTRA ARGUMENT IS REFUSED RATHER THAN IGNORED.
 			 * The two forms differ by one argument, so
@@ -1418,13 +1486,13 @@ int main(int argc, char **argv)
 				kb_die("usage: kdos-appbox genlaunchers --packs "
 				       "<fs-root>   (no desktop-dir: the packs "
 				       "are the source)");
-			return cmd_genlaunchers(NULL, argv[i + 2], 0, 0);
+			return cmd_genlaunchers(NULL, argv[i + 2], 0, 0, 1);
 		}
 		if (i + 2 >= argc)
 			kb_die("usage: kdos-appbox genlaunchers "
 			       "<desktop-dir> <fs-root>\n"
 			       "       kdos-appbox genlaunchers --packs <fs-root>");
-		return cmd_genlaunchers(argv[i + 1], argv[i + 2], 0, 0);
+		return cmd_genlaunchers(argv[i + 1], argv[i + 2], 0, 0, 1);
 	}
 #undef CMD
 

@@ -1,4 +1,4 @@
-Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent background and ground, monospace clock, credit, KWin layout switcher, screen-reader chord, fade through black
+Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent background and ground, monospace clock, credit, KWin layout switcher, screen-reader chord, fade through black, no Hibernate button where none is possible
 
 --- a/Main.qml
 +++ b/Main.qml
@@ -48,7 +48,15 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
              id: clock
              property Item shadow: clockShadow
              visible: y > 0 && config.showClock === "true"
-@@ -459,10 +474,25 @@
+@@ -214,6 +229,7 @@
+                         text: i18ndc("plasma-desktop-sddm-theme", "Suspend to disk", "Hibernate")
+                         onClicked: sddm.hibernate()
+                         enabled: sddm.canHibernate
++                        visible: sddm.canHibernate
+                     },
+                     ActionButton {
+                         icon.name: "system-suspend"
+@@ -459,10 +475,25 @@
                  }
              }
  
@@ -76,7 +84,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
                      // Otherwise the password field loses focus and virtual keyboard
                      // keystrokes get eaten
                      userListComponent.mainPasswordBox.forceActiveFocus();
-@@ -500,6 +530,15 @@
+@@ -500,6 +531,15 @@
                  Layout.fillWidth: true
              }
  
@@ -92,7 +100,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
              Battery {}
          }
      }
-@@ -519,6 +558,7 @@
+@@ -519,6 +559,7 @@
              //takes to complete the init
              mainStack.opacity = 0
              footer.opacity = 0
@@ -100,7 +108,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
          }
      }
  
-@@ -533,4 +573,42 @@
+@@ -533,4 +574,42 @@
          interval: 3000
          onTriggered: notificationMessage = ""
      }

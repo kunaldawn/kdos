@@ -263,33 +263,25 @@ int rules_write(const char *path, const char *const *boxes,
 }
 
 /*
- * THE BOXES A USER HAS: every box a generated launcher names, and every box
- * with a profile, by name and accent. Rewritten whenever either changes —
- * genlaunchers, and `kdos-box profile` setting an accent.
+ * THE BOXES A USER HAS: every box a launcher names (X-KDOS-Box) and every box
+ * with a profile, by name and accent. A profile `kdos-box remove` kept
+ * (profile_is_kept) whose box has no container is no box with windows, and a
+ * rule for it would outlive the box in kwinrulesrc, so it is left out; its
+ * next create writes the rule again. Rewritten whenever either changes —
+ * genlaunchers, a create or remove, and `kdos-box profile` setting an accent.
  */
-int box_rules_refresh(void)
+int box_rules_collect(const char *apps, const char *pdir, char (*boxes)[64],
+		      char (*accents)[16], int max)
 {
-	char apps[MAX_LINE], pdir[MAX_LINE];
-	const char *xdg = getenv("XDG_DATA_HOME");
 	char **names;
-	char (*boxes)[64] = kb_calloc(256, 64);
-	char (*accents)[16] = kb_calloc(256, 16);
-	const char *bp[256], *ap[256];
-	int n = 0, rc;
-
-	if (xdg && *xdg)
-		snprintf(apps, sizeof(apps), "%s/applications", xdg);
-	else
-		snprintf(apps, sizeof(apps), "%s/.local/share/applications",
-			 kb_home_dir());
-	snprintf(pdir, sizeof(pdir), "%s/.config/kdos/boxes", kb_home_dir());
+	int n = 0;
 
 #define ADD_BOX(b)                                                            \
 	do {                                                                  \
 		int seen_ = 0;                                                \
 		for (int k_ = 0; k_ < n && !seen_; k_++)                     \
 			seen_ = !strcmp(boxes[k_], (b));                      \
-		if (!seen_ && n < 256 && box_name_ok(b))                      \
+		if (!seen_ && n < max && box_name_ok(b))                      \
 			kb_strlcpy(boxes[n++], (b), 64);                       \
 	} while (0)
 
@@ -322,6 +314,9 @@ int box_rules_refresh(void)
 			continue;
 		memcpy(nm, *f, l - 5);
 		nm[l - 5] = '\0';
+		if (!box_name_ok(nm) ||
+		    (profile_is_kept(nm) && !box_exists(nm)))
+			continue;
 		ADD_BOX(nm);
 	}
 	kb_strv_free(names);
@@ -332,6 +327,27 @@ int box_rules_refresh(void)
 
 		profile_load(&p, boxes[i]);
 		kb_strlcpy(accents[i], p.accent, 16);
+	}
+	return n;
+}
+
+int box_rules_refresh(void)
+{
+	char apps[MAX_LINE], pdir[MAX_LINE];
+	const char *xdg = getenv("XDG_DATA_HOME");
+	char (*boxes)[64] = kb_calloc(256, 64);
+	char (*accents)[16] = kb_calloc(256, 16);
+	const char *bp[256], *ap[256];
+	int n, rc;
+
+	if (xdg && *xdg)
+		snprintf(apps, sizeof(apps), "%s/applications", xdg);
+	else
+		snprintf(apps, sizeof(apps), "%s/.local/share/applications",
+			 kb_home_dir());
+	snprintf(pdir, sizeof(pdir), "%s/.config/kdos/boxes", kb_home_dir());
+	n = box_rules_collect(apps, pdir, boxes, accents, 256);
+	for (int i = 0; i < n; i++) {
 		bp[i] = boxes[i];
 		ap[i] = accents[i];
 	}

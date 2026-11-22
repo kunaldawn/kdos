@@ -17,3 +17,5 @@ make targets CFLAGS="$CFLAGS $mk $LDFLAGS" CXXFLAGS="$CXXFLAGS $mk $LDFLAGS"
 make INSTALL_PLUGINS_DIR="$PKG/usr/lib/ladspa/" \
 	INSTALL_INCLUDE_DIR="$PKG/usr/include/" \
 	INSTALL_BINARY_DIR="$PKG/usr/bin/" install
+
+install -Dm644 "$SRC/doc/COPYING" "$PKG/usr/share/licenses/$name/COPYING"

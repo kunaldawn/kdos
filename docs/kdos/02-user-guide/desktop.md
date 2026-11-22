@@ -71,16 +71,19 @@ panels were changed since they were last laid out, the tour asks before replacin
 also sets auto-tiling: the Tiling desk turns it on and the other two turn it off, so a desk is the
 whole arrangement and never half of one.
 
-The KDOS desk's panel needs about 1,400 logical pixels, the screen's width divided by its scale
-(78 grid units at the default font), to hold everything. On a narrower screen it is laid out with less: under 1,400 logical pixels (1920
-wide at 150%, 1366×768 at 100%) Start shows the mark alone and the network meter is left out, and
-under 1,150 (1920 wide at 175% or 200%, 1024 wide at 100%) the pager is left out too. Under 900
-logical pixels the panel does not fit at all; use the Dock or Tiling desk there. The width is the
-one the screen has when the desk is laid out. When the screen later becomes narrower, through its
-scale, its resolution or a larger font, the panel first shrinks the pinned applications' icons and
-the meters' charts, the figures staying whole; what still does not fit is cut off at the right
-edge, the clock and Show Desktop first, so a 1920-pixel screen switched to 200% loses both. Run
-`kdos desk kdos` to lay the panel out again for the new width.
+The KDOS desk's panel needs about 1,400 logical pixels, the screen's width divided by its scale (78
+grid units at the default font), to hold everything. On a narrower screen it is laid out with less:
+under 1,400 logical pixels (1920 wide at 150%, 1366×768 at 100%) Start shows the mark alone and the
+network meter is left out, and under 1,150 (1920 wide at 175% or 200%, 1024 wide at 100%) the pager
+is left out too. Under 900 logical pixels the panel does not fit at all; use the Dock or Tiling desk
+there. The width is the one the screen has when the desk is laid out, with one exception: a network
+meter the desk was laid out with follows the screen as it is, so switch a 1920-pixel screen to 150%
+and the meter goes, leaving its room to the pinned and running applications, and back to 125% and it
+returns. When the screen later becomes narrower, through its scale, its resolution or a larger font,
+the panel first takes the meters' charts, then shrinks the pinned applications' icons, the figures
+staying whole; what still does not fit is cut off at the right edge, the clock and Show Desktop
+first, so a 1920-pixel screen switched to 200% loses both. Run `kdos desk kdos` to lay the panel out
+again for the new width.
 
 The pinned applications on the KDOS and Dock desks are Konsole, Dolphin, Firefox ESR and Kate.
 They are Plasma's own launchers: right-click a task for **Pin to Task Manager**, or drag a pinned
@@ -189,7 +192,8 @@ medium keeps no index, so there KRunner offers recent documents and typed paths,
 search, which walks the folder, finds a file by name.
 
 **The offline library** finds headings in the KDOS book (and in *KDOS from Scratch* once it is
-installed with `sudo kdos update install kdos-kfs`), `kdos*` manual pages, entries of every Zeal docset, a typed coordinate as a map location, title suggestions from
+installed with `sudo kdos update install kdos-kfs`), each row subtitled with the chapter it is
+in, `kdos*` manual pages, entries of every Zeal docset, a typed coordinate as a map location, title suggestions from
 the ZIM archives `kiwix-serve` serves, and Kolibri's resources. Its results rank below everything
 else; `lib <words>` opens KRunner again on those words with the library alone.
 
@@ -242,7 +246,11 @@ saying so here. The live list is the key card:
 |---|---|
 | `Meta+F1`, `Meta+/` | The key card: every global shortcut the session holds, grouped into Windows, Desktops, Launch, KDOS, Accessibility and System, with a search box; `Tab` and the arrow keys move from the search box through the rows. It asks KWin's shortcut daemon for the current keys each time it opens, so a chord you rebound is shown as it now is. The same keys, or `Esc`, close it |
 
-`kdos help --keys` prints the same list in a terminal. The tables below are the shortcuts KDOS adds
+`kdos help --keys` prints the same list in a terminal. The Welcome tour's **Powerful When Needed**
+page has a Keyboard Shortcuts card that reads its Meta chords from the same daemon, so it lists the
+screen reader as `Meta+Alt+S`, the task manager's entries as `Meta+1 to Meta+9`, and leaves out an
+action with no Meta chord; the page has no Activities
+card. The tables below are the shortcuts KDOS adds
 or moves, and the KDE ones a newcomer reaches for first.
 
 ### Applications and the command palette
@@ -487,7 +495,9 @@ off either, and the machine does not go to sleep when idle or when a lid closes.
 a presentation or a long job; the battery item lists it as what is blocking sleep.
 
 Log out, restart, shut down and sleep are on Kickoff's power buttons, `Ctrl+Alt+Del` and the
-lock screen. From a prompt, `kdos-power suspend`, `poweroff` and `reboot` ask the session manager,
+lock screen, and sleep, restart and shut down on the login screen. KDOS does not hibernate, so no
+Hibernate button is shown (see
+[Known gaps](../06-reference/known-gaps.md#no-hibernation)). From a prompt, `kdos-power suspend`, `poweroff` and `reboot` ask the session manager,
 elogind, as the buttons do.
 
 ## Displays

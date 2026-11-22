@@ -36,6 +36,10 @@
 #     the CA bundle update-ca-certificates writes, the launcher table
 #     genlaunchers writes, the source offer 105_ports.sh writes and the
 #     initramfs and its module list 090_initramfs.sh writes into boot/;
+#   - KDOS's MIT text, usr/share/licenses/kdos/LICENSE, and the links
+#     105_ports.sh makes to it, usr/share/licenses/<name>/LICENSE pointing
+#     at ../kdos/LICENSE (KDOS_LICENCE_LINK below); a link there that
+#     points anywhere else is reported;
 #   - Python bytecode under __pycache__: a package owns what kpkg compiled
 #     into it, and what the build's own tools wrote is unowned until
 #     020_cleanup.sh deletes it, so a run on a tree before that step would
@@ -90,6 +94,7 @@ GENERATED = (
     'usr/share/texmf-local/ls-R',
     'usr/share/kdos/alien-apps',
     'usr/share/kdos/SOURCES',
+    'usr/share/licenses/kdos/LICENSE',
     'usr/share/swcatalog/xml/kdos-ports.xml',
     'usr/share/swcatalog/xml/kdos-debian-exclude.xml',
     'var/lib/kdos/fs-manifest',
@@ -111,6 +116,8 @@ BOOTSTRAP = (
     'etc/shadow-',
     'etc/gshadow-',
 )
+# What 105_ports.sh links a package of our own's licence to.
+KDOS_LICENCE_LINK = '../kdos/LICENSE'
 # The skeleton links 10_bootstrap/000_file_system.sh makes.
 SKELETON = ('var/run', 'var/lock')
 # update-mime-database writes the whole database beside packages/.
@@ -139,6 +146,18 @@ def generated(rel):
     if rel.startswith(MIME_DB) and not rel.startswith(MIME_SRC):
         return True
     return any(fnmatch.fnmatchcase(rel, g) for g in GENERATED)
+
+
+def kdos_licence_link(root, rel, st):
+    parts = rel.split('/')
+    if len(parts) != 5 or parts[:3] != ['usr', 'share', 'licenses']:
+        return False
+    if parts[4] != 'LICENSE' or not stat.S_ISLNK(st.st_mode):
+        return False
+    try:
+        return os.readlink(os.path.join(root, rel)) == KDOS_LICENCE_LINK
+    except OSError:
+        return False
 
 
 def group(rel):
@@ -170,6 +189,8 @@ def main():
         if stat.S_ISDIR(st.st_mode):
             continue
         if rel in owner or rel in provided or generated(rel):
+            continue
+        if kdos_licence_link(root, rel, st):
             continue
         if rel in treescan.ALIASES or rel in SKELETON or rel in BOOTSTRAP:
             continue

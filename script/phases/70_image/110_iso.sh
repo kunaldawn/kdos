@@ -35,9 +35,16 @@ else
     exit 1
 fi
 
+# THE MEDIUM'S INITRAMFS IS boot/initrd.img, A NAME VENTOY KNOWS. Ventoy
+# boots an ISO without parsing limine.conf and adds its hook, which maps the
+# ISO file on its exFAT partition to /dev/mapper/ventoy, only to an initrd at a
+# path it recognises; /boot/initrd.img is one. Under any other name the kernel
+# starts from a Ventoy stick with no device holding the medium and the scan
+# ends at the rescue shell. The copy in the root's /boot keeps the name
+# initramfs.cpio.gz, which kinstall and kdos-bootctl read, and goes into
+# system.sfs so an installed system carries it.
 if [ -f /kdos/build/initramfs.cpio.gz ]; then
-    cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/boot/initramfs.cpio.gz
-    # Also copy to /boot so it is included in system.sfs (and thus installed)
+    cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/boot/initrd.img
     cp /kdos/build/initramfs.cpio.gz /boot/initramfs.cpio.gz
     # The image's initramfs is the one for the image's kernel. One a `linux`
     # postinstall built in this tree for an earlier kernel would be preferred
@@ -337,6 +344,15 @@ fi
 # which holds the verbose boot's screen black for half a minute.
 BOOT_THEME=$(kdos-bootctl theme --print "$KDOS_ACCENT")
 
+# The first entry names the release, read from the root's os-release, so the
+# menu says which KDOS the medium starts. A root without VERSION_ID is fatal:
+# an image that cannot say its version is not one to ship.
+LIVE_VERSION=$(. /etc/os-release && printf '%s' "$VERSION_ID")
+if [ -z "$LIVE_VERSION" ]; then
+    echo "FATAL: /etc/os-release has no VERSION_ID" >&2
+    exit 1
+fi
+
 cat > $ISO_ROOT/boot/limine/limine.conf <<EOF
 timeout: 10
 default_entry: 1
@@ -346,24 +362,24 @@ $WALLPAPER
 $FONT_LINES
 
 /KDOS Live
-    comment: Start KDOS from this medium
+    comment: Start KDOS $LIVE_VERSION from this medium
     protocol: linux
     path: boot():/boot/vmlinuz
-    module_path: boot():/boot/initramfs.cpio.gz
+    module_path: boot():/boot/initrd.img
     cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0,115200n8 quiet loglevel=3
 
 /KDOS Live (clean session)
     comment: Ignore the persistence store and start fresh
     protocol: linux
     path: boot():/boot/vmlinuz
-    module_path: boot():/boot/initramfs.cpio.gz
+    module_path: boot():/boot/initrd.img
     cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0,115200n8 quiet loglevel=3 nopersist
 
 /KDOS Live (verbose)
     comment: Every kernel and boot message on the screen, no splash
     protocol: linux
     path: boot():/boot/vmlinuz
-    module_path: boot():/boot/initramfs.cpio.gz
+    module_path: boot():/boot/initrd.img
     cmdline: root=/dev/ram0 rw console=ttyS0,115200n8 console=tty0 loglevel=7
 EOF
 

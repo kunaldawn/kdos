@@ -79,6 +79,16 @@ before a search, so the score gives no order, and the layout list opens at Wolof
 xkeyboard-config's "A user-defined custom Layout", which sorts before Albanian. It is to be
 offered upstream.
 
+`desktop-label-light.patch` gives the desktop's icon labels a backing under a light colour
+scheme. Upstream draws a label on the desktop white with a black shadow whatever the scheme; on
+the near-white wallpaper of a light accent such as `paper` the fill meets the ground at about 1:1
+and only the shadow outlines it. When the Window colour set's background has an HSL lightness
+above 0.5, a rounded black rectangle at 0.6 opacity is drawn behind the label's painted text,
+`Kirigami.Units.smallSpacing` wider on each side, so the white label holds at least 4.5:1 over
+any wallpaper, a photo included (about 5.7:1 over pure white). Under a dark scheme the label is
+upstream's, shadow only. Labels in a folder popup or a folder-view widget are not on the root
+view and keep the scheme's text colour. It is to be offered upstream.
+
 ## Notes
 
 Two of the settings modules talk to system services that this package does not provide. Date & Time

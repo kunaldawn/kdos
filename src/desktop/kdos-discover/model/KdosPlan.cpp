@@ -69,29 +69,46 @@ QString installPreviewText(const InstallPreview &p)
     // `downloads` counts every prebuilt package and `bytes` only what is not
     // in the binhost cache yet, so a total of no bytes is a reinstall from
     // that cache: it is said to be downloaded already, never "0 bytes".
+    // `downloads` also counts the restores of development files, which are
+    // said apart from the prebuilt installs; the size stays the whole
+    // download, since a restore downloads its package too.
+    const int restores = qBound(0, p.restores, p.downloads);
+    const int prebuilt = p.downloads - restores;
     QString said;
     if (p.builds == 0 && p.downloads == 0) {
         said = i18n("Everything it needs is installed already.");
     } else if (p.builds == 0) {
-        said = p.bytes == 0 ? i18np("Installs %1 package, already downloaded.", "Installs %1 packages, already downloaded.", p.downloads)
-                            : i18np("Installs %1 package; downloads %2.", "Installs %1 packages; downloads %2.", p.downloads, size);
-    } else {
-        const QString builds = i18np("Builds %1 package here", "Builds %1 packages here", p.builds);
-        if (p.downloads == 0)
-            said = i18nc("@info %1 says how many packages are built", "%1; building can take hours.", builds);
-        else if (p.bytes == 0)
-            said = i18ncp("@info %2 says how many packages are built",
-                          "%2 and installs %1 prebuilt, already downloaded; building can take hours.",
-                          "%2 and installs %1 prebuilt, already downloaded; building can take hours.",
-                          p.downloads,
-                          builds);
+        QString lead;
+        if (prebuilt == 0)
+            lead = i18np("Restores the development files of %1 installed package",
+                         "Restores the development files of %1 installed packages",
+                         restores);
+        else if (restores == 0)
+            lead = i18np("Installs %1 package", "Installs %1 packages", prebuilt);
         else
-            said = i18ncp("@info %2 says how many packages are built, %3 is a size",
-                          "%2 and installs %1 prebuilt, downloading %3; building can take hours.",
-                          "%2 and installs %1 prebuilt, downloading %3; building can take hours.",
-                          p.downloads,
-                          builds,
-                          size);
+            lead = i18ncp("@info %2 says how many packages are installed",
+                          "%2 and restores the development files of %1 installed package",
+                          "%2 and restores the development files of %1 installed packages",
+                          restores,
+                          i18np("Installs %1 package", "Installs %1 packages", prebuilt));
+        said = p.bytes == 0 ? i18nc("@info %1 says what is installed", "%1, already downloaded.", lead)
+                            : i18nc("@info %1 says what is installed, %2 is a size", "%1; downloads %2.", lead, size);
+    } else {
+        QString lead = i18np("Builds %1 package here", "Builds %1 packages here", p.builds);
+        if (prebuilt > 0)
+            lead = i18ncp("@info %2 says how many packages are built", "%2 and installs %1 prebuilt", "%2 and installs %1 prebuilt", prebuilt, lead);
+        if (restores > 0)
+            lead = i18ncp("@info %2 says what is built and installed",
+                          "%2 and restores the development files of %1 installed package",
+                          "%2 and restores the development files of %1 installed packages",
+                          restores,
+                          lead);
+        if (p.downloads == 0)
+            said = i18nc("@info %1 says what is built", "%1; building can take hours.", lead);
+        else if (p.bytes == 0)
+            said = i18nc("@info %1 says what is built and installed", "%1, already downloaded; building can take hours.", lead);
+        else
+            said = i18nc("@info %1 says what is built and installed, %2 is a size", "%1, downloading %2; building can take hours.", lead, size);
     }
     said = said.toHtmlEscaped().replace(QChar::Nbsp, u"&nbsp;"_s);
     if (!p.built.isEmpty()) {
@@ -104,6 +121,29 @@ QString installPreviewText(const InstallPreview &p)
         said += u"<br/>"_s + i18nc("@info %1 is a list of package names", "Built here: %1", list);
     }
     return said;
+}
+
+// What `kdos-box remove <box> --purge` takes and leaves, in the words of its
+// own output: the container goes with the profile and every launcher
+// exported from it; a pack box's directory (its writable layer, snapshots and
+// private home) stays, and so does the home folder, which the box shares.
+static Step askRemoveBox(const QString &box, const QString &base)
+{
+    Step s;
+    s.kind = Step::Kind::Ask;
+    s.question = i18nc("@title:window", "Remove the box %1?", box);
+    const QString name = box.toHtmlEscaped();
+    if (base.startsWith("pack:"_L1))
+        s.questionText = i18n(
+            "The box %1 is deleted with its profile and every launcher exported from it. Its writable layer, snapshots and private home stay in "
+            "~/.local/share/kdos/boxes/%1, and so do the files in your home folder.",
+            name);
+    else
+        s.questionText = i18n(
+            "The box %1 is deleted with every package installed in it, its profile and every launcher exported from it. The files in your home folder "
+            "stay.",
+            name);
+    return s;
 }
 
 static Step packd(const QString &verb, const QString &id)
@@ -338,6 +378,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
     case Lane::Box:
         if (!isSafeId(e.id))
             return refuse(i18n("“%1” is not a box name.", e.id));
+        plan.steps << askRemoveBox(e.id, ctx.boxes.value(e.id).base.isEmpty() ? e.boxBase : ctx.boxes.value(e.id).base);
         plan.steps << run(u"kdos-box"_s, {u"stop"_s, e.id}) << run(u"kdos-box"_s, {u"remove"_s, e.id, u"--purge"_s});
         return plan;
 

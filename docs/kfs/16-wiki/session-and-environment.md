@@ -56,12 +56,17 @@ session when it does not, so the greeter comes back; settles the environment bef
 reads it; and refuses an `Exec=` line whose first word names no program, from
 `fs/usr/local/bin/kdos-session-wrapper`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=255-271 pin=97e9f551b9c5 -->
+<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=266-284 -->
 
-`kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below), the
+`kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below);
+`kdos_session_live_data`, on the live medium alone, puts `/usr/share/kdos/data-live` in front of
+`XDG_DATA_DIRS`, whose Welcome Center entry starts the tour with `--live-environment`, so a tour
+reopened from the launcher keeps its live pages; the
 `QT_IM_MODULE` and `GTK_IM_MODULE` variables are cleared so Qt and GTK reach the input method
 through KWin, and `TERM`, `LINES` and `COLUMNS` are cleared because the session has no
-terminal. `kdos_session_boxes` warms up the boxes behind the pinned favourites in the background.
+terminal. `kdos_session_fcitx5_profile` gives a home with no `~/.config/fcitx5/profile` one
+that names the system keyboard layout, before KWin starts fcitx5 (see
+[Input methods](input-methods.md#configfcitx5profile)). `kdos_session_boxes` warms up the boxes behind the pinned favourites in the background.
 Then `startplasma-wayland` runs. KDOS has no systemd user instance, so the session is always
 Plasma's classic one, in which `plasma_session` starts `kded6`, `ksmserver`, `plasmashell` and the
 autostart entries itself; the KDOS default that says so, from
@@ -163,8 +168,10 @@ startplasma-wayland
 **Log Out**, **Restart** and **Shut Down** are in the Application Launcher's Leave buttons and on
 `Ctrl+Alt+Del`, which opens the logout screen. At the end of every session Plasma runs the scripts
 in `plasma-workspace/shutdown/` along `XDG_CONFIG_DIRS`. The KDOS ones run in name order:
-`kdos-boxes.sh` records the running boxes for the next login, then `kdos.sh` stops every box that
-has run past its profile's `autostop`. The user's services keep running until the user's last login ends.
+`kdos-boxes.sh` records the running boxes for the next login, `kdos-speech.sh` ends the speech
+server a screen reader started, unless another login of the user (a console or a second graphical
+login) is open, then `kdos.sh` stops
+every box that has run past its profile's `autostop`. The user's services keep running until the user's last login ends.
 
 From a terminal inside the session:
 

@@ -76,7 +76,9 @@
 # 5. THE DESKTOP'S ENVIRONMENT, before the first program that reads it:
 #    XDG_CURRENT_DESKTOP=KDE, XDG_CONFIG_DIRS with /etc/xdg and then the
 #    distribution's defaults in /usr/share/kdos/xdg (and the virtual-machine
-#    and live-medium overlays in front where they apply), and no QT_IM_MODULE
+#    and live-medium overlays in front where they apply), on the live medium
+#    /usr/share/kdos/data-live in front of XDG_DATA_DIRS for its own desktop
+#    entries (kdos_session_live_data), and no QT_IM_MODULE
 #    or GTK_IM_MODULE, so each toolkit picks its own input-method route (Qt 6,
 #    GTK 3 and GTK 4 KWin's text-input, GTK under Xwayland fcitx5-gtk's
 #    module over D-Bus) and a profile's leftover cannot pick it. A
@@ -88,6 +90,15 @@
 #    Plasma they reach every program it starts, and a terminal program that
 #    Konsole runs for a launcher would draw at 80x24 in a larger window,
 #    because ncurses prefers the variables to the window's own size.
+#
+# 6. A NEW ACCOUNT'S INPUT-METHOD PROFILE NAMES THE SYSTEM LAYOUT. fcitx5,
+#    which KWin starts, writes its group's layout into ~/.config/kxkbrc when
+#    'Allow Overriding System XKB Settings' is on (wayland.conf turns it off;
+#    the Input Method page can turn it on), so a
+#    home with no ~/.config/fcitx5/profile gets one whose layout is
+#    /etc/kdos/xkb.conf's before KWin can start it
+#    (kdos_session_fcitx5_profile in session-common.sh); an existing profile
+#    is left as it is.
 #
 # Then the boxes behind the pinned favourites are warmed up, and the Exec line
 # is run, word-split as SDDM's script runs it; a first word that names no
@@ -255,7 +266,9 @@ say "session bus $_bus answers"
 XDG_CURRENT_DESKTOP=KDE
 export XDG_CURRENT_DESKTOP
 kdos_session_xdg_dirs
+kdos_session_live_data
 kdos_session_open
+kdos_session_fcitx5_profile
 unset QT_IM_MODULE QT_IM_MODULES GTK_IM_MODULE
 unset TERM LINES COLUMNS
 

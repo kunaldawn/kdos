@@ -28,8 +28,8 @@
 # replace a PNG on the ESP, because a theme change must not be a write of
 # artwork to a FAT filesystem that may be half-done when the power goes. So
 # this one file has to sit under every accent, and the only picture that does
-# is one with no hue of its own. Under bone it reads as texture; under phosphor
-# the menu's own green sits on it and it still reads as texture.
+# is one with no hue of its own. The menu plate on it is this floor under
+# every accent; the accent colours only the menu's text.
 #
 # THE MENU PLATE IS OPAQUE, SO ONLY THE MARGIN BAND IS EVER SEEN.
 # `term_background` has no transparency and `term_margin` is 100 — see
@@ -93,9 +93,10 @@ OUT = os.path.join(BOOT, "kdos-backdrop.png")
 # so it compresses to a few kilobytes at this size.
 SIZE = (1920, 1080)
 
-# The floor, and the colour `term_foreground` is read against. Near-black and
-# very slightly warm, so it is the scheme's `deep` and the screen is one field
-# rather than a picture with a terminal sitting on it.
+# The floor, and the colour `term_foreground` is read against. It is bone's
+# `deep` in libkcolor's scheme table (0a0a09), which kcol_limine_conf() writes
+# as `term_background` under every accent: the two must be the same value, or
+# the opaque plate shows as a box on this floor. Change one, change both.
 FLOOR = (10, 10, 9)
 
 # THE INK OF THE PENGUIN AND THE LETTERS, measured in the 960x280 source.

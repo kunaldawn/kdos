@@ -1,0 +1,377 @@
+Subject: Plain layout first among its variants; landing wallpaper and headline from plasmasetuprc
+
+--- a/files/plasmasetuprc
++++ b/files/plasmasetuprc
+@@ -11,6 +11,19 @@
+ # Distributions and administrators can edit it to customize various aspects of
+ # how Plasma Setup works.
+ 
++[Appearance]
++# The wallpaper package under share/wallpapers/ whose sharpest image for the
++# screen's orientation fills the landing page. The default is "Next".
++#
++# KDOS: the wallpaper of the default accent.
++Wallpaper=KDOS-Bone
++
++# The landing page's headline; it may hold rich text such as <br/> and <b>.
++# Leaving this key empty shows "Welcome to Plasma Desktop".
++#
++# KDOS: the distribution's name.
++Welcome=Welcome to<br/><b>KDOS</b>
++
+ [Accounts]
+ # Additional groups (comma-separated) that the user created by Plasma
+ # Setup should join. The default is "wheel" so the user has administrative
+--- a/modules/keyboard/contents/ui/main.qml
++++ b/modules/keyboard/contents/ui/main.qml
+@@ -107,10 +107,8 @@
+     }
+ 
+     KItemModels.KSortFilterProxyModel {
+-        id: variantProxy
++        id: variantFilter
+         sourceModel: layoutSearchProxy
+-        sortRoleName: "searchScore"
+-        sortOrder: Qt.AscendingOrder
+ 
+         filterRowCallback: function (row, parent) {
+             if (!layoutsView.currentItem) {
+@@ -132,6 +130,13 @@
+ 
+             return true;
+         }
++    }
++
++    // The plain layout first, then its variants: by match score during a search, else by description.
++    LayoutVariantSortModel {
++        id: variantProxy
++        sourceModel: variantFilter
++        searching: layoutSearchProxy.searchString.length > 0
+ 
+         // Returns the index matching the system's current keyboard layout variant, or -1 if not found.
+         function findCurrentVariantIndex(): int {
+@@ -220,7 +225,7 @@
+                         activeFocusOnTab: true
+ 
+                         onCurrentIndexChanged: {
+-                            variantProxy.invalidateFilter();
++                            variantFilter.invalidateFilter();
+                         }
+                     }
+                 }
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -27,6 +27,8 @@
+     initialstartutil.h
+     keyboardutil.cpp
+     keyboardutil.h
++    layoutvariantsortmodel.cpp
++    layoutvariantsortmodel.h
+     ${plasmasetup_DBUS_SRCS}
+     ${logging_SRCS}
+ )
+--- a/src/initialstartutil.cpp
++++ b/src/initialstartutil.cpp
+@@ -4,14 +4,60 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include "initialstartutil.h"
++#include "config-plasma-setup.h"
+ #include "displayutil.h"
+ #include "plasmasetup_debug.h"
+ 
+ #include <KAuth/Action>
+ #include <KAuth/ExecuteJob>
++#include <KConfig>
++#include <KConfigGroup>
+ #include <KLocalizedString>
+ 
+ #include <QApplication>
++#include <QDir>
++#include <QStandardPaths>
++
++using namespace Qt::StringLiterals;
++
++namespace
++{
++KConfigGroup appearanceGroup(const KConfig &config)
++{
++    return config.group(u"Appearance"_s);
++}
++
++// The image named "WxH.ext" in dir, in landscape's orientation, with the longest short side
++// (then the largest area), or an empty string. The short side decides so that an ultrawide
++// image, which a 16:9 screen crops to a strip, loses to a 16:9 one of the same height.
++QString largestImage(const QString &dir, bool landscape)
++{
++    QString best;
++    qint64 bestShort = 0;
++    qint64 bestArea = 0;
++    const auto entries = QDir(dir).entryInfoList({u"*.png"_s, u"*.jpg"_s, u"*.jpeg"_s, u"*.webp"_s}, QDir::Files);
++    for (const QFileInfo &entry : entries) {
++        const QStringList size = entry.completeBaseName().split(u'x');
++        if (size.size() != 2) {
++            continue;
++        }
++        bool widthOk = false;
++        bool heightOk = false;
++        const qint64 width = size.at(0).toLongLong(&widthOk);
++        const qint64 height = size.at(1).toLongLong(&heightOk);
++        if (!widthOk || !heightOk || width <= 0 || height <= 0 || (width >= height) != landscape) {
++            continue;
++        }
++        const qint64 shortSide = qMin(width, height);
++        if (shortSide > bestShort || (shortSide == bestShort && width * height > bestArea)) {
++            bestShort = shortSide;
++            bestArea = width * height;
++            best = entry.absoluteFilePath();
++        }
++    }
++    return best;
++}
++}
+ 
+ InitialStartUtil::InitialStartUtil(QObject *parent)
+     : QObject{parent}
+@@ -27,6 +73,39 @@
+     return m_osrelease.name();
+ }
+ 
++QString InitialStartUtil::welcomeText() const
++{
++    const KConfig config(QString::fromUtf8(PLASMA_SETUP_CONFIG_PATH), KConfig::SimpleConfig);
++    return appearanceGroup(config).readEntry("Welcome", QString());
++}
++
++QUrl InitialStartUtil::wallpaperImage(bool landscape, bool dark) const
++{
++    const KConfig config(QString::fromUtf8(PLASMA_SETUP_CONFIG_PATH), KConfig::SimpleConfig);
++    const QString name = appearanceGroup(config).readEntry("Wallpaper", u"Next"_s);
++    const QString contents = u"wallpapers/"_s + name + u"/contents/"_s;
++
++    QStringList folders;
++    if (dark) {
++        folders << contents + u"images_dark"_s;
++    }
++    folders << contents + u"images"_s;
++
++    for (const bool orientation : {landscape, !landscape}) {
++        for (const QString &folder : std::as_const(folders)) {
++            const QString dir = QStandardPaths::locate(QStandardPaths::GenericDataLocation, folder, QStandardPaths::LocateDirectory);
++            if (dir.isEmpty()) {
++                continue;
++            }
++            const QString image = largestImage(dir, orientation);
++            if (!image.isEmpty()) {
++                return QUrl::fromLocalFile(image);
++            }
++        }
++    }
++    return QUrl();
++}
++
+ void InitialStartUtil::finish()
+ {
+     doUserCreationSteps();
+--- a/src/initialstartutil.h
++++ b/src/initialstartutil.h
+@@ -6,6 +6,7 @@
+ #pragma once
+ 
+ #include <QObject>
++#include <QUrl>
+ #include <QWindow>
+ #include <qqmlintegration.h>
+ 
+@@ -20,6 +21,7 @@
+     QML_ELEMENT
+     QML_SINGLETON
+     Q_PROPERTY(QString distroName READ distroName CONSTANT);
++    Q_PROPERTY(QString welcomeText READ welcomeText CONSTANT);
+ 
+ public:
+     InitialStartUtil(QObject *parent = nullptr);
+@@ -27,6 +29,23 @@
+     QString distroName() const;
+ 
+     /**
++     * The landing page's headline from the [Appearance] Welcome key of the Plasma Setup
++     * configuration file, or an empty string when the key is unset.
++     */
++    QString welcomeText() const;
++
++    /**
++     * The landing page's background image, as a file URL.
++     *
++     * The wallpaper package is named by the [Appearance] Wallpaper key of the Plasma Setup
++     * configuration file (default "Next"). Its images are named by their size ("WxH.ext");
++     * the one in the requested orientation with the longest short side wins, looking in
++     * images_dark first when @p dark is set, then in the other orientation. Returns an empty
++     * URL when the package holds no image.
++     */
++    Q_INVOKABLE QUrl wallpaperImage(bool landscape, bool dark) const;
++
++    /**
+      * Completes the initial setup process.
+      */
+     Q_INVOKABLE void finish();
+--- a/src/layoutvariantsortmodel.cpp
++++ b/src/layoutvariantsortmodel.cpp
+@@ -0,0 +1,58 @@
++// SPDX-FileCopyrightText: 2026 KDOS
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include "layoutvariantsortmodel.h"
++
++LayoutVariantSortModel::LayoutVariantSortModel(QObject *parent)
++    : QSortFilterProxyModel(parent)
++{
++    setDynamicSortFilter(true);
++    connect(this, &QAbstractProxyModel::sourceModelChanged, this, [this]() {
++        sort(0);
++    });
++}
++
++bool LayoutVariantSortModel::searching() const
++{
++    return m_searching;
++}
++
++void LayoutVariantSortModel::setSearching(bool searching)
++{
++    if (m_searching == searching) {
++        return;
++    }
++    m_searching = searching;
++    invalidate();
++    Q_EMIT searchingChanged();
++}
++
++bool LayoutVariantSortModel::lessThan(const QModelIndex &left, const QModelIndex &right) const
++{
++    // Looked up on every call: the source's roles appear only once its own source is set.
++    const auto roles = sourceModel()->roleNames();
++    const int variantNameRole = roles.key(QByteArrayLiteral("variantName"), -1);
++    const int descriptionRole = roles.key(QByteArrayLiteral("description"), -1);
++    if (variantNameRole < 0 || descriptionRole < 0) {
++        return left.row() < right.row();
++    }
++
++    const bool leftPlain = left.data(variantNameRole).toString().isEmpty();
++    const bool rightPlain = right.data(variantNameRole).toString().isEmpty();
++    if (leftPlain != rightPlain) {
++        return leftPlain;
++    }
++
++    const int searchScoreRole = roles.key(QByteArrayLiteral("searchScore"), -1);
++    if (m_searching && searchScoreRole >= 0) {
++        const int leftScore = left.data(searchScoreRole).toInt();
++        const int rightScore = right.data(searchScoreRole).toInt();
++        if (leftScore != rightScore) {
++            return leftScore > rightScore;
++        }
++    }
++
++    return QString::localeAwareCompare(left.data(descriptionRole).toString(), right.data(descriptionRole).toString()) < 0;
++}
++
++#include "moc_layoutvariantsortmodel.cpp"
+--- a/src/layoutvariantsortmodel.h
++++ b/src/layoutvariantsortmodel.h
+@@ -0,0 +1,38 @@
++// SPDX-FileCopyrightText: 2026 KDOS
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <QSortFilterProxyModel>
++#include <qqmlintegration.h>
++
++/**
++ * Orders the variants of one keyboard layout for the variant list.
++ *
++ * The row without a variant (the plain layout, e.g. "German") comes first. While
++ * searching is set the variants follow by their "searchScore", best match first, and
++ * otherwise, or between equal scores, in the order of their descriptions. The source
++ * model must provide the "variantName", "description" and "searchScore" roles of the
++ * keyboard KCM's LayoutSearchModel.
++ */
++class LayoutVariantSortModel : public QSortFilterProxyModel
++{
++    Q_OBJECT
++    QML_ELEMENT
++    Q_PROPERTY(bool searching READ searching WRITE setSearching NOTIFY searchingChanged)
++
++public:
++    explicit LayoutVariantSortModel(QObject *parent = nullptr);
++
++    bool searching() const;
++    void setSearching(bool searching);
++
++Q_SIGNALS:
++    void searchingChanged();
++
++protected:
++    bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
++
++private:
++    bool m_searching = false;
++};
+--- a/src/qml/LandingComponent.qml
++++ b/src/qml/LandingComponent.qml
+@@ -4,13 +4,11 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ 
+-import QtCore
+ import QtQuick
+ import QtQuick.Controls
+ import QtQuick.Layouts
+ 
+ import org.kde.kirigami as Kirigami
+-import org.kde.plasmasetup.prepareutil as Prepare
+ import org.kde.plasmasetup
+ 
+ Item {
+@@ -49,24 +47,8 @@
+ 
+         readonly property bool isLandscape: width >= height
+ 
+-        source: {
+-            const landscapeFile = "5120x2880.png";
+-            const portraitFile  = "1440x2960.png";
+-
+-            const lightFolder = "wallpapers/Next/contents/images/";
+-            const darkFolder  = "wallpapers/Next/contents/images_dark/";
+-            const themedFolder = Prepare.PrepareUtil.usingDarkTheme ? darkFolder : lightFolder;
+-
+-            function locate(file) {
+-                return StandardPaths.locate(StandardPaths.GenericDataLocation, themedFolder + file)
+-                    || StandardPaths.locate(StandardPaths.GenericDataLocation, lightFolder + file);
+-            }
+-
+-            const primary = isLandscape ? landscapeFile : portraitFile;
+-            const secondary = isLandscape ? portraitFile : landscapeFile;
+-
+-            return locate(primary) || locate(secondary) || "";
+-        }
++        // Dark by the active colour scheme's window background, whatever the scheme is named.
++        source: InitialStartUtil.wallpaperImage(isLandscape, Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.backgroundColor) === Kirigami.ColorUtils.Dark)
+         fillMode: Image.PreserveAspectCrop
+ 
+         opacity: 0
+@@ -131,9 +113,11 @@
+ 
+             Label {
+                 Layout.fillWidth: true
+-                text: Kirigami.Settings.isMobile
+-                    ? i18n("Welcome to<br/><b>Plasma Mobile</b>")
+-                    : i18n("Welcome to<br/><b>Plasma Desktop</b>")
++                text: InitialStartUtil.welcomeText !== ""
++                    ? InitialStartUtil.welcomeText
++                    : Kirigami.Settings.isMobile
++                        ? i18n("Welcome to<br/><b>Plasma Mobile</b>")
++                        : i18n("Welcome to<br/><b>Plasma Desktop</b>")
+ 
+                 horizontalAlignment: Text.AlignHCenter
+                 wrapMode: Text.Wrap

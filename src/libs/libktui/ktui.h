@@ -756,6 +756,13 @@ void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr);
  * palette nobody can change. It clips like any other draw.
  */
 void ktui_draw_put(int x, int y, const KtuiCell *c);
+/*
+ * ONE CELL OF A COLOUR THAT IS NOT IN THE PALETTE IN FORCE: a full block in
+ * `c`, falling back to `slot` where the terminal has only slots. A preview of
+ * another scheme (an accent not chosen yet) is the one use; chrome never
+ * takes it.
+ */
+void ktui_draw_swatch(int x, int y, int slot, KRgb c);
 /* XOR the reverse attribute over a rectangle of the frame being composed —
  * a selection, which leaves the content and changes only how it reads. Not
  * expressible through ktui_cells(), which hands out the flushed frame. */
@@ -2136,12 +2143,20 @@ const char *ktui_esc_verb(const KtuiKeys *k);
 
 /* Drop out of the TUI, run a program on the real terminal, come back. */
 int ktui_run_console(char *const argv[]);
+/* The same, printing `note` on the restored terminal first and starting the
+ * program with SHLVL=2, so a shell takes itself for a nested one and draws
+ * no once-per-terminal banner over the note. Returns the wait status. */
+int ktui_run_console_note(const char *note, char *const argv[]);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Modals
  *
  * A modal owns the focus ring completely and hands it back on close, so
  * dismissing a dialog does not silently move the caret on the page beneath.
+ *
+ * A confirm opens with `no` selected, so Enter on arrival is the safe answer;
+ * Left, Tab or Shift+Tab selects `yes`, and Enter or Space then runs on_yes.
+ * Esc always answers `no`.
  * ──────────────────────────────────────────────────────────────────────── */
 
 void ktui_modal_alert(const char *title, const char *msg);

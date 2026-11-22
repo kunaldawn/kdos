@@ -172,7 +172,9 @@ The variables that cross into the chroot:
 :   The release tag (`v<digit>…`) on that commit from `make build`, empty when it has none or
     `KDOS_GIT_TAG=none` asked for none, and, set by this
     script itself, the same tag only when `KDOS_GIT_DIRTY` is `0`: a dirty tree's packages are not
-    the release's. `105_ports.sh` writes `KDOS_GIT_RELEASE` into `/ports/TREE` as `version <tag>`
+    the release's. [045_identity.sh](../15-image/045-identity.md) stops the build when
+    `KDOS_GIT_RELEASE` without its `v` is not `/etc/os-release`'s `VERSION_ID`, and `105_ports.sh`
+    writes it into `/ports/TREE` as `version <tag>`
     (see [The recipe tree](../15-image/105-ports.md#the-stamp-and-the-key)).
 
 A variable the `Makefile` passes into the container but this line does not name reaches the two

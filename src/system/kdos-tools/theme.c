@@ -10,7 +10,11 @@
  *   kdos theme                     the accent in force
  *   kdos theme list | next | prev
  *   kdos theme <accent>            switch the whole machine to it
- *   kdos theme --from-plasma <a>   kded-kdos, after the Global Theme page
+ *   kdos theme --account <accent>  the home's half alone; the installer's
+ *                                  run into /etc/skel and the new home
+ *   kdos theme --from-plasma [--account] <a>
+ *                                  kded-kdos, after the Global Theme page;
+ *                                  --account leaves the machine's half
  *   kdos theme --audit [accent]    is what is here what the palette makes?
  *   kdos theme style <file>        an accent and the phosphor tuning, shared
  *
@@ -1696,6 +1700,8 @@ static void theme_tmux(void)
  * session wears the accent (the machine's half may still have been refused:
  * that is said, not failed), 1 when a session step failed — with the reason
  * as the last line printed, because kded-kdos shows the last line it reads.
+ * Under KDT_THEME_ACCOUNT step 8 is not run and says nothing: the boot menu,
+ * splash and login screen stay on the accent someone chose for the machine.
  */
 int kdt_theme_set(const KcolScheme *sc, int flags)
 {
@@ -1799,7 +1805,9 @@ int kdt_theme_set(const KcolScheme *sc, int flags)
 	       in_session ? "" : " — Plasma takes it at the next login");
 
 	/* 8. The machine's half. */
-	theme_boot(sc, boot, sizeof(boot));
+	boot[0] = '\0';
+	if (!(flags & KDT_THEME_ACCOUNT))
+		theme_boot(sc, boot, sizeof(boot));
 	if (*boot)
 		printf("%s%s%s\n", C_D, boot, C_0);
 	if (*fail) {
@@ -1946,7 +1954,8 @@ static int theme_usage(void)
 {
 	fprintf(stderr,
 		"usage: kdos theme [list | next | prev | <accent>]\n"
-		"       kdos theme --from-plasma <accent>\n"
+		"       kdos theme --account <accent>\n"
+		"       kdos theme --from-plasma [--account] <accent>\n"
 		"       kdos theme --audit [accent]\n"
 		"       kdos theme style <file>\n");
 	return 2;
@@ -1982,7 +1991,24 @@ int kdt_theme_main(int argc, char **argv)
 		return kdt_theme_audit(sc, theme_apply_cli, C_A, C_0);
 	}
 	if (!strcmp(want, "--from-plasma")) {
-		if (argc != 2)
+		int flags = KDT_THEME_FROM_PLASMA;
+		const char *name;
+
+		if (argc == 3 && !strcmp(argv[1], "--account"))
+			flags |= KDT_THEME_ACCOUNT;
+		else if (argc != 2 || *argv[1] == '-')
+			return theme_usage();
+		name = argv[argc - 1];
+		sc = kcol_find(name);
+		if (!sc) {
+			fprintf(stderr, "kdos theme: unknown accent '%s' "
+				"(try: kdos theme list)\n", name);
+			return 1;
+		}
+		return kdt_theme_set(sc, flags);
+	}
+	if (!strcmp(want, "--account")) {
+		if (argc != 2 || *argv[1] == '-')
 			return theme_usage();
 		sc = kcol_find(argv[1]);
 		if (!sc) {
@@ -1990,7 +2016,7 @@ int kdt_theme_main(int argc, char **argv)
 				"(try: kdos theme list)\n", argv[1]);
 			return 1;
 		}
-		return kdt_theme_set(sc, KDT_THEME_FROM_PLASMA);
+		return kdt_theme_set(sc, KDT_THEME_ACCOUNT);
 	}
 	if (argc > 1 || (*want == '-' && strcmp(want, "-")))
 		return theme_usage();

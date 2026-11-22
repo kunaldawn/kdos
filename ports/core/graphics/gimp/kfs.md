@@ -7,6 +7,16 @@ drawn with GTK 3. It is built with its Python plug-ins, and F1 opens the local m
 
 ## Flags
 
+- `-Wl,-z,stack-size=8388608`, added to `LDFLAGS` — ask for an 8 MiB stack in the `PT_GNU_STACK`
+  header of every executable the build links: `gimp-3.2`, `gimp-console-3.2` and each C plug-in
+  executable. The Python plug-ins run under `python3` and get its header, not this one. 8 MiB is
+  the size a thread gets by default on glibc, which GIMP and its plug-ins are written for, and
+  musl's ceiling for the default. musl gives each new thread the largest `PT_GNU_STACK` size among
+  the executable and the libraries loaded with it, and 128 KiB when none asks for more. GIMP's
+  `async` worker thread allocates about 256 KiB on its stack while it converts an image's colour
+  profile, so without the flag, opening any image with an embedded profile crashes GIMP, whether
+  the profile is kept or converted. The executables' 8 MiB covers the worker threads of
+  [babl](#port-babl) and [gegl](#port-gegl) as well, so those libraries need no flag of their own.
 - `-Dcheck-update=no` — Never ask gimp.org for a newer release at start-up.
 - `-Drelocatable-bundle=no` — Use the build-time paths, not paths relative to the executable.
   This is what `platform-default` resolves to off Windows and macOS, written out.

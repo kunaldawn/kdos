@@ -36,6 +36,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QXmlStreamReader>
@@ -94,9 +95,14 @@ static QString updateDocumentPath()
 // from, then the binary host in words; never the channel, which is another
 // place, so the sentence would send the reader where the index was not
 // looked for. A bare no-network or fetch-failed is the fetch's or the
-// apply's, so its sentence fits either. binhost-absent (a named binhost that
-// publishes none) has its own sentence, without the tool's words, which only
-// name the same URL again. no-tree is not said: with no tree
+// apply's, so its sentence fits either. The tool's words follow in brackets
+// only when they add something: never for no-network, whose sentence says
+// all the tool's does, and never when they name `origin` again, which the
+// sentence already names (binhost-absent's always do). no-network is the
+// code for a name that did not resolve, or for a refusal or a timeout on a
+// machine with no default route (relidx.c's ri_class); a server that
+// refused or did not answer while a route exists is a fetch-failed whose
+// words say so, without the URL. no-tree is not said: with no tree
 // nothing can be behind, and the fetch's own code says why none arrived. Nor
 // is a tree fetch-failed whose detail is update.c's "the published tree … is
 // older than this machine's": that machine is ahead of the release, not cut
@@ -164,8 +170,7 @@ static QString updateProblemText()
         said = i18nc("@info:status", "The last update installed nothing: the release's package index does not cover it, and it needs building from source.");
     else if (step == Binhost && code == "absent"_L1)
         said = i18nc("@info:status %1 is a URL or a directory", "No package index is published at %1.", origin);
-    // An absent binhost's detail names the URL the sentence already names.
-    if (said.isEmpty() || detail.isEmpty() || (step == Binhost && code == "absent"_L1))
+    if (said.isEmpty() || detail.isEmpty() || code == "no-network"_L1 || detail.contains(origin))
         return said;
     return i18nc("@info:status %1 is a sentence saying what failed, %2 is the update tool's own words", "%1 (%2)", said, detail);
 }
@@ -914,6 +919,28 @@ KdosResource *KdosBackend::debianResource(const AppStream::Component &c)
     return res;
 }
 
+// A search's Debian component is one every word of the query names: each
+// word, case-folded, occurs in the component's name, id, package name or one
+// of its keywords. AppStream's own search also matches summaries and
+// descriptions, and over a catalogue of thousands that answers almost any
+// query, arithmetic included, with applications it does not name; those
+// would also fill DebianQueryLimit before the ones it does. Not static:
+// backendtest declares and calls it.
+bool debianMatches(const AppStream::Component &c, const QStringList &words);
+bool debianMatches(const AppStream::Component &c, const QStringList &words)
+{
+    QStringList fields{c.name().toCaseFolded(), c.id().toCaseFolded()};
+    for (const QString &p : c.packageNames())
+        fields << p.toCaseFolded();
+    for (const QString &k : c.keywords())
+        fields << k.toCaseFolded();
+    return !words.isEmpty() && std::all_of(words.cbegin(), words.cend(), [&fields](const QString &w) {
+        return std::any_of(fields.cbegin(), fields.cend(), [&w](const QString &f) {
+            return f.contains(w);
+        });
+    });
+}
+
 QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
 {
     QList<KdosResource *> out;
@@ -932,10 +959,13 @@ QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
 
     const AppStream::ComponentBox box = filter.search.isEmpty() ? m_pool->componentsByCategories(filter.category->involvedCategories())
                                                                 : m_pool->search(filter.search);
+    const QStringList words = filter.search.toCaseFolded().split(u' ', Qt::SkipEmptyParts);
     for (const AppStream::Component &c : box) {
         if (out.size() >= DebianQueryLimit)
             break;
         if (!c.origin().startsWith("debian"_L1) || c.kind() != AppStream::Component::KindDesktopApp)
+            continue;
+        if (!filter.search.isEmpty() && !debianMatches(c, words))
             continue;
         // A program the host has natively is never offered again in a box.
         const QString pkg = c.packageNames().value(0);
@@ -1518,16 +1548,109 @@ void KdosBackend::apply(const Snapshot &snap)
 
 // ── search ──────────────────────────────────────────────────────────────
 
-static uint matchScore(KdosResource *res, const QString &term)
+// A search term, read once per search. `categories` are the desktop-entry
+// categories the word stands for: "browser" is a word for what a web browser
+// is, and the applications that are one carry WebBrowser, whatever their names.
+// `kin` matches, as a whole word or its plural, any word that stands for the
+// same categories ("mail", "email" and "e-mail" are one), in a summary.
+struct SearchQuery {
+    QString term;
+    QRegularExpression word; // the term between non-word characters
+    QStringList categories;
+    QRegularExpression kin;
+};
+
+static SearchQuery searchQuery(const QString &term)
 {
+    static const QHash<QString, QStringList> aliases = {
+        {u"browser"_s, {u"WebBrowser"_s}},
+        {u"web"_s, {u"WebBrowser"_s}},
+        {u"mail"_s, {u"Email"_s}},
+        {u"email"_s, {u"Email"_s}},
+        {u"e-mail"_s, {u"Email"_s}},
+        {u"office"_s, {u"Office"_s}},
+        {u"terminal"_s, {u"TerminalEmulator"_s}},
+        {u"editor"_s, {u"TextEditor"_s}},
+        {u"chat"_s, {u"InstantMessaging"_s, u"Chat"_s}},
+        {u"music"_s, {u"Music"_s, u"Audio"_s}},
+        {u"video"_s, {u"Video"_s}},
+        {u"game"_s, {u"Game"_s}},
+        {u"games"_s, {u"Game"_s}},
+    };
+    const auto opts = QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption;
+    SearchQuery q;
+    q.term = term.trimmed();
+    q.word = QRegularExpression(u"(?<!\\w)"_s + QRegularExpression::escape(q.term) + u"(?!\\w)"_s, opts);
+    q.categories = aliases.value(q.term.toLower());
+    if (!q.categories.isEmpty()) {
+        QStringList kin;
+        for (auto it = aliases.cbegin(); it != aliases.cend(); ++it) {
+            if (it.value() == q.categories)
+                kin << QRegularExpression::escape(it.key());
+        }
+        q.kin = QRegularExpression(u"(?<![\\w-])(?:"_s + kin.join(u'|') + u")s?(?![\\w-])"_s, opts);
+    }
+    return q;
+}
+
+// A search's ranking, highest first; Discover breaks a tie by name. A
+// resource takes the best of the ranks it earns:
+//   100  its name is the term
+//    85  a keyword or component name is the whole term
+//   75+  it is an application of the category the term names; +3 when its
+//        summary says a word for that category, +2 when its name holds the
+//        term, so "mail" lists KMail and Thunderbird ahead of the Email
+//        tools that only file themselves there (Account Wizard, KTnef)
+//    70  its name starts with the term; 60 holds it as a word; 50 anywhere
+//    40  its package name holds it; 30 a keyword does; 20 its summary does
+// So "browser" lists the web browsers before AT-SPI Browser, and "chrome"
+// lists Chromium, whose keyword it is, before mkchromecast. A catalogue row
+// or a pack names one main category (Network, not WebBrowser), so for those
+// a summary that says a word for the category stands in for the category:
+// Surf, "Simple web browser", is a web browser. A program that runs only in
+// a terminal (ConsoleOnly, or a console-application component) takes 65 for
+// the keyword and category ranks, below every name match, so "mail" lists the
+// mail applications that draw a window ahead of aerc, and a terminal program
+// is still first for its own name. Terminal=true is not in the catalogue, so
+// an entry that sets it without ConsoleOnly ranks as a graphical one.
+static uint matchScore(KdosResource *res, const SearchQuery &q)
+{
+    const QString &term = q.term;
     if (term.isEmpty())
         return 1;
-    if (res->name().compare(term, Qt::CaseInsensitive) == 0)
+    const QString name = res->name();
+    if (name.compare(term, Qt::CaseInsensitive) == 0)
         return 100;
-    if (res->name().startsWith(term, Qt::CaseInsensitive))
-        return 80;
-    if (res->name().contains(term, Qt::CaseInsensitive))
-        return 60;
+    const Entry &e = res->entry();
+    const bool console = e.categories.contains("ConsoleOnly"_L1) || e.kind == "console-application"_L1;
+    const bool nameHolds = name.contains(term, Qt::CaseInsensitive);
+    uint score = 0;
+    auto earn = [&score](uint s) {
+        score = std::max(score, s);
+    };
+    for (const QString &t : res->searchTerms()) {
+        if (t.compare(term, Qt::CaseInsensitive) == 0) {
+            earn(console ? 65 : 85);
+            break;
+        }
+    }
+    if (!q.categories.isEmpty()) {
+        const bool summarySays = q.kin.match(res->comment()).hasMatch();
+        const bool mainOnly = e.lane == Lane::Catalogue || e.lane == Lane::Pack;
+        bool inCategory = mainOnly && summarySays;
+        for (const QString &c : q.categories)
+            inCategory |= e.categories.contains(c);
+        if (inCategory)
+            earn(console ? 65 : 75 + (summarySays ? 3 : 0) + (nameHolds ? 2 : 0));
+    }
+    if (name.startsWith(term, Qt::CaseInsensitive))
+        earn(70);
+    else if (q.word.match(name).hasMatch())
+        earn(60);
+    else if (nameHolds)
+        earn(50);
+    if (score)
+        return score;
     if (res->packageName().contains(term, Qt::CaseInsensitive))
         return 40;
     for (const QString &t : res->searchTerms()) {
@@ -1546,13 +1669,14 @@ ResultsStream *KdosBackend::search(const AbstractResourcesBackend::Filters &filt
 
     auto *stream = new ResultsStream(u"KdosStream"_s);
     auto answer = [this, stream, filter] {
+        const SearchQuery query = searchQuery(filter.search);
         QVector<StreamResult> found;
         QSet<KdosResource *> have;
         const bool source = preferSource();
         auto consider = [&](KdosResource *res) {
             if (have.contains(res))
                 return;
-            const uint score = matchScore(res, filter.search);
+            const uint score = matchScore(res, query);
             if (score == 0 || !filter.shouldFilter(res))
                 return;
             have.insert(res);

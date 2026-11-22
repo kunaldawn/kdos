@@ -227,6 +227,25 @@ class Mark:
         if not (0 <= self.glow_pct <= 100 and 0.0 <= self.art_lower <= 1.0):
             die("kdos-splash.c: the mascot's mix values are out of range")
 
+        # Where the boot splash's bar stands when it hands the screen over:
+        # draw_bar() holds an unfinished boot at a percentage and one segment
+        # count short of full, and rcS closes its last stage before the
+        # handoff, so the bar is at that hold when the screen goes black. The
+        # session's bar starts there, so it never moves backwards.
+        m_segs = re.search(r"#define\s+BAR_SEGS\s+(\d+)", src)
+        m_hpct = re.search(r"if\s*\(\s*!finishing\s*&&\s*p\s*>\s*(\d+)\s*\)\s*p\s*=\s*(\d+)\s*;", src)
+        m_hseg = re.search(r"if\s*\(\s*!finishing\s*&&\s*filled\s*>=\s*BAR_SEGS\s*\)\s*"
+                           r"filled\s*=\s*BAR_SEGS\s*-\s*(\d+)\s*;", src)
+        if not (m_segs and m_hpct and m_hseg):
+            die("kdos-splash.c: no BAR_SEGS or draw_bar() hold to start the session's bar from")
+        if int(m_segs.group(1)) != BAR_SEGS:
+            die("kdos-splash.c: BAR_SEGS is %s, genlook's is %d" % (m_segs.group(1), BAR_SEGS))
+        self.handoff_pct = int(m_hpct.group(2))
+        self.handoff_segs = BAR_SEGS - int(m_hseg.group(1))
+        if not (int(m_hpct.group(1)) == self.handoff_pct and 0 <= self.handoff_pct <= 99
+                and 0 <= self.handoff_segs < BAR_SEGS):
+            die("kdos-splash.c: draw_bar()'s hold is out of range")
+
     def _decode(self):
         grid = []
         row = []
@@ -295,10 +314,24 @@ class Mark:
             "// How far the wordmark's lower rows go towards the dim colour.\n"
             "var artLowerFraction = %s;\n\n"
             "// A screen with nothing on it, where every handover starts and ends.\n"
-            "var screenOff = %s;\n"
+            "var screenOff = %s;\n\n"
+            "// The boot splash's bar: its segments, and the percentage and the\n"
+            "// segments lit when it hands the screen over.\n"
+            "var barSegs = %d;\n"
+            "var handoffPercent = %d;\n"
+            "var handoffSegs = %d;\n"
         ) % (self.w, self.h, flat, rows, json.dumps(self.sub), json.dumps(self.tag),
              json.dumps(hexc(self.body)), json.dumps(hexc(self.glow_to)),
-             fmt(self.glow_pct / 100.0), fmt(self.art_lower), json.dumps(hexc(SCREEN_OFF)))
+             fmt(self.glow_pct / 100.0), fmt(self.art_lower), json.dumps(hexc(SCREEN_OFF)),
+             BAR_SEGS, self.handoff_pct, self.handoff_segs)
+
+    def session_bar(self, stage):
+        """Splash.qml's bar at KSplash's `stage` (0 to 6): the percentage and
+        the lit segments, carried on from the boot splash's handoff and held,
+        as the boot splash holds, at 99% and one segment short."""
+        pct = min(99, self.handoff_pct + stage * (99 - self.handoff_pct) // 6)
+        segs = min(BAR_SEGS - 1, self.handoff_segs + stage * (BAR_SEGS - 1 - self.handoff_segs) // 6)
+        return pct, segs
 
 
 # ─── kdos-splash's layout, in pixels ──────────────────────────────────────
@@ -574,7 +607,7 @@ def render_preview(w, h, sc, mark):
 
 
 def render_splash(w, h, sc, mark):
-    """The KSplash's settled frame at half its stages, laid out by the same
+    """The KSplash's settled frame at its third stage, laid out by the same
     arithmetic Splash.qml runs: the mark, the two lines under it (as bars of
     their width in glyph cells: this program sets no type), the rule and the
     segmented bar. The Splash Screen page shows it beside each global theme."""
@@ -597,7 +630,7 @@ def render_splash(w, h, sc, mark):
     seg_w = (seg_area - gap * (BAR_SEGS - 1)) // BAR_SEGS
     seg_h = GLYPH_H * s - s * 6
     if seg_w >= 2:
-        lit = BAR_SEGS // 2
+        lit = mark.session_bar(3)[1]
         for i in range(BAR_SEGS):
             c = sc.window_focus if i < lit else (sc.neutral if i == lit else unlit)
             r.fill(seg_x + i * (seg_w + gap), lay["bar_y"] + s * 3, seg_w, seg_h, c)

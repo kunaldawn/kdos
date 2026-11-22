@@ -75,8 +75,11 @@ local resolver itself does not read `/etc/hosts`; programs on this machine still
 `/etc/hosts`, because the C library reads it before it asks a server.
 
 `dnsmasq` also reads every file in [`/etc/NetworkManager/dnsmasq.d/`]{.idx term="/etc/NetworkManager/dnsmasq.d"}
-(its `--conf-dir`), which the image ships empty. That is where an option of your own goes, such as a server for one domain
-(`server=/<domain>/<address>`); `dnsmasq(8)` lists the options.
+(its `--conf-dir`). The image ships one, `kdos-mdns.conf`, whose
+`server=/local/127.0.0.1#5380` sends every `.local` name to `kdos-mdnsd`, which asks Avahi (see
+[.local names through DNS](avahi-and-mdns.md#local-names-through-dns)). An option of your own
+goes in a file beside it, such as a server for one domain (`server=/<domain>/<address>`);
+`dnsmasq(8)` lists the options.
 
 ### `/etc/hosts`
 
@@ -171,7 +174,8 @@ printf '[main]\ndns=default\n' | sudo tee /etc/NetworkManager/conf.d/10-kdos-dns
 
 and restart NetworkManager with `sudo service restart networkmanager` (see
 [Restarting the daemon](networkmanager.md#restarting-the-daemon)). `/etc/resolv.conf` then names
-the connection's own servers, and `pgrep -a dnsmasq` shows only libvirt's.
+the connection's own servers, `pgrep -a dnsmasq` shows only libvirt's, and no program resolves a
+`.local` name, which only this `dnsmasq` forwards to `kdos-mdnsd`.
 
 Without the local resolver, NetworkManager hands every active connection's servers to
 `resolvconf` in one list, ordered by `ipv4.dns-priority`, and nothing splits names by domain: the C
@@ -192,8 +196,9 @@ reboot unless the medium has a persistence store; see [Live persistence](live-pe
   what to run after editing `/etc/resolvconf.conf`. After it, and after every `wg-quick up` and
   `down`, the `libc` subscriber asks `service status nscd` and restarts `nscd` only when that
   reports it running; no `nscd` is installed, so nothing is restarted and nothing is printed.
-- A `.local` name is mDNS, answered by Avahi rather than by a DNS server, and the C library does
-  not ask Avahi; `avahi-resolve -n <name>.local` looks one up. See
+- A `.local` name is mDNS, answered by Avahi rather than by a DNS server. The C library asks
+  `dnsmasq`, which forwards the `local` domain to `kdos-mdnsd`, and that asks Avahi; without
+  NetworkManager's `dnsmasq`, `avahi-resolve -n <name>.local` looks one up. See
   [Resolving a .local name](avahi-and-mdns.md#resolving-a-local-name).
 - After changing the host name, change the `127.0.1.1` line of `/etc/hosts` to match. The C
   library finds the machine's own name only there; without it the name goes to the DNS, which

@@ -161,6 +161,7 @@ static void help_body(FILE *o)
 		{ "kdos backup run", "one restic snapshot from ~/.config/kdos/backup.conf" },
 		{ "kdos privacy", "who has the microphone, the camera, the screen" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
+		{ "kdos version", "the release and its build — also --version and -V" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos verify <file>", "against its .sha256, SHA256SUMS and KDOS signature" },
 		{ "kdos places", "Dolphin's Places — also `add DIR`" },
@@ -178,11 +179,15 @@ static void help_body(FILE *o)
 		{ "kdos-power suspend", "suspend; also poweroff and reboot (elogind)" },
 		{ "kdos-energy", "which app is spending the battery" },
 		{ "kdos-doc [page]", "the KDOS book, in the Help Center or the browser" },
-		{ "sudo kinstall", "install this live image onto a disk" },
 		{ NULL, NULL }
 	};
 	for (int i = 0; CMDS[i][0]; i++)
 		fprintf(o, "  %-26s %s\n", CMDS[i][0], CMDS[i][1]);
+	/* Only where it can run: an installed machine has no live image to
+	 * install, and kinstall there refuses the very command the row offers. */
+	if (kdt_root_is_live())
+		fprintf(o, "  %-26s %s\n", "sudo kinstall",
+			"install this live image onto a disk");
 	fputc('\n', o);
 }
 
@@ -1231,11 +1236,61 @@ static void bus_line(KdtBus *b, const char *name, const char *what,
  * through ksvc, and the bus is one of them, at $XDG_RUNTIME_DIR/bus: a
  * session that found a bus anywhere else is talking to one turnstile does not
  * supervise, which outlives nothing and restarts nothing.
+ *
+ * Only the socket path of the address is compared. dbus-daemon appends
+ * `,guid=…` to the address it hands the services it activates (KRunner, and
+ * everything started from it), and the same bus with a guid is still the
+ * session's; comparing the whole string reports that bus as foreign.
  */
+
+/* The `path=` value of the first transport of a D-Bus address, when that
+ * transport is `unix:`, into out with its %xx escapes decoded; 0 when the
+ * address names no such path. */
+static int bus_addr_unix_path(const char *addr, char *out, size_t n)
+{
+	const char *p, *end;
+
+	if (!addr || strncmp(addr, "unix:", 5) || n == 0)
+		return 0;
+	p = addr + 5;
+	end = strchr(p, ';');
+	if (!end)
+		end = p + strlen(p);
+	while (p < end) {
+		const char *kv_end = memchr(p, ',', (size_t)(end - p));
+
+		if (!kv_end)
+			kv_end = end;
+		if ((size_t)(kv_end - p) >= 5 && !strncmp(p, "path=", 5)) {
+			size_t o = 0;
+
+			for (p += 5; p < kv_end; p++) {
+				int c = (unsigned char)*p;
+
+				if (c == '%' && kv_end - p >= 3 &&
+				    isxdigit((unsigned char)p[1]) &&
+				    isxdigit((unsigned char)p[2])) {
+					char hx[3] = { p[1], p[2], 0 };
+
+					c = (int)strtol(hx, NULL, 16);
+					p += 2;
+				}
+				if (o + 1 >= n)
+					return 0;
+				out[o++] = (char)c;
+			}
+			out[o] = 0;
+			return o > 0;
+		}
+		p = kv_end + 1;
+	}
+	return 0;
+}
+
 static void check_session_bus(const char *rt)
 {
 	const char *addr = getenv("DBUS_SESSION_BUS_ADDRESS");
-	char want[512];
+	char want[512], have[512];
 
 	if (kb_path_exists("/run/turnstiled/control.sock"))
 		ok("turnstiled is running (/run/turnstiled/control.sock)");
@@ -1244,15 +1299,17 @@ static void check_session_bus(const char *rt)
 		      "bus, no audio (start with: service start turnstiled)");
 
 	if (rt && *rt) {
-		snprintf(want, sizeof(want), "unix:path=%s/bus", rt);
-		if (addr && !strcmp(addr, want))
+		snprintf(want, sizeof(want), "%s/bus", rt);
+		if (bus_addr_unix_path(addr, have, sizeof(have)) &&
+		    !strcmp(have, want))
 			ok("DBUS_SESSION_BUS_ADDRESS=%s", addr);
 		else if (addr && *addr)
-			warn_("DBUS_SESSION_BUS_ADDRESS=%s, not %s — this "
-			      "shell's bus is not the session's", addr, want);
+			warn_("DBUS_SESSION_BUS_ADDRESS=%s, not unix:path=%s — "
+			      "this shell's bus is not the session's", addr,
+			      want);
 		else
 			warn_("DBUS_SESSION_BUS_ADDRESS is not set — expected "
-			      "%s", want);
+			      "unix:path=%s", want);
 	}
 
 	/* The user table's own verdict, line for line as ksvc prints it. */
@@ -2100,30 +2157,41 @@ static int cmd_doctor(int argc, char **argv)
 static int cmd_version(void)
 {
 	struct utsname u;
-	char rel[128] = "";
+	char rel[128] = "", build[128] = "";
 	char *os = kb_read_all("/etc/os-release", NULL);
 
 	uname(&u);
 	/* VERSION_ID is what the update machinery compares, so it is what is
-	 * printed: a second notion of "the version" would be one that drifts. */
+	 * printed: a second notion of "the version" would be one that drifts.
+	 * BUILD_ID goes beside it, or a `-dirty` development image and the
+	 * release it is not would print the same line. */
 	for (char *l = os; l && *l;) {
 		char *nl = strchr(l, '\n');
+		char *dst = NULL;
+		const char *v = NULL;
 
 		if (nl)
 			*nl = '\0';
 		if (!strncmp(l, "VERSION_ID=", 11)) {
-			const char *v = l + 11;
-
+			v = l + 11;
+			dst = rel;
+		} else if (!strncmp(l, "BUILD_ID=", 9)) {
+			v = l + 9;
+			dst = build;
+		}
+		if (dst) {
 			if (*v == '"')
 				v++;
-			kb_strlcpy(rel, v, sizeof(rel));
-			rel[strcspn(rel, "\"")] = '\0';
+			kb_strlcpy(dst, v, sizeof(rel));
+			dst[strcspn(dst, "\"")] = '\0';
 		}
 		l = nl ? nl + 1 : NULL;
 	}
 	free(os);
 	printf("%sKDOS%s — Kool Desktop Operating System\n", C_A, C_0);
-	if (*rel)
+	if (*rel && *build)
+		printf("  release  %s (build %s)\n", rel, build);
+	else if (*rel)
 		printf("  release  %s\n", rel);
 	printf("  kernel   %s\n", u.release);
 	printf("  libc     musl\n");
@@ -2462,6 +2530,7 @@ static const struct {
 	{ "explain", "usage: kdos explain [topic]\n" },
 	{ "oracle", "usage: kdos oracle [--plain]\n" },
 	{ "version", "usage: kdos version\n" },
+	{ "--version", "usage: kdos version\n" },
 	{ "settings", "usage: kdos settings [page|kcm_id]\n" },
 };
 
@@ -2572,7 +2641,8 @@ static int kdos_dispatch(const char *cmd, int argc, char **argv)
 		return kdt_image_main(rest, restv);
 	if (!strcmp(cmd, "firmware"))
 		return kdt_firmware_main(rest, restv);
-	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
+	if (!strcmp(cmd, "version") || !strcmp(cmd, "--version") ||
+	    !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app"))
 		return kdt_app(rest, restv);

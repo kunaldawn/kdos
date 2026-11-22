@@ -482,6 +482,8 @@ InstallPreview parseInstallPreview(const QByteArray &out)
             p.downloads += downloads;
             p.bytes += bytes;
             p.builds += builds;
+        } else if (w.size() == 4 && w[1] == "dev") {
+            p.restores++;
         } else if (w.size() == 3 && (w[1] == "source" || w[1] == "dev-source")) {
             const QString name = QString::fromUtf8(w[0]);
             if (!p.built.contains(name))

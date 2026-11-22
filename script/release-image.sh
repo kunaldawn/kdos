@@ -50,13 +50,18 @@
 #                it every changed file whole
 #
 # THE IMAGE IS THE ISO'S ROOT, LAYER FOR LAYER: a layer of this run's own
-# goes on top, with /mnt and /media as 110_iso.sh adds them and a whiteout
-# over /kdos and /build, which it excludes. The recipe tree is copied into
-# that layer and owned by root, as the ISO's /ports is: build/image-ports
-# belongs to the builder, and an image takes every owner it reads, so a slot
-# written from it would hand / and /ports to the first account. `kdos image
-# make` refuses a root whose /, top-level directories or anything under
-# etc, usr, boot or ports is not root's.
+# goes on top, with /mnt and /media as 110_iso.sh adds them, an empty
+# /boot/efi, and a whiteout over /kdos and /build, which it excludes. The
+# image itself carries /boot/efi because the apply of a machine still
+# running v0.2 makes no fstab mount points: it deletes every path the
+# manifest does not name and creates every directory it does, so a slot
+# written from an image without it boots with no ESP mounted and rolls
+# back. The recipe tree is copied into that layer and owned by root, as the
+# ISO's /ports is: build/image-ports belongs to the builder, and an image
+# takes every owner it reads, so a slot written from it would hand / and
+# /ports to the first account. `kdos image make` refuses a root whose /,
+# top-level directories or anything under etc, usr, boot or ports is not
+# root's.
 #
 # THE FORMAT CODE IS THIS CHECKOUT'S. kdos-tools is compiled here from
 # src/system/kdos-tools, the code every machine runs to read the image, and
@@ -117,7 +122,7 @@ TOOLS=$(mktemp -d "${TMPDIR:-/tmp}/kdos-release-image.XXXXXX")
 trap 'umount "$TOOLS/stage" 2>/dev/null; rm -rf "$TOOLS"' EXIT
 LAYER=$TOOLS/layer
 mkdir -m 0755 "$LAYER" "$TOOLS/stage"
-install -d -m 0755 -o 0 -g 0 "$LAYER/mnt" "$LAYER/media"
+install -d -m 0755 -o 0 -g 0 "$LAYER/mnt" "$LAYER/media" "$LAYER/boot" "$LAYER/boot/efi"
 mknod "$LAYER/kdos" c 0 0
 mknod "$LAYER/build" c 0 0
 lower=$(readlink -f "$ROOT")

@@ -21,9 +21,12 @@ never a shell.
   the same sources with tests on: `installertest` reads the answer file the pages produce back as
   kinstall's `key = value` lines, replays event streams kinstall wrote (`tests/fixtures`) through
   the parser in pieces that cut lines, checks that a stream pkexec ended before any event reads as
-  permission refused, parses a fixture `evdev.lst` against a fixture symbols directory, reads a
-  fixture `zone1970.tab`, tells the live medium from two fixture mounts tables, and checks that
-  choosing a disk with no partitions turns to the erase plan.
+  permission refused, parses a fixture `evdev.lst` against a fixture symbols directory, writes
+  the live session's `kxkbrc` for German (no dead keys) into a temporary configuration directory,
+  checks that a `KConfigWatcher` on `kxkbrc` hears the change notice for its `[Layout]` keys, reads a fixture `zone1970.tab`, tells the live medium from two fixture
+  mounts tables, checks that choosing a disk with no partitions turns to the erase plan, and
+  checks the words naming a disk and what an erase destroys (an LVM physical volume partition by
+  its group, never `LVM2_member`).
 - `-D KDOS_KINSTALL=/usr/bin/kinstall` — The binary the installer runs and the pkexec policy
   `io.kdos.installer.run` names by its `exec.path`. pkexec matches the path exactly, so it is
   compiled in and never looked up on `$PATH`; the two must name the same file.
@@ -58,6 +61,17 @@ the Disk page's swap check runs as root too. A root dump superseded by a newer o
 rather than killed: the user cannot signal it, and destroying its QProcess would block the window
 until it ended. Open the Log hands the log to KIO's OpenUrlJob as `text/plain`, so it opens in
 the text editor and never in whatever claims the file's extension.
+
+On the live medium the Keyboard page's choice is applied to the live session as well
+(`Backend::applyLiveLayout`): `~/.config/kxkbrc`'s `[Layout]` lists the layout with `us` second,
+written through KConfig, then KConfig's change notice for it (`ConfigChanged` on `/kxkbrc`,
+interface `org.kde.kconfig.notify`, naming `LayoutList`, `VariantList` and `Use` in `[Layout]`).
+KWin loads the layout list again only from that notice, through its `KConfigWatcher`; a file
+written without it changes nothing, and KConfig sends none itself for a file opened by its
+absolute path. fcitx5 is left alone: with its XKB override off (`/etc/xdg/fcitx5/conf/wayland.conf`)
+it decodes keys with the keymap KWin hands it. Without this, the passwords typed on the Encryption
+and Account pages would be typed on the live medium's US keys and differ from what the installed
+greeter receives.
 
 A password or passphrase that starts or ends with a space is refused on its page, because
 kinstall's answer-file parser trims the ends of every value; a line break cannot be typed into a

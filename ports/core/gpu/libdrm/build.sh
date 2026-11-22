@@ -22,3 +22,5 @@ meson setup build --buildtype=release \
 	-D install-test-programs=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+install -Dm644 "$SRC/xf86drm.h" "$PKG/usr/share/licenses/$name/xf86drm.h"

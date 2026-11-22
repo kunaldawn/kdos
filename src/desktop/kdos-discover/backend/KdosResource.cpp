@@ -308,13 +308,14 @@ QDate KdosResource::releaseDate() const
 
 // A host port is removable only when it was installed on request and nothing
 // installed needs it (`kdos update removable`); every other port is part of
-// the system and leaves with the system version.
+// the system and leaves with the system version. Both twins of an installed
+// port answer the same, since they are one package.
 bool KdosResource::isRemovable() const
 {
     switch (m_entry.lane) {
     case Lane::Port:
-        return m_entry.state != EntryState::None && m_entry.removable;
     case Lane::PortSource:
+        return m_entry.state != EntryState::None && m_entry.removable;
     case Lane::Archive:
     case Lane::PackFile:
         return false;
@@ -460,6 +461,10 @@ QString KdosResource::kdosNotice() const
         return {};
     case Lane::Box:
         return i18n("Removing a box keeps its profile and the files it wrote under ~/.local/share/kdos/boxes/%1.", e.id);
+    case Lane::PortSource:
+        if (e.state == EntryState::None)
+            return i18n("Builds %1 on this computer from its recipe and installs it into this version of the system; the next system update builds it again. Its sources are downloaded, and so is each dependency this system lacks unless the setting says to build those too. A build can take minutes or hours. Before it asks for the administrator password, which it does each time, it says how many packages it builds and how many it downloads.", e.name);
+        [[fallthrough]];
     case Lane::Port:
         if (e.state == EntryState::None)
             return i18n("Downloads the prebuilt package from the signed KDOS binary host into this version of the system, and the next system update keeps it. It downloads only what the binary host cache does not already hold; nothing is built. Before it asks for the administrator password it says how many packages it installs and how much of that it downloads.");
@@ -468,8 +473,6 @@ QString KdosResource::kdosNotice() const
         if (!e.neededBy.isEmpty())
             return i18n("Needed by %1, which is installed, so it is not removed on its own.", e.neededBy);
         return i18n("Part of the KDOS system: it is updated with the system and is not removed on its own.");
-    case Lane::PortSource:
-        return i18n("Builds %1 on this computer from its recipe and installs it into this version of the system; the next system update builds it again. Its sources are downloaded, and so is each dependency this system lacks unless the setting says to build those too. A build can take minutes or hours. Before it asks for the administrator password, which it does each time, it says how many packages it builds and how many it downloads.", e.name);
     case Lane::Archive:
         if (e.signature == "refused"_L1)
             return i18n("This file holds no list of applications to import: it is not a set made by “kdos-appbox export”, and there is nothing in it to install.");

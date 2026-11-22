@@ -475,8 +475,10 @@ static void cont_checknew(sd_bus_message *m, void *ud, int allowed,
 	 * signed indexes: `kdos update check --fetch` downloads no package and
 	 * no source, and what CheckNew then offers is what the release index
 	 * named and the host keyring verified. Discover asks on every start
-	 * and on every "Check for updates"; the first after an hour asks the
-	 * network, and the others are answered from the document. Never while
+	 * and on every Refresh; the first after an hour asks the network, and
+	 * the others are answered from the document, except after a fetch that
+	 * found no network, which state_fetch_time() counts as none, so the
+	 * first CheckNew once the machine is online asks again. Never while
 	 * an update is running, which holds the lock the fetch would take. A
 	 * check already running — the one that makes the document this root's
 	 * — is waited for, so the answer is never the document it is

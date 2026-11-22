@@ -11,7 +11,8 @@
  * The session's splash continues the boot splash: it draws kdos-splash's
  * settled frame — the penguin and the block wordmark, the two lines under
  * them, the rule and the segmented bar — at the positions kdos-splash puts
- * them, and the bar fills with KSplash's six stages.
+ * them, and the bar carries on from where the boot splash's stood when it
+ * handed the screen over, so it never moves backwards across the handover.
  *
  * THE LAYOUT IS kdos-splash.c's layout(), TERM FOR TERM, IN DEVICE PIXELS.
  * kdos-splash measures the framebuffer and stacks everything in whole pixels
@@ -74,11 +75,15 @@ Rectangle {
         return Math.trunc(a / b);
     }
 
-    // kdos-splash draws with an 8x16 PSF font.
+    // kdos-splash draws with an 8x16 PSF font, Terminus's ter-v16n. Its
+    // text here is set in Terminus's scalable face, so the two splashes'
+    // lines are one typeface; an image without it falls back to the scheme's
+    // fixed-width font, which still keeps the 8-pixel column.
     readonly property int glyphW: 8
     readonly property int glyphH: 16
     readonly property int lineCols: 40
-    readonly property int barSegs: 26
+    readonly property int barSegs: Mark.barSegs
+    readonly property string face: Qt.fontFamilies().indexOf("Terminus (TTF)") >= 0 ? "Terminus (TTF)" : Kirigami.Theme.fixedWidthFont.family
 
     readonly property int bodyScale: Math.max(1, Math.min(3, cdiv(fbw, 640)))
     readonly property int cell: glyphH * bodyScale
@@ -117,7 +122,7 @@ Rectangle {
     // is not its cell, and sizing by it would widen every line.
     FontMetrics {
         id: probe
-        font.family: Kirigami.Theme.fixedWidthFont.family
+        font.family: root.face
         font.pixelSize: 100
     }
     readonly property real textPx: {
@@ -204,8 +209,14 @@ Rectangle {
 
     // ── the bar ─────────────────────────────────────────────────────────
 
-    readonly property int filledSegs: Math.min(barSegs, cdiv(stage * barSegs, 6))
-    readonly property int percent: Math.min(99, cdiv(stage * 100, 6))
+    // The bar starts where the boot splash's stood when it handed over
+    // (mark.js reads that from kdos-splash.c) and never passes the boot
+    // splash's own hold, 99% and one segment short; the stages share out
+    // whatever lies between the two. kdos-splash hands over at that hold, so
+    // the bar stands at 99% with its leading segment pulsing until the desktop
+    // is up. Starting it at zero would run the bar backwards at the handover.
+    readonly property int filledSegs: Math.min(barSegs - 1, Mark.handoffSegs + cdiv(stage * (barSegs - 1 - Mark.handoffSegs), 6))
+    readonly property int percent: Math.min(99, Mark.handoffPercent + cdiv(stage * (99 - Mark.handoffPercent), 6))
     property bool pulse: false
 
     Timer {
@@ -280,7 +291,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Mark.subtitle
             color: root.ink
-            font.family: Kirigami.Theme.fixedWidthFont.family
+            font.family: root.face
             font.pixelSize: root.textPx
             textFormat: Text.PlainText
             Accessible.name: text
@@ -291,7 +302,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Mark.tagline
             color: root.quiet
-            font.family: Kirigami.Theme.fixedWidthFont.family
+            font.family: root.face
             font.pixelSize: root.textPx
             textFormat: Text.PlainText
             Accessible.name: text
@@ -327,7 +338,7 @@ Rectangle {
                 y: root.px(root.barY)
                 text: "["
                 color: root.ink
-                font.family: Kirigami.Theme.fixedWidthFont.family
+                font.family: root.face
                 font.pixelSize: root.textPx
             }
 
@@ -336,7 +347,7 @@ Rectangle {
                 y: root.px(root.barY)
                 text: "]"
                 color: root.ink
-                font.family: Kirigami.Theme.fixedWidthFont.family
+                font.family: root.face
                 font.pixelSize: root.textPx
             }
 
@@ -367,7 +378,7 @@ Rectangle {
                 y: root.px(root.barY)
                 text: i18ndc("kdos-plasma-look", "progress readout, a number and a percent sign, four columns wide", "%1%", String(root.percent).padStart(3, " "))
                 color: root.accentText
-                font.family: Kirigami.Theme.fixedWidthFont.family
+                font.family: root.face
                 font.pixelSize: root.textPx
                 textFormat: Text.PlainText
             }

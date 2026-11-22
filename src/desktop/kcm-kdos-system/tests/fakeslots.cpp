@@ -320,12 +320,16 @@ QVariantMap FakeSlots::slotMap(const Boot &b, int i) const
      * did not finish. The fixture keeps it in a file of its own, so a
      * rewritten boot state cannot drop it. */
     const bool incomplete = present && readFile(u"unfilled"_s).trimmed() == id;
+    /* The boot state's `abandoned`: a trial set aside by picking the
+     * confirmed slot at the boot menu. Never `rolledBack`, which is the
+     * failure the banner reports. */
+    const bool abandoned = present && readFile(u"abandoned"_s).trimmed() == id;
 
     QString reason;
     if (!present) {
         reason = u"This slot has no system in it."_s;
     } else if (incomplete) {
-        reason = u"An update stopped while writing this slot. The next update writes it again."_s;
+        reason = u"An update stopped while writing this slot. The next update writes it again; to write it at once, run kdos update apply --mount as root."_s;
     } else if (confirmed) {
         reason = u"This is already the version the computer starts."_s;
     } else if (kernel.isEmpty()) {
@@ -339,6 +343,8 @@ QVariantMap FakeSlots::slotMap(const Boot &b, int i) const
         state = u"incomplete"_s;
     } else if (failed) {
         state = u"failed"_s;
+    } else if (abandoned) {
+        state = u"abandoned"_s;
     } else if (confirmed) {
         state = u"confirmed"_s;
     } else if (present) {
@@ -360,6 +366,7 @@ QVariantMap FakeSlots::slotMap(const Boot &b, int i) const
     m.insert(u"trial"_s, trial);
     m.insert(u"failed"_s, failed);
     m.insert(u"incomplete"_s, incomplete);
+    m.insert(u"abandoned"_s, abandoned);
     m.insert(u"bootable"_s, reason.isEmpty() && !trial);
     m.insert(u"reason"_s, reason);
     m.insert(u"state"_s, state);

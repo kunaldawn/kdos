@@ -185,6 +185,11 @@ typedef struct {
 	char **taken;
 	char **taken_from;
 	int ntaken, taken_cap;
+	/* The installed version and release are the ones going in: a facet
+	 * restore or a forced reinstall. place() then keeps an unchanged file
+	 * where it is; `kept` counts them. */
+	int same;
+	int kept;
 } Ctx;
 
 static void take_note(Ctx *x, const char *rel, const char *from)
@@ -403,6 +408,61 @@ static int copy_across(const char *src, const char *dst)
 	return 0;
 }
 
+/* Both paths are symlinks with the same target text. */
+static int same_link(const char *src, const char *dst)
+{
+	char a[4096], b[4096];
+	ssize_t na = readlink(src, a, sizeof(a));
+	ssize_t nb = readlink(dst, b, sizeof(b));
+	return na >= 0 && na < (ssize_t)sizeof(a) && na == nb &&
+	       memcmp(a, b, (size_t)na) == 0;
+}
+
+/* `dst` is a regular file with the staged file's size, mode, owner and
+ * bytes. */
+static int same_file(const char *src, const char *dst)
+{
+	struct stat ss, ds;
+	if (lstat(src, &ss) != 0 || lstat(dst, &ds) != 0 ||
+	    !S_ISREG(ss.st_mode) || !S_ISREG(ds.st_mode) ||
+	    ss.st_size != ds.st_size || ss.st_mode != ds.st_mode ||
+	    ss.st_uid != ds.st_uid || ss.st_gid != ds.st_gid)
+		return 0;
+	FILE *a = fopen(src, "rb");
+	FILE *b = a ? fopen(dst, "rb") : NULL;
+	int same = a && b;
+	char ba[65536], bb[65536];
+	while (same) {
+		size_t na = fread(ba, 1, sizeof(ba), a);
+		size_t nb = fread(bb, 1, sizeof(bb), b);
+		if (na != nb || memcmp(ba, bb, na) != 0 || ferror(a) ||
+		    ferror(b))
+			same = 0;
+		else if (na == 0)
+			break;
+	}
+	if (a)
+		fclose(a);
+	if (b)
+		fclose(b);
+	return same;
+}
+
+/* A link to a directory on the root is never replaced: the root's
+ * directories are reached through it (/lib -> usr/lib, an icon theme's
+ * 16@2x -> 16), and putting a file or a different link there would cut off
+ * everything below it. A staged link with the same target is the link the
+ * root already has, whether this package or another put it there, and is
+ * dropped without a word; any other staged entry is reported by its path on
+ * the root and left out.
+ *
+ * A same-version install (Ctx.same: a facet restore, a forced reinstall)
+ * keeps a regular file that already has the staged file's size, mode, owner
+ * and bytes, and drops the staged copy. Renamed over, the file would get a
+ * new inode with the same contents: every running program that maps it then
+ * maps a deleted file, and the restarts check behind kdos-notice tells the
+ * user to log out after an install that changed nothing. Every other install
+ * replaces the file, whatever it holds. */
 static int place(const char *rel, void *u)
 {
 	Ctx *x = u;
@@ -412,11 +472,19 @@ static int place(const char *rel, void *u)
 
 	struct stat ds;
 	if (lstat(dst, &ds) == 0 && S_ISLNK(ds.st_mode) && kb_is_dir(dst)) {
-		kp_msg("Skipping %s (structure mismatch with host %s)", rel, dst);
+		if (same_link(src, dst))
+			unlink(src);
+		else
+			kp_msg("Skipping /%s (a link to a directory on the "
+			       "root; the package ships something else there)",
+			       rel);
 	} else if (lstat(dst, &ds) == 0 && S_ISDIR(ds.st_mode) &&
 		   !S_ISLNK(ds.st_mode)) {
 		kp_err("Conflict: %s is a file in package but a directory on "
 		       "system", rel);
+	} else if (x->same && same_file(src, dst)) {
+		unlink(src);
+		x->kept++;
 	} else {
 		if (rename(src, dst) < 0) {
 			/* The staging dir is on the target fs so that placing a
@@ -674,7 +742,8 @@ int add_main(int argc, char **argv)
 	char replaces[1024];
 	read_replaces(&c, name, replaces, sizeof(replaces));
 	Ctx ctx = { tmpl, root, 0, NULL, NULL, name, replaces,
-		    NULL, NULL, 0, 0 };
+		    NULL, NULL, 0, 0,
+		    upgrade && !strcmp(iver, ver) && !strcmp(irel, rel), 0 };
 
 	int lock = kp_db_lock(&c);
 	if (lock < 0) {
@@ -734,6 +803,9 @@ int add_main(int argc, char **argv)
 		close(lock);
 		return 1;
 	}
+	if (ctx.kept)
+		kp_msg("Keeping %d unchanged file%s in place", ctx.kept,
+		       ctx.kept == 1 ? "" : "s");
 
 	KpTriggers trig = {0};
 
@@ -910,6 +982,13 @@ int add_main(int argc, char **argv)
 		kb_argv_add(&h, hook_kept);
 		kb_argv_end(&h);
 		setenv("PKG_ROOT", root, 1);
+		/* The version this install replaced, "<version>-<release>",
+		 * empty on a first install: a hook compares it with its own
+		 * $version-$release to tell a same-version reinstall. */
+		char old[260] = "";
+		if (upgrade)
+			snprintf(old, sizeof(old), "%s-%s", iver, irel);
+		setenv("PKG_OLD_VERSION", old, 1);
 		/* The hook inherits stdio: whatever it prints belongs in the
 		 * build log, the same way it did when a shell ran it. */
 		if (kb_run_tty(&h) != 0)

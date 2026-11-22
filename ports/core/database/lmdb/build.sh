@@ -30,3 +30,6 @@ Libs: -L\${libdir} -llmdb
 Cflags: -I\${includedir}
 PC
 chmod 644 "$PKG/usr/lib/pkgconfig/lmdb.pc"
+
+install -Dm644 "$SRC/libraries/liblmdb/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"
+install -Dm644 "$SRC/libraries/liblmdb/COPYRIGHT" "$PKG/usr/share/licenses/$name/COPYRIGHT"

@@ -467,6 +467,34 @@ private Q_SLOTS:
         QVERIFY(m_kcm->isOnTrial());
     }
 
+    /* The other slot picked at the boot menu, nothing on trial: it runs for
+     * this boot alone, and is never called installed and not in use. */
+    void pickedAtTheMenuRunsForThisBootOnly()
+    {
+        begin();
+        write(u"cmdline"_s, u"root=UUID=9b2e4d70-61c3-4f8a-8e22-7c5a1f0b3d02 kdos_slot=b\n"_s);
+        m_kcm->load();
+        QTRY_VERIFY(slot(1)->isRunning());
+        QCOMPARE(slot(1)->state(), u"visiting"_s);
+        QCOMPARE(slot(1)->stateText(), u"Running for this boot only: the computer starts slot A next time"_s);
+        QVERIFY(!slot(0)->isRunning());
+        QCOMPARE(slot(0)->stateText(), u"Confirmed: the version this computer starts"_s);
+    }
+
+    /* A slot whose trial failed, started again by hand at the boot menu, is
+     * the root in use for this boot: the page says what kdos-bootctl says. */
+    void failedSlotPickedAtTheMenuRunsForThisBootOnly()
+    {
+        begin();
+        write(u"rolledback"_s, u"b\n"_s);
+        write(u"cmdline"_s, u"root=UUID=9b2e4d70-61c3-4f8a-8e22-7c5a1f0b3d02 kdos_slot=b\n"_s);
+        m_kcm->load();
+        QTRY_VERIFY(slot(1)->isRunning());
+        QVERIFY(slot(1)->isFailed());
+        QCOMPARE(slot(1)->state(), u"visiting"_s);
+        QCOMPARE(slot(1)->stateText(), u"Running for this boot only: the computer starts slot A next time"_s);
+    }
+
     void rollbackIsReported()
     {
         begin();
@@ -476,6 +504,19 @@ private Q_SLOTS:
         QCOMPARE(slot(1)->state(), u"failed"_s);
         QCOMPARE(m_kcm->rolledBackTitle(), u"KDOS 0.2.13 (slot B)"_s);
         QVERIFY(slot(1)->stateText().contains(u"went back"_s));
+    }
+
+    /* A trial set aside at the boot menu is the person's choice: the slot
+     * says so, and nothing reports a version that did not start. */
+    void abandonedTrialIsNotAFailure()
+    {
+        begin();
+        write(u"abandoned"_s, u"b\n"_s);
+        m_kcm->load();
+        QTRY_COMPARE(slot(1)->state(), u"abandoned"_s);
+        QVERIFY(!slot(1)->isFailed());
+        QVERIFY(m_kcm->rolledBackTitle().isEmpty());
+        QCOMPARE(slot(1)->stateText(), u"Set aside: you started the other version from the boot menu"_s);
     }
 
     void updateJobIsShown()
@@ -547,10 +588,14 @@ private Q_SLOTS:
                   {u"version"_s, u"0.2.1"_s},
                   {u"title"_s, u"KDOS 0.2.1 (slot B)"_s},
                   {u"bootable"_s, true},
+                  {u"reason"_s, u"An update stopped while writing this slot."_s},
                   {u"state"_s, u"incomplete"_s}});
         QCOMPARE(s.state(), u"incomplete"_s);
         QVERIFY(!s.isBootable());
         QCOMPARE(s.title(), u"Slot B"_s);
+        /* The page's sentence names the command that refills the slot,
+         * whatever reason the server sends. */
+        QVERIFY(s.reason().contains(u"run kdos update apply --mount as root"_s));
     }
 
     /* Installed with one system slot: the boot state names only slot A. */

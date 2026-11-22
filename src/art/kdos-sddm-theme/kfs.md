@@ -49,8 +49,11 @@ ones: `en_US` and other locales put U+202F before AM or PM, JetBrains Mono has n
 and the fallback face's taller line pushes the date down), the footer carries "KDOS · Plasma by
 KDE", Meta+Alt+S starts Orca as it does in a session (the greeter's KWin runs without global
 shortcuts, so the greeter binds it), and the screen fades in out of black and back to black on a
-login, so the mode set either side of the greeter falls inside a black frame. It is KDOS's own and
-not for upstream.
+login, so the mode set either side of the greeter falls inside a black frame. The Hibernate button
+is shown only where `sddm.canHibernate` holds (Breeze only disables it, and draws it dimmed): KDOS
+turns hibernation off in `/etc/elogind/sleep.conf.d/50-kdos.conf`, because its swap is zram, so
+elogind answers `CanHibernate` with `no` and the action row shows Sleep, Restart and Shut Down.
+It is KDOS's own and not for upstream.
 
 **The lock screen as the login.** On a machine that logs in automatically into a locked session,
 the stock Breeze lock screen is the first thing shown, and it is drawn from the same
@@ -60,8 +63,8 @@ package, whose dark image, dimmed toward the scheme's ground, is the greeter's b
 two differ where Plasma's lock screen does: its clock sits higher, only the greeter carries the
 credit, and the password field sits 13 pixels lower on the lock screen than on the greeter (its top
 edge at about y 603 on the greeter and y 616 on the lock screen, at 1920 by 1080). The patch
-changes only the mark, the clock's face, the footer and the background, never the layout, so the
-user box stays where it is on both.
+changes only the mark, the clock's face, the footer, the background and whether Hibernate is
+shown, never the user box's layout, so the user box stays where it is on both.
 
 **The footer's two keyboard buttons work over the greeter's session bus.** The Virtual Keyboard
 button is Breeze's: `Keyboards.KWinVirtualKeyboard.forceActivate()`, a D-Bus call to the

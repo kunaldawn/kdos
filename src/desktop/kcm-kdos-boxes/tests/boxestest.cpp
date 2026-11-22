@@ -601,16 +601,133 @@ private Q_SLOTS:
         QVERIFY(profileFile(u"app.gimp"_s).contains(u"base=pack:app.gimp"_s));
     }
 
-    void removeKeepsTheProfile()
+    /* A development box is made again only by Create: no application of
+     * it starts it, and `kdos-box start` refuses a box with no container.
+     * Create reads the profile remove kept. */
+    void removeKeepsTheProfileAndCreateMakesItAgain()
     {
         module();
         open(u"dev"_s);
+        QCOMPARE(row(u"dev"_s, Kdos::BoxListModel::StateTextRole).toString(), u"Stopped"_s);
         m_kcm->removeBox();
         QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
         QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QCOMPARE(m_kcm->message(), u"dev was removed. Its settings are kept; Create makes it again from them."_s);
         QVERIFY(!get(u"fake/podman.state"_s).contains(u"container dev"_s));
         QVERIFY(!profileFile(u"dev"_s).isEmpty());
         QTRY_COMPARE(row(u"dev"_s, Kdos::BoxListModel::StateRole).toString(), u"not created"_s);
+        QVERIFY(row(u"dev"_s, Kdos::BoxListModel::KeptRole).toBool());
+        QCOMPARE(row(u"dev"_s, Kdos::BoxListModel::StateTextRole).toString(), u"Removed — settings kept"_s);
+        QTRY_VERIFY(m_kcm->current().value(u"kept"_s).toBool());
+        QCOMPARE(m_kcm->current().value(u"stateText"_s).toString(), u"Removed — settings kept"_s);
+
+        m_kcm->createBox();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QCOMPARE(m_kcm->message(), u"dev was created from its settings."_s);
+        QVERIFY2(calls().contains(u"distrobox create --name dev"_s), qPrintable(calls()));
+        QVERIFY(get(u"fake/podman.state"_s).contains(u"container dev created"_s));
+        QTRY_VERIFY(m_kcm->current().value(u"created"_s).toBool());
+        QVERIFY(!row(u"dev"_s, Kdos::BoxListModel::KeptRole).toBool());
+        /* The profile create wrote is the kept one, its settings intact. */
+        QVERIFY(profileFile(u"dev"_s).contains(u"display=floating"_s));
+    }
+
+    /* An application's box is made again by its application's launch. */
+    void removingAnAppBoxSaysItsLaunchMakesIt()
+    {
+        module();
+        open(u"app.gimp"_s);
+        QVERIFY(m_kcm->current().value(u"appBox"_s).toBool());
+        m_kcm->removeBox();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QCOMPARE(m_kcm->message(), u"app.gimp was removed. Its settings are kept, and it is created again the next time its application starts."_s);
+    }
+
+    void neverCreatedIsNotRemoved()
+    {
+        module();
+        QCOMPARE(row(u"app.later"_s, Kdos::BoxListModel::StateTextRole).toString(), u"Not created"_s);
+        QVERIFY(!row(u"app.later"_s, Kdos::BoxListModel::KeptRole).toBool());
+        /* Create on a box that has a container runs nothing. */
+        open(u"dev"_s);
+        m_kcm->createBox();
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Information));
+        QVERIFY(!calls().contains(u"distrobox create"_s));
+    }
+
+    /* The terminal is `kdos-box enter <box> --window`, as KRunner's verb
+     * runs it, and only for a box that has a container. */
+    void openTerminalEntersTheBox()
+    {
+        module();
+        open(u"dev"_s);
+        const QString tool = root(u"bin/kdos-box"_s);
+        QVERIFY(QDir().mkpath(root(u"real"_s)));
+        QVERIFY(QFile::link(QStringLiteral(KDOS_APPBOX_PATH), root(u"real/kdos-box"_s)));
+        QVERIFY(QFile::remove(tool));
+        put(u"bin/kdos-box"_s,
+            u"#!/bin/sh\n[ \"$1\" = enter ] && { echo \"$*\" > \"%1\"; exit 0; }\nexec \"%2\" \"$@\"\n"_s.arg(root(u"fake/enter.log"_s), root(u"real/kdos-box"_s)));
+        QVERIFY(QFile::setPermissions(tool, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        m_kcm->openTerminal();
+        QTRY_COMPARE(get(u"fake/enter.log"_s), u"enter dev --window\n"_s);
+
+        QFile::remove(root(u"fake/enter.log"_s));
+        open(u"app.later"_s);
+        m_kcm->openTerminal();
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Information));
+        QTest::qWait(300);
+        QVERIFY(!QFile::exists(root(u"fake/enter.log"_s)));
+    }
+
+    /* A development box keeps its own name whatever it exports; only an
+     * application's box takes its application's. */
+    void rowsAreNamedByWhatTheBoxIs()
+    {
+        Kdos::BoxRow dev;
+        dev.name = u"ubu"_s;
+        dev.base = u"image:ubuntu:24.04"_s;
+        dev.state = u"running"_s;
+        Kdos::BoxListModel::nameRow(dev,
+                                    {{u"ubu-galculator"_s, u"Galculator (ubu)"_s, u"galculator"_s, true},
+                                     {u"ubu-gedit"_s, u"gedit (ubu)"_s, u"gedit"_s, true}});
+        QCOMPARE(dev.displayName, u"ubu"_s);
+        QCOMPARE(dev.iconName, u"galculator"_s);
+        QCOMPARE(dev.exports, (QStringList{u"Galculator"_s, u"gedit"_s}));
+        QVERIFY(!dev.isAppBox());
+
+        Kdos::BoxRow app;
+        app.name = u"app.gimp"_s;
+        app.base = u"pack:app.gimp"_s;
+        Kdos::BoxListModel::nameRow(app, {{u"org.gimp.GIMP"_s, u"GIMP"_s, u"gimp"_s, false}});
+        QVERIFY(app.isAppBox());
+        QCOMPARE(app.displayName, u"GIMP"_s);
+        QCOMPARE(app.iconName, u"gimp"_s);
+        QVERIFY(app.exports.isEmpty());
+
+        /* An application's box whose application has gone. */
+        Kdos::BoxRow gone;
+        gone.name = u"app.mousepad"_s;
+        gone.base = u"pack:app.mousepad"_s;
+        Kdos::BoxListModel::nameRow(gone, {});
+        QCOMPARE(gone.displayName, u"mousepad"_s);
+        QCOMPARE(gone.iconName, u"preferences-security"_s);
+
+        /* A store box is an application's box too. */
+        Kdos::BoxRow deb;
+        deb.name = u"deb.galculator"_s;
+        deb.base = u"image:kdos/deb.galculator"_s;
+        QVERIFY(deb.isAppBox());
+    }
+
+    /* The `!` line kdos-box prints for a profile newer than its container
+     * is what the Recreate banner says; the page shows one of the two. */
+    void recreateNoteIsKnown()
+    {
+        QVERIFY(Kdos::BoxesModule::isRecreateNote(
+            u"the profile was written after this box was created — a change to anything but `accent` applies once `kdos-box remove dev` has run and the box is made again"_s));
+        QVERIFY(!Kdos::BoxesModule::isRecreateNote(u"boxes/dev.conf: unknown key 'bogus'"_s));
     }
 
     void removingAnUncreatedBoxDeletesItsSettings()

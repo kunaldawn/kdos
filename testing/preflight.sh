@@ -3709,11 +3709,12 @@ fi
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
 # `kdos theme`, so the bits that say it has one may be SET in exactly two
-# places: the header that defines them, and the translucency pass in
-# ktui_draw.c, which MIXES TWO SLOTS of
+# places: the header that defines them, and ktui_draw.c. There the
+# translucency pass MIXES TWO SLOTS of
 # the palette in force and does it again on every frame, so a retint moves it
 # like everything else (it sets the FOREGROUND bit too, on a reversed cell,
-# because that is the half of such a cell the painter shows as a background).
+# because that is the half of such a cell the painter shows as a background),
+# and ktui_draw_swatch() draws one cell of another scheme, a preview, never chrome.
 # A surface that set one anywhere else would be a piece
 # of chrome wearing a colour a retint cannot move — and it would look right on
 # the machine it was written on.

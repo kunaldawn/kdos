@@ -45,8 +45,9 @@
  *
  * WHAT IT RUNS. The facts' commands, and the action a person clicked —
  * Konsole on `kdos cve` or `kdos restarts`, Konsole on `sudo kdos firmware
- * sync`, System Settings at System Versions, Discover at "Selected during
- * install" — each an argument vector; logging out is a D-Bus call to
+ * sync` (`su -c 'kdos firmware sync'` for an account outside `wheel`), System
+ * Settings at System Versions, Discover at "Selected during install" — each
+ * an argument vector; logging out is a D-Bus call to
  * Plasma's logout prompt. No shell, and no input from a notification ever
  * becomes an argument: an action is one of the fixed ids decide.c offered.
  *

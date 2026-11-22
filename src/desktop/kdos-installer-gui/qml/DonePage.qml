@@ -35,7 +35,7 @@ WizardPage {
     Kirigami.PlaceholderMessage {
         Layout.fillWidth: true
         icon.name: page.ok ? "data-success" : "data-error"
-        text: page.ok ? i18n("Remove the install medium, then restart into KDOS.") : page.events.failure
+        text: page.ok ? i18n("Restart into KDOS, and take the install medium out when the screen goes dark.") : page.events.failure
         explanation: page.ok
             ? (Backend.answers.oem
                ? i18n("The first start runs the setup wizard, which makes the account.")

@@ -37,6 +37,7 @@ activation file: a bus name is taken by the supervised daemon or by nobody.
 | `kdos-energyd` | `/run/kdos-energyd.sock` | — | `kdos-energy` | System Monitor's KDOS sensors (`ksystemstats-kdos`), `kdos doctor` | `56_energyd.sh` | The binary is missing, or no `/sys/class/powercap/*/energy_uj` is readable |
 | `kdos-oomd` | `/run/kdos-oomd.sock` | — | — | `kdos doctor`, `kdos-notice` | `57_oomd.sh` | The binary is missing, or `/proc/pressure/memory` is not writable (the kernel has PSI off) |
 | `kdos-packd` | `/run/kdos-packd.sock` | — | — | `kdos-appbox` (and `kdos app`, which runs it), Discover's KDOS backend, `kdos doctor` | `59_packd.sh` | The binary is missing, or `erofs` is absent from `/proc/filesystems` even after `modprobe erofs` |
+| `kdos-mdnsd` | UDP `127.0.0.1:5380`, as `nobody` | — | — | NetworkManager's dnsmasq, for every `.local` lookup | `45_mdns.sh` | The binary or `avahi-daemon` is missing, or avahi is disabled |
 
 `kdos-powerd` and `kdos-energyd` are each one binary with two names. Run under the daemon's name
 it serves the socket; run under the client's name (`kdos-power`, `kdos-energy`) it sends one
@@ -941,8 +942,8 @@ next caller sees.
 | Time zone | `/etc/localtime`, a symlink into `/usr/share/zoneinfo`, and `/etc/profile.d/20-timezone.sh`, which exports `TZ=':/etc/localtime'` |
 | Wi-Fi country | `/etc/modprobe.d/kdos-regdom.conf`, from the zone |
 | Network time | Whether `/etc/service.disabled/chrony` exists |
-| Locale | `/etc/locale.conf`, bare `NAME=value` lines, which SDDM puts into every session |
-| Console keymap | `/etc/keymap`, which `kdos-getty` loads on every console |
+| Locale | `/etc/locale.conf`, bare `NAME=value` lines, which SDDM puts into every session; `SetLocale` refuses with `InvalidArgs` a value that is not `C`, `C.UTF-8`, `POSIX` or `ll[_CC][.UTF-8\|.utf8][@modifier]` whose language has a file in `/usr/share/i18n/locales/musl` or a directory in `/usr/share/locale`, and a `LANGUAGE` element of any other shape (no codeset) or language, so a typo never reaches every session. The territory is not checked, because plasma-setup's language page sends `LANG=<ll_CC>.UTF-8` for every language Plasma is translated into and most have no musl-locales file. A value already in the file is read as written |
+| Console keymap | `/etc/keymap`, which `kdos-getty` loads on every console, and its copy `/boot/efi/EFI/kdos/keymap` (below) |
 | Graphical keyboard | `/etc/kdos/xkb.conf` (`XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT`, `XKBOPTIONS`), never under `/etc/X11` |
 
 Both halves of a time zone are written or the call fails. musl reads `TZ` where it is set, and
@@ -971,6 +972,24 @@ shipped `xkb.conf` leaves `XKBLAYOUT` empty, so locale1's `X11Layout` is then th
 `/etc/keymap`, and the login screen has the installed keyboard from the first boot. A derived
 layout is given only when `xkeyboard-config` carries it: KWin falls back to US for a layout it
 cannot compile and says so only in its log.
+
+**The console keymap has one copy, on the ESP.** The disk passphrase is typed before any root is
+open, so the initramfs cannot read `/etc/keymap`; it loads the map named in
+`/boot/efi/EFI/kdos/keymap` instead (see
+[Unlocking an encrypted root](../03-architecture/boot-and-init.md#unlocking-an-encrypted-root)).
+`SetVConsoleKeyboard`, and `SetX11Keyboard` with `convert`, write `/etc/keymap` and then the ESP's
+file, and an empty keymap removes both; at start the daemon rewrites the ESP's file from
+`/etc/keymap` wherever the two differ or the file is missing. Only where `/boot/efi/EFI/kdos`
+exists, so the live medium is left alone. The ESP file is written as `kdos-bootctl` writes the boot
+state, a temporary file, its `fsync`, the rename, then the file's `fsync` and a `syncfs`; failing
+to write it leaves the call succeeded, since `/etc/keymap` is the setting, and is logged. The
+daemon never reads the copy.
+
+**The console map nearest a layout is the 8-bit one.** `convert` and the installer pick the
+console map for an XKB layout from a table, then `<layout>-latin1`, and only then a map named
+`<layout>`: kbd's bare `de`, `dk`, `no`, `fr`, `sg` and `fr_CH` are the 7-bit ISO-646 maps, on which
+the keys for ü ö ä ß type `@ [ ] \`, and its `pt` is the OLPC laptop's. German gives `de-latin1`,
+Swiss German `sg-latin1`, Swiss French `fr_CH-latin1`.
 
 **The hardware clock is UTC.** The kernel reads it as UTC at boot and writes it back every eleven
 minutes while chrony has the clock synchronised, so `LocalRTC` is false and `SetLocalRTC(true)` is
@@ -1053,7 +1072,7 @@ drives it is in [Discover](discover.md#system-updates).
 | `Manager.ListJobs`, `ListAppStream` | The running job; the AppStream URL |
 | `Target.GetAppStream` | `file:///run/kdos/sysupdate/io.kdos.system.metainfo.xml` |
 | `Target.GetVersion` | The running version |
-| `Target.CheckNew` | The version on offer, or empty for nothing |
+| `Target.CheckNew` | The version on offer, or empty for nothing. Discover calls it when it opens and on Refresh; it fetches the signed indexes at most once per `--refresh-after` and downloads no package |
 | `Target.List`, `Describe` | The installed and offered versions |
 | `Target.Acquire("", 0)` | All the long work: `kdos update apply --acquire --mount --progress 3`. Its reply is a job path, whose `Progress` Discover watches |
 | `Target.Install("", 0)` | The short arm: `kdos update apply --arm --mount --progress 3` |
@@ -1096,7 +1115,7 @@ names the live medium as the live session.
 
 **The update document belongs to the root that wrote it.** On a machine with slots `CheckNew`
 reads `/var/lib/kdos/update.json` and, at most once an hour (`--refresh-after`, judged by the
-`fetch` line of `/var/lib/kdos/update.state`), runs `kdos update check --fetch` to fetch the signed tree and release index, and through that index the
+`fetch` line of `/var/lib/kdos/update.state`, whose `no-network` code counts as no fetch so the next `CheckNew` after connecting tries again at once; a `fetch-failed` keeps its time), runs `kdos update check --fetch` to fetch the signed tree and release index, and through that index the
 binhost index and slot image manifest, so what it offers is only what the index named. The
 document is in each
 slot, so the first boot of a slot, or the boot a rollback returns to, finds one written before
@@ -1151,13 +1170,17 @@ A slot is confirmed only when two marks exist, tested together, both root's regu
 | Mark | Written when |
 |---|---|
 | `userspace` | The end of `rcS`: every service started |
-| `graphical` | A Plasma session answered for a minute (`Bless`, which `kdos-notice --bless` calls), or the login greeter stayed up for a minute on a machine nobody logs in to |
+| `graphical` | A Plasma session answered for a minute (`Bless`, which `kdos-notice --bless` calls), or the login greeter stayed up for a minute on a machine SDDM does not log in automatically |
 
 Then the daemon runs `kdos-bootctl mark-good`, once per boot, and writes `/run/kdos/bless/confirmed`
 after it succeeds. Either mark alone confirms nothing: a userland that boots and a desktop that
 crashes is the failure a trial exists to catch. The greeter counts only on a machine with no
 autologin and before any user session has existed this boot, because a greeter that came back
-after the session crashed must not confirm the slot that crashed it. The greeter is an
+after the session crashed must not confirm the slot that crashed it. On such a machine the
+greeter is the graphical check, and a desktop that fails only after a login is not caught; waiting
+for a session instead would roll a good release back whenever its one trial boot is left at the
+login screen. The way back from such a desktop is Start This Version Next Time on the other slot.
+The greeter is an
 `sddm-greeter` and a `kwin_wayland` both running as SDDM's account, `sddm`, the uid
 `/etc/passwd` gives it: the names alone are not enough, since any account can start two processes
 called that. A machine whose `inittab`
@@ -1211,6 +1234,58 @@ failed update is read line by line in syslog under `kdos-sysupdated`.
 for `org.freedesktop.sysupdate1`. The interface is tested against Discover's own XML:
 `tests/org.freedesktop.sysupdate1.xml` beside the source is discover-6.8.2's, byte for byte, and
 `testing/selftest.sh` diffs the daemon's introspection against it and against the Slots1 contract.
+
+## kdos-mdnsd
+
+`kdos-mdnsd` answers DNS questions about `.local` host names from Avahi, so that `ping`, `ssh`,
+a browser, `getent hosts` and CUPS resolve `<host>.local` on musl, which has no NSS for an
+`nss-mdns` module to hook into `getaddrinfo()`. Every host lookup goes to `/etc/resolv.conf`'s
+`127.0.0.1`, NetworkManager's dnsmasq, and
+`/etc/NetworkManager/dnsmasq.d/kdos-mdns.conf` (`server=/local/127.0.0.1#5380`) forwards the
+`local` domain to this daemon on UDP `127.0.0.1:5380`. For each question it opens Avahi's
+simple-protocol socket, `/run/avahi-daemon/socket`, and sends `RESOLVE-HOSTNAME-IPV4 <name>` or
+`RESOLVE-HOSTNAME-IPV6 <name>`.
+
+| Question | Answer |
+|---|---|
+| `A` or `AAAA` for a name ending in `.local`, Avahi answers `+ <if> <proto> <name> <address>` | One record with that address, TTL 10 seconds |
+| The same, Avahi answers `-`, says nothing for three seconds, or gives an IPv6 link-local address | `NOERROR`, no answer, and an SOA for `local` whose minimum is 10 seconds, which dnsmasq caches |
+| Any other type under `.local` | The same empty answer |
+| A name outside `.local`, the bare `local`, or a name holding a byte other than a letter, digit, `-`, `_` or UTF-8 | `REFUSED` |
+| A truncated question, a compression pointer that does not point back before the last one followed, more than one question | `FORMERR` |
+| Avahi's socket cannot be reached, Avahi ends the connection before a reply line, or 48 questions are already open (under Avahi's own limit of 50 simple-protocol clients, past which it closes the connection) | `SERVFAIL`, which dnsmasq does not cache |
+| A packet shorter than a header, or a response | Nothing |
+
+A miss is never `NXDOMAIN`: musl's `getaddrinfo()` asks `A` and `AAAA` together and fails the
+whole lookup on an `NXDOMAIN` to either, so an IPv4-only host would resolve to nothing. Once one
+family has answered, the other family's question for the same name gets half a second more rather
+than the rest of its three, because Avahi already holds every address record the responder sent.
+An IPv6 link-local address is left out because a DNS record cannot carry the interface it
+belongs to. Each question has its own non-blocking connection to Avahi, and `poll()` waits on all
+of them, so a name that never answers delays no other.
+
+It is the one daemon here that does not keep root: `45_mdns.sh` starts it, it binds the port and
+then becomes `nobody` (no supplementary groups, `no_new_privs`) before it reads a packet, and it
+refuses to run if it can still become root. It links `libkbase` alone and has no socket in `/run`,
+no bus name and no client. `45_mdns.sh` sorts after `45_avahi.sh`, starts it under `ksvc` with
+`--restart-with avahi-daemon`, and skips it when `avahi-daemon` is not installed or
+`/etc/service.disabled/avahi` exists. A machine whose network is run by `30_network`'s dhcpcd has
+no dnsmasq to forward to it; see
+[Known gaps](../06-reference/known-gaps.md#local-names-resolve-only-through-networkmanagers-dnsmasq).
+
+```text
+kdos-mdnsd [--port N] [--socket PATH] [--user NAME]
+kdos-mdnsd --answer QUERY-FILE AVAHI-REPLY
+```
+
+`--port 0` takes a port the kernel picks and prints it on the first line; `--socket` asks another
+Avahi socket; `--user` names the account to become, and only root becomes one. `--answer` runs one
+DNS packet from a file through the parser and the answer builder against a recorded Avahi reply
+line (empty for none) and writes the response packet to standard output, exiting 3 for a packet
+that gets no answer. `testing/selftest.sh` drives both through `testing/fixtures/mdnsd/drive.py`:
+good `A` and `AAAA` questions, misses, refusals, truncated packets and compression loops through
+`--answer`, and the daemon against a fake Avahi with one name that never answers beside one that
+does.
 
 ## kdos-boxsock
 
@@ -1344,12 +1419,13 @@ through `PATH` (rule 8).
 10. Its refusals are documented in this chapter, including the ones that look like limitations.
 
 Where the pieces go is fixed as well. The source and its recipe (`kpkgbuild` and `build.sh`) are
-`src/daemons/<name>/`, the area that holds the six root daemons above (`kdos-boxsock` is a session
-program, under `src/system/`); the port is named under the `src-daemons` heading of
-`script/phases/50_desktop/packages.txt`, the only phase whose `PORT_REPO` includes `src/daemons`;
-and its init script is `fs/etc/init.d/<NN>_<service>.sh`, whose number places it after everything
-it needs, since `rcS` starts the scripts in numeric order. The six here are 43, 46, 55, 56, 57 and
-59: the bus daemons after `polkitd` (41), the others after the network.
+`src/daemons/<name>/`, the area that holds the six root daemons above and `kdos-mdnsd`
+(`kdos-boxsock` is a session program, under `src/system/`); the port is named under the
+`src-daemons` heading of `script/phases/50_desktop/packages.txt`, the only phase whose `PORT_REPO`
+includes `src/daemons`; and its init script is `fs/etc/init.d/<NN>_<service>.sh`, whose number
+places it after everything it needs, since `rcS` starts the scripts in numeric order. The six here
+are 43, 46, 55, 56, 57 and 59: the bus daemons after `polkitd` (41), the others after the network;
+`kdos-mdnsd` is 45, after Avahi.
 
 ## See also
 

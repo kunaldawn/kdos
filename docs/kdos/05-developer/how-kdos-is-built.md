@@ -581,7 +581,8 @@ build it. The list holds:
   plugin, the notices, the `library:/` folder and the graphical installer, `kdos-installer-gui`.
 - **The root daemons**: `kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `kdos-packd`,
   `kdos-settingsd` (the hostname, time and locale services System Settings and the greeter ask)
-  and `kdos-sysupdated` (the system-update service Discover drives).
+  and `kdos-sysupdated` (the system-update service Discover drives), and `kdos-mdnsd`, which
+  answers `.local` host names from Avahi as `nobody`.
 - **The meta ports**, last: `kde-plasma`, the eight `kde-gear-*` sets, `kde-gear` and `kde-all`,
   which build nothing and name what `kpkg install` gives a machine.
 
@@ -811,13 +812,14 @@ switches change what it carries, `KDOS_ISO_SOURCES=1` (the tree's sources under 
 medium boots is in [Boot and init](../03-architecture/boot-and-init.md).
 
 **What the medium needs.** Measured on a full build tree, the base is 900 of 2,442 packages
-and 5.5 GB of their 49.5 GB of files, and the base ISO is 1,691 MiB. An image built with
+and 5.5 GB of their 49.5 GB of files, and the base ISO is 1,775,599,616 bytes (1,693 MiB), 207 MiB under the 1,900 MiB gate,
+without the 13 MB of noto-fonts-extra that `ports/base` also names. An image built with
 `KDOS_IMAGE=full` carries every package and its ISO is 20.4 GB. The full image sets four
 requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
 [Installation](../02-user-guide/installation.md), [kinstall](../04-programs/kinstall.md) and the
 release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a Blu-ray disc for
 optical boot, since the image does not fit a DVD; a disk larger than the install, because
-`kinstall` refuses one smaller than the install size plus 768 MiB; and a release published in
+`kinstall` refuses one smaller than the install size plus 768 MiB plus 2 GiB; and a release published in
 several parts, because GitHub holds no asset of 2 GiB or more. `make run` gives its virtual machine
 a sparse 192 GB disk, large enough for the install's two A/B slots.
 

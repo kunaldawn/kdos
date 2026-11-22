@@ -16,16 +16,24 @@
  *       frame as plain text, one terminal row per line, and the chosen
  *       zone as `# tz <label>`
  *
- *   PAGEDRAW_KEYS plays keys into the page before the frame printed,
+ *   PAGEDRAW_KEYS plays keys into the page before the frame printed
+ *   (p a frame in which the Limine preflight line flips, a capital
+ *   letter its lowercase typed into the focused field),
  *   PAGEDRAW_DONE an install that finished that many seconds after it
  *   started, long ago, with PAGEDRAW_WARN's `|`-separated warnings and
  *   PAGEDRAW_LOG's line, PAGEDRAW_CAPS capability bits added to the
  *   terminal's, with every cell drawn in a literal colour printed as
  *   `# rgb <x> <y> <rrggbb>`,
- *   PAGEDRAW_DISK_GB stands in one disk of that size and PAGEDRAW_MOUNT a
- *   partition of it mounted at that path, PAGEDRAW_CPU a processor's name,
- *   and PAGEDRAW_COPY, PAGEDRAW_FAIL and PAGEDRAW_LOG an install running
- *   its copy or failed in it.
+ *   PAGEDRAW_DISK_GB stands in one disk of that size, PAGEDRAW_MOUNT a
+ *   partition of it mounted at that path and PAGEDRAW_PARTS that many
+ *   labelled ext4 partitions on it, PAGEDRAW_CPU a processor's name,
+ *   PAGEDRAW_COPY, PAGEDRAW_FAIL and PAGEDRAW_LOG an install running
+ *   its copy or failed in it, and PAGEDRAW_DRYRUN=1 the pages of
+ *   `kinstall --dry-run`, PAGEDRAW_UNATTENDED=1 those of
+ *   `kinstall --unattended`, and PAGEDRAW_PREFLIGHT the index of the one
+ *   Welcome preflight line that fails (unset, every line passes, whatever
+ *   this host has installed). The page's status line is printed as
+ *   `# status <text>`, before the zone.
  *
  * It links pages.c with kinstall-core and stands in for main.c's wizard
  * state, so a page's layout is checked on the host: a command wrapped
@@ -42,6 +50,8 @@
 int ki_page;
 int ki_quit;
 int ki_help;
+extern int ki_unattended;
+extern int ki_preflight_fail;
 
 int page_index(const char *id)
 {
@@ -112,6 +122,30 @@ int main(int argc, char **argv)
 		p->num = 1;
 		p->mounted = 1;
 		ki_disk[0].nparts = 1;
+	}
+	/* PAGEDRAW_PARTS gives that disk as many ext4 partitions, each with
+	 * a label, so a Summary names what an erase destroys. */
+	const char *np = getenv("PAGEDRAW_PARTS");
+
+	if (ki_ndisk && np && *np) {
+		Disk *d = &ki_disk[0];
+		int k = atoi(np);
+
+		if (k > MAX_PARTS)
+			k = MAX_PARTS;
+		for (int i = 0; i < k; i++) {
+			Part *p = &d->part[i];
+
+			memset(p, 0, sizeof(*p));
+			snprintf(p->name, sizeof(p->name), "vda%d", i + 1);
+			snprintf(p->path, sizeof(p->path), "/dev/vda%d", i + 1);
+			kb_strlcpy(p->fstype, "ext4", sizeof(p->fstype));
+			snprintf(p->label, sizeof(p->label), "data%d", i + 1);
+			p->sectors = d->sectors / (unsigned long long)(k + 1);
+			p->start = 2048 + (unsigned long long)i * p->sectors;
+			p->num = i + 1;
+		}
+		d->nparts = k;
 	}
 	/* PAGEDRAW_CPU stands in for probe_system()'s processor, on a 32-bit
 	 * UEFI with Secure Boot on: the Welcome page's longest values. */
@@ -192,6 +226,14 @@ int main(int argc, char **argv)
 	const char *caps = getenv("PAGEDRAW_CAPS");
 	if (caps && *caps)
 		ktui_caps |= atoi(caps);
+	const char *dry = getenv("PAGEDRAW_DRYRUN");
+	if (dry && *dry)
+		cfg.dry_run = atoi(dry);
+	const char *una = getenv("PAGEDRAW_UNATTENDED");
+	if (una && *una)
+		ki_unattended = atoi(una);
+	const char *pf = getenv("PAGEDRAW_PREFLIGHT");
+	ki_preflight_fail = pf && *pf ? atoi(pf) : 99;
 
 	/* The wizard passes the Applications page on its way to every page
 	 * after it, and the Summary reads what that page chose. */
@@ -213,15 +255,21 @@ int main(int argc, char **argv)
 	KtuiEvent ev;
 	int used = 0;
 	/* PAGEDRAW_KEYS plays keys first, a frame each: t Tab, d Down, u Up,
-	 * r Return. Tab moves focus at the end of its frame, so the frame
-	 * drawn last is the one that sees where focus landed. */
+	 * r Return, a capital letter its lowercase typed, and p a frame with
+	 * no key in which the Limine preflight line starts failing, or stops
+	 * if it was. Tab moves focus at the end
+	 * of its frame, so the frame drawn last is the one that sees where
+	 * focus landed. */
 	const char *keys = getenv("PAGEDRAW_KEYS");
 
 	for (const char *k = keys ? keys : ""; ; k++) {
 		memset(&ev, 0, sizeof(ev));
-		if (*k) {
+		if (*k == 'p')
+			ki_preflight_fail = ki_preflight_fail == 4 ? 99 : 4;
+		else if (*k) {
 			ev.type = KT_EVT_KEY;
-			ev.key = *k == 't' ? KT_K_TAB : *k == 'd' ? KT_K_DOWN
+			ev.key = *k >= 'A' && *k <= 'Z' ? *k - 'A' + 'a'
+			       : *k == 't' ? KT_K_TAB : *k == 'd' ? KT_K_DOWN
 			       : *k == 'u' ? KT_K_UP : KT_K_ENTER;
 		}
 		ktui_draw_clear();
@@ -250,6 +298,8 @@ int main(int argc, char **argv)
 		if (cell[i].attr & KT_A_FGRGB)
 			printf("# rgb %d %d %06x\n", i % cw, i / cw,
 			       cell[i].fgc & 0xffffffu);
+	printf("# status %s\n", ki_pages[n]->subtitle ? ki_pages[n]->subtitle
+						       : "");
 	printf("# tz %s\n", cfg.tz_label);
 	return 0;
 }

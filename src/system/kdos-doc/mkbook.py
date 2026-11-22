@@ -366,9 +366,19 @@ def name_line(desc):
     return MD_SPECIAL_RE.sub(r"\\\1", desc)
 
 
+# A section of the book says "this chapter" of itself; under man(1) it is a
+# page, and a reader of kinstall(1) has no chapter in front of them.
+CHAPTER_RE = re.compile(r'\b([Tt])his chapter\b')
+
+
+def man_body(body):
+    """A book section's markdown as a manual page's DESCRIPTION."""
+    return CHAPTER_RE.sub(lambda m: m.group(1) + "his page", body)
+
+
 def man_page(name, sec, desc, body, chapter, date):
     md = (f"# NAME\n\n{name} \\- {name_line(desc)}\n\n"
-          f"# DESCRIPTION\n\n{body}\n"
+          f"# DESCRIPTION\n\n{man_body(body)}\n"
           f"# SEE ALSO\n\n**kdos**(7), and the chapter this page is taken "
           f"from, *{DOCROOT}/{chapter}*.\n")
     return lowdown(MAN_ARGS + ["-M", "title=" + name.upper(),

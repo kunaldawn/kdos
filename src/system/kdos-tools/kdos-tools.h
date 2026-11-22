@@ -41,6 +41,9 @@ int getty_main(int argc, char **argv);		/* kdos-getty               */
 /* A/B root slots (bootctl.c). The initramfs runs `select`, the end of rcS runs
  * `mark-good`, and everything else is administration. */
 int bootctl_main(int argc, char **argv);	/* kdos-bootctl             */
+/* 1 when `/` is the live medium's overlay, which an installed root never is.
+ * $KDOS_MOUNTS names another mount table, for a test. */
+int kdt_root_is_live(void);
 
 /* `kdos rebuild` (rebuild.c): the stick rebuilding the stick. Finds the sources
  * an ISO built with KDOS_ISO_SOURCES=1 carries, checks the machine can do the
@@ -124,9 +127,9 @@ int mpctl_main(int argc, char **argv);		/* kdos-mpctl               */
 const char *kdt_reason_dir(void);
 char *kdt_reason_header(const char *text, const char *key, int nth);
 
-/* "the aphorism · the scar", picked by (day XOR pid). NULL when nothing is
- * installed. The caller frees. */
-char *kdt_oracle_line(void);
+/* "the aphorism · the scar" with cite, the aphorism alone without, picked by
+ * (day XOR boot). NULL when nothing is installed. The caller frees. */
+char *kdt_oracle_line(int cite);
 
 /*
  * `kdos update` (update.c). Fetches a signed recipe tree into /ports, verified
@@ -172,11 +175,20 @@ KdtRelIdx *kdt_relidx_load(const char *dir, const char *keys, char *why,
 			   size_t wcap);
 int kdt_relidx_url(const KdtRelIdx *ix, const char *path, char *url,
 		   size_t cap, char sha[65], long long *size);
-/* `path` into `out`, kept only with the index's size and hash: KDT_GOT_*. */
+/* `path` into `out`, kept only with the index's size and hash: KDT_GOT_*.
+ * A failed download leaves no `<out>.part`. */
 int kdt_relidx_take(const KdtRelIdx *ix, const char *path, const char *out,
 		    char *why, size_t wcap);
+/* As kdt_relidx_take, for an `out` named for one version of one file: a
+ * failed download keeps `<out>.part`, `*cut` bytes long, which the next take
+ * of the same path continues with a Range request. */
+int kdt_relidx_take_resume(const KdtRelIdx *ix, const char *path,
+			   const char *out, long long *cut, char *why,
+			   size_t wcap);
 int kdt_relidx_holds(const KdtRelIdx *ix, const char *path, const char *file);
 int kdt_relidx_curl(const char *url, const char *out);
+/* 1 when /proc/net/route or /proc/net/ipv6_route holds a default route. */
+int kdt_have_route(void);
 /* A producer's index over `files` in `dir`, each at `<lane>/<name>`. */
 int kdt_relidx_write(const char *dir, const char *lane, const char *version,
 		     char *const *files, int n, const char *key, char *why,
@@ -331,8 +343,12 @@ const char *kdt_accent_title(const KcolScheme *sc);	/* "Bone"   */
 int kdt_accent_light(const KcolScheme *sc);
 /* The switch itself, for a caller already holding the scheme (`kdos
  * phosphor` pairs the accent through it). KDT_THEME_FROM_PLASMA is kded-kdos's
- * run: the global theme is already applied, so it is not applied again. */
+ * run: the global theme is already applied, so it is not applied again.
+ * KDT_THEME_ACCOUNT brings only the calling account into step: the machine's
+ * half (/etc/kdos/accent, the greeter, the boot menu and splash) is left on
+ * the accent chosen for the machine. */
 #define KDT_THEME_FROM_PLASMA 1
+#define KDT_THEME_ACCOUNT 2
 int kdt_theme_set(const KcolScheme *sc, int flags);
 /* The open Konsole tabs whose profile name starts with `prefix` are moved to
  * profile `name`; returns how many moved. */

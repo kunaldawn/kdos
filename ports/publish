@@ -1794,9 +1794,12 @@ iso_sfs_offset() {
 # version, so an image without it installs machines on which no prebuilt
 # package, group or firmware ever installs, and nothing on them repairs it.
 # Its /ports/RELEASE must be there too, or the medium and every install from
-# it show no release notes.
+# it show no release notes. Its /etc/os-release must say VERSION_ID=<tag>
+# without its `v`: About this System, `kdos version`, the boot menus and
+# What's New name the release from that line, so an image whose file was not
+# bumped calls the new release by the old number.
 iso_check() {
-    local iso=$1 off=$2 tag=$3 c=$4 tree v tc
+    local iso=$1 off=$2 tag=$3 c=$4 tree v tc vid
     if ! tree=$(unsquashfs -o "$off" -cat "$iso" ports/TREE 2>/dev/null); then
         fail "$iso carries no /ports/TREE: it was built without a commit and names no release"
         return
@@ -1813,6 +1816,11 @@ iso_check() {
     fi
     unsquashfs -o "$off" -cat "$iso" ports/RELEASE >/dev/null 2>&1 ||
         fail "$iso carries no /ports/RELEASE: \`kdos update notes\` and What's New would show nothing"
+    vid=$(unsquashfs -o "$off" -cat "$iso" etc/os-release 2>/dev/null |
+        sed -n 's/^VERSION_ID="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')
+    if [ "$vid" != "${tag#v}" ]; then
+        fail "$iso's /etc/os-release says VERSION_ID=${vid:-(none)}, not ${tag#v} for $tag: bump fs/etc/os-release in the release commit"
+    fi
 }
 
 # ab_need <iso> <offset> <commit> — "<MiB with the default swap> <MiB with no
@@ -1821,16 +1829,18 @@ iso_check() {
 # on at all. It is ki_ab_need_mb() of src/system/kinstall-core/conf.c plus the
 # ESP and the BIOS boot partition, with every figure read from kinstall-core
 # at <commit>: the limits of kinstall-core.h, KI_DISK_MARGIN in its
-# "(<n>ULL << 20)" form, and conf.c's KI_VOLUME_META_MB and default
+# "(<n>ULL << 20)" form and KI_ROOT_FREE_MB in its "<n>ULL" form, which one
+# root needs beside the install, and conf.c's KI_VOLUME_META_MB and default
 # cfg.swap_mb. A figure not found in that form fails the whole sum rather than
-# publishing a guess. The install's size is taken from system.sfs: every
+# publishing a guess, but for KI_ROOT_FREE_MB: a commit whose installer keeps
+# no free room on the root does not define it, and counts 0. The install's size is taken from system.sfs: every
 # regular file, the live account's
 # home left out but for its syntax cache, the box store left out as the
 # installer's default does. The slot grows with the disk (KI_SLOT_SHARE
 # percent of it), so the least disk is the fixed point of need(disk), reached
 # from below; need rises at most 0.6 MiB a MiB, so it converges.
 ab_need() {
-    local iso=$1 off=$2 c=$3 h cf k payload swap d n lim margin meta swap_mb
+    local iso=$1 off=$2 c=$3 h cf k payload swap d n lim margin rootfree meta swap_mb
     local KI_ESP_MB KI_BIOS_BOOT_MB KI_SLOT_MIN_MB KI_SLOT_SHARE KI_HOME_MIN_MB
     h=$(git -C "$REPO_ROOT" show "$c:src/system/kinstall-core/kinstall-core.h") || return 1
     cf=$(git -C "$REPO_ROOT" show "$c:src/system/kinstall-core/conf.c") || return 1
@@ -1840,9 +1850,11 @@ ab_need() {
         printf -v "$k" '%s' "$lim"
     done
     margin=$(sed -n 's/^#define[[:space:]]\{1,\}KI_DISK_MARGIN[[:space:]]\{1,\}(\([0-9]\{1,\}\)U\{0,1\}L\{0,2\}[[:space:]]*<<[[:space:]]*20)[[:space:]]*$/\1/p' <<< "$h")
+    rootfree=$(sed -n 's/^#define[[:space:]]\{1,\}KI_ROOT_FREE_MB[[:space:]]\{1,\}\([0-9]\{1,\}\)U\{0,1\}L\{0,2\}[[:space:]]*$/\1/p' <<< "$h")
     meta=$(sed -n 's/^#define[[:space:]]\{1,\}KI_VOLUME_META_MB[[:space:]]\{1,\}\([0-9]\{1,\}\)U\{0,1\}L\{0,2\}[[:space:]]*$/\1/p' <<< "$cf")
     swap_mb=$(sed -n 's/^[[:space:]]*cfg\.swap_mb[[:space:]]*=[[:space:]]*\([0-9]\{1,\}\);.*$/\1/p' <<< "$cf")
-    for k in margin meta swap_mb; do
+    [ -n "$rootfree" ] || grep -q 'KI_ROOT_FREE_MB' <<< "$h" || rootfree=0
+    for k in margin rootfree meta swap_mb; do
         [ "$(wc -l <<< "${!k}")" = 1 ] && [ -n "${!k}" ] || return 1
     done
     payload=$(unsquashfs -o "$off" -lln "$iso" 2>/dev/null | awk '
@@ -1871,7 +1883,7 @@ ab_need() {
         done
         printf '%s ' "$d"
     done
-    echo "$(( payload + margin )) $swap_mb"
+    echo "$(( payload + margin + rootfree )) $swap_mb"
 }
 
 # gib <MiB> — one decimal, the way the notes give a disk.
@@ -1888,11 +1900,12 @@ pub_keyid() { cut -d' ' -f2 "$1" | xxd -r -p | sha256sum | cut -c1-16; }
 # and What's New show on a machine running the release, under "About this
 # release" with each of its headings one level down, so its sections sit
 # inside that one. When RELEASE has a "What it needs" section, that section
-# is the release's requirements: the script's own sentence about the machine
-# is left out and its measured lines (the medium the ISO fits, the disk two
-# slots need) go under Download, so the page states its requirements once.
+# is the release's requirements and RELEASE names the live account: the
+# script's own sentences about the machine, the disk two slots need and the
+# live password are left out, and only the medium the ISO fits goes under
+# Download, so the page states each requirement once.
 release_notes() {
-    local medium needs=0 blob="https://github.com/$KDOS_REPO/blob/$tag/docs/kdos/02-user-guide"
+    local medium account needs=0 blob="https://github.com/$KDOS_REPO/blob/$tag/docs/kdos/02-user-guide"
     echo "KDOS $tag, built from commit $commit."
     echo
     if git -C "$REPO_ROOT" cat-file -e "$commit:ports/RELEASE" 2>/dev/null; then
@@ -1908,10 +1921,12 @@ release_notes() {
     fi
     echo "## Download"
     echo
+    account="logged in as \`kdos\` (password \`kdos\`, also root's)"
+    [ "$needs" = 0 ] || account="logged in as \`kdos\`"
     if [ "$nparts" = 1 ]; then
-        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, logged in as \`kdos\` (password \`kdos\`, also root's), and installs KDOS from there."
+        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, $account, and installs KDOS from there."
     else
-        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, logged in as \`kdos\` (password \`kdos\`, also root's), and installs KDOS from there. GitHub holds no file of 2 GiB or more, so it is stored in $nparts parts; download every \`$iso_name.partNN\` and join them in order:"
+        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, $account, and installs KDOS from there. GitHub holds no file of 2 GiB or more, so it is stored in $nparts parts; download every \`$iso_name.partNN\` and join them in order:"
         echo
         echo '```'
         echo "cat $iso_name.part* > $iso_name"
@@ -1934,7 +1949,7 @@ release_notes() {
     fi
     echo "The image carries the base system; the desktop applications, games, language packs and the rest install prebuilt from this release's packages, by name or as a group, from the installer or later with \`kdos update install\`. Write it to $medium."
     echo
-    if [ -n "$need_ab" ]; then
+    if [ "$needs" = 0 ] && [ -n "$need_ab" ]; then
         echo "Installing needs a disk of about $(gib "$need_ab") or more for the two system slots that updates switch between, with the default $(gib_round "$need_swap") swap (about $(gib "$need_noswap") with no swap). A smaller disk gets one slot and no rollback, and one smaller than about $(gib "$need_one") is refused."
         echo
     fi

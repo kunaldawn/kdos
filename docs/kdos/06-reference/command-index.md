@@ -83,7 +83,7 @@ links to its section of [The kdos command](../04-programs/kdos-command.md).
 | Subcommand | Does |
 |---|---|
 | [`kdos help`](../04-programs/kdos-command.md#kdos-help) | The cheat sheet: where software lives, the everyday commands and the default keys; `--keys` prints the keys alone, `--pager` pages it; also `-h` and `--help` |
-| [`kdos version`](../04-programs/kdos-command.md#kdos-version) | Kernel, C library, userland, session and accent; also `-V` |
+| [`kdos version`](../04-programs/kdos-command.md#kdos-version) | The release and its build, kernel, C library, userland, session and accent; also `--version` and `-V` |
 | [`kdos status`](../04-programs/kdos-command.md#kdos-status) | Packages, boxes, exported applications and the session |
 | [`kdos doctor`](../04-programs/kdos-command.md#kdos-doctor) | Check for the faults known to occur on KDOS, each reported as `ok`, `warn` or `skip`; `--json`, `--cve` |
 | [`kdos theme [NAME]`](../04-programs/kdos-command.md#kdos-theme) | Set the accent everywhere at once (`next`, `prev` and `list` too); `style FILE` applies a style file, `--audit` checks the generated colours |
@@ -120,7 +120,7 @@ links to its section of [The kdos command](../04-programs/kdos-command.md).
 | [`kdos restarts`](../04-programs/kdos-command.md#kdos-restarts) | Which running processes still use code an upgrade replaced or removed |
 | [`kdos march`](../04-programs/kdos-command.md#kdos-march) | Measure per-machine optimisation (`probe`, `run PORT…`) and read the recorded verdicts (`report`) |
 | [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) | Which pinned versions carry known vulnerabilities, from an offline database |
-| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (what is behind the signed tree, what the binhost holds and whether a newer slot image exists; `--json`), `fetch` (the newest signed ports tree, and the release index through which the binhost index and slot image manifest are taken; `--binhost-only` the binhost index of the tree in place alone), `install PORT\|GROUP` (one port or group and what it lacks, `--prebuilt` from the signed binhost or `--source` built here, `--build-deps=prebuilt\|source`, `--root DIR`; `--pending` what the installer recorded; `--dev PORT\|GROUP…` installed ports again whole, with the development files the image left out), `remove PORT` (one port with a world line that nothing installed needs, removed by `kpkg remove`; `--dry-run`), `removable` (the installed world ports that `remove` takes; `--json`), `groups` (every group, installed or not, and its download size; `--json`), `apply` (the newer slot image and then the world set, or the binhost's packages, into the inactive slot, each package by its origin's route; `--source` builds them here instead), `notes` and `theme` |
+| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (what is behind the signed tree, what the binhost holds and whether a newer slot image exists; `--json`), `fetch` (the newest signed ports tree, and the release index through which the binhost index and slot image manifest are taken; `--binhost-only` the binhost index of the tree in place alone), `install PORT\|GROUP` (one port or group and what it lacks, `--prebuilt` from the signed binhost or `--source` built here, `--build-deps=prebuilt\|source`, `--root DIR`; `--pending` what the installer recorded; `--dev PORT\|GROUP…` installed ports again whole, with the development files the image left out), `remove PORT` (one port with a world line that nothing installed needs, with the packages it brought that nothing else needs, removed by `kpkg remove`, and the cached files of every package not installed out of the binhost cache; `--dry-run`), `removable` (the installed world ports that `remove` takes, and the packages left by removals; `--json`), `groups` (every group, installed or not, and its download size; `--json`), `apply` (the newer slot image and then the world set, or the binhost's packages, into the inactive slot, each package by its origin's route; `--source` builds them here instead), `notes` and `theme` |
 | [`kdos firmware sync`](../04-programs/kdos-command.md#kdos-firmware) | Install the vendor firmware ports this machine's devices and kernel log ask for, prebuilt; `--dry-run` (`--json`) names each and why, `--all` every vendor port, `--root DIR` into another root |
 | [`kdos image`](../04-programs/kdos-command.md#kdos-image) | Signed whole-slot images: `make`, `verify`, `unpack` into a root, and `carry` what a slot keeps from the running one |
 | [`kdos rebuild WORKDIR`](../04-programs/kdos-command.md#kdos-rebuild) | Rebuild the image from the sources on the medium; `--dry-run`, `--iso-only` |
@@ -185,6 +185,7 @@ and its client are always the same version.
 | `kdos-energy` | The per-application energy report; `--json`, `ping` | [The daemons](../04-programs/daemons.md#kdos-energyd) |
 | `kdos-oomd` | The memory-pressure daemon, which spares the desktop | [The daemons](../04-programs/daemons.md#kdos-oomd) |
 | `kdos-packd` | The pack daemon, the only program that mounts a pack | [The daemons](../04-programs/daemons.md#kdos-packd) |
+| `kdos-mdnsd` | `/usr/sbin/kdos-mdnsd`: answers `.local` host names in DNS from Avahi, behind NetworkManager's dnsmasq, as `nobody` | [The daemons](../04-programs/daemons.md#kdos-mdnsd) |
 | `kdos-settingsd` | `org.freedesktop.hostname1`, `timedate1` and `locale1` on the system bus, over the files KDOS keeps | [KDOS's settings pages](../04-programs/kdos-settings.md#kdos-settingsd) |
 | `kdos-sysupdated` | `org.freedesktop.sysupdate1` and `io.kdos.Slots1` on the system bus: system updates into the inactive A/B slot, for Discover and System Settings | [Discover](../04-programs/discover.md#kdos-sysupdated) |
 
@@ -239,7 +240,7 @@ All five names are one binary in `/usr/bin`.
 | `kpkgdepends` | Print the resolved install order | [Packaging](../03-architecture/packaging.md#kpkg) |
 
 `kpkg` takes `install` (also `i`), `remove` (also `r`), `list` (also `l`, with `--json`), `info`
-(with `--json`), `check` (packages by name, or `--all`), `facets` (`--strip [PACKAGE…]` removes
+(with `--json`), `check` (packages by name, or `--all`; `--brief` prints only the faults and the summary, `--log FILE` keeps every line), `facets` (`--strip [PACKAGE…]` removes
 installed packages' development and documentation files as `FACETS=run` leaves them out, `--list
 PACKAGE` prints what one was installed without; see
 [Facets](../03-architecture/packaging.md#facets)), `needs` (`PACKAGE` prints what the package
@@ -267,7 +268,8 @@ arguments: it builds the port in the current directory.
 
 `kpkg` has no `update` subcommand. A word `kpkg` does not know, `update` among them, prints
 `kpkg: unknown command '<word>' — try: kpkg help` on standard error and exits 1; a bare `kpkg`
-prints the usage and exits 1, and `kpkg help`, `--help` and `-h` print it and exit 0. `--root
+prints the usage and exits 1, and `kpkg help`, `--help` and `-h` print it and exit 0.
+`kpkg --version` (or `-V`) before the command word prints `kpkg 1.0-kdos` and exits 0. `--root
 <path>` may come before the command word (`kpkg --root <path> <command> …`) for every command that
 reads a root; before one that reads none it prints `kpkg: option '--root' is not for '<command>'`
 and exits 1, and an unknown option there prints `kpkg: unknown option '<word>' — try: kpkg help`

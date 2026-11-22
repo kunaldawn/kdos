@@ -19,13 +19,16 @@
 # holds /usr/share/kdos/xdg: the SDDM session, which kdos-session-wrapper
 # starts, and a startplasma-wayland run by hand from a login shell, which
 # /etc/profile.d/10-wayland.sh gave the list. It settles the same names both
-# times.
+# times, and gives a home with no fcitx5 profile one that names the system
+# keyboard layout before KWin starts fcitx5.
 # ---------------------------------
 
 if [ -r /usr/local/lib/kdos/session-common.sh ]; then
 	. /usr/local/lib/kdos/session-common.sh
 	kdos_session_xdg_dirs
+	kdos_session_live_data
 	kdos_session_open
+	kdos_session_fcitx5_profile
 fi
 
 # A passphrase asked for with no terminal to ask on — ssh-add from an

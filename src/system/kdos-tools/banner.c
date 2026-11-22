@@ -27,7 +27,10 @@
  * It gets out of the way when it should: no animation unless stdout is a tty,
  * and never when KDOS_NO_ANIM is set, TERM is dumb, or the terminal is too
  * short for the banner (scrolling mid-animation looks like a glitch, not a
- * feature). Any keypress skips the rest instantly.
+ * feature). A terminal whose height is known and too short for the logo, the
+ * fetch and a prompt row gets the fetch alone: an 80x25 console scrolls the
+ * logo, the user@host line and the OS line off its top otherwise. Any
+ * keypress skips the rest instantly.
  *
  * The frame delay is a nanosleep and the keypress check a zero-timeout poll
  * on stdin: nothing in the animation forks, on a path that runs at every
@@ -112,6 +115,8 @@ static int term_cols(void)
 	return 80;
 }
 
+/* 0 when no height is known (stdout redirected and $LINES unset): a banner
+ * written to a file or a pipe has no screen to fit and keeps its logo. */
 static int term_rows(void)
 {
 	const char *l = getenv("LINES");
@@ -120,7 +125,7 @@ static int term_rows(void)
 	struct winsize ws;
 	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row)
 		return ws.ws_row;
-	return 24;
+	return 0;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -227,7 +232,21 @@ static void compose(void)
 	/* Side by side only if it fits. A 1280x800 TTY with the 16x32 console
 	 * font is 80 columns; the logo plus the info column is wider than that,
 	 * and a banner that wraps mid-line looks like a crash, not a boot. */
-	if (INDENT + w + GAP + iw > term_cols()) {
+	int stacked = INDENT + w + GAP + iw > term_cols();
+
+	/* The logo only with a row to spare for the prompt: stacked it costs
+	 * its own height and a blank line, side by side whatever it is taller
+	 * than the fetch. Without that room the fetch is the part kept, since
+	 * it carries the user@host and OS lines a scrolled screen would lose. */
+	int rows = term_rows();
+	int need = stacked ? nlogo + 1 + ninfo : (nlogo > ninfo ? nlogo : ninfo);
+	if (rows > 0 && ninfo && need + 1 > rows) {
+		for (int i = 0; i < ninfo; i++)
+			push(kb_strdup(info[i]));
+		return;
+	}
+
+	if (stacked) {
 		for (int i = 0; i < nlogo; i++) {
 			KbBuf b = {0};
 			kb_buf_printf(&b, "%*s%s", INDENT, "", logo[i]);
@@ -327,7 +346,8 @@ static void animate(double delay)
  * One recorded lesson under the banner, in the secondary colour (SGR 33 — the
  * slot /etc/vtrgb and the accent's Konsole scheme both point at the scheme's
  * secondary; never bold, because on a 512-glyph VT the intensity bit selects
- * the second font page).
+ * the second font page). The aphorism alone: its attribution names source
+ * files and symbols, which `kdos oracle` prints and a login has no use for.
  *
  * NOT printed in --plain, and not when stdout is redirected. `kdos-banner
  * --plain` has to be byte-stable so it can be diffed at all, and a line that
@@ -336,7 +356,7 @@ static void animate(double delay)
  */
 static void oracle_line(void)
 {
-	char *line = kdt_oracle_line();
+	char *line = kdt_oracle_line(0);
 	if (!line)
 		return;
 	if (cells(line) + INDENT <= term_cols())
@@ -360,8 +380,11 @@ int banner_main(int argc, char **argv)
 	/* One row spare for the prompt: on a 33-row TTY the banner is close to
 	 * the full height, and animating something that scrolls looks broken.
 	 * The oracle costs two more rows, so it is height-guarded with them. */
+	int rows = term_rows();
+	if (rows <= 0)
+		rows = 24;
 	int want = nlines + 2;
-	if (nlines >= term_rows()) {
+	if (nlines >= rows) {
 		plain(0);
 		return 0;
 	}
@@ -369,7 +392,7 @@ int banner_main(int argc, char **argv)
 	const char *d = getenv("KDOS_BANNER_DELAY");
 	double delay = d && *d ? atof(d) : 0.012;
 	animate(delay);
-	if (want < term_rows())
+	if (want < rows)
 		oracle_line();
 	return 0;
 }

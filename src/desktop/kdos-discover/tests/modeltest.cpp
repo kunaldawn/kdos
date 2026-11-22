@@ -384,11 +384,45 @@ void ModelTest::installPreview()
     QCOMPARE(p.downloads, 2);
     QCOMPARE(p.bytes, quint64(1048576));
     QCOMPARE(p.builds, 2);
+    QCOMPARE(p.restores, 1);
     QCOMPARE(p.built, (QStringList{u"libfoo"_s, u"bat"_s}));
     said = installPreviewText(p);
-    QVERIFY(said.startsWith(u"Builds 2 packages here and installs 2 prebuilt, downloading 1"_s));
+    QVERIFY(said.startsWith(u"Builds 2 packages here and installs 1 prebuilt and restores the development files of 1 installed package, downloading 1"_s));
     QVERIFY(said.contains(u"building can take hours"_s));
     QVERIFY(said.contains(u"Built here: libfoo, bat"_s));
+
+    // A build whose dependencies are installed but stripped: the `dev`
+    // lines restore their development files and are said apart from the
+    // prebuilt installs, with the size still the whole download, and a
+    // `dev-source` line is a build.
+    QByteArray restoring = "ktimer source 24.12.0-1\nqt6-tools prebuilt qt6-tools-6.8.1-1.tar.xz 1048576\n";
+    for (int i = 0; i < 229; i++)
+        restoring += "lib" + QByteArray::number(i) + " dev lib" + QByteArray::number(i) + "-1-1.tar.xz 1024\n";
+    restoring += "total 230 1282048 1\n";
+    p = parseInstallPreview(restoring);
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 230);
+    QCOMPARE(p.restores, 229);
+    QCOMPARE(p.builds, 1);
+    QCOMPARE(p.built, QStringList{u"ktimer"_s});
+    said = installPreviewText(p);
+    QVERIFY(said.startsWith(u"Builds 1 package here and installs 1 prebuilt and restores the development files of 229 installed packages, downloading 1"_s));
+    QVERIFY(!said.contains(u"230"_s));
+    QVERIFY(said.contains(u"building can take hours"_s));
+    QVERIFY(said.contains(u"Built here: ktimer"_s));
+    restoring.replace("total 230 1282048 1\n", "a prebuilt a-1-1.tar.xz 1\nb prebuilt b-1-1.tar.xz 1\nc dev-source 2.0-1\ntotal 232 1282050 2\n");
+    p = parseInstallPreview(restoring);
+    QCOMPARE(p.restores, 229);
+    QCOMPARE(p.builds, 2);
+    QCOMPARE(p.built, (QStringList{u"ktimer"_s, u"c"_s}));
+    QVERIFY(installPreviewText(p).startsWith(u"Builds 2 packages here and installs 3 prebuilt and restores the development files of 229 installed packages, downloading"_s));
+    // Restores alone, built and not, and from the cache.
+    p = parseInstallPreview("d source 1.0-1\nz dev z-1-1.tar.xz 4096\ntotal 1 0 1\n");
+    QCOMPARE(installPreviewText(p), u"Builds 1 package here and restores the development files of 1 installed package, already downloaded; building can take hours.<br/>Built here: d"_s);
+    p = parseInstallPreview("y dev y-1-1.tar.xz 4096\nz dev z-1-1.tar.xz 4096\ntotal 2 8192 0\n");
+    QVERIFY(installPreviewText(p).startsWith(u"Restores the development files of 2 installed packages; downloads 8"_s));
+    p = parseInstallPreview("x prebuilt x-1-1.tar.xz 4096\nz dev z-1-1.tar.xz 4096\ntotal 2 0 0\n");
+    QCOMPARE(installPreviewText(p), u"Installs 1 package and restores the development files of 1 installed package, already downloaded."_s);
 
     // One per member of a group adds up; a name is escaped.
     p = parseInstallPreview("==> g: a (1 of 2)\na<b source 1.0-1\ntotal 0 0 1\n==> g: c (2 of 2)\ntotal 1 10 0\n");
@@ -648,9 +682,27 @@ void ModelTest::plansRemove()
     Entry box;
     box.lane = Lane::Box;
     box.id = u"work"_s;
+    // A box on its own is asked about first, with no program run for the
+    // question: what goes, and for a pack box the directory that stays.
     p = removePlan(box, ctx);
-    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
+    QCOMPARE(p.steps.size(), 3);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Ask);
+    QVERIFY(p.steps[0].program.isEmpty());
+    QCOMPARE(p.steps[0].question, u"Remove the box work?"_s);
+    QVERIFY(p.steps[0].questionText.contains(u"every launcher exported from it"_s));
+    QVERIFY(p.steps[0].questionText.contains(u"~/.local/share/kdos/boxes/work"_s));
+    QCOMPARE(p.steps[1].kind, Step::Kind::Run);
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
+    QCOMPARE(p.steps[2].kind, Step::Kind::Run);
+    QCOMPARE(argvOf(p.steps[2]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
+    Entry storeBox;
+    storeBox.lane = Lane::Box;
+    storeBox.id = u"scratch"_s;
+    storeBox.boxBase = u"image:debian:trixie"_s;
+    p = removePlan(storeBox, ctx);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Ask);
+    QVERIFY(p.steps[0].questionText.contains(u"every package installed in it"_s));
+    QVERIFY(!p.steps[0].questionText.contains(u"writable layer"_s));
 
     Entry pack;
     pack.lane = Lane::Pack;

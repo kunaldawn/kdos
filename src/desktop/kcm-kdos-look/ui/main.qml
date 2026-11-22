@@ -12,6 +12,17 @@
  * the controller through KColorScheme; only the frame round it is this
  * page's own theme, so the picked one is marked in the colours the page is
  * wearing now.
+ *
+ * THE SWATCHES ARE A RADIO GROUP. Each is checkable and checked where its
+ * accent is current, so the accessibility layer reports the checked state
+ * itself; an Accessible.checked override is replaced by the button's own.
+ * A click toggles `checked` and an exclusive group unchecks its neighbour,
+ * either of which leaves a value the model did not set, so every swatch
+ * binds `checked` to `current` again after any click and whenever `current`
+ * moves. Tab stops once in the group, on the current swatch; the arrow
+ * keys move focus only, wrapping and skipping a disabled swatch; Space or
+ * Enter applies, because an accent is a command that repaints the machine
+ * and an arrow press must not start one.
  */
 
 pragma ComponentBehavior: Bound
@@ -55,13 +66,23 @@ KCM.SimpleKCM {
             spacing: Kirigami.Units.smallSpacing
             Accessible.role: Accessible.Grouping
             Accessible.name: i18ndc("kdos-kcm-look", "@label accessible name of the swatches", "Accents")
+            Accessible.description: i18ndc("kdos-kcm-look", "@info accessible description of the swatches", "The arrow keys move between the accents; Space or Enter applies one.")
+
+            QQC2.ButtonGroup {
+                id: accentGroup
+
+                exclusive: true
+            }
 
             Repeater {
+                id: accentRepeater
+
                 model: root.controller.accents
 
                 delegate: QQC2.AbstractButton {
                     id: swatch
 
+                    required property int index
                     required property string accentId
                     required property string label
                     required property bool current
@@ -78,13 +99,53 @@ KCM.SimpleKCM {
                     padding: Kirigami.Units.smallSpacing
                     bottomPadding: Kirigami.Units.smallSpacing * 2 + 2
                     enabled: available && !root.controller.busy
-                    focusPolicy: Qt.StrongFocus
+                    /* One Tab stop for the group: the current swatch, or every
+                     * swatch while none is current. */
+                    focusPolicy: swatch.current || !accentGroup.checkedButton ? Qt.StrongFocus : Qt.ClickFocus
                     hoverEnabled: true
+                    checkable: true
+                    checked: current
+                    QQC2.ButtonGroup.group: accentGroup
+
+                    function bindChecked(): void {
+                        checked = Qt.binding(() => swatch.current);
+                    }
+
+                    function apply(): void {
+                        root.controller.applyAccent(accentId);
+                    }
+
+                    /* The next enabled swatch `step` places away, wrapping;
+                     * a Tab reason so the focus frame is drawn. */
+                    function focusNeighbour(step: int): void {
+                        const n = accentRepeater.count;
+                        for (let k = 1; k < n; ++k) {
+                            const next = accentRepeater.itemAt((((index + step * k) % n) + n) % n);
+                            if (next && next.enabled) {
+                                next.forceActiveFocus(Qt.TabFocusReason);
+                                return;
+                            }
+                        }
+                    }
+
+                    onCurrentChanged: bindChecked()
+                    Keys.onLeftPressed: focusNeighbour(-1)
+                    Keys.onUpPressed: focusNeighbour(-1)
+                    Keys.onRightPressed: focusNeighbour(1)
+                    Keys.onDownPressed: focusNeighbour(1)
+                    Keys.onReturnPressed: apply()
+                    Keys.onEnterPressed: apply()
+
+                    Connections {
+                        target: accentGroup
+
+                        function onClicked(): void {
+                            swatch.bindChecked();
+                        }
+                    }
 
                     Accessible.role: Accessible.RadioButton
                     Accessible.name: i18ndc("kdos-kcm-look", "@action:button %1 is an accent", "%1 accent", label)
-                    Accessible.checkable: true
-                    Accessible.checked: current
                     Accessible.description: available
                         ? i18ndc("kdos-kcm-look", "@info:tooltip %1 is an accent", "Apply %1 everywhere", label)
                         : i18ndc("kdos-kcm-look", "@info:tooltip %1 is an accent", "The %1 color scheme is not installed", label)
@@ -93,7 +154,7 @@ KCM.SimpleKCM {
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
 
-                    onClicked: root.controller.applyAccent(accentId)
+                    onClicked: apply()
 
                     background: Rectangle {
                         color: swatch.windowColor

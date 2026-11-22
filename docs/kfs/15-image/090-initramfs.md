@@ -112,6 +112,21 @@ every installed machine from finding its root. It is held to util-linux like the
 What each lookup is and what a stand-in breaks is listed in
 [blkid](../../kdos/03-architecture/boot-and-init.md#blkid).
 
+## loadkeys and the keymaps
+
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=177-189 -->
+
+The disk passphrase is typed before any root is open, so the machine's `/etc/keymap` cannot be read
+then, and this one image serves every machine. [`loadkeys`]{.idx} from [kbd](#port-kbd) is copied
+with its closure (`libxkbcommon`), and the whole of `/usr/share/keymaps` goes to
+`usr/share/keymaps/`, about 1.4 MB. The text installer offers every map in that tree, so a map left
+out of the image would be one whose prompt silently types with the US map. `init` loads the map the
+ESP names in `EFI/kdos/keymap` before the prompt; see
+[The unlock function](091-initramfs-init.md#the-unlock-function).
+
+The maps are gzipped. `loadkeys` opens `libz` with `dlopen`, which no ELF header names and the
+closure check cannot see; the copy it uses is the one the [udev](#udev) block makes for `kmod`.
+
 ## mdadm and e2fsck
 
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=177-210 pin=8ca658b61abc -->
@@ -342,8 +357,9 @@ archive. The kernel unpacks the two one after the other.
 `mknod`, `seq`, `sleep`, `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`,
 `sync`, `uname`, `readlink`, `touch`, `basename`, `sort`, `tr`, `grep` and `sed`; util-linux's
 `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid` and `blkid`; `udevd`, `udevadm` and
-`kmod` (as `modprobe`, `insmod` and `depmod`); and, each when its package is installed,
-`kdos-splash`, `e2fsck`, `kdos-bootctl`, `cryptsetup`, and links to `mdadm`, `lvm` and `dmsetup`.
+`kmod` (as `modprobe`, `insmod` and `depmod`); kbd's `loadkeys`; and, each when its package is
+installed, `kdos-splash`, `e2fsck`, `kdos-bootctl`, `cryptsetup`, and links to `mdadm`, `lvm` and
+`dmsetup`.
 
 **Programs in `usr/sbin/`:** `blkid` as a link to `bin/blkid`; when mdadm is installed, `mdadm`;
 when lvm2 is installed, `lvm`, `dmsetup`, thin-provisioning-tools' `pdata_tools`, and `thin_check`
@@ -354,7 +370,7 @@ and `cache_check` as links to it.
 **Other files:** `init`; `lib/` with musl and every library above; `lib/udev/` with the rules and
 helpers that passed the udev check; `lib/modules/<version>/` with the modules and their index;
 `etc/passwd`, `etc/group`, `etc/udev/rules.d/` and, with lvm2, `etc/lvm/lvm.conf`;
-`usr/share/kdos/splash.psf` with the splash.
+`usr/share/kdos/splash.psf` with the splash; `usr/share/keymaps/` with kbd's console maps.
 
 ## See also
 

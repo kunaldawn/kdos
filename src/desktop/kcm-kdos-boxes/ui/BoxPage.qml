@@ -148,7 +148,7 @@ KCM.SimpleKCM {
         }
 
         Repeater {
-            model: kcm.profile.generalNotes
+            model: kcm.generalNotes
 
             delegate: Kirigami.InlineMessage {
                 required property string modelData
@@ -211,11 +211,21 @@ KCM.SimpleKCM {
                 text: (page.box.disk ?? "") !== "" ? i18nc("@info %1 state, %2 size on disk", "%1 · %2 written", page.box.stateText, page.box.disk) : (page.box.stateText ?? "")
             }
 
+            /* A box with no container is made by Create: `kdos-box start`
+             * refuses one, whichever way it was left. */
             RowLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 QQC2.Button {
-                    visible: !page.running
+                    visible: !page.created && kcm.profile.described
+                    enabled: page.idle && !kcm.needsSave
+                    text: i18nc("@action:button", "Create")
+                    icon.name: "list-add"
+                    Accessible.description: i18nc("@info:whatsthis", "Makes the box's container from its settings.")
+                    onClicked: kcm.createBox()
+                }
+                QQC2.Button {
+                    visible: page.created && !page.running
                     enabled: page.idle
                     text: i18nc("@action:button", "Start")
                     icon.name: "media-playback-start"
@@ -234,6 +244,14 @@ KCM.SimpleKCM {
                     text: i18nc("@action:button", "Restart")
                     icon.name: "view-refresh"
                     onClicked: kcm.restartBox()
+                }
+                QQC2.Button {
+                    visible: page.created
+                    enabled: page.idle
+                    text: i18nc("@action:button", "Open Terminal")
+                    icon.name: "utilities-terminal"
+                    Accessible.description: i18nc("@info:whatsthis", "Opens a terminal window with a shell inside the box.")
+                    onClicked: kcm.openTerminal()
                 }
             }
 
@@ -619,14 +637,25 @@ KCM.SimpleKCM {
     /* A dialog declared in a SimpleKCM is moved into its scrolled content
      * and centred there, out of view behind its own modal dim: each one is
      * parented to the window's overlay. */
+    /* The dialogs name the box, never an application exported from it:
+     * the whole box goes, with everything installed in it. Each says what
+     * goes and what stays. */
+    readonly property string exportsClause: (page.box.exports ?? []).length > 0
+        ? i18nc("@info %1 programs exported from the box", " and the launchers exported from it (%1)", page.box.exports.join(", "))
+        : ""
+
     Kirigami.PromptDialog {
         id: recreateDialog
 
         parent: page.QQC2.Overlay.overlay
-        title: i18nc("@title:window %1 box", "Create %1 Again?", page.title)
+        title: i18nc("@title:window %1 box name", "Create %1 again?", kcm.currentBox)
         subtitle: page.box.writesInside
-            ? i18nc("@info", "The box is removed and created again with its current settings. It keeps what it writes inside its container, so all of that is deleted. Your home folder is not touched.")
-            : i18nc("@info", "The box is removed and created again with its current settings. What it wrote is kept: its writable layer, snapshots and home live outside the container.")
+            ? i18nc("@info %1 an optional clause naming exported launchers",
+                    "It is removed and created again with its current settings. Goes: its container, every package installed in it%1. Stays: the files in your home folder.",
+                    page.exportsClause)
+            : i18nc("@info %1 an optional clause naming exported launchers",
+                    "It is removed and created again with its current settings. Goes: its container%1. Stays: its writable layer, snapshots and home, which live outside the container, and the files in your home folder.",
+                    page.exportsClause)
         standardButtons: Kirigami.Dialog.NoButton
         customFooterActions: [
             Kirigami.Action {
@@ -648,13 +677,24 @@ KCM.SimpleKCM {
     Kirigami.PromptDialog {
         id: removeDialog
 
+        readonly property string comesBack: page.box.appBox === true
+            ? i18nc("@info", "It is created again the next time its application starts.")
+            : i18nc("@info", "Create makes it again from its settings.")
+
         parent: page.QQC2.Overlay.overlay
-        title: page.created ? i18nc("@title:window %1 box", "Remove %1?", page.title) : i18nc("@title:window %1 box", "Delete the Settings of %1?", page.title)
+        title: page.created ? i18nc("@title:window %1 box name", "Remove the box %1?", kcm.currentBox)
+            : i18nc("@title:window %1 box name", "Delete the settings of %1?", kcm.currentBox)
         subtitle: !page.created
-            ? i18nc("@info", "The box has never been created, so these settings are all there is of it.")
+            ? (page.box.kept === true
+               ? i18nc("@info", "The box was removed, and these settings are all that is left of it.")
+               : i18nc("@info", "The box has never been created, so these settings are all there is of it."))
             : page.box.writesInside
-            ? i18nc("@info", "Its settings are kept. It keeps what it writes inside its container, so all of that is deleted.")
-            : i18nc("@info", "Its settings, writable layer, snapshots and home are kept, and it is created again the next time its application starts.")
+            ? i18nc("@info %1 an optional clause naming exported launchers, %2 how the box comes back",
+                    "Goes: its container, every package installed in it%1. Stays: its settings and the files in your home folder. %2",
+                    page.exportsClause, comesBack)
+            : i18nc("@info %1 an optional clause naming exported launchers, %2 how the box comes back",
+                    "Goes: its container%1. Stays: its settings, its writable layer, snapshots and home, and the files in your home folder. %2",
+                    page.exportsClause, comesBack)
         dialogType: Kirigami.PromptDialog.Warning
         standardButtons: Kirigami.Dialog.NoButton
         customFooterActions: [

@@ -102,9 +102,12 @@ The menu entry that skips the store:
 
 With no device named, `create` picks the disk the live system booted from. A machine that booted
 the image from an optical drive, as a virtual machine with the ISO attached does, has `/dev/sr0`
-there, and `create` refuses it: `kdos persist: /dev/sr0 is read-only (a disc) — name a USB stick
-or disk`. Name a writable disk instead, as below. The Welcome tour's page offers each writable USB
-stick that has nothing mounted.
+there: `kdos persist` says the boot medium is a disc and cannot hold a store, and `create`
+refuses it: `kdos persist: /dev/sr0 is read-only (a disc) — name a USB stick or disk`. A Ventoy
+stick runs the image as a file inside its own partition, through `/dev/mapper/ventoy`; the report
+says a Ventoy stick cannot take a KDOS store, and `create` refuses the mapping, and the physical
+stick under it, with the same words. Name a writable disk instead, as below. The Welcome tour's
+page offers each writable USB stick that has nothing mounted and is not the Ventoy stick.
 
 ### Making a store on another device
 

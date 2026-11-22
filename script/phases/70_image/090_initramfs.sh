@@ -174,6 +174,20 @@ ln -sf bash bin/sh
 util_linux_only /usr/sbin/blkid
 copy_closure bin/blkid /usr/sbin/blkid
 
+# Install kbd's loadkeys and every keymap, for the disk passphrase.
+#
+# THE PASSPHRASE IS TYPED BEFORE ANY ROOT IS OPEN, so /etc/keymap cannot be
+# read, and this image is one image for every machine. The machine's map is
+# named on its ESP (EFI/kdos/keymap) and loaded from here before the prompt;
+# without it the kernel's US map is the only one, and a passphrase set on a
+# German layout, or holding any letter US has no key for, is never typed.
+# The whole tree, about 1.4 MB: the installer offers every map in it, and a
+# map left out here is a prompt that silently types US. The maps are gzipped
+# and loadkeys dlopens libz, which no ELF header names: it is the copy the
+# udev block below makes for kmod.
+copy_closure bin/loadkeys /usr/bin/loadkeys
+mkdir -p usr/share && cp -a /usr/share/keymaps usr/share/keymaps
+
 # Install mdadm, for a root that lives on a software RAID array. At
 # /usr/sbin, the path its udev rules run it from, with the init's bin/mdadm a
 # link to it.
@@ -563,20 +577,36 @@ sp_release() {
 # on the screen for RESCUE_HOLD seconds before the splash fades out (a quit
 # straight after the detail shows it only during the fade, too dark to read),
 # and then to tty1, where fbcon takes the framebuffer over at the first write
-# and the keyboard is. Both screens say that Ctrl+Alt+Del restarts: the kernel
-# reboots on it at once until init disables it, and nothing here does. That
-# restart is immediate and syncs nothing, and a failure after the root is
-# mounted (a missing /sbin/init, a persistent live upper) leaves a disk mounted
-# read-write, so the boot's own writes are synced before the shell opens and
-# the screens tell whoever changes a disk to run sync first. A shell is opened
-# on tty1 in its own session with tty1 as its controlling terminal, and this
-# process becomes the shell on /dev/console, so the serial line keeps its
-# shell and the log it has been reading. When /dev/console is itself a
-# virtual terminal there is one screen and one shell, and the reason is
-# printed on it once: an echo before the branch and the printf in it would
-# both land on that one screen. PID 1 must never return from here: a shell
-# that exits on /dev/console panics the kernel with "Attempted to kill init".
+# and the keyboard is. An optional second argument is a hint printed under the
+# reason on the screens, never on the splash, which has one detail line. Both
+# screens say that Ctrl+Alt+Del restarts: the kernel reboots on it at once
+# until init disables it, and nothing here does. That restart is immediate and
+# syncs nothing, and a failure after the root is mounted (a missing /sbin/init,
+# a persistent live upper) leaves a disk mounted read-write, so the boot's own
+# writes are synced before the shell opens and the screens tell whoever
+# changes a disk to run sync first. On tty1 under a serial /dev/console the
+# screen names the menu's verbose entry, the one way to see the boot log
+# there. A shell is opened on tty1 in its own session with tty1 as its
+# controlling terminal, and this process becomes the shell on /dev/console, so
+# the serial line keeps its shell and the log it has been reading. When
+# /dev/console is itself a virtual terminal there is one screen and one shell,
+# and the reason is printed on it once: an echo before the branch and the
+# printf in it would both land on that one screen. That shell is opened on the
+# terminal itself, never on /dev/console, which cannot be a controlling
+# terminal: a shell there has no job control, says so in two lines of noise,
+# and lets Ctrl+C reach nothing it runs. setsid -c makes the terminal the
+# shell's controlling terminal and -w waits for it, in a loop, so an exit
+# opens a fresh shell. A shell that ends non-zero, a failed start among
+# them, waits a second before the next, so a shell that cannot start does
+# not spin the loop. PID 1 must never return from here: a shell that exits
+# as PID 1 panics the kernel with "Attempted to kill init".
+#
+# EVERY FIXED LINE AND EVERY HINT IS 80 COLUMNS OR FEWER. They are printed
+# before fbcon's deferred takeover has widened the console, while the VT is 80
+# columns, and a longer line wraps a lone word onto a line of its own.
 RESCUE_HOLD=4
+RESCUE_RESTART="Ctrl+Alt+Del restarts at once; run sync first if you changed a disk."
+RESCUE_VERBOSE="The boot menu's '(verbose)' entry shows the boot log on this screen."
 rescue() {
     local con
     if [ -x /bin/kdos-splash ]; then
@@ -589,16 +619,23 @@ rescue() {
     con=\${con##* }
     case "\$con" in
     tty[0-9]*)
-        printf '\n%s\nKDOS cannot boot. This is a rescue shell.\n' "\$1"
-        echo "Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk."
-        exec /bin/sh
+        printf '\n%s\n' "\$1"
+        [ -n "\$2" ] && printf '%s\n' "\$2"
+        echo "KDOS cannot boot. This is a rescue shell."
+        echo "\$RESCUE_RESTART"
+        while :; do
+            setsid -c -w /bin/sh -i < "/dev/\$con" > "/dev/\$con" 2>&1 || sleep 1
+        done
         ;;
     esac
     echo "\$1"
+    [ -n "\$2" ] && echo "\$2"
     {
         printf '\n%s\n' "\$1"
-        echo "KDOS cannot boot. This is a rescue shell; the boot log is on the serial console."
-        echo "Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk."
+        [ -n "\$2" ] && printf '%s\n' "\$2"
+        echo "KDOS cannot boot. This is a rescue shell."
+        echo "\$RESCUE_VERBOSE"
+        echo "\$RESCUE_RESTART"
     } > /dev/tty1 2>/dev/null
     setsid -f -c /bin/sh -i < /dev/tty1 > /dev/tty1 2>&1
     echo "A rescue shell is also open on tty1."
@@ -730,13 +767,34 @@ done
 # owns the terminal, and a passphrase field that echoed dots would mean moving
 # the read into the splash. Stated rather than hidden.
 #
-# Two knobs, both defaulted to the real thing. The keyboard is on tty1 whatever
-# console= names, and the mapper directory is where the kernel puts
-# an opened container. They are variables so \`testing/selftest.sh\` can exercise
-# this function without a LUKS volume and without root — the same trick
-# \`kdos stutter --fixture\` uses for /proc.
+# THE PROMPT TYPES WITH THE MACHINE'S CONSOLE MAP, loaded on tty1 once before
+# the first read. KEYMAP is the name the A/B block below read off the ESP
+# (EFI/kdos/keymap, which the installer and kdos-settingsd write from
+# /etc/keymap); with none the kernel's US map stays, which is every machine
+# whose ESP holds no keymap file. A layout whose console map has no letter
+# for a character cannot type that character here.
+#
+# Three knobs, each defaulted to the real thing. The keyboard is on tty1
+# whatever console= names, the mapper directory is where the kernel puts an
+# opened container, and LOADKEYS is kbd's. They are variables so
+# \`testing/selftest.sh\` can exercise this function without a LUKS volume, a
+# console or root — the same trick \`kdos stutter --fixture\` uses for /proc.
 : "\${PASS_TTY:=/dev/tty1}"
 : "\${CRYPT_MAPPER_DIR:=/dev/mapper}"
+: "\${LOADKEYS:=/bin/loadkeys}"
+KEYMAP=""
+
+# esp_keymap <esp>: KEYMAP from <esp>/EFI/kdos/keymap. One line, a kbd map
+# NAME and never a path or an option: a file on the ESP is a file anybody
+# with the disk can edit, and loadkeys reads a path as readily as a name.
+esp_keymap() {
+    local k=""
+    [ -r "\$1/EFI/kdos/keymap" ] && read -r k < "\$1/EFI/kdos/keymap"
+    case "\$k" in
+        ''|[.-]*|*[!A-Za-z0-9_.+-]*) return 0 ;;
+    esac
+    KEYMAP="\$k"
+}
 
 unlock_root() {
     local spec="\$1" luks_uuid name dev tries tty_say=1
@@ -767,6 +825,11 @@ unlock_root() {
     fi
 
     modprobe -q dm-crypt 2>/dev/null
+
+    # -u: the passphrase was set in a UTF-8 session, so ü is its UTF-8 bytes.
+    # A map that fails to load leaves the US map, and the prompt still runs.
+    [ -n "\$KEYMAP" ] && "\$LOADKEYS" -q -u -C "\$PASS_TTY" "\$KEYMAP" \
+        </dev/null >/dev/null 2>&1
 
     tries=0
     while [ \$tries -lt 3 ]; do
@@ -849,6 +912,9 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
         SLOT_CRYPT=""
         [ -n "\$SEL" ] && SLOT_CRYPT=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
                /bin/kdos-bootctl crypt "\$SEL" 2>/dev/null)
+        # The console map the passphrase prompt loads is read here too, for
+        # the same reason: the ESP is not mounted again before the unlock.
+        esp_keymap /esp
         # Unmounted immediately: the root filesystem mounts it again at
         # /boot/efi, and two mounts of one FAT filesystem is how a state file
         # gets written twice and read once.
@@ -1164,35 +1230,62 @@ sp_step "BOOT MEDIA"
 # disk-boot path gives its root device. Every retry walks EVERY device class
 # again: the first node to answer is not always the one holding the medium, and
 # a class that has not appeared yet must still get its chance.
+#
+# /dev/mapper/ventoy COMES FIRST. A Ventoy stick boots the ISO as a file on its
+# exFAT partition, and Ventoy's hook in the initrd maps that file to
+# /dev/mapper/ventoy; it also swaps the stick's second partition node for the
+# same device, but naming the mapping does not depend on that swap. On any
+# other machine the name does not exist and costs one test.
+#
+# EACH DEVICE IS NARRATED THE FIRST TIME IT IS SEEN, on whichever pass it
+# appears, and what it turned out to be is kept in WHY. A stick that
+# enumerates after the first pass is named in the log like one that was
+# there at once, and when the bound passes one line lists every device tried
+# and why it was not the medium: the line a failed boot is diagnosed from.
+MEDIA_HINT="Write the whole ISO with dd, Rufus DD mode or Ventoy; copied files cannot boot."
 SCAN_UNTIL=\$(( \$(cut -d. -f1 /proc/uptime) + 10 ))
 FOUND=0
 PASS=0
 STUCK=0
 CHECKED=" "
+SEEN=" "
+declare -A WHY
 while :; do
     PASS=\$(( PASS + 1 ))
-    for dev in /dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*; do
-        [ -e "\$dev" ] || continue
+    for dev in /dev/mapper/ventoy /dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*; do
+        [ -b "\$dev" ] || continue
+        # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
+        # system.sfs on it will not grow one, and a disk that is not ISO 9660
+        # will not become one, so repeating the mount for it every 100 ms is
+        # churn, and every failed iso9660 mount puts an ISOFS line in the
+        # kernel log. Only an optical drive is retried after a failed mount:
+        # a disc still spinning up answers on a later pass.
+        case "\$CHECKED" in *" \$dev "*) continue ;; esac
+        case "\$SEEN" in
+            *" \$dev "*) first=0 ;;
+            *) first=1; SEEN="\$SEEN\$dev "; echo "Checking \$dev..." ;;
+        esac
         # A DRIVE WITH NO MEDIUM IN IT IS PASSED OVER. Opening it fails
         # (ENOMEDIUM), so the scan opens before it mounts: a mount of it only
         # prints "Can't open blockdev", and its sysfs size is no test, since
         # an empty optical drive reports a guessed size rather than 0. It is
         # not marked checked: a disc still spinning up opens on a later pass.
-        { : < "\$dev"; } 2>/dev/null || continue
-        # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
-        # system.sfs on it will not grow one, so repeating the mount/umount
-        # pair for it every 100 ms is churn on a device the scan has already
-        # answered. Only a device that has not mounted yet is retried, which
-        # is the case the bound exists for.
-        case "\$CHECKED" in *" \$dev "*) continue ;; esac
-        # Only the first pass narrates. A hundred retries of the same two
-        # lines would bury the one message that explains a failed boot, and
-        # this log is the only thing left to read when one happens.
-        if [ "\$PASS" == "1" ]; then
-            echo "Checking \$dev..."
-            mount -t iso9660 "\$dev" /mnt/iso || continue
+        if ! { : < "\$dev"; } 2>/dev/null; then
+            WHY[\$dev]="no medium"
+            continue
+        fi
+        # Only a device's first mount prints its error. A hundred retries of
+        # the same line would bury the one message that explains a failed
+        # boot, and this log is the only thing left to read when one happens.
+        if [ "\$first" == "1" ]; then
+            mount -t iso9660 "\$dev" /mnt/iso
         else
-            mount -t iso9660 "\$dev" /mnt/iso 2>/dev/null || continue
+            mount -t iso9660 "\$dev" /mnt/iso 2>/dev/null
+        fi
+        if [ \$? -ne 0 ]; then
+            WHY[\$dev]="not ISO 9660"
+            case "\$dev" in /dev/sr*) ;; *) CHECKED="\$CHECKED\$dev " ;; esac
+            continue
         fi
         CHECKED="\$CHECKED\$dev "
         if [ -f /mnt/iso/system.sfs ]; then
@@ -1201,6 +1294,7 @@ while :; do
             FOUND=1
             break
         fi
+        WHY[\$dev]="ISO 9660 without system.sfs"
         # THE UMOUNT IS CHECKED because /mnt/iso is the only mount point the
         # scan has: if it stays busy, the next mount stacks a second
         # filesystem on the same path and every later test reads the wrong
@@ -1218,6 +1312,13 @@ while :; do
     [ "\$PASS" == "1" ] && echo "No KDOS media yet; retrying until the 10s bound..."
     sleep 0.1
 done
+if [ "\$FOUND" != "1" ]; then
+    tried=""
+    for dev in \$SEEN; do
+        tried="\$tried\${tried:+, }\$dev (\${WHY[\$dev]:-not inspected})"
+    done
+    echo "No KDOS media; tried: \${tried:-no block device appeared}"
+fi
 
 if [ "\$FOUND" == "1" ]; then
     echo "Found KDOS Media, Mounting system..."
@@ -1412,7 +1513,7 @@ if [ "\$FOUND" == "1" ]; then
     fi
 else
     sp_fail
-    rescue "Failed to find KDOS installation media."
+    rescue "Failed to find KDOS installation media." "\$MEDIA_HINT"
 fi
 
 rescue "Boot failed."

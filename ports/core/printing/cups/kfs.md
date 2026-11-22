@@ -7,6 +7,15 @@ it discovers through [avahi](#port-avahi), and Plasma's print-manager manages it
 `/etc/init.d/80_cups.sh` runs `cupsd -f` under supervision.
 
 ## Flags
+- `-Wl,-z,stack-size=8388608`, added to `LDFLAGS` — ask for an 8 MiB stack in each program's
+  `PT_GNU_STACK` header, the size a thread gets by default on glibc. musl gives each new thread
+  128 KiB unless that header asks for more, and libcups starts every thread with default
+  attributes (`_cupsThreadCreate`). `cupsd` adds a driverless printer on such a thread: it
+  connects to the printer, resolves its `.local` name through Avahi
+  (`local-names-through-avahi.patch`) and builds the PPD from the printer's attributes, all on
+  that one stack. CUPS's `Makedefs` puts `LDFLAGS` on its programs (`cupsd`, the commands,
+  backends and filters) and not on `libcups.so`, so the size reaches no program that only links
+  the library. `readelf -lW /usr/sbin/cupsd` shows it as the `GNU_STACK` entry's `0x800000`.
 - `--with-menudir=/usr/share/applications` — Install the CUPS web interface's desktop entry in
   the standard place, with `--with-icondir=/usr/share/icons` for its icons.
 - `--with-logdir=/var/log/cups` — Where `cupsd` writes its logs; with `--with-docdir=/usr/share/cups`
@@ -49,7 +58,22 @@ it discovers through [avahi](#port-avahi), and Plasma's print-manager manages it
 - `--without-systemd` — Install no systemd units, and with `--with-ondemand=no` build no
   socket-activation support. KDOS has
   [no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd),
-  so `cupsd` runs all the time once enabled.
+  so `cupsd` runs all the time while the service is enabled.
+
+## Patches
+`local-names-through-avahi.patch` gives `httpAddrGetList()`, the lookup every libcups client
+connects through, a second way to resolve a host name in the mDNS `.local` domain. musl has no
+NSS, so no nss-mdns module answers such a name for `getaddrinfo()`, and every printer that
+DNS-SD discovers is named by one: without the patch `cupsd` refuses to add a discovered
+driverless printer with `Unable to connect to <host>.local:8631: Name does not resolve`, although
+Avahi resolved the service. When `getaddrinfo()` fails for a name ending in `.local` (or
+`.local.`), the patch asks the Avahi daemon through `avahi-client`, which libcups already links
+under `--with-dnssd=avahi`, waits at most two seconds, and returns the address with the port asked
+for; an IPv6 link-local answer carries the interface it came on as its scope. `cupsd`, the `ipp`
+backend, `lpadmin`, `lpstat`, cups-browsed and Plasma's printer settings then all resolve `.local`
+names. A lookup that `getaddrinfo()` answers, and every name outside `.local`, is unchanged. With
+the Avahi daemon down the second lookup fails at once and the original error stands. The patch
+is to be offered upstream.
 
 ## Notes
 `no-idle-exit.patch` removes the `IdleExitTimeout` line from the `cupsd.conf` that `make install`
@@ -69,5 +93,5 @@ staged file writable by its owner.
 
 The configuration files under `/etc/cups` and the backends under `/usr/lib/cups/backend` keep the
 restricted modes CUPS gives them; both paths are on the lint's allowlist of files that need not be
-world-readable. The installer leaves the service disabled; it is enabled with
-`service enable cups`.
+world-readable. The installer enables the service by default; a person who turns printing off
+in the installer gets `/etc/service.disabled/cups`, and `service enable cups` turns it back on.

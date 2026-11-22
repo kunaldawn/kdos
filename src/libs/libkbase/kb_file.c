@@ -254,9 +254,13 @@ const char *kb_home_dir(void)
 
 char *kb_path_join(const char *a, const char *b)
 {
-	size_t n = strlen(a) + strlen(b) + 2;
+	size_t la = strlen(a);
+	while (*b == '/')
+		b++;
+	const char *sep = (la && a[la - 1] == '/') ? "" : "/";
+	size_t n = la + strlen(b) + 2;
 	char *p = kb_calloc(1, n);
-	snprintf(p, n, "%s/%s", a, b);
+	snprintf(p, n, "%s%s%s", a, sep, b);
 	return p;
 }
 

@@ -17,7 +17,8 @@ and nothing else before the DNS; the pretty name, icon, chassis, deployment and
 location in `/etc/machine-info`, the zone in `/etc/localtime` with `/etc/profile.d/20-timezone.sh`
 and the Wi-Fi country in `/etc/modprobe.d/kdos-regdom.conf`, network time as the
 `/etc/service.disabled/chrony` marker, the locale in `/etc/locale.conf` (which SDDM puts into
-every session), the console keymap in `/etc/keymap` (loaded by `kdos-getty`) and the graphical
+every session), the console keymap in `/etc/keymap` (loaded by `kdos-getty`, with a copy in
+`/boot/efi/EFI/kdos/keymap` for the initramfs's passphrase prompt) and the graphical
 layout in `/etc/kdos/xkb.conf`, never under `/etc/X11`. Every method checks its arguments, then
 asks polkit under systemd's own action ids, then writes; the pattern the root daemons share is in
 [The shape they share](../../../docs/kdos/04-programs/daemons.md#the-shape-they-share).
@@ -64,14 +65,32 @@ a root daemon links is code running as root.
   their XKB layout, and the login screen has the installed keyboard from the first boot. A
   derived layout is given only when xkeyboard-config carries it: KWin falls back to US for a
   layout it cannot compile and says so only in its log.
+- **The console keymap is copied to the ESP.** The initramfs types the disk passphrase before any
+  root is open, so it loads the map named in `/boot/efi/EFI/kdos/keymap`. Every keymap the daemon
+  writes is written there too, an empty one removes it, and at start the copy is rewritten from
+  `/etc/keymap` when it differs or is missing; only where `/boot/efi/EFI/kdos` exists. The write
+  is `kdos-bootctl`'s: a temporary file, its `fsync`, the rename, the file's `fsync` and a
+  `syncfs`, without an `fchmod`, which vfat refuses. Without it a passphrase set on any layout but
+  US cannot be typed at boot.
+- **The console map nearest a layout is `<layout>-latin1` before `<layout>`.** kbd's bare `de`,
+  `dk`, `no`, `fr`, `sg` and `fr_CH` are the 7-bit ISO-646 maps, with no ü ö ä ß, and its bare
+  `pt` is the OLPC laptop's, so `convert` names the 8-bit maps in its table and takes the bare
+  name last.
 - **The RTC is UTC.** The kernel reads the RTC as UTC at boot and writes it back every eleven
   minutes while chrony has the clock synchronised, so `LocalRTC` is false and `SetLocalRTC(true)`
   is refused. A clock set by hand is not synchronised, so `SetTime` writes the RTC itself.
 - **`/etc/locale.conf` is bare `NAME=value` lines.** SDDM splits each line at `=` and passes the
   field after the first one on verbatim, so a quoted value would reach the session with its
-  quotes and a comment holding an `=` would become a variable; the daemon writes neither.
+  quotes and a comment holding an `=` would become a variable; the daemon writes neither, and
+  `SetLocale` writes only `C`, `C.UTF-8`, `POSIX` or `ll[_CC][.UTF-8|.utf8][@modifier]` whose
+  language has a file in `<share>/i18n/locales/musl` or a directory in `<share>/locale`, so a
+  typo cannot reach every session. It does not demand a musl-locales file for the whole name:
+  plasma-setup's language page sends `LANG=<ll_CC>.UTF-8` for every language Plasma has
+  translations for, and a refusal there leaves the system language English with only a warning in
+  its log.
 - **The test tree.** `KDOS_SETTINGSD_ETC`, `KDOS_SETTINGSD_SHARE` and `KDOS_SETTINGSD_SYS` replace
-  `/etc`, `/usr/share` and `/sys`, and the first also keeps the daemon off the machine it runs on:
-  with it set the kernel hostname, the clock and the RTC are left alone. `testing/selftest.sh`
+  `/etc`, `/usr/share` and `/sys`, and `KDOS_SETTINGSD_ESP` replaces `/boot/efi`. The first also
+  keeps the daemon off the machine it runs on: with it set the kernel hostname, the clock and the
+  RTC are left alone, and no ESP is written unless `KDOS_SETTINGSD_ESP` names one. `testing/selftest.sh`
   drives every method that way, over a private bus, against a polkit stand-in
   (`testing/fixtures/settingsd/`).

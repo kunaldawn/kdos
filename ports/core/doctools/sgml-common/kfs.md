@@ -9,7 +9,10 @@ one in `/etc/sgml/catalog`. In KDOS it is a dependency of [docbook-xml](#port-do
 The source archive's `install-sh`, `missing` and `mkinstalldirs` are not files but absolute
 symbolic links to `/usr/share/automake/…`, a directory no automake of the tree installs
 (automake's files are under `/usr/share/automake-<version>`). The first three lines of `build.sh`
-replace each link with the installed automake's copy before `configure` runs.
+replace each link with the installed automake's copy before `configure` runs. `COPYING` is a
+fourth such link, to `/usr/share/automake/COPYING`, so kpkg finds no licence text in the source;
+the last line of `build.sh` installs the GPL-2.0 text that link means, automake's own
+`/usr/share/licenses/automake/COPYING`, which is there because `automake` is in `depends`.
 
 ## Flags
 

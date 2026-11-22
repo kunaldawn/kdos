@@ -1,0 +1,205 @@
+Subject: Keep the greeter across a VT switch, and start again a greeter that exits with no login
+
+The greeter quits once its last window is gone, and its compositor can
+drop every output across a VT switch: leaving the greeter's VT for a text
+console and coming back ends the greeter. The daemon starts a greeter
+again only after a display-server, tty or session error, so the display
+stays black with no password field until sddm itself is restarted.
+
+Outside test mode the greeter quits only when the daemon stops it, when
+its socket closes, or when a login succeeds; a closed last window or a
+released event-loop lock ends nothing.
+
+The daemon starts a greeter again that exits while nobody logs in on its
+display and nobody asked it to stop, once the display's VT is in front
+again: sddm-helper activates the greeter's VT as it starts it, and would
+pull a user off the console they switched to. Three exits in a row, each
+within a minute of its start, end the retries.
+
+diff --git a/src/daemon/Display.cpp b/src/daemon/Display.cpp
+index f08ea0f..ce2c379 100644
+--- a/src/daemon/Display.cpp
++++ b/src/daemon/Display.cpp
+@@ -165,6 +165,7 @@ namespace SDDM {
+             stop();
+         });
+         connect(m_greeter, &Greeter::displayServerFailed, this, &Display::displayServerFailed);
++        connect(m_greeter, &Greeter::exited, this, &Display::slotGreeterExited);
+     }
+ 
+     Display::~Display() {
+@@ -247,6 +248,7 @@ namespace SDDM {
+ 
+         // start greeter
+         m_greeter->start();
++        m_greeterRunning.start();
+ 
+         // reset first flag
+         daemonApp->first = false;
+@@ -536,6 +538,48 @@ namespace SDDM {
+             stop();
+     }
+ 
++    bool Display::greeterWanted() const {
++        // A login on this display, or a return to a running session, ends
++        // the greeter on purpose.
++        return m_started && !m_auth->isActive() && m_reuseSessionId.isNull();
++    }
++
++    void Display::slotGreeterExited() {
++        // A greeter that ends while nobody logs in leaves the display with
++        // nothing drawn and no password field until sddm itself restarts.
++        // Three exits in a row, each within a minute of its start, are a
++        // greeter that cannot run, and the display is left to the console.
++        if (!greeterWanted())
++            return;
++        if (m_greeterRunning.isValid() && m_greeterRunning.elapsed() >= 60000)
++            m_greeterRestarts = 0;
++        if (++m_greeterRestarts >= 3) {
++            qCritical() << "Greeter exited three times within a minute of its start, not starting it again";
++            return;
++        }
++        qWarning().noquote() << QStringLiteral("Greeter exited with no login, starting it again (restart %1 of 2)").arg(m_greeterRestarts);
++        restartGreeter();
++    }
++
++    void Display::restartGreeter() {
++        if (!greeterWanted() || m_greeter->isRunning())
++            return;
++
++        // sddm-helper activates the greeter's VT as it starts it, which would
++        // pull whoever switched to a text console back to this one. Wait until
++        // this display's VT is in front again.
++        if (m_seat->name() == QLatin1String("seat0") && m_terminalId > 0) {
++            const int activeVt = VirtualTerminal::currentVt();
++            if (activeVt > 0 && activeVt != m_terminalId) {
++                QTimer::singleShot(1000, this, &Display::restartGreeter);
++                return;
++            }
++        }
++
++        if (m_greeter->start())
++            m_greeterRunning.start();
++    }
++
+     void Display::slotRequestChanged() {
+         if (m_auth->request()->prompts().length() == 1) {
+             m_auth->request()->prompts()[0]->setResponse(qPrintable(m_passPhrase));
+diff --git a/src/daemon/Display.h b/src/daemon/Display.h
+index 1e98b95..bca0cb8 100644
+--- a/src/daemon/Display.h
++++ b/src/daemon/Display.h
+@@ -25,6 +25,7 @@
+ #include <QObject>
+ #include <QPointer>
+ #include <QDir>
++#include <QElapsedTimer>
+ 
+ #include "Auth.h"
+ #include "Session.h"
+@@ -91,6 +92,8 @@ namespace SDDM {
+ 
+         void startSocketServerAndGreeter();
+         void handleAutologinFailure();
++        bool greeterWanted() const;
++        void restartGreeter();
+ 
+         DisplayServerType m_displayServerType = X11DisplayServerType;
+ 
+@@ -99,6 +102,8 @@ namespace SDDM {
+         bool m_started { false };
+ 
+         int m_terminalId = 0;
++        int m_greeterRestarts = 0;
++        QElapsedTimer m_greeterRunning;
+         int m_sessionTerminalId = 0;
+ 
+         QString m_passPhrase;
+@@ -117,6 +122,7 @@ namespace SDDM {
+         void slotAuthenticationFinished(const QString &user, bool success);
+         void slotSessionStarted(bool success);
+         void slotHelperFinished(Auth::HelperExitStatus status);
++        void slotGreeterExited();
+         void slotAuthInfo(const QString &message, Auth::Info info);
+         void slotAuthError(const QString &message, Auth::Error error);
+     };
+diff --git a/src/daemon/Greeter.cpp b/src/daemon/Greeter.cpp
+index 07fccde..a57fa6d 100644
+--- a/src/daemon/Greeter.cpp
++++ b/src/daemon/Greeter.cpp
+@@ -91,6 +91,8 @@ namespace SDDM {
+         if (m_started)
+             return false;
+ 
++        m_stopRequested = false;
++
+         // If no theme is given, use the default theme of the default greeter version
+         const int themeQtVersion = m_themePath.isEmpty() ? (QT_VERSION >> 16) : m_metadata->qtVersion();
+         QString greeterPath = greeterPathForQt(themeQtVersion);
+@@ -251,6 +253,8 @@ namespace SDDM {
+         if (!m_started)
+             return;
+ 
++        m_stopRequested = true;
++
+         // log message
+         qDebug() << "Greeter stopping...";
+ 
+@@ -329,6 +333,10 @@ namespace SDDM {
+             Q_EMIT ttyFailed();
+         } else if (status == Auth::HELPER_SESSION_ERROR) {
+             Q_EMIT failed();
++        } else if (!m_stopRequested) {
++            // Nobody asked it to stop: it quit or crashed on its own, and
++            // the display decides whether to start another.
++            Q_EMIT exited();
+         }
+     }
+ 
+diff --git a/src/daemon/Greeter.h b/src/daemon/Greeter.h
+index 8cc996d..c044f8f 100644
+--- a/src/daemon/Greeter.h
++++ b/src/daemon/Greeter.h
+@@ -64,9 +64,11 @@ namespace SDDM {
+         void ttyFailed();
+         void failed();
+         void displayServerFailed();
++        void exited();
+ 
+     private:
+         bool m_started { false };
++        bool m_stopRequested { false };
+ 
+         Display * const m_display { nullptr };
+         QString m_socket;
+diff --git a/src/greeter/GreeterApp.cpp b/src/greeter/GreeterApp.cpp
+index 01613cc..2d4ed74 100644
+--- a/src/greeter/GreeterApp.cpp
++++ b/src/greeter/GreeterApp.cpp
+@@ -274,6 +274,10 @@ namespace SDDM {
+         // If the socket ends, bail. There is not much we can do.
+         connect(m_proxy, &GreeterProxy::socketDisconnected, qGuiApp, &QCoreApplication::quit);
+ 
++        // Closing the views ends no greeter on its own (see main()), so a
++        // login ends it here, once every view has closed.
++        connect(m_proxy, &GreeterProxy::loginSucceeded, qGuiApp, &QCoreApplication::quit, Qt::QueuedConnection);
++
+         // Create views
+         const QList<QScreen *> screens = qGuiApp->primaryScreen()->virtualSiblings();
+         for (QScreen *screen : screens)
+@@ -385,6 +389,15 @@ int main(int argc, char **argv)
+ 
+     parser.process(app);
+ 
++    // The greeter ends when the daemon stops it, its socket closes or a login
++    // succeeds, never because its windows are gone: its compositor can drop
++    // every output across a VT switch, and a greeter that quit with them
++    // leaves nothing to draw when the outputs come back.
++    if (!parser.isSet(testModeOption)) {
++        QGuiApplication::setQuitOnLastWindowClosed(false);
++        QCoreApplication::setQuitLockEnabled(false);
++    }
++
+     SDDM::GreeterApp *greeter = new SDDM::GreeterApp();
+     greeter->setTestModeEnabled(parser.isSet(testModeOption));
+     greeter->setSocketName(parser.value(socketOption));

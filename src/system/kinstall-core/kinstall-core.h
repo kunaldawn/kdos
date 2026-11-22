@@ -60,6 +60,10 @@ typedef struct {
 	 * active volume group, an array. mkfs refuses it, and a reuse plan
 	 * that picked it would fail after the point of no return. */
 	int held;
+	/* An LVM2_member partition's volume group, read as a whole-disk
+	 * physical volume's is ("" otherwise), so a front end names the
+	 * group an erase destroys. */
+	char vg[64];
 } Part;
 
 typedef struct {
@@ -76,13 +80,22 @@ typedef struct {
 	char table[8];		/* gpt, dos, -                             */
 	Part part[MAX_PARTS];
 	int nparts;
-	/* A disk with no partitions may still hold a signature on the whole
-	 * device: a physical volume pvcreate wrote there, a filesystem, a
-	 * LUKS container. Its type as blkid names it, and for a physical
-	 * volume its group where that can be read ("" otherwise), so a front
-	 * end never calls such a disk empty. */
+	/* The signature on the whole device, with or without partitions: a
+	 * physical volume pvcreate wrote there, a filesystem, a LUKS
+	 * container, the ISO 9660 image of a written stick. Its type as
+	 * blkid names it, its label, for a physical volume its group where
+	 * that can be read ("" otherwise), and for an ISO 9660 image its size
+	 * (0 when unknown), so a front end never calls such a disk empty. */
 	char fstype[16];
+	char label[40];
 	char vg[64];
+	unsigned long long fs_bytes;
+	/* The ISO 9660 image is what the disk holds: its partitions are all
+	 * the image's hybrid windows (see ki_disk_signature), so a front end
+	 * names the image instead of them. 0 for a disk repartitioned over a
+	 * written stick, whose stale descriptor names nothing an erase
+	 * destroys. */
+	int iso_image;
 } Disk;
 
 /*
@@ -135,9 +148,17 @@ typedef struct {
 	 */
 	int fw_bits;
 	int secure_boot;
+	/*
+	 * WHETHER THERE IS A NETWORK: a default route, IPv4 or IPv6, on an
+	 * interface that is up with a carrier (ki_probe_network()). It says
+	 * nothing about whether the binhost answers, only that a fetch can
+	 * try; with none a front end says the native groups are installed
+	 * after the first boot rather than promising a download.
+	 */
+	int network;
 	unsigned long long mem_kb;
 	char cpu[64];
-	int cores;
+	int cores;		/* logical CPUs: threads, not cores        */
 	int live;		/* booted from the squashfs overlay        */
 	unsigned long long payload_kb;	/* what an install will copy       */
 	unsigned long long appbox_kb;	/* of which, the alien app store   */
@@ -186,6 +207,12 @@ extern Lv ki_lv[MAX_LVS];
 extern int ki_nlv;
 
 void probe_system(void);
+/* ki_sys.network, read again: probe_system() does it once, and a page that
+ * says whether the groups download asks as it opens, since a cable plugged
+ * in after the wizard started changes the answer. $KDOS_NET_ROOT, for a
+ * test, is a directory read in place of / for proc/net/route,
+ * proc/net/ipv6_route and sys/class/net. */
+void ki_probe_network(void);
 /* The size of the tree an install copies, into ki_sys.payload_kb and
  * appbox_kb, its extra hard-link names into link_extra_bytes and
  * link_extra_appbox_bytes, and where its cost lies into copy_prof and
@@ -325,11 +352,40 @@ void ki_groups_collect(void);
 int  ki_groups_chosen(void);
 
 void probe_part(const char *path, Part *p);
-/* The whole-device signature of a disk with no partitions into d->fstype,
- * and a physical volume's group into d->vg: from the active volumes'
- * `slaves` in /sys/block, which needs no privilege, then `lvm pvs` as
- * root. probe_disks() calls it for every disk it lists without partitions. */
+/* The table type of `d` into d->table ("gpt", "dos" or "-"), and the ESP
+ * and BIOS boot partitions among the d->part[] already listed, matched by
+ * start: GPT type GUIDs, or MBR primary entries typed 0xef. A disk it
+ * cannot open keeps udev's table type. */
+void ki_disk_table(Disk *d);
+/* The whole-device signature of a disk into d->fstype and d->label, a
+ * physical volume's group into d->vg (from the active volumes' `slaves` in
+ * /sys/block, which needs no privilege, then `lvm pvs` as root), and an
+ * ISO 9660 image's size into d->fs_bytes: its descriptor's, or where the
+ * last partition ends when the device cannot be read. d->iso_image is set
+ * when every partition is a hybrid window of that image: it holds nothing
+ * but FAT or ISO 9660 (or no filesystem), and it ends inside the
+ * descriptor's size, or, with the descriptor unread, some partition starts
+ * inside the first MiB, where an image's windows do and no partitioning
+ * tool puts one. probe_disks() calls it for every disk it lists, after
+ * the partitions. */
 void ki_disk_signature(Disk *d);
+/* What an erase of `d` destroys, as the Summary names it: its partitions
+ * as `<type> "<label>" <size>` joined by ", " (an LVM physical volume as
+ * "LVM physical volume (volume group <vg>)"), or the whole-device
+ * signature of a disk with none; a disk whose iso_image is set as
+ * `ISO 9660 image "<label>" on the whole disk, <size>`, its hybrid
+ * windows unnamed; "" for an empty disk. At most `max`
+ * partitions are named (every one for max <= 0), and those past it or past
+ * `cap` are counted in a closing ", and <n> more partitions"; an entry is
+ * never cut. */
+void ki_disk_contents(const Disk *d, int max, char *out, size_t cap);
+/* The model udev's data file `data` (/run/udev/data/b<major>:<minor>)
+ * records for a disk: E:ID_MODEL_ENC with its \xNN escapes decoded and
+ * its blanks trimmed. It replaces `model`, which holds the sysfs model on
+ * entry, only when it is longer and starts with it: sysfs's SCSI model is
+ * the 16 bytes of the INQUIRY reply, cut mid-word for a longer ATA name.
+ * Returns 1 when it replaced `model`. */
+int ki_udev_model(const char *data, char *model, size_t cap);
 Disk *disk_by_path(const char *path);
 /* A disk's size in bytes. /sys/block reports `size` in 512-byte units
  * whatever the drive's logical sector is, so multiplying by sector_size
@@ -547,10 +603,29 @@ int ki_bios_boot_part(void);
 /* Bytes this install copies onto the root, as the Disk page states it. */
 unsigned long long ki_need_bytes(void);
 /* The headroom a whole disk must have beyond ki_need_bytes(): the ESP, the
- * BIOS boot partition and room for the copy's own metadata. Every front end
- * and the install itself read this one figure, so a disk is never drawn as
- * fitting that the install then refuses. */
+ * BIOS boot partition and room for the copy's own metadata. */
 #define KI_DISK_MARGIN (768ULL << 20)
+/* The room the root must keep after the copy, in MiB: ext4's 5% reserve,
+ * the journal, the logs and the first logins all take from it. A root that
+ * holds the install and nothing more is full at the first login, and every
+ * write in the session then fails with ENOSPC. */
+#define KI_ROOT_FREE_MB 2048ULL
+/* The least size of a reused root: ki_need_bytes() and KI_ROOT_FREE_MB. */
+unsigned long long ki_root_need_bytes(void);
+/* What a whole disk must hold for one root: ki_root_need_bytes() and
+ * KI_DISK_MARGIN. ki_disk_check(), the swap rule beside one root, the probe
+ * dump and the Disk pages all read this one figure, so a disk is never drawn
+ * as fitting that the install then refuses. */
+unsigned long long ki_disk_need_bytes(void);
+/* What a root keeps free once the install and a swap file in it are taken,
+ * in bytes, for these answers: the one root of the erase plan or the reused
+ * root. -1 on the A/B layout, whose slot is sized for updates and whose
+ * home is a volume of its own, and when the root is not one the probe saw. */
+long long ki_root_free_bytes(void);
+/* Below this a front end warns on its Summary that the root will be too
+ * small for application groups or boxed apps: the Plasma groups alone run
+ * to gigabytes. */
+#define KI_ROOT_LOW_BYTES (4096ULL << 20)
 /* The erase plan's root partition, in bytes, for the disk and swap chosen. */
 unsigned long long ki_wipe_root_bytes(void);
 /* 1 when these answers lay the disk out for A/B updates: the erase plan, on
@@ -576,8 +651,13 @@ unsigned long long ki_swap_lv_mb(void);
 /* The keyboard the graphical session starts with, when the answers named
  * one: kxkbrc's lists, which the installer writes as /etc/xdg/kxkbrc. */
 int ki_xkb_word_ok(const char *s);
+/* A kbd keymap name: letters, digits and _ . + -, not starting with . or -,
+ * at most 63 bytes. What the installer writes to EFI/kdos/keymap. */
+int ki_keymap_name_ok(const char *s);
 /* The console keymap nearest an XKB layout, out of the keymaps under
- * `share` (the live root's /usr/share), or "us" when none is installed. */
+ * `share` (the live root's /usr/share), or "us" when none is installed.
+ * `<layout>-latin1` is tried before `<layout>`, which kbd gives the 7-bit
+ * national map. */
 void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 		  char *out, size_t cap);
 
@@ -609,8 +689,8 @@ int ki_answers_check(char *err, size_t n);
 
 /*
  * WHETHER A DISK CAN TAKE THE INSTALL AT ALL: not the medium this runs from,
- * not read-only, and at least ki_need_bytes() + KI_DISK_MARGIN. 0 when it
- * can; otherwise the reason, which the Disk pages show beside the disk.
+ * not read-only, and at least ki_disk_need_bytes(). 0 when it can; otherwise the reason, which the Disk pages
+ * show beside the disk.
  */
 int ki_disk_check(const Disk *d, char *err, size_t n);
 
@@ -619,8 +699,8 @@ int ki_disk_check(const Disk *d, char *err, size_t n);
  * ki_disk_check(), and on the reuse plan the ESP and the root. Neither may be
  * the BIOS boot partition or the other; an ESP kept unformatted must already
  * be FAT; the root may not be an LVM physical volume, a device something
- * holds open, or smaller than the install; and a machine started in legacy
- * BIOS mode needs a disk it can start from. Needs probe_disks() and, for the
+ * holds open, or smaller than the install and KI_ROOT_FREE_MB; and a machine
+ * started in legacy BIOS mode needs a disk it can start from. Needs probe_disks() and, for the
  * sizes, probe_payload(). On the erase plan without two slots, the swap
  * partition or file must fit beside the install: ki_disk_check()'s rule plus
  * the swap and, on LVM or LUKS, KI_VOLUME_META_MB of volume metadata; on the
@@ -840,12 +920,40 @@ int ki_events_run(void);
 /* Where a writer says what it wrote; NULL says nothing. */
 extern void (*ki_log_hook)(const char *line);
 
+/* A root command as the new account can run it, for the Packs and Firmware
+ * warnings and the groups-pending header: "`sudo <cmd>`" for an
+ * administrator, and for an account outside `wheel` (Administrator unticked),
+ * which sudo refuses, "`su -c '<cmd>'` (root's password)" — that install has
+ * a root password, since ki_answers_check refuses a locked root beside a
+ * non-administrator. The string lives until the next call. */
+const char *ki_root_cmd(const char *cmd);
+
 /* /etc/sddm.conf.d/kde_settings.conf's [Autologin], the A15 lock, and
  * /etc/plasma-setup-done — present unless the install is an OEM one. */
 int ki_write_login(const char *root, char *err, size_t n);
 /* /etc/xdg/kdeglobals' global theme, /etc/xdg/kdosrc's desk, /etc/kdos/accent,
  * /etc/vtrgb and the login screen's set for the chosen accent. */
 int ki_write_look(const char *root, char *err, size_t n);
+/* The command that writes the chosen accent's home files into <root><home>:
+ * `env -i` with that home's HOME and XDG directories and the target's
+ * XDG_CONFIG_DIRS, then `<kdos> theme --account <accent>`. Nothing in it
+ * reaches the live session or the live machine's accent. */
+void ki_theme_argv(KbArgv *a, const char *kdos, const char *root,
+		   const char *home);
+/* Every entry under <path> to uid:gid, links themselves and never what they
+ * name, on <path>'s own filesystem: 0, or -1 with errno. */
+int ki_hand_tree(const char *path, uid_t uid, gid_t gid);
+/* <user>'s numbers out of <root>/etc/passwd; 1000:1000, the live account's,
+ * when it names none. */
+void ki_account_ids(const char *root, const char *user, uid_t *uid,
+		    gid_t *gid);
+/* The account's half of the accent: the ki_theme_argv command through <run>
+ * into <root>/etc/skel, and, unless the install is an OEM one, into
+ * <root>/home/<username>, whose .config, .cache and .local are then handed to
+ * the account by number. Each failure is a ki_log_hook line; the result is
+ * how many of the runs failed. */
+int ki_seed_accent(const char *root, const char *kdos,
+		   int (*run)(const KbArgv *a));
 /* /etc/keymap, and with an XKB layout /etc/kdos/xkb.conf and /etc/xdg/kxkbrc. */
 int ki_write_keyboard(const char *root, char *err, size_t n);
 
@@ -858,6 +966,17 @@ int ki_write_keyboard(const char *root, char *err, size_t n);
  * ──────────────────────────────────────────────────────────────────────── */
 
 int ki_dump(const char *what, int json);
+/* The text and the JSON `--dump probe` writes, for the machine already in
+ * ki_sys and the disks and volumes already in ki_disk and ki_lv. */
+void ki_dump_probe_text(void);
+void ki_dump_probe_json(void);
+/* WHAT THE COPY WRITES, in bytes, the total its progress line counts to:
+ * the walk's payload less every name of a file after its first, which
+ * rsync -H makes a link at no copy cost. The system's part (`store` 0) is
+ * the whole copy without the box store, and the copy into slot B; the
+ * store's (`store` 1) is what copying the store adds. -1 when the payload
+ * was handed on (ki_dump_payload_set) rather than walked. */
+long long ki_copy_bytes(int store);
 /* The payload and box store a front end measured as root, in KiB, for every
  * later dump to take instead of its own walk (`--payload-kb`, `--appbox-kb`):
  * a walk as another user reads less of the tree. */

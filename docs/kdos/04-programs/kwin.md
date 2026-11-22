@@ -298,7 +298,13 @@ is resized. A place remembered at another device pixel ratio is restored without
 the program picks for the ratio it is on. A window with no record that KWin centred while its size
 was a placeholder is centred again, inside the usable area, when it takes its real size within two
 seconds of opening, and one that opens larger than the usable area is moved and shrunk into it in
-the same two seconds.
+the same two seconds. A resizable window with no record whose first real size is under half the
+usable area in either direction — the widgets' minimum a KXmlGui program with no saved size opens
+at — is grown to at least 60% by 70% of the area and centred on its screen. A borderless window (a
+splash, a frameless notice, a program drawing its own title bar) is not, nor KCalc, Kalk,
+Qalculate, KColorChooser, KCharSelect, KTeaTime or KTimer, whose small window is their design; a
+splash with a border is grown on a launch with no record. What it closes at is recorded, so a size
+the person picks wins from the next launch on.
 
 | `kwinrc [Script-kdos_window_memory]` | Default | Effect |
 |---|---|---|

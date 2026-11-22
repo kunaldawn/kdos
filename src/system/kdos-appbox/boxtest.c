@@ -269,6 +269,102 @@ static void rules(void)
 	kb_rmtree(dir);
 }
 
+static void digests(void)
+{
+	Profile a, b;
+	char da[PROFILE_DIGEST_MAX], db[PROFILE_DIGEST_MAX], keys[256];
+	int n;
+
+	profile_defaults(&a, "d");
+	profile_set(&a, "base=image:docker.io/library/alpine:latest");
+	b = a;
+	profile_set(&b, "x11=no");
+	profile_set(&b, "grant=secrets");
+	profile_set(&b, "autostop=30m");
+	profile_set(&b, "accent=amber");
+	profile_set(&b, "wayland=no");
+	profile_set(&b, "audio=no");
+	profile_set(&b, "render=software");
+	profile_set(&b, "image=other");
+	profile_create_digest(&a, da, sizeof(da));
+	profile_create_digest(&b, db, sizeof(db));
+	cat_chk(!strcmp(da, db),
+		"keys a launch reads are not in the create-time digest");
+	cat_chk(profile_digest_diff(da, db, keys, sizeof(keys)) == 0 && !keys[0],
+		"and no key is named as changed");
+	cat_chk(strspn(da, "v0123456789abcdef.") == strlen(da) &&
+		strlen(da) == 3 + 8 * 13,
+		"the digest is one plain word, 8 hex digits a key");
+	profile_set(&b, "network=none");
+	profile_set(&b, "memory=2G");
+	profile_create_digest(&b, db, sizeof(db));
+	n = profile_digest_diff(da, db, keys, sizeof(keys));
+	cat_chk(n == 2 && !strcmp(keys, "network, memory"),
+		"a create-time change names exactly the keys that differ");
+	n = profile_digest_diff("v0.x", db, keys, sizeof(keys));
+	cat_chk(n == 13, "a digest of another version counts every key");
+}
+
+static void foreground(void)
+{
+	int fd[2];
+
+	cat_chk(pipe(fd) == 0, "a pipe for the foreground check");
+	cat_chk(!tty_foreground(fd[0]), "a pipe is no foreground terminal");
+	close(fd[0]);
+	close(fd[1]);
+}
+
+/* A profile remove kept, of a box with no container, gets no window rule;
+ * a live profile and an exported launcher's box do. No podman is on the
+ * PATH here, so no box has a container. */
+static void rules_kept(void)
+{
+	const char *tmp = getenv("TMPDIR");
+	char dir[512], apps[600], pdir[600], f[700];
+	char *home = kb_strdup(getenv("HOME") ? getenv("HOME") : "");
+	char *path = kb_strdup(getenv("PATH") ? getenv("PATH") : "");
+	char (*boxes)[64] = kb_calloc(8, 64);
+	char (*accents)[16] = kb_calloc(8, 16);
+	int n, live = 0, gone = 0, exp = 0;
+
+	snprintf(dir, sizeof(dir), "%s/kdos-boxtest-XXXXXX",
+		 tmp && *tmp ? tmp : "/tmp");
+	if (!mkdtemp(dir)) {
+		cat_chk(0, "a scratch home for the rules");
+		return;
+	}
+	snprintf(apps, sizeof(apps), "%s/.local/share/applications", dir);
+	snprintf(pdir, sizeof(pdir), "%s/.config/kdos/boxes", dir);
+	kb_mkdir_p(apps);
+	kb_mkdir_p(pdir);
+	snprintf(f, sizeof(f), "%s/live.conf", pdir);
+	kb_write_file(f, "base=image:x\naccent=amber\n");
+	snprintf(f, sizeof(f), "%s/gone.conf", pdir);
+	kb_write_file(f, BOX_KEPT_MARK "base=image:x\n");
+	snprintf(f, sizeof(f), "%s/exp.sh.desktop", apps);
+	kb_write_file(f, "[Desktop Entry]\nType=Application\nName=sh\n"
+			 "Exec=sh\nX-KDOS-Box=exp\nX-KDOS-Export=true\n");
+	setenv("HOME", dir, 1);
+	setenv("PATH", dir, 1);
+	n = box_rules_collect(apps, pdir, boxes, accents, 8);
+	for (int i = 0; i < n; i++) {
+		live += !strcmp(boxes[i], "live") && !strcmp(accents[i], "amber");
+		gone += !strcmp(boxes[i], "gone");
+		exp += !strcmp(boxes[i], "exp");
+	}
+	setenv("HOME", home, 1);
+	setenv("PATH", path, 1);
+	cat_chk(live == 1, "a profile's box gets its rule, with its accent");
+	cat_chk(exp == 1, "an exported launcher's box gets its rule");
+	cat_chk(gone == 0, "a kept profile with no container gets none");
+	kb_rmtree(dir);
+	free(boxes);
+	free(accents);
+	free(home);
+	free(path);
+}
+
 int boxes_selftest(void)
 {
 	cat_fail = 0;
@@ -279,6 +375,9 @@ int boxes_selftest(void)
 	policy();
 	states();
 	rules();
+	digests();
+	foreground();
+	rules_kept();
 	if (cat_fail) {
 		fprintf(stderr, "boxes --selftest: %d failure(s)\n", cat_fail);
 		return 1;

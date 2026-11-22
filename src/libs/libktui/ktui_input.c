@@ -25,6 +25,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <linux/input.h>
+#include <linux/kd.h>
+#include <linux/tiocl.h>
 #include <sys/ioctl.h>
 
 #include "kbase.h"
@@ -453,6 +455,28 @@ static int csi_mods(int p)
 	return m;
 }
 
+/*
+ * THE LINUX CONSOLE KEYMAP SENDS TAB FOR SHIFT+TAB. Its keycode 15 has no
+ * shifted string, so ESC [ Z never arrives on a VT and Shift+Tab would move
+ * the focus forward. On a VT the kernel reports the modifiers held right now
+ * (TIOCLINUX, TIOCL_GETSHIFTSTATE), and a Tab read while Shift is down is the
+ * back-tab. <linux/keyboard.h>, which names the bit, is not included: its
+ * KT_ key-type names collide with libktui's. KDGKBTYPE succeeds only on a
+ * VT, so a terminal emulator or an ssh session — which send ESC [ Z
+ * themselves — never ask.
+ */
+static int vt_shift_held(void)
+{
+	char type;
+	char sub = TIOCL_GETSHIFTSTATE;
+
+	if (ioctl(0, KDGKBTYPE, &type) < 0)
+		return 0;
+	if (ioctl(0, TIOCLINUX, &sub) < 0)
+		return 0;
+	return (sub & 1) != 0;	/* bit KG_SHIFT, either Shift key */
+}
+
 /* Returns 1 if a complete sequence was decoded, 0 if more bytes are needed,
  * -1 if the buffer holds a lone ESC that is not (yet) a sequence. */
 static int decode(KtuiEvent *ev)
@@ -491,6 +515,11 @@ static int decode(KtuiEvent *ev)
 		}
 		if (c == 10)
 			c = KT_K_ENTER;
+		if (c == KT_K_TAB && vt_shift_held()) {
+			ev->key = KT_K_BTAB;
+			ibuf_drop(1);
+			return 1;
+		}
 		if (c == 8)
 			c = KT_K_BACKSPACE;
 		if (c < 0x80) {

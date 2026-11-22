@@ -28,7 +28,8 @@ Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), H
 Skanpage, Filelight, KFind, KCharSelect, KClock and KWalletManager, VLC, which Elisa plays
 through, Firefox ESR, Discover, the Orca screen reader and BRLTTY for braille, networking,
 printing and the box stack. It carries no compiler: a build on the machine starts by installing
-the `build-tools` group. The rest of the about
+the `build-tools` group, after which `cc` compiles against the C library's and the kernel's
+headers. The rest of the about
 2,400 native ports, from LibreOffice, GIMP, Krita, Blender and the rest of KDE Gear to Thunderbird,
 Chromium, KiCad, FreeCAD, QGIS, Wine and TeX Live, is one download away, one port at a time or as
 a [group](#native-groups). Both native routes need a network, the built one for the port's sources
@@ -127,8 +128,8 @@ the installer offers the same ones (see [Installation](installation.md#8-applica
 | `science` | Octave, QGIS, Stellarium, FreeCAD, KiCad, OpenSCAD |
 | `development` | Rust, Go, Node.js, Zig, gdb, Valgrind, strace, LLDB |
 | `windows` | Wine |
-| `build-tools` | GCC with binutils' assembler and linker, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex |
-| `lang-zh`, `lang-ja`, `lang-ko` | Chinese, Japanese or Korean input for fcitx5 (the Chinese addons, Anthy, Hangul), its GTK modules and Noto CJK fonts |
+| `build-tools` | GCC with binutils' assembler and linker, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex; it also restores the development files of `gcc`, `musl` and `linux`, so `cc` and the C library's and kernel's headers are there |
+| `lang-zh`, `lang-ja`, `lang-ko` | Chinese, Japanese or Korean input for fcitx5 (the Chinese addons, Anthy, Hangul), its GTK modules and Noto CJK fonts. The base's fonts draw Latin, Greek, Cyrillic, Arabic, Hebrew, Armenian, Georgian, the Indic scripts, Sinhala, Thai, Lao, Khmer, Myanmar and Ethiopic but no CJK face, so Chinese, Japanese and Korean text, a web page's included, shows as boxes until one of these groups is installed |
 
 ```sh
 kdos update groups                     # every group: installed or not, members missing, download size
@@ -142,10 +143,19 @@ as it is and is not offered for removal. The download size is shown once the bin
 group whose every member installs prebuilt. On the live ISO a group goes into the live session's
 memory, like anything else installed there.
 
+A native group is installed at a terminal or in the installer, and not from Discover: Discover
+installs a group's members one at a time, each from its own page. What Discover lists under
+**Sets**, such as *Office set* or *Creative set*, are the [catalogue's](#what-the-catalogue-carries)
+sets of boxed applications, which install boxes, not ports. A native group is named in lower case
+in `kdos update groups`; a set's name ends in "set", and each of its applications shows a boxed
+origin on its page (*KDOS packs*, *Debian, built in a box* or the boot medium) where a port shows
+*KDOS system* or *KDOS, built on this computer*.
+
 ### Removing a port
 
 ```sh
 kdos update removable           # the ports somebody installed that nothing installed needs
+sudo kdos update remove --dry-run kdenlive   # what the removal takes, changing nothing
 sudo kdos update remove kdenlive
 ```
 
@@ -155,8 +165,22 @@ software runs the same command, and shows the button only for such a port. A por
 part of the system and refused, since it has no world line unless `kdos update install` named it,
 and one an installed package needs is refused with the name of that package. The removal runs `kpkg
 remove`, which uninstalls the port and takes it out of the world set and the origin record, so the
-next update does not bring it back; what the port brought with it stays, each dependency a package
-of its own. `sudo kpkg remove <port>` is the same step without the two refusals. Either acts on the
+next update does not bring it back. The packages the port brought go with it: each package an
+install added (one with a line in `/var/lib/kdos/origin`) that is not in the world set, is not a
+package of the running image and that nothing installed but what is being removed depends on,
+packages that depend on each other in a cycle included; the dry run lists every package it takes,
+one `remove <package>` line each, and Discover's question counts them. A package of the image is
+one with no origin line, or one the image record the system slot was written from
+(`/var/lib/kdos/image/MANIFEST`) holds: a package an install brought keeps its origin line when a
+newer release adds it to the base, and stays. Then the downloaded package file, signature, cut
+download and delta of every package that is not installed leave the binhost cache
+(`/var/lib/kdos/binhost`), those of the packages just removed and any an install that stopped part
+way or an earlier removal left, so the space they used comes back; while an update acquired for the
+other slot waits to be set for the next boot, only the files of the packages just removed go, since
+that update's packages are not installed here. `kdos update removable` lists apart, under `left by
+removals:`, an added package that nothing installed needs and no removal took, such as one left by
+an install that stopped part way, and `kdos update remove` takes it by name. `sudo kpkg remove
+<port>` removes the one package alone, without the refusals and without touching the cache. Either acts on the
 system that is running. When an update has already been written into the other system slot, that
 slot keeps its own copy of the package and, once the update is set for the next boot, of the world
 set too; run the removal again after restarting into it.
@@ -203,13 +227,15 @@ through OpenGL works, and the system carries the X core fonts (`misc-fixed`, Ado
 the cursor font) that Motif and Xt programs ask it for. There is no Xorg server, and the login
 screen is SDDM's Wayland greeter, on KWin, with no X server behind it.
 
-Open and Save dialogs are KDE's in nearly every application. Qt applications draw them through
-KDE's platform theme. GTK 4 applications ask the desktop's file-chooser portal for theirs, GTK 3
-applications that use GTK's native chooser do too, because the login profile sets
-`GTK_USE_PORTAL=1`, and Firefox ESR does the same through its shipped preferences; the portal is
-`xdg-desktop-portal-kde`, so they get KDE's dialog. A GTK 3 application that builds GTK's own
-dialog, such as AbiWord, keeps GTK's. A boxed
-application reaches the same portal. Qt applications read the palette, fonts and icons of the global
+Open and Save dialogs are KDE's in Qt 6 and KDE applications, which draw them through KDE's
+platform theme, and in the applications that ask the desktop's file-chooser portal for theirs: GTK
+4 applications, GTK 3 applications that use GTK's native chooser (`GtkFileChooserNative`, which the
+login profile's `GTK_USE_PORTAL=1` sends to the portal), Firefox ESR and LibreWolf through their
+shipped preferences, Thunderbird through `GTK_USE_PORTAL`, and LibreOffice. The portal is `xdg-desktop-portal-kde`, so they
+get KDE's dialog. A GTK 3 application that builds GTK's own dialog widget keeps GTK's: GIMP,
+Inkscape and AbiWord do. A Qt 5 application (SMPlayer, VLC, KeePassXC) shows Qt's own widget
+dialog, because qt5ct, its platform theme, asks no portal. A boxed application reaches the same
+portal. Qt applications read the palette, fonts and icons of the global
 theme in force (`QT_QPA_PLATFORMTHEME=kde`), and GTK applications take the same colours through
 Breeze's GTK theme; how each toolkit takes the accent is in [Theming](theming.md).
 
@@ -237,7 +263,7 @@ and KWin applies it. The tables name the Gear applications beside the rest; the 
 
 | Application | What it is for |
 |---|---|
-| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks, and the Plasma Browser Integration extension is installed beside it, so its media and downloads reach Plasma's applets |
+| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks, its default preferences turn off the region lookup by IP address and every network location source (Google's service and geoclue), so a page asking for the location gets none, and the Plasma Browser Integration extension is installed beside it, so its media and downloads reach Plasma's applets |
 | Chromium | Chromium's browser, on GTK 3 |
 | LibreWolf | A Firefox derivative with privacy defaults |
 | Falkon | KDE's browser, on QtWebEngine |
@@ -247,6 +273,12 @@ and KWin applies it. The tables name the Gear applications beside the rest; the 
 | Lagrange | Gemini, Gopher, Spartan and Finger |
 
 `w3m`, a text-mode browser, runs in a terminal and on a bare console.
+
+A web page's Chinese, Japanese or Korean text shows as boxes in every browser until
+`sudo kdos update install noto-cjk` has put their faces on the machine. Those faces alone draw
+every Han character in its Korean form; a reader of Chinese or Japanese installs `lang-zh` or
+`lang-ja` instead, which brings the faces and that language's forms; see
+[known gaps](../06-reference/known-gaps.md#chinese-japanese-and-korean-text-needs-a-font-that-is-not-on-the-base).
 
 ### Mail, chat and calls
 
@@ -352,7 +384,7 @@ the Foomatic database. [Administration](administration.md#printing) covers the p
 | Application | What it is for |
 |---|---|
 | GIMP | Raster image editing and photo retouching, with its manual installed |
-| Krita | Digital painting, illustration and frame-by-frame animation |
+| Krita | Digital painting, illustration and frame-by-frame animation. Its welcome page shows "DEV BUILD", which upstream shows on every Qt 6 build; the port is Krita's release |
 | Inkscape | Vector drawing in SVG, with PDF import |
 | darktable, RawTherapee | RAW photo development |
 | digiKam | Photo library: tagging, face recognition and RAW import, with showFoto |
@@ -658,15 +690,22 @@ A row may name several applications, best first, and the first one installed ope
 video rows name Haruna and then VLC, both on the installation medium, so a video plays in Haruna,
 and in VLC once Haruna is removed, with nothing else to change. A default outside the base, such as
 Thunderbird or LibreOffice, takes effect once its port is installed. Until then, and after its
-application is removed, a row falls through to another installed application that claims the type;
-office documents and mail links have none on the medium, so opening one shows the chooser.
+application is removed, a row falls through to another installed application that claims the type.
+No office application is on the base. OpenDocument and Office Open XML files are zip files
+underneath, and their types are subclasses of `application/zip`, which Ark claims, so until the
+`office` group is installed an office document opens in Ark as an archive of its parts. A `mailto:`
+link opens a note that no mail program is installed and that Thunderbird is in the `internet`
+group, from Discover or with `sudo kdos update install internet`; until then the Email client row
+of the Default Applications page shows that note's entry, *No Mail Program*. Once the `office` or
+`internet` group is installed, the default on this page opens them.
 
 ## Discover
 
 Discover is where software is found, installed, updated and removed. On KDOS it shows what KDOS
 has, and only that: no Flatpak, no Flathub, no ratings or reviews from a server, and no "Get New…"
-downloads anywhere in the desktop. Opening it downloads nothing; each source below reaches the
-network only when you press a button that says it will.
+downloads anywhere in the desktop. Opening it asks the release server for its signed indexes (the tree,
+the binary-host index and the image manifest) at most once an hour, and downloads no package and no
+source; each source below reaches the network only when you press a button that says it will.
 
 | Origin | Lists | Installing |
 |---|---|---|
@@ -682,8 +721,8 @@ network only when you press a button that says it will.
 An application in a box carries a *Runs in a box* badge on its page, which opens the box's page in
 System Settings. Double-clicking a `.ktar` set or a `.kpack` pack in Dolphin opens it in Discover,
 which installs it offline, and a stick holding a set is offered in a notification when it is
-plugged in. **Refresh** on the Updates page fetches the newest signed release information, at most
-once an hour; on the live medium, and on a computer installed with one system slot, it fetches the
+plugged in. Opening Discover and **Refresh** on the Updates page fetch the newest signed release information, at most
+once an hour, and the Refresh after a check that found no network asks again at once; on the live medium, and on a computer installed with one system slot, it fetches the
 release's signed package index instead, since there is no second slot to update. Nothing else in
 Discover touches the network until an install says so.
 
@@ -693,6 +732,9 @@ never installs anything by itself. On the live medium the tray says nothing abou
 update, which could not be kept there; it still shows a running update job or a pending restart.
 
 `kdos app` is the same catalogue from a prompt; see [Finding and installing](#finding-and-installing).
+Discover's **Sets** are the catalogue's sets of boxed applications; a [native
+group](#native-groups) of ports is not in Discover and is installed with
+`sudo kdos update install <group>` or in the installer.
 
 ## What an alien app is
 
@@ -1158,6 +1200,31 @@ terminal window closes. `kdos-box enter` sets `KDOS_BOX` to the box's name insid
 can show. The full command set, including `run`, `apps`, `export` and `import`, is in
 [kdos-appbox](../04-programs/kdos-appbox.md#kdos-box).
 
+`kdos-box export <box> <app>` puts one application of a box you made in the Start menu, as
+`<Name> (<box>)`, with the icon and description it has inside the box, and a command
+`<command>@<box>`. `kdos-box create` and `kdos-box remove` write the boxes' title-bar rules again,
+so a new box's windows take its colour at once and a removed box's rule goes.
+
+### Getting the space back
+
+A box made from a distribution's image, such as `base=image:registry.fedoraproject.org/fedora:latest`,
+costs its image (a few hundred megabytes) and whatever you install in it, which `kdos-box list`
+counts in its disk column. `kdos-box remove <name>` keeps the profile and the image, so the box can
+be made again without the network. To give both up:
+
+```sh
+kdos-box remove fed --force --purge   # the box, its profile, and its image if no other box uses it
+podman images                         # the images that are left
+podman rmi <image>                    # one of them, such as a box's removed without --purge
+podman image prune                    # the untagged layers a pull or a build left behind
+```
+
+`--purge` releases the image only when no other box's profile names it and no container still
+uses it, and says which it did. `podman rmi` refuses an image a container still uses. Leave the
+`kdos/…` images to `kdos app`: a boxed application installed from Discover or with
+`kdos app install` is removed with `kdos app remove <id>`, which releases its own images, and the
+store's base image `debian:trixie-slim` is what every one of them is built on.
+
 ### A pack box's writable layer
 
 Five commands work on the writable layer under `~/.local/share/kdos/boxes/<name>/`, and so apply
@@ -1206,10 +1273,17 @@ container, so a profile change to them takes effect only when the box is created
 box with `kdos-box remove <name>`; its profile is kept. A running box is not removed: stop it first
 with `kdos-box stop <name>`, or pass `--force`. Then:
 
-- for a pack box, the next launch creates the box again from the kept profile;
+- for an application's pack box, the next launch creates the box again from the kept profile;
 - for a store box, the next launch creates the box again over the image it was built on, with an
   empty writable layer; `kdos app install <id>` does the same, finding every image already built and
-  creating only the box. `kdos-box start` does not create a removed box.
+  creating only the box;
+- for any other box, such as one made with `kdos-box create <name> base=image:<ref>`, nothing
+  launches it again: `kdos-box create <name>` makes it again from the kept profile, and so does
+  the Create button on its page in System Settings, where the box reads "Removed — settings kept".
+
+`kdos-box start` does not create a removed box. A box's page in System Settings also has Open
+Terminal, a shell inside the box in a window of its own, the same as `kdos-box enter <name>
+--window`.
 
 ### Idle boxes
 

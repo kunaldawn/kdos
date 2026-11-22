@@ -28,9 +28,13 @@
  * family and a size, and a page that can only pass words to a command
  * cannot write one.
  *
- * The switches are read again whenever the page is shown and whenever the
- * Welcome Center window comes back to the front, so a setting changed in
- * System Settings or by a chord while the tour is open is shown as it is.
+ * The switches are read when the page is shown, whenever the Welcome Center
+ * window comes back to the front, and every 1.5 s while the page is shown:
+ * the Meta+Alt+S chord and KWin's own accessibility chords change a setting
+ * without moving the window, and a page that can only start processes
+ * cannot subscribe to the signal that says so. A tick is skipped while a
+ * write is pending, or it would read the old value and flip the switch back
+ * until the write's own refresh.
  * ---------------------------------
  */
 
@@ -119,6 +123,13 @@ Welcome.ScrollablePage {
 
     readonly property bool shown: page.isCurrentPage && Window.active
     onShownChanged: if (shown) refresh()
+
+    Timer {
+        interval: 1500
+        repeat: true
+        running: page.shown
+        onTriggered: if (!run.busy) page.refresh()
+    }
 
     Component.onCompleted: refresh()
 

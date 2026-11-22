@@ -22,6 +22,7 @@
 int ki_page;
 int ki_quit;
 int ki_help;
+extern int ki_unattended;	/* pages.c: the Install page draws no buttons */
 
 static char nav_err[160];
 static double nav_err_at;
@@ -169,13 +170,16 @@ static void draw_nav(int y)
 	/* The status line runs to the column before Back, or to the edge on a
 	 * page with no buttons, and a message longer than that ends in an
 	 * ellipsis rather than under a button. The Install page's line says
-	 * whether the install is still writing, finished or stopped. */
+	 * whether the install is still writing, finished or stopped; during
+	 * Prepare, step 0, which checks the answers and unmounts the target,
+	 * nothing has been written, and the line does not claim it has. */
 	int bx = ktui_w - 34;
 	int sw = p->hide_nav ? ktui_w - 2 : bx - 2;
 	const char *sub = p->subtitle;
 
 	if (!strcmp(p->id, "install"))
-		sub = inst.done ? "finished" : inst.failed ? "stopped" : sub;
+		sub = inst.done ? "finished" : inst.failed ? "stopped"
+		    : inst.cur <= 0 ? "preparing — nothing written yet" : sub;
 	if (nav_err[0] && kb_now_s() - nav_err_at < 8.0) {
 		char m[sizeof(nav_err) + 4];
 
@@ -582,6 +586,7 @@ int main(int argc, char **argv)
 	inst.fd = -1;
 	inst.logfd = 0;
 
+	ki_unattended = unattended;
 	if (unattended) {
 		/* The wizard reaches the Applications page on its way past;
 		 * an unattended install does not, and would carry no packs at
@@ -618,13 +623,19 @@ int main(int argc, char **argv)
 		 * leaves exactly the install that went wrong spinning on its
 		 * own error screen — which is the run somebody most needs the
 		 * exit status of.
+		 *
+		 * ONLY A FINISHED INSTALL REBOOTS. A failed one with reboot = 1
+		 * would restart the live system and take with it the reason
+		 * and the log, which live in its RAM; it exits 1 instead and
+		 * says why on standard error.
 		 */
 		if (unattended && !inst.running && (inst.done || inst.failed)) {
 			static double at;
 			if (!at)
 				at = kb_now_s();
 			else if (kb_now_s() - at > 5.0) {
-				if (cfg.reboot_after) {
+				if (cfg.reboot_after && inst.done &&
+				    !inst.failed) {
 					ktui_term_shutdown();
 					execlp("reboot", "reboot", NULL);
 					_exit(0);
@@ -639,6 +650,14 @@ int main(int argc, char **argv)
 
 	ktui_input_shutdown();
 	ktui_term_shutdown();
+	/* The screen that showed the reason is gone with the terminal, so a
+	 * script reading only standard error still learns it, and where the
+	 * whole account is. */
+	if (unattended && inst.failed) {
+		fprintf(stderr, "kinstall: %s\n",
+			inst.failmsg[0] ? inst.failmsg : "the install stopped");
+		fputs("kinstall: the log is /var/log/kinstall.log\n", stderr);
+	}
 	/* The exit status is the answer a script reads: an install that failed
 	 * and returned 0 is worse than one that never returned. */
 	return unattended && inst.failed ? 1 : 0;

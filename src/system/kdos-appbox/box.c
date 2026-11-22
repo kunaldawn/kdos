@@ -1115,10 +1115,11 @@ int box_unstick(const char *box, char *state, size_t n)
 static void profile_render(const Profile *p, char *buf, size_t cap)
 {
 	snprintf(buf, cap,
-		 "# KDOS box profile — applied when the box is CREATED.\n"
-		 "# Namespaces and volumes cannot be re-flagged on a live\n"
-		 "# container, so a change here takes effect once the box\n"
-		 "# is removed (`kdos-box remove %s`) and created again.\n"
+		 "# KDOS box profile. base, image, persistence, network, ipc,\n"
+		 "# devices, processes, home, init, gpu, memory, cpus and pids\n"
+		 "# are applied when the box is CREATED: a change to one takes\n"
+		 "# effect once the box is removed (`kdos-box remove %s`) and\n"
+		 "# created again. The other keys apply at its next launch.\n"
 		 "base=%s\n"
 		 "image=%s\n"
 		 "accent=%s\n"
@@ -1164,59 +1165,147 @@ static void profile_render(const Profile *p, char *buf, size_t cap)
 int profile_save(const Profile *p)
 {
 	char *path = profile_path(p->name);
-	char buf[MAX_LINE], was[MAX_LINE];
-	Profile old;
-	struct stat st;
-	int keep_mtime = 0;
+	char buf[MAX_LINE];
 	int rc;
 
 	profile_render(p, buf, sizeof(buf));
-	/*
-	 * AN ACCENT-ONLY WRITE KEEPS THE FILE'S MTIME. The accent is a KWin
-	 * rule and applies at once; every other key is the container's and
-	 * applies at create time, and profile_print reads an mtime later than
-	 * the container's creation as "the box runs something else". The old
-	 * file is compared as the profile it parses to, with the new accent,
-	 * so a write that changes nothing the container was made from leaves
-	 * that report as it was.
-	 */
-	if (stat(path, &st) == 0 && profile_load(&old, p->name)) {
-		snprintf(old.accent, sizeof(old.accent), "%s", p->accent);
-		profile_render(&old, was, sizeof(was));
-		keep_mtime = !strcmp(was, buf);
-	}
 	/* ATOMIC: a profile that comes back empty has lost `base`, and a box
 	 * whose base is unknown cannot be composed or started again. */
 	rc = kb_write_file_atomic(path, buf);
-	if (rc == 0 && keep_mtime) {
-		struct timespec t[2] = { st.st_atim, st.st_mtim };
-
-		utimensat(AT_FDCWD, path, t, 0);
-	}
 	free(path);
 	return rc;
 }
 
-#define BOX_PROFILE_SLACK 60
+int profile_is_kept(const char *box)
+{
+	char *pp = profile_path(box);
+	char *t = kb_read_whole(pp, NULL);
+	int kept = t && !strncmp(t, BOX_KEPT_MARK, strlen(BOX_KEPT_MARK));
 
-/* When podman created the box's container, in Unix seconds; 0 when it has
- * none or podman could not say. */
-static long box_created_at(const char *box)
+	free(t);
+	free(pp);
+	return kept;
+}
+
+void profile_mark_kept(const char *box)
+{
+	char *pp = profile_path(box);
+	char *t = kb_read_whole(pp, NULL);
+
+	if (t && strncmp(t, BOX_KEPT_MARK, strlen(BOX_KEPT_MARK))) {
+		KbBuf b = {0};
+
+		kb_buf_printf(&b, "%s%s", BOX_KEPT_MARK, t);
+		if (kb_write_file_atomic(pp, b.p) != 0)
+			kb_warn("%s: %s", pp, strerror(errno));
+		kb_buf_free(&b);
+	}
+	free(t);
+	free(pp);
+}
+
+/* The create-time keys, in the digest's order, by the names the profile file
+ * spells them with. */
+static const char *const PROFILE_CREATE_KEYS[] = {
+	"base", "image", "persistence", "network", "ipc", "devices",
+	"processes", "home", "init", "gpu", "memory", "cpus", "pids", NULL
+};
+
+/* Each key's value as profile_render writes it. `image` is derived from an
+ * `image:` base at create, so it counts only for a profile with no base. */
+static void create_key_value(const Profile *p, int k, char *out, size_t n)
+{
+	switch (k) {
+	case 0:  snprintf(out, n, "%s", p->base); break;
+	case 1:  snprintf(out, n, "%s", p->base[0] ? "" : p->image); break;
+	case 2:  snprintf(out, n, "%s", persist_name(p->persist)); break;
+	case 3:  snprintf(out, n, "%s", p->netnone ? "none"
+				  : p->netns ? "private" : "host"); break;
+	case 4:  snprintf(out, n, "%d", p->ipc); break;
+	case 5:  snprintf(out, n, "%d", p->devsys); break;
+	case 6:  snprintf(out, n, "%d", p->process); break;
+	case 7:  snprintf(out, n, "%d", p->privhome); break;
+	case 8:  snprintf(out, n, "%d", p->init); break;
+	case 9:  snprintf(out, n, "%d", p->gpu); break;
+	case 10: snprintf(out, n, "%s", p->memory); break;
+	case 11: snprintf(out, n, "%s", p->cpus); break;
+	default: snprintf(out, n, "%d", p->pids); break;
+	}
+}
+
+void profile_create_digest(const Profile *p, char *out, size_t n)
+{
+	size_t at = (size_t)snprintf(out, n, "v1.");
+
+	for (int k = 0; PROFILE_CREATE_KEYS[k] && at + 9 <= n; k++) {
+		char val[320], hex[65];
+		KbSha256 h;
+
+		create_key_value(p, k, val, sizeof(val));
+		kb_sha256_init(&h);
+		kb_sha256_update(&h, PROFILE_CREATE_KEYS[k],
+				 strlen(PROFILE_CREATE_KEYS[k]));
+		kb_sha256_update(&h, "=", 1);
+		kb_sha256_update(&h, val, strlen(val));
+		kb_sha256_final(&h, hex);
+		memcpy(out + at, hex, 8);
+		at += 8;
+		out[at] = '\0';
+	}
+}
+
+int profile_digest_diff(const char *a, const char *b, char *out, size_t n)
+{
+	int nk = 0, changed = 0, whole;
+
+	while (PROFILE_CREATE_KEYS[nk])
+		nk++;
+	whole = strncmp(a, "v1.", 3) || strncmp(b, "v1.", 3) ||
+		strlen(a) != 3 + 8 * (size_t)nk || strlen(b) != strlen(a);
+	if (n)
+		out[0] = '\0';
+	for (int k = 0; k < nk; k++) {
+		size_t l;
+
+		if (!whole && !memcmp(a + 3 + 8 * k, b + 3 + 8 * k, 8))
+			continue;
+		l = strlen(out);
+		snprintf(out + l, n - l, "%s%s", changed ? ", " : "",
+			 PROFILE_CREATE_KEYS[k]);
+		changed++;
+	}
+	return changed;
+}
+
+int tty_foreground(int fd)
+{
+	pid_t fg;
+
+	if (!isatty(fd))
+		return 0;
+	fg = tcgetpgrp(fd);
+	return fg >= 0 && fg == getpgrp();
+}
+
+/* The digest the box's container was created with, "" when it has none or
+ * podman could not say. */
+static void box_profile_label(const char *box, char *out, size_t n)
 {
 	KbArgv a = {0};
-	char buf[64] = "";
 
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "inspect");
 	kb_argv_add(&a, "--type");
 	kb_argv_add(&a, "container");
 	kb_argv_add(&a, "--format");
-	kb_argv_add(&a, "{{.Created.Unix}}");
+	kb_argv_add(&a, "{{index .Config.Labels \"" BOX_PROFILE_LABEL "\"}}");
 	kb_argv_add(&a, box);
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, sizeof(buf)) != 0)
-		return 0;
-	return strtol(buf, NULL, 10);
+	if (kb_run_capture(&a, out, n) != 0)
+		out[0] = '\0';
+	out[strcspn(out, "\r\n")] = '\0';
+	if (!strcmp(out, "<no value>"))
+		out[0] = '\0';
 }
 
 /*
@@ -1235,30 +1324,28 @@ void profile_print(const Profile *p)
 	else
 		printf("base        = (none yet — the first launch records the pack)\n");
 	/*
-	 * A PROFILE NEWER THAN ITS CONTAINER IS NOT WHAT THE BOX RUNS. Every
-	 * key but `accent` is applied when the container is created, so the
-	 * lines below are the file's, and a box created before the file was
-	 * last written may still run with what it said before. The comparison
-	 * is the profile's mtime against podman's creation time, an mtime
-	 * profile_save leaves alone when only the accent changed; a box with
-	 * no container prints nothing, because its next create reads the
-	 * file as it is now. A write within BOX_PROFILE_SLACK seconds of the
-	 * create counts as the create's own: a first launch records the
-	 * box's base in the profile only once `podman create` has returned,
-	 * and a tighter window would flag every pack box the launch made.
+	 * A PROFILE WHOSE CREATE-TIME KEYS DIFFER FROM ITS CONTAINER'S LABEL IS
+	 * NOT WHAT THE BOX RUNS: the lines below are the file's, and the
+	 * container was made from what the label recorded (BOX_PROFILE_LABEL).
+	 * The keys that differ are named. A box with no container prints
+	 * nothing, because its next create reads the file as it is now, and
+	 * nor does a container with no `v1.` label — one distrobox made by
+	 * itself — since nothing records what it was made from.
 	 */
 	{
-		char *pp = profile_path(p->name);
-		struct stat st;
-		long created = box_created_at(p->name);
+		char label[PROFILE_DIGEST_MAX + 32], now[PROFILE_DIGEST_MAX];
+		char keys[256];
+		int nk;
 
-		if (created > 0 && stat(pp, &st) == 0 &&
-		    (long)st.st_mtime > created + BOX_PROFILE_SLACK)
+		box_profile_label(p->name, label, sizeof(label));
+		profile_create_digest(p, now, sizeof(now));
+		if (!strncmp(label, "v1.", 3) &&
+		    (nk = profile_digest_diff(label, now, keys, sizeof(keys))) > 0)
 			printf("            ! the profile was written after this box"
-			       " was created — a change to anything but `accent`"
-			       " applies once `kdos-box remove %s` has run and the"
-			       " box is made again\n", p->name);
-		free(pp);
+			       " was created: %s %s — %s once `kdos-box remove"
+			       " %s` has run and the box is made again\n", keys,
+			       nk == 1 ? "differs" : "differ",
+			       nk == 1 ? "it applies" : "they apply", p->name);
 	}
 	/*
 	 * THE TITLE BAR'S COLOUR IS A KWin RULE, written by rules.c for every
@@ -1888,8 +1975,8 @@ int box_create(const Profile *p)
 		kb_argv_add(&a, "/dev/dri:/dev/dri");
 	}
 	/*
-	 * THE LIMITS AND `network = none`, which distrobox has no flags of its
-	 * own for, go to podman through --additional-flags. distrobox-create
+	 * THE LIMITS, `network = none` AND THE PROFILE LABEL, which distrobox
+	 * has no flags of its own for, go to podman through --additional-flags. distrobox-create
 	 * `eval`s the command it builds, so a value is passed only when it is
 	 * made of characters a shell reads as one plain word; anything else is
 	 * refused by name rather than handed to that eval. `--unshare-netns`
@@ -1917,10 +2004,16 @@ int box_create(const Profile *p)
 	}
 	if (p->netnone)
 		add_flag(flags, sizeof(flags), "--network", "none");
-	if (flags[0]) {
-		kb_argv_add(&a, "--additional-flags");
-		kb_argv_add(&a, flags);
+	/* What the container is made from, for profile_print to compare. */
+	{
+		char digest[PROFILE_DIGEST_MAX], label[PROFILE_DIGEST_MAX + 32];
+
+		profile_create_digest(p, digest, sizeof(digest));
+		snprintf(label, sizeof(label), BOX_PROFILE_LABEL "=%s", digest);
+		add_flag(flags, sizeof(flags), "--label", label);
 	}
+	kb_argv_add(&a, "--additional-flags");
+	kb_argv_add(&a, flags);
 	kb_argv_end(&a);
 	return run_distrobox_create(&a, p->name);
 }

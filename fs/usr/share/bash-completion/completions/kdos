@@ -15,9 +15,9 @@ _kdos() {
     case "${COMP_WORDS[1]}" in
         theme)
             case "$prev" in
-                --from-plasma|--audit) COMPREPLY=($(compgen -W "$_kdos_accents" -- "$cur")) ;;
+                --from-plasma|--account|--audit) COMPREPLY=($(compgen -W "$_kdos_accents" -- "$cur")) ;;
                 style) COMPREPLY=($(compgen -f -- "$cur")) ;;
-                theme) COMPREPLY=($(compgen -W "$_kdos_accents next prev list current style --audit --from-plasma" -- "$cur")) ;;
+                theme) COMPREPLY=($(compgen -W "$_kdos_accents next prev list current style --audit --account --from-plasma" -- "$cur")) ;;
                 *) COMPREPLY=() ;;
             esac ;;
         phosphor)

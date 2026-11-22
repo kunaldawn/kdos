@@ -44,8 +44,10 @@ welcome page (and after the live page on the live medium), before anything else 
 holds what a person needs first: switches for the screen reader, reduced motion, the four keyboard
 and mouse aids and dwell click, a button to larger text, the two high-contrast accents, the zoom
 chords, and a button to the rest. Every switch takes effect at once and is changed later in System
-Settings → Accessibility; the page reads them again whenever it is shown, so a change made
-elsewhere while the tour is open shows there too.
+Settings → Accessibility; the page reads them again whenever it is shown and every second and a
+half while it is, so a change made elsewhere while the tour is open, `Meta+Alt+S` among them, shows
+there within about a second and a half. The first Tab on every page of the tour frames the page's
+description in the focus colour, and the screen reader reads it.
 
 ## The screen reader
 
@@ -155,7 +157,11 @@ In a terminal inside the desktop, speech plays through ALSA's default device, wh
 is PipeWire: `espeak-ng "text"` speaks a line, and `spd-say "text"` does the same through Speech
 Dispatcher. Speech Dispatcher is built with ALSA output and `espeak-ng` as its only synthesiser.
 Its Python module, `speechd`, is installed with it, and so is `spd-conf`, which writes a per-user
-configuration and runs Speech Dispatcher's own diagnostics.
+configuration and runs Speech Dispatcher's own diagnostics. The first program that speaks in a
+session, Orca or `spd-say`, starts the Speech Dispatcher server, and the server ends with its eSpeak
+NG modules when you log out, unless another login of yours (a console or a second graphical
+login) is still open; the next login starts
+its own.
 
 `piper`, a neural speech synthesiser that speaks through PipeWire, is not on the image; install it
 with `sudo kdos update install piper`. It ships no voice: a voice is a model file passed with
@@ -299,8 +305,11 @@ dialogue or later under Settings → Configure KMouth.
 Plasma's on-screen keyboard types into whichever window has the keyboard focus. KWin runs one
 input method at a time, and KDOS starts fcitx5, the input-method framework; its Chinese, Japanese
 and Korean engines and fonts are the `lang-zh`, `lang-ja` and `lang-ko` groups (see
-[Input methods](administration.md#input-methods)). To use the on-screen keyboard instead,
-choose Plasma Keyboard on System Settings → Keyboard → Virtual Keyboard. It then appears when a
+[Input methods](administration.md#input-methods)); an engine is added on System Settings → Input
+Method → **Add Input Method…**, after unticking **Only Show Current Language**, which in KDOS's
+English session hides every Chinese, Japanese and Korean engine, or after typing the engine's name
+in the list's **Search…** field. To use the on-screen keyboard instead, choose Plasma Keyboard on
+System Settings → Keyboard → Virtual Keyboard. It then appears when a
 text field is focused by touch or a tablet pen; to have a mouse click bring it up too, set **Show
 Virtual Keyboard** on the same page to **With Touch, Tablet, and Mouse**. A program running under
 Xwayland does not say when a text field has the focus, so the keyboard does not appear by itself
@@ -319,7 +328,9 @@ beside it names the current layout and switches to the next.
 
 KDOS has eight colour schemes, called accents: `phosphor`, `amber`, `ice`, `bone` (the default),
 `norton`, `borland`, `perfect` and `paper`. `paper` is the only light one, dark text on a pale
-ground. Switch on System Settings' KDOS Look page, on the Welcome tour's Accessibility page (which offers the
+ground. On System Settings' KDOS Look page the accents are a radio group: Tab lands on the current accent, the arrow keys move
+between them without changing anything, and Space or Enter applies the focused one. Switch on that
+page, on the Welcome tour's Accessibility page (which offers the
 highest-contrast dark accent and the light one), or from a terminal:
 
 ```sh
@@ -329,7 +340,10 @@ kdos theme paper
 Every scheme is held to contrast floors when the image is built, and none can ship below them:
 every text role at 4.5:1 or better, the WCAG AA level for normal-sized text, on both backgrounds it
 is drawn on; focus and hover decorations at 3:1; and a selected row at 4.5:1, for its own text
-and for the list's ordinary text over a translucent selection. See
+and for the list's ordinary text over a translucent selection. The desktop's icon labels are
+white on every accent; under `paper`, whose wallpaper is near-white, each label sits on a dark
+rounded backing that holds it above 4.5:1 on any wallpaper, and on a dark accent it has only a
+shadow. See
 [How the accents are kept readable](theming.md#how-the-accents-are-kept-readable). Kontrast,
 installed with `sudo kdos update install kontrast`, checks any pair of colours against the same
 guidelines.

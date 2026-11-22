@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <linux/kd.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 
 #include "kbase.h"
 #include "ktui.h"
@@ -678,4 +679,37 @@ void ktui_term_resume(void)
 	ktui_term_size_refresh();
 	ktui_draw_resize();
 	ktui_draw_invalidate();
+}
+
+/*
+ * THE NOTE IS THE LAST THING ON THE RESTORED TERMINAL BEFORE THE PROGRAM,
+ * so it says how to come back while nothing else is on the screen. The child
+ * starts with SHLVL=2: bash.bashrc draws its banner only in the first shell
+ * of a terminal (SHLVL 1), and a banner tall enough to fill a 25-row console
+ * would scroll the note away before the prompt appears.
+ */
+int ktui_run_console_note(const char *note, char *const argv[])
+{
+	ktui_term_suspend();
+	ktui_input_suspend();
+	if (note && *note)
+		printf("\033[0m%s\n\n", note);
+	fflush(stdout);
+	pid_t pid = fork();
+	if (pid == 0) {
+		setenv("SHLVL", "2", 1);
+		execvp(argv[0], argv);
+		_exit(127);
+	}
+	int st = 0;
+	if (pid > 0)
+		waitpid(pid, &st, 0);
+	fputs("\n\033[0m-- press Enter to return --", stdout);
+	fflush(stdout);
+	int c;
+	while ((c = getchar()) != '\n' && c != EOF)
+		;
+	ktui_input_resume();
+	ktui_term_resume();
+	return st;
 }

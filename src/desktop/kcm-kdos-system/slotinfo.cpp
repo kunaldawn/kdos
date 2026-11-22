@@ -30,6 +30,14 @@ bool incomplete(const QVariantMap &map)
 {
     return map.value(u"incomplete"_s).toBool() || map.value(u"state"_s).toString() == "incomplete"_L1;
 }
+
+/* A slot whose trial was set aside by picking the confirmed slot at the
+ * boot menu: nothing failed, so it is never read as `failed`. Either key
+ * marks it, as with incomplete(). */
+bool abandoned(const QVariantMap &map)
+{
+    return map.value(u"abandoned"_s).toBool() || map.value(u"state"_s).toString() == "abandoned"_L1;
+}
 }
 
 SlotInfo::SlotInfo(const QString &slotId, QObject *parent)
@@ -164,19 +172,33 @@ bool SlotInfo::isBootable() const
 
 QString SlotInfo::reason() const
 {
-    const QString r = m_map.value(u"reason"_s).toString();
-    if (r.isEmpty() && incomplete(m_map)) {
-        return i18nc("@info", "An update stopped while writing this slot. The next update writes it again.");
+    /* The page's own sentence for an incomplete slot, whatever the server
+     * sends: it names the command that refills the slot when no newer
+     * release is coming to do it. */
+    if (incomplete(m_map)) {
+        return i18nc("@info",
+                     "An update stopped while writing this slot. The next update writes it again; to write it at once, run kdos update apply --mount as root.");
     }
-    return r;
+    return m_map.value(u"reason"_s).toString();
 }
 
 QString SlotInfo::state() const
 {
+    const QString s = m_map.value(u"state"_s).toString();
+    /* Running, neither the confirmed slot nor on trial: picked at the boot
+     * menu for this boot alone. It ranks ahead of incomplete, failed and
+     * abandoned, as in kdos-bootctl's slot state, because it is the root in
+     * use; a failed or set-aside slot started by hand would otherwise read
+     * as running and not started at once. */
+    if (isPresent() && isRunning() && !isConfirmed() && !isTrial() && s != "trial"_L1 && s != "confirmed"_L1) {
+        return u"visiting"_s;
+    }
     if (incomplete(m_map)) {
         return u"incomplete"_s;
     }
-    const QString s = m_map.value(u"state"_s).toString();
+    if (abandoned(m_map)) {
+        return u"abandoned"_s;
+    }
     if (!s.isEmpty()) {
         return s;
     }
@@ -202,10 +224,17 @@ QString SlotInfo::stateText() const
         text = i18nc("@info slot state", "Incomplete");
     } else if (s == "failed"_L1) {
         text = i18nc("@info slot state", "Did not start: the computer went back to the other version");
+    } else if (s == "abandoned"_L1) {
+        text = i18nc("@info slot state", "Set aside: you started the other version from the boot menu");
     } else if (s == "confirmed"_L1) {
         text = i18nc("@info slot state", "Confirmed: the version this computer starts");
+    } else if (s == "visiting"_L1) {
+        /* Two slots, this one not confirmed: the other is the one the
+         * computer starts. */
+        const QString other = m_id == "a"_L1 ? u"B"_s : u"A"_s;
+        return i18nc("@info slot state, %1 the other slot's letter", "Running for this boot only: the computer starts slot %1 next time", other);
     } else if (s == "installed"_L1) {
-        text = i18nc("@info slot state", "Installed, not in use");
+        return i18nc("@info slot state", "Installed, not in use");
     } else {
         text = i18nc("@info slot state", "Empty");
     }

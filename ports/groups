@@ -82,10 +82,10 @@ gcc binutils make cmake meson ninja pkgconf autoconf automake libtool bison
 flex
 
 group lang-zh Chinese input and fonts
-fcitx5-chinese-addons fcitx5-gtk noto-cjk
+fcitx5-chinese-addons fcitx5-gtk noto-cjk noto-cjk-prefer-zh
 
 group lang-ja Japanese input and fonts
-fcitx5-anthy fcitx5-gtk noto-cjk
+fcitx5-anthy fcitx5-gtk noto-cjk noto-cjk-prefer-ja
 
 group lang-ko Korean input and fonts
-fcitx5-hangul fcitx5-gtk noto-cjk
+fcitx5-hangul fcitx5-gtk noto-cjk noto-cjk-prefer-ko

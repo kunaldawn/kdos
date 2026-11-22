@@ -1250,22 +1250,36 @@ int ktui_field_hit(KRect r, KtuiField *f, int mx, int my)
  * THE FRAME CONTROL IS THE TRIO WITH THE FOCUS RING AROUND IT. The caret is
  * kept in the per-id state store, because a frame caller holds only the
  * buffer; a surface with its own loop holds a KtuiField and keeps the caret
- * itself. A field whose id moves takes another field's caret, clamped onto
- * its own text — which is why a conditional group is drawn inside
- * ktui_id_push().
+ * itself. The record also keeps the frame the field was last drawn with the
+ * focus. A field focused now that was not drawn focused in the frame before —
+ * reached by Tab, or by a page drawn again after it was left — puts its caret
+ * at the end of its text before the key is applied, so typing into a
+ * prefilled field appends to it and an id a page reuses hands over no caret
+ * of the field it last named. A click lands after that and puts the caret
+ * where it pressed. While the field keeps the focus from frame to frame the
+ * caret stays where the keys moved it, and a field whose id moves under the
+ * focus takes that caret, clamped onto its own text — which is why a
+ * conditional group is drawn inside ktui_id_push().
  */
 int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placeholder)
 {
 	int id = ktui_id();
 	int focus = ktui_focused(id);
-	static int spare;	/* the caret when the store has no room */
-	int *caret = ktui_state(id, sizeof(int));
+	struct ktui_input_state {
+		int caret;
+		unsigned long focused_at;	/* last frame drawn focused */
+	};
+	static struct ktui_input_state spare;	/* when the store has no room */
+	struct ktui_input_state *st = ktui_state(id, sizeof(*st));
 	KtuiField f;
 	int changed = 0;
 
-	if (!caret)
-		caret = &spare;
-	f = (KtuiField){ buf, cap, *caret, secret, placeholder };
+	if (!st)
+		st = &spare;
+	if (focus && (st->focused_at == 0 || st->focused_at != frame_no - 1))
+		st->caret = (int)strlen(buf);
+	st->focused_at = focus ? frame_no : 0;
+	f = (KtuiField){ buf, cap, st->caret, secret, placeholder };
 
 	if (focus) {
 		int rc = ktui_field_key(&f, ui.consumed ? NULL : &ui.ev);
@@ -1279,7 +1293,7 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret, const char *placehold
 	ktui_hit(r, id);
 	if (ui.clicked == id)
 		ktui_field_hit(r, &f, ui.mx, ui.my);
-	*caret = field_caret(buf, f.caret);
+	st->caret = field_caret(buf, f.caret);
 
 	/*
 	 * A SECRET FIELD ANNOUNCES THAT IT IS ONE AND NEVER ITS CONTENTS. The

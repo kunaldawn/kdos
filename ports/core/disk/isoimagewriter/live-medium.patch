@@ -1,0 +1,160 @@
+Subject: Hide the running medium, name drives by /dev node, report open errors
+
+ISO Image Writer lists every removable or USB block device UDisks2
+reports, in the hash order of its GetManagedObjects reply, names each by
+its UDisks2 object path, and writes on when OpenDevice fails.
+
+- Skip a block device whose org.freedesktop.UDisks2.Block HintIgnore is
+  true (udev's UDISKS_IGNORE), the mark a system puts on the medium it
+  runs from; Dolphin and the Device Notifier already hide it.
+- List the devices in object-path order, so the list and the drive
+  selected first are the same on every launch.
+- Show each drive by its /dev node (Block.Device), not its object path:
+  "/dev/sdb - QEMU HARDDISK (8.0 GiB)".
+- Check the OpenDevice reply and the QFile open, and report the error
+  text ("Could not open /dev/sda: ...") instead of failing on the first
+  block with "-1 of 1,048,576 bytes".
+- Name the chosen drive, by the same display name, in the confirmation
+  before writing.
+
+--- a/isoimagewriter/imagewriter.cpp
++++ b/isoimagewriter/imagewriter.cpp
+@@ -201,9 +201,15 @@
+ #if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
+         QDBusInterface deviceDBus("org.freedesktop.UDisks2", m_Device->m_PhysicalDevice, "org.freedesktop.UDisks2.Block", QDBusConnection::systemBus(), this);
+         QDBusReply<QDBusUnixFileDescriptor> reply = deviceDBus.call(QDBus::Block, "OpenDevice", "rw", Properties{{"flags", O_EXCL | O_SYNC | O_CLOEXEC}} );
++        // A refused open (the device busy, or polkit saying no) carries its
++        // reason in the reply; writing on without a descriptor would report
++        // only a short write of -1 bytes.
++        if (!reply.isValid())
++            throw i18n("Could not open %1: %2", m_Device->m_Volumes.join(", "), reply.error().message());
+         QDBusUnixFileDescriptor fd = reply.value();
+         QFile deviceFile;
+-        deviceFile.open(fd.fileDescriptor(), QIODevice::WriteOnly);
++        if (!deviceFile.open(fd.fileDescriptor(), QIODevice::WriteOnly))
++            throw i18n("Could not open %1: %2", m_Device->m_Volumes.join(", "), deviceFile.errorString());
+ #endif
+ 
+         qint64 readBytes;
+--- a/isoimagewriter/mainwindow.cpp
++++ b/isoimagewriter/mainwindow.cpp
+@@ -164,16 +164,15 @@
+     iconLabel->setPixmap(QIcon::fromTheme("dialog-warning").pixmap(QSize(64, 64)));
+     iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+ 
+-    static const QString overwriteMessage = i18n("Everything on the USB drive will "
+-                                           "be overwritten."
+-                                           "\n\nDo you want to continue?");
+-    QLabel *messageLabel = new QLabel(overwriteMessage);
++    m_confirmLabel = new QLabel(overwriteMessage());
++    m_confirmLabel->setWordWrap(true);
++    QLabel *messageLabel = m_confirmLabel;
+     connect(this, &MainWindow::downloadProgressChanged, messageLabel, [messageLabel, iconLabel, this] {
+         iconLabel->setPixmap(QIcon::fromTheme("download").pixmap(QSize(64, 64)));
+         messageLabel->setText(i18n("Downloading %1...", m_fetchIso->fetchUrl().toDisplayString()));
+     });
+-    connect(this, &MainWindow::verificationResult, messageLabel, [messageLabel, iconLabel] {
+-        messageLabel->setText(overwriteMessage);
++    connect(this, &MainWindow::verificationResult, messageLabel, [messageLabel, iconLabel, this] {
++        messageLabel->setText(overwriteMessage());
+         iconLabel->setPixmap(QIcon::fromTheme("dialog-warning").pixmap(QSize(64, 64)));
+     });
+ 
+@@ -212,6 +211,19 @@
+     return confirmWidget;
+ }
+ 
++// Names the drive the Continue button writes to, by its device node, model
++// and size, so a second stick of the same model cannot be taken for it.
++QString MainWindow::overwriteMessage() const
++{
++    const int idx = m_usbDriveComboBox->currentIndex();
++    if (idx < 0)
++        return i18n("Everything on the USB drive will be overwritten."
++                    "\n\nDo you want to continue?");
++    const UsbDevice *device = m_usbDriveComboBox->itemData(idx).value<UsbDevice*>();
++    return i18n("Everything on %1 will be overwritten."
++                "\n\nDo you want to continue?", device->formatDisplayName());
++}
++
+ QWidget* MainWindow::createProgressWidget()
+ {
+     QLabel *messageLabel = new QLabel(i18n("Your USB drive is being created.\n\n"
+@@ -617,6 +629,7 @@
+ 
+ void MainWindow::showConfirmMessage()
+ {
++    m_confirmLabel->setText(overwriteMessage());
+     openUrl(QUrl::fromUserInput(m_isoImageLineEdit->text(), {}, QUrl::AssumeLocalFile));
+ 
+     // Do not accept dropped files
+--- a/isoimagewriter/mainwindow.h
++++ b/isoimagewriter/mainwindow.h
+@@ -40,6 +40,7 @@
+ 
+ private:
+     QLabel *m_busyLabel;
++    QLabel *m_confirmLabel;
+     QWidget *m_busyWidget;
+     QLabel *m_isoImageSizeLabel;
+     IsoLineEdit *m_isoImageLineEdit;
+@@ -61,6 +62,7 @@
+     void setupUi();
+     QWidget* createFormWidget();
+     QWidget* createConfirmWidget();
++    QString overwriteMessage() const;
+     QWidget* createProgressWidget();
+     QWidget* createSuccessWidget();
+     void preprocessIsoImage(const QString& isoImagePath);
+--- a/isoimagewriter/platform_lin.cpp
++++ b/isoimagewriter/platform_lin.cpp
+@@ -16,6 +16,8 @@
+ #include <QDir>
+ #include <QRegularExpression>
+ 
++#include <algorithm>
++
+ #include "mainapplication.h"
+ #include "usbdevice.h"
+ 
+@@ -25,6 +27,13 @@
+ Q_DECLARE_METATYPE(DBusIntrospection)
+ 
+ UsbDevice* handleObject(const QDBusObjectPath &object_path, const InterfacesAndProperties &interfaces_and_properties) {
++    const QVariantMap block = interfaces_and_properties.value("org.freedesktop.UDisks2.Block");
++    // HintIgnore is udev's UDISKS_IGNORE: the system marks a device it is
++    // running from, such as a live medium, that no desktop program may
++    // offer. Writing to it would fail at OpenDevice or destroy the system.
++    if (block.value("HintIgnore").toBool())
++        return nullptr;
++
+     QRegularExpression numberRE("[0-9]$");
+     QRegularExpressionMatch numberREMatch = numberRE.match(object_path.path());
+     QRegularExpression mmcRE("[0-9]p[0-9]$");
+@@ -65,7 +74,10 @@
+         //qDebug() << "New drive" << driveId.path() << "-" << name << "(" << size << "bytes;" << (isValid ? "removable;" : "nonremovable;") << connectionBus << ")";
+ 
+         deviceData->m_PhysicalDevice = object_path.path();
+-        deviceData->m_Volumes = QStringList{ deviceData->m_PhysicalDevice };
++        // The /dev node names the drive to the person; the object path stays
++        // in m_PhysicalDevice for the D-Bus calls. Block.Device is a
++        // NUL-terminated byte string.
++        deviceData->m_Volumes = QStringList{ QString::fromLocal8Bit(block.value("Device").toByteArray().constData()) };
+         deviceData->m_SectorSize = 512;
+         deviceData->m_Size = size;
+         deviceData->m_VisibleName = name;
+@@ -90,7 +102,13 @@
+         return false;
+     }
+     DBusIntrospection introspection = reply.argumentAt<0>();
+-    for (auto i : introspection.keys()) {
++    // Listed in object-path order: the reply is a hash, and its order (and
++    // with it the drive selected first) would change on every launch.
++    QList<QDBusObjectPath> paths = introspection.keys();
++    std::sort(paths.begin(), paths.end(), [](const QDBusObjectPath &a, const QDBusObjectPath &b) {
++        return a.path() < b.path();
++    });
++    for (const auto &i : paths) {
+         // ignore anything not block device
+         if (!i.path().startsWith("/org/freedesktop/UDisks2/block_devices")) {
+             continue;

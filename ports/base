@@ -41,12 +41,13 @@ src daemons
 # The Plasma session: kde-plasma's list without the KDE wallpaper and
 # Oxygen collections, the Chinese, Japanese and Korean input engines and
 # fcitx5-gtk (GTK on Wayland types through KWin's text-input), which are
-# groups (ports/groups).
+# groups (ports/groups). xdg-desktop-portal-gtk is added: it answers the
+# org.gnome.* Settings keys GTK 4 on Wayland reads.
 breeze-gtk breeze-icons ocean-sound-theme oxygen-sounds sddm kwallet-pam
 ksystemstats plasma-systemmonitor kinfocenter plasma-thunderbolt fcitx5
 fcitx5-qt fcitx5-configtool plasma-keyboard plasma-disks plasma-vault
-ksshaskpass kup xdg-desktop-portal-kde kwin kglobalacceld
-kscreenlocker aurorae knighttime kscreen milou plasma-workspace
+ksshaskpass kup xdg-desktop-portal-kde xdg-desktop-portal-gtk kwin
+kglobalacceld kscreenlocker aurorae knighttime kscreen milou plasma-workspace
 plasma-desktop systemsettings kde-cli-tools kmenuedit kactivitymanagerd
 kwrited polkit-kde-agent-1 powerdevil plasma-nm plasma-pa bluedevil
 kde-gtk-config kdeplasma-addons plasma-browser-integration discover
@@ -127,6 +128,7 @@ cups cups-filters cups-browsed ipp-usb ghostscript sane-backends sane-airscan
 # `wish` runs libisoburn's xorriso-tcltk.
 squashfs-tools erofs-utils libisoburn tk
 
-# Fonts the look, Konsole and Phosphor mode name.
-fontconfig noto-fonts noto-emoji ttf-dejavu terminus-font terminus-ttf
+# Fonts: the faces the look, Konsole and Phosphor mode name, and the
+# non-Latin scripts the base renders.
+fontconfig noto-fonts noto-fonts-extra noto-emoji ttf-dejavu terminus-font terminus-ttf
 nerd-fonts-symbols ttf-jetbrains-mono font-liberation

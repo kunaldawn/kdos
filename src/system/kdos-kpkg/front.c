@@ -74,6 +74,7 @@ static void usage(void)
 	       "                     dependency must already be installed\n"
 	       "  --commit           (install) Install what --build-only built\n"
 	       "                     for each named port, in the order named\n"
+	       "  -V, --version      Print the version and exit\n"
 	       "\n"
 	       "Commands:\n"
 	       "  install <pkg>...   Install package(s) with dependencies\n"
@@ -83,7 +84,9 @@ static void usage(void)
 	       "  check [<pkg>...|--all]  Compare installed files with what\n"
 	       "                     was installed: missing, changed,\n"
 	       "                     edited /etc (not a failure) and\n"
-	       "                     (--all) unowned files\n"
+	       "                     (--all) unowned files; --brief prints\n"
+	       "                     only faults and counts, --log <file>\n"
+	       "                     keeps every line\n"
 	       "  facets --strip [<pkg>...]  Remove the development and\n"
 	       "                     documentation files of installed packages\n"
 	       "                     (all when none is named), as FACETS=run\n"
@@ -583,13 +586,16 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 
 	kp_msg("Resolving dependencies...");
 
-	KpConf resolve = *c;
-	if (force)
-		kb_strlcpy(resolve.pkgdb_dir, "/dev/null",
-			   sizeof(resolve.pkgdb_dir));
-
+	/* -f rebuilds the NAMED packages; a dependency is ordered only when
+	 * it is not installed at its current recipe, and the walk stops at
+	 * an installed one. The order is the set `kdos update` plans with
+	 * kp_resolve(), so a forced source install builds what its plan
+	 * listed and never the build-only ports beneath installed packages. */
 	KpOrder order;
-	kp_resolve(&resolve, want, nwant, &order);
+	if (force)
+		kp_resolve_forced(c, want, nwant, &order);
+	else
+		kp_resolve(c, want, nwant, &order);
 	if (!order.n) {
 		kp_msg("Nothing to do");
 		return 0;
@@ -1269,7 +1275,8 @@ int front_main(int argc, char **argv)
 	 * under Options. --root is applied to the configuration every command
 	 * reads, and the install-only ones are handed to install's parser
 	 * ahead of its own words; a command's own --root still wins, being
-	 * parsed after. Any other leading '-' word is an unknown option, not
+	 * parsed after. --version (-V) prints the version and ends the run.
+	 * Any other leading '-' word is an unknown option, not
 	 * an unknown command. gopt holds every leading word, so none of them
 	 * is dropped however many are given. */
 	int at = 1;
@@ -1284,6 +1291,11 @@ int front_main(int argc, char **argv)
 		const char *o = argv[at];
 		if (!strcmp(o, "--help") || !strcmp(o, "-h"))
 			break;
+		if (!strcmp(o, "--version") || !strcmp(o, "-V")) {
+			printf("kpkg %s\n", VERSION);
+			free(gopt);
+			return 0;
+		}
 		if (!strcmp(o, "--root")) {
 			if (at + 1 >= argc) {
 				fprintf(stderr, "kpkg: option '--root' needs a "

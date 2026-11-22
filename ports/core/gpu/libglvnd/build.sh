@@ -21,3 +21,5 @@ meson setup build --buildtype=release \
 	-D entrypoint-patching=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+install -Dm644 "$SRC/README.md" "$PKG/usr/share/licenses/$name/README.md"

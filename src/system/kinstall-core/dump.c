@@ -70,6 +70,20 @@ static void dump_payload(void)
 	ki_sys.appbox_kb = given_appbox_kb;
 }
 
+/* Only a walk knows the links, so a dump given the payload has no figure
+ * and a front end keeps root's. */
+long long ki_copy_bytes(int store)
+{
+	unsigned long long kb, links;
+
+	if (payload_given)
+		return -1;
+	kb = store ? ki_sys.appbox_kb : ki_sys.payload_kb - ki_sys.appbox_kb;
+	links = store ? ki_sys.link_extra_appbox_bytes
+		      : ki_sys.link_extra_bytes - ki_sys.link_extra_appbox_bytes;
+	return kb * 1024 > links ? (long long)(kb * 1024 - links) : 0;
+}
+
 /*
  * WHAT AN UNPRIVILEGED PLAN CANNOT SEE. A volume group named KI_VG on another
  * disk stops the install's vgcreate after this disk is erased. As root `pvs`
@@ -122,20 +136,26 @@ static unsigned long long ab_need_bytes(void)
 	return (ki_ab_need_mb() + KI_ESP_MB + KI_BIOS_BOOT_MB) << 20;
 }
 
-static void probe_text(void)
+void ki_dump_probe_text(void)
 {
 	printf("firmware      %s%s%s\n", ki_sys.uefi ? "UEFI" : "BIOS",
 	       ki_sys.fw_bits == 32 ? " (32-bit)" : "",
 	       ki_sys.secure_boot ? " (secure boot on)" : "");
-	printf("cpu           %s (%d cores)\n", ki_sys.cpu, ki_sys.cores);
+	printf("network       %s\n", ki_sys.network ? "default route up"
+						 : "none");
+	printf("cpu           %s (%d threads)\n", ki_sys.cpu, ki_sys.cores);
 	printf("memory        %llu MB\n", ki_sys.mem_kb / 1024);
 	printf("session       %s\n", ki_sys.live ? "live" : "installed");
 	printf("payload       %llu MB (appbox %llu MB)\n",
 	       ki_sys.payload_kb / 1024, ki_sys.appbox_kb / 1024);
+	if (ki_copy_bytes(0) >= 0)
+		printf("copies        %lld MiB system, %lld MiB box store\n",
+		       ki_copy_bytes(0) >> 20, ki_copy_bytes(1) >> 20);
 	printf("disks         %d\n", ki_ndisk);
 
 	printf("install needs %llu MB on a disk, %llu MB for two slots\n",
-	       (ki_need_bytes() + KI_DISK_MARGIN) >> 20, ab_need_bytes() >> 20);
+	       ki_disk_need_bytes() >> 20,
+	       ab_need_bytes() >> 20);
 
 	for (int i = 0; i < ki_ndisk; i++) {
 		const Disk *d = &ki_disk[i];
@@ -148,7 +168,8 @@ static void probe_text(void)
 		       d->readonly ? "  read-only" : "",
 		       d->is_boot_media ? "  BOOT MEDIA" : "");
 		if (d->fstype[0])
-			printf("    whole disk: %s%s%s\n", d->fstype,
+			printf("    whole disk: %s%s%s%s%s\n", d->fstype,
+			       d->label[0] ? " " : "", d->label,
 			       d->vg[0] ? ", volume group " : "", d->vg);
 		if (ki_disk_check(d, why, sizeof(why)))
 			printf("    refused: %s\n", why);
@@ -156,12 +177,13 @@ static void probe_text(void)
 			printf("    one slot: too small for two\n");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
-			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s\n", p->path,
-			       p->sectors / 2048,
+			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s%s%s\n",
+			       p->path, p->sectors / 2048,
 			       p->fstype[0] ? p->fstype : "-",
 			       p->label[0] ? p->label : "",
 			       p->is_esp ? "  ESP" : "",
 			       p->is_bios_boot ? "  BIOS boot" : "",
+			       p->vg[0] ? "  volume group " : "", p->vg,
 			       p->mounted ? "  mounted" : "");
 		}
 	}
@@ -176,7 +198,7 @@ static void probe_text(void)
 	}
 }
 
-static void probe_json(void)
+void ki_dump_probe_json(void)
 {
 	KbBuf b = {0};
 
@@ -186,19 +208,32 @@ static void probe_json(void)
 		      ki_sys.secure_boot ? "true" : "false");
 	kb_buf_str(&b, "  \"cpu\": ");
 	kb_json_str(&b, ki_sys.cpu);
+	/* `cores` counts logical CPUs, which every face calls threads; the
+	 * key keeps the name the graphical installer reads. */
 	kb_buf_printf(&b, ", \"cores\": %d, \"memory_kb\": %llu,\n",
 		      ki_sys.cores, ki_sys.mem_kb);
 	kb_buf_printf(&b, "  \"live\": %s, \"payload_kb\": %llu, "
 		      "\"appbox_kb\": %llu,\n",
 		      ki_sys.live ? "true" : "false", ki_sys.payload_kb,
 		      ki_sys.appbox_kb);
-	/* What the copy takes (a reused root's least size), what a disk must
-	 * hold by ki_disk_check()'s rule, and what two slots need: a front end
-	 * shows the backend's figures and keeps none of its own. */
-	kb_buf_printf(&b, "  \"install_bytes\": %llu, \"need_bytes\": %llu, "
-		      "\"ab_need_bytes\": %llu,\n",
-		      ki_need_bytes(), ki_need_bytes() + KI_DISK_MARGIN,
+	/* What the copy takes, a reused root's least size (the copy and
+	 * KI_ROOT_FREE_MB left free), what a disk must hold by
+	 * ki_disk_check()'s rule, and what two slots need: a front end shows
+	 * the backend's figures and keeps none of its own. */
+	kb_buf_printf(&b, "  \"install_bytes\": %llu, \"root_need_bytes\": "
+		      "%llu, \"need_bytes\": %llu, \"ab_need_bytes\": %llu,\n",
+		      ki_need_bytes(), ki_root_need_bytes(), ki_disk_need_bytes(),
 		      ab_need_bytes());
+	/* What the copy writes, the system's and the box store's, the totals
+	 * its progress line counts to: the install size a front end shows.
+	 * null when the payload was given rather than walked. */
+	if (ki_copy_bytes(0) >= 0)
+		kb_buf_printf(&b, "  \"copy_system_bytes\": %lld, "
+			      "\"copy_store_bytes\": %lld,\n",
+			      ki_copy_bytes(0), ki_copy_bytes(1));
+	else
+		kb_buf_str(&b, "  \"copy_system_bytes\": null, "
+			       "\"copy_store_bytes\": null,\n");
 	kb_buf_str(&b, "  \"disks\": [");
 
 	for (int i = 0; i < ki_ndisk; i++) {
@@ -233,10 +268,17 @@ static void probe_json(void)
 			kb_json_str(&b, why);
 		else
 			kb_buf_str(&b, "null");
-		/* `fstype` and `vg`: the whole-device signature of a disk
-		 * with no partitions, "" for none. */
+		/* `fstype`, `label`, `vg` and `fs_bytes`: the whole-device
+		 * signature of a disk, with or without partitions ("" and 0
+		 * for none); `fs_bytes` is an ISO 9660 image's size, 0 when
+		 * unknown, and `iso_image` says the partitions are all that
+		 * image's hybrid windows, so the image is what the disk holds. */
 		kb_buf_str(&b, ",\n     \"fstype\": ");
 		kb_json_str(&b, d->fstype);
+		kb_buf_str(&b, ", \"label\": ");
+		kb_json_str(&b, d->label);
+		kb_buf_printf(&b, ", \"fs_bytes\": %llu, \"iso_image\": %s",
+			      d->fs_bytes, d->iso_image ? "true" : "false");
 		kb_buf_str(&b, ", \"vg\": ");
 		kb_json_str(&b, d->vg);
 		kb_buf_str(&b, ",\n     \"partitions\": [");
@@ -253,6 +295,10 @@ static void probe_json(void)
 			kb_json_str(&b, p->label);
 			kb_buf_str(&b, ", \"uuid\": ");
 			kb_json_str(&b, p->uuid);
+			/* An LVM2_member partition's volume group, "" when
+			 * none can be read. */
+			kb_buf_str(&b, ", \"vg\": ");
+			kb_json_str(&b, p->vg);
 			kb_buf_printf(&b, ", \"esp\": %s, \"bios_boot\": %s, "
 				      "\"mounted\": %s",
 				      p->is_esp ? "true" : "false",
@@ -450,6 +496,14 @@ static void plan_dump(int json)
 				printf(" %ld MiB", cfg.swap_mb);
 			printf("\n");
 		}
+		if (ki_root_free_bytes() >= 0)
+			printf("root free     %llu MiB after the install%s\n",
+			       (unsigned long long)ki_root_free_bytes() >> 20,
+			       (unsigned long long)ki_root_free_bytes() <
+					       KI_ROOT_LOW_BYTES
+				       ? ": too little for application groups "
+					 "or boxed apps"
+				       : "");
 		printf("hostname      %s\n", cfg.hostname);
 		if (cfg.oem)
 			printf("user          none: the first boot sets one up "
@@ -556,6 +610,15 @@ static void plan_dump(int json)
 	kb_buf_printf(&b, ", \"ab\": %s", ki_ab() ? "true" : "false");
 	kb_buf_printf(&b, ",\n  \"swap\": \"%s\", \"swap_mb\": %ld",
 		      swap_name(), swap_kind() != SWAP_NONE ? cfg.swap_mb : 0);
+	/* What the one root keeps free after the copy and a swap file in it,
+	 * or null on the A/B layout; under KI_ROOT_LOW_BYTES a front end warns
+	 * before the install that groups and boxed apps will not fit. */
+	if (ki_root_free_bytes() >= 0)
+		kb_buf_printf(&b, ", \"root_free_bytes\": %lld",
+			      ki_root_free_bytes());
+	else
+		kb_buf_str(&b, ", \"root_free_bytes\": null");
+	kb_buf_printf(&b, ", \"root_low_bytes\": %llu", KI_ROOT_LOW_BYTES);
 	kb_buf_str(&b, ",\n  \"hostname\": ");
 	kb_json_str(&b, cfg.hostname);
 	kb_buf_printf(&b, ", \"oem\": %s", cfg.oem ? "true" : "false");
@@ -617,10 +680,12 @@ static void plan_dump(int json)
 			kb_json_str(&b, ki_native[i].id);
 		}
 	}
-	/* Whether `kdos update` has a binhost to fetch them from
-	 * (probe.c): with none they are recorded, and a front end says so. */
-	kb_buf_printf(&b, "], \"binhost\": %s",
-		      ki_binhost_named ? "true" : "false");
+	/* Whether `kdos update` has a binhost to fetch them from, and
+	 * whether there is a network to fetch over (probe.c): with either
+	 * missing they are recorded, and a front end says which. */
+	kb_buf_printf(&b, "], \"binhost\": %s, \"network\": %s",
+		      ki_binhost_named ? "true" : "false",
+		      ki_sys.network ? "true" : "false");
 	kb_buf_str(&b, ",\n  \"services_off\": [");
 	if (svc.n)
 		kb_buf_str(&b, svc.p);
@@ -796,9 +861,9 @@ int ki_dump(const char *what, int json)
 		dump_payload();
 		probe_disks();
 		if (json)
-			probe_json();
+			ki_dump_probe_json();
 		else
-			probe_text();
+			ki_dump_probe_text();
 		return 0;
 	}
 	if (!strcmp(what, "plan")) {

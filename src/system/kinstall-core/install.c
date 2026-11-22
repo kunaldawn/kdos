@@ -98,7 +98,7 @@ static const struct {
 	{ "Accounts",    "users, passwords, sudo, the home" },
 	{ "Theme",       "the accent and the desk the first login takes" },
 	{ "Slot B",      "the second root, filled for A/B updates" },
-	{ "Bootloader",  "Limine on the ESP, the BIOS boot code, the UEFI boot entry" },
+	{ "Bootloader",  NULL },
 	{ "Finish",      "flush and unmount" },
 };
 
@@ -131,10 +131,11 @@ static int step_skipped(int i)
  * four. The two copies weigh their bytes at the rates measured,
  * KI_COPY_MIB_S for ki_need_bytes() and KI_SLOTB_MIB_S for the payload less
  * the box store, which slot B's -x copy never enters. Packs weighs its two
- * seconds of recording and, only when a binhost is named
- * (ki_binhost_named), KI_PACKS_PORT_DS for each port of the chosen native
- * groups, an allowance no install has measured; with no binhost the groups
- * go to groups-pending and nothing downloads. A short step given a share of
+ * seconds of recording and, only when a binhost is named and there is a
+ * network (ki_binhost_named, ki_sys.network), KI_PACKS_PORT_DS for each
+ * port of the chosen native groups, an allowance no install has measured;
+ * with no binhost or no network the groups go to groups-pending and
+ * nothing downloads. A short step given a share of
  * the copy's time would hold back the bar through the copy and fill a third
  * of it in the last seconds.
  */
@@ -164,7 +165,8 @@ static int step_weight(int i)
 		rate = KI_SLOTB_MIB_S;
 	} else if (i == S_APPS) {
 		w = short_ds[i];
-		for (int k = 0; ki_binhost_named && k < ki_nnative; k++)
+		for (int k = 0; ki_binhost_named && ki_sys.network &&
+				k < ki_nnative; k++)
 			if (ki_native[k].chosen)
 				w += ki_native[k].nports * KI_PACKS_PORT_DS;
 		return w;
@@ -199,19 +201,29 @@ static const char *partition_detail(void)
 }
 
 /* The Packs step's line says what becomes of the native groups chosen: on
- * a medium that names a binary host they are downloaded and installed, and
- * on one that names none they are recorded, as the Summary's rows above the
- * steps say (ki_binhost_named). The boxed applications are recorded either
- * way, and the first login's notice (kdos-notice) names what each record
- * holds and how it is installed, so the line leaves the command to it. At
- * most 80 characters, as partition_detail's. */
+ * a medium that names a binary host, with a network, they are downloaded
+ * and installed, and otherwise they are recorded, as the Summary's rows
+ * above the steps say (ki_binhost_named, ki_sys.network). The boxed
+ * applications are recorded either way, and the first login's notice
+ * (kdos-notice) names what each record holds and how it is installed, so
+ * the line leaves the command to it. At most 80 characters, as
+ * partition_detail's. */
 static const char *packs_detail(void)
 {
-	return ki_binhost_named
+	return ki_binhost_named && ki_sys.network
 		? "native groups downloaded and installed, boxed apps recorded "
 		  "for the first login"
 		: "native groups and boxed apps recorded; the first login says "
 		  "how to install each";
+}
+
+/* The Bootloader step names only what this firmware gets: a BIOS machine has
+ * no NVRAM, so no boot entry is written and the step must not promise one. */
+static const char *boot_detail(void)
+{
+	return ki_sys.uefi
+		? "Limine on the ESP, the BIOS boot code, the UEFI boot entry"
+		: "Limine on the ESP and the BIOS boot code";
 }
 
 void install_plan(void)
@@ -222,6 +234,7 @@ void install_plan(void)
 		inst.step[i].title = steps[i].title;
 		inst.step[i].detail = i == S_PARTITION ? partition_detail()
 				      : i == S_APPS ? packs_detail()
+				      : i == S_BOOT ? boot_detail()
 						    : steps[i].detail;
 		inst.step[i].state = step_skipped(i) ? ST_SKIP : ST_PENDING;
 		inst.step[i].frac = -1;
@@ -590,6 +603,19 @@ static void emit(char kind, const char *fmt, ...)
 	buf[n++] = '\n';
 	ssize_t r = write(wfd, buf, n);
 	(void)r;
+}
+
+/* One static buffer: one call per message. */
+const char *ki_root_cmd(const char *cmd)
+{
+	static char buf[256];
+
+	if (cfg.user_wheel)
+		snprintf(buf, sizeof(buf), "`sudo %s`", cmd);
+	else
+		snprintf(buf, sizeof(buf), "`su -c '%s'` (root's password)",
+			 cmd);
+	return buf;
 }
 
 static void logf_(const char *fmt, ...)
@@ -2033,6 +2059,12 @@ static void do_prepare(void)
 			fail("required tool missing: %s", *p);
 	if (!kb_have_prog(ki_fs(cfg.fstype)->mkfs))
 		fail("required tool missing: %s", ki_fs(cfg.fstype)->mkfs);
+	/* The copy's source is this root, so the Bootloader step finds the
+	 * payload here or nowhere; asked after the erase, a missing one leaves
+	 * a wiped disk that does not start. A rehearsal places nothing. */
+	if (!cfg.dry_run && !kb_path_exists("/usr/share/limine"))
+		fail("no Limine payload at /usr/share/limine — the disk would "
+		     "not start");
 	/* The Layout page refuses this too; an unattended install never
 	 * shows it, and this is before anything is written. */
 	if (!ki_sys.uefi && ki_bios_boot_part() < 0)
@@ -2551,21 +2583,30 @@ static int index_state = -1;
  * tree that names no release, with no `binhost =` in update.conf — which is
  * no network failure, and the warnings must not read as one. */
 static int index_unnamed;
+/* Set when `kdos update fetch` found no network at all (its "the network
+ * could not be reached" line): the warning then says so, rather than sending
+ * the account to the log for the one fact it needs. */
+static int index_offline;
 
 static void index_parse(const char *line)
 {
 	logf_("%s", line);
 	if (strstr(line, "no binhost is named"))
 		index_unnamed = 1;
+	if (strstr(line, "the network could not be reached"))
+		index_offline = 1;
 }
 
 /* Why there is no index, as the head of a warning. */
 static const char *index_why(void)
 {
-	return index_unnamed
-		? "this image names no binary host"
-		: "the release's binary host index could not be fetched "
-		  "(/var/log/kinstall.log says why)";
+	if (index_unnamed)
+		return "this image names no binary host";
+	if (index_offline)
+		return "no network was found, so the release's binary host "
+		       "index could not be fetched";
+	return "the release's binary host index could not be fetched "
+	       "(/var/log/kinstall.log says why)";
 }
 
 /* THE CACHE IS THE TARGET'S OWN: the live system's is in RAM, and a group of a
@@ -2613,8 +2654,9 @@ static int fetch_index(void)
  * and origin file under the target, so the installed machine updates them
  * like anything else installed on purpose. A group that does not go in, and
  * every group when the index cannot be had, is written to the target's
- * /var/lib/kdos/groups-pending for `kdos update install --pending`: a warning,
- * never a failure, since the system is installed and boots without it.
+ * /var/lib/kdos/groups-pending for `kdos update install --pending` (as
+ * ki_root_cmd names it to the account): a warning, never a failure, since
+ * the system is installed and boots without it.
  */
 static void do_native(void)
 {
@@ -2629,11 +2671,11 @@ static void do_native(void)
 	online = fetch_index();
 	if (!online)
 		emit('W', "%s; the chosen groups are recorded and install "
-			  "later with `sudo kdos update install --pending`",
-		     index_why());
+			  "later with %s", index_why(),
+		     ki_root_cmd("kdos update install --pending"));
 	kb_buf_printf(&b, "# Native groups chosen during the install and not "
-			  "yet installed.\n# `sudo kdos update install "
-			  "--pending` installs them.\n");
+			  "yet installed.\n# %s installs them.\n",
+		      ki_root_cmd("kdos update install --pending"));
 	for (int i = 0; i < ki_nnative; i++) {
 		if (!ki_native[i].chosen)
 			continue;
@@ -2647,8 +2689,8 @@ static void do_native(void)
 			if (run(inst) == 0)
 				continue;
 			emit('W', "group %s did not install; it is recorded for "
-				  "`sudo kdos update install --pending`",
-			     ki_native[i].id);
+				  "%s", ki_native[i].id,
+			     ki_root_cmd("kdos update install --pending"));
 		}
 		kb_buf_printf(&b, "%s\n", ki_native[i].id);
 		pend++;
@@ -2715,8 +2757,8 @@ static void do_apps(void)
  * prebuilt, from the index the Packs step fetched or this step fetches now.
  * Each line it prints is logged, so the log says what went in. Offline, a
  * failure, or a `kdos` without the command is a warning and never a failure:
- * the system boots on the medium's firmware, and `sudo kdos firmware sync`
- * after the first boot does the rest.
+ * the system boots on the medium's firmware, and `kdos firmware sync` as
+ * root after the first boot does the rest (ki_root_cmd names it).
  */
 static void do_firmware(void)
 {
@@ -2724,11 +2766,11 @@ static void do_firmware(void)
 
 	if (!fetch_index()) {
 		emit('W', "%s, so no firmware beyond the medium's was "
-			  "installed; run `sudo kdos firmware sync` after the "
-			  "first boot", index_why());
+			  "installed; run %s after the first boot",
+		     index_why(), ki_root_cmd("kdos firmware sync"));
 	} else if (run(sync) != 0) {
-		emit('W', "`kdos firmware sync` did not finish; run `sudo kdos "
-			  "firmware sync` after the first boot");
+		emit('W', "`kdos firmware sync` did not finish; run %s after "
+			  "the first boot", ki_root_cmd("kdos firmware sync"));
 	} else {
 		emit('L', "%s the firmware this machine's devices name",
 		     cfg.dry_run ? "would install" : "installed");
@@ -3096,29 +3138,11 @@ static void do_config(void)
 static void fill_home(const char *user)
 {
 	char home[256], chown_arg[64], dirs[4096];
-	uid_t uid = 1000;
-	gid_t gid = 1000;
+	uid_t uid;
+	gid_t gid;
 
 	snprintf(home, sizeof(home), "%s/home/%s", TARGET, user);
-	{
-		char pw[65536];
-		char *save = NULL;
-		size_t ul = strlen(user);
-
-		if (slurp(TARGET "/etc/passwd", pw, sizeof(pw)) > 0)
-			for (char *l = strtok_r(pw, "\n", &save); l;
-			     l = strtok_r(NULL, "\n", &save)) {
-				unsigned u, g;
-
-				if (strncmp(l, user, ul) || l[ul] != ':')
-					continue;
-				if (sscanf(l + ul, ":%*[^:]:%u:%u", &u, &g) == 2) {
-					uid = (uid_t)u;
-					gid = (gid_t)g;
-				}
-				break;
-			}
-	}
+	ki_account_ids(TARGET, user, &uid, &gid);
 	mkpath("%s", home);
 	snprintf(chown_arg, sizeof(chown_arg), "--chown=%u:%u", (unsigned)uid,
 		 (unsigned)gid);
@@ -3204,12 +3228,23 @@ static void do_accounts(void)
 	emit('P', "1");
 }
 
+static int run_seed(const KbArgv *a)
+{
+	return run((char *const *)a->v);
+}
+
 /*
- * THE ACCENT AND THE DESK, as files the first login reads: the global theme
- * and the desk in /etc/xdg, the splash's and the console's accent, and the
- * login screen's. Nothing is run: startplasma applies the global theme in
+ * THE ACCENT AND THE DESK. The machine's half is files the first login reads:
+ * the global theme and the desk in /etc/xdg, the splash's and the console's
+ * accent, and the login screen's; startplasma applies the global theme in
  * Defaults mode at the first login, and the theme's layout script lays out the
- * desk, so the account starts exactly as a new account on this machine would.
+ * desk. The account's half is ki_seed_accent's two runs of `kdos theme
+ * --account`: into /etc/skel, so every account made later starts in the
+ * accent, and into the new account's home, which fill_home filled before the
+ * accent was written and which a text console or an SSH login reads long
+ * before any Plasma login would rewrite it. An OEM install has no account
+ * yet: skel alone. A run that fails is a warning, not a failed install — the
+ * first Plasma login brings the account into step on its own.
  */
 static void do_theme(void)
 {
@@ -3218,6 +3253,10 @@ static void do_theme(void)
 	emit('N', "%s, %s desk", cfg.theme, cfg.desk);
 	if (ki_write_look(TARGET, why, sizeof(why)))
 		fail("%s", why);
+	emit('P', "0.4");
+	if (ki_seed_accent(TARGET, "kdos", run_seed))
+		emit('W', "a home did not get all of the %s accent; the first "
+			  "Plasma login brings it into step", cfg.theme);
 	emit('P', "1");
 }
 
@@ -3440,6 +3479,21 @@ static void write_slot_release(const char *slot)
 	kb_buf_free(&b);
 }
 
+/* The release the target's /etc/kdos-release names, without its `+<build>`:
+ * "0.2.1", or "" when the root has no record. The first menu names it in the
+ * shape kdos-bootctl's menu carries every later boot. */
+static void target_release(char *out, size_t n)
+{
+	char *rel = kb_read_all(TARGET "/etc/kdos-release", NULL);
+
+	out[0] = 0;
+	if (!rel)
+		return;
+	release_value(rel, "VERSION", out, n);
+	out[strcspn(out, "+")] = 0;
+	free(rel);
+}
+
 static void do_boot(void)
 {
 	char root_uuid[64] = "", esp_uuid[64] = "", b_uuid[64] = "";
@@ -3555,6 +3609,16 @@ static void do_boot(void)
 	 * later kernel — the `linux` postinstall's, where it wrote one, else
 	 * the image's own.
 	 */
+	/* The release in the first entry's comment and in slot B's title,
+	 * the words kdos-bootctl's menu_sync writes from the slot's release
+	 * record: "KDOS 0.2.1 (slot B)", or "KDOS (slot B)" with none. */
+	char ver[64], a_note[96] = "", b_note[96] = "KDOS ";
+	target_release(ver, sizeof(ver));
+	if (ver[0]) {
+		snprintf(a_note, sizeof(a_note), ", KDOS %s", ver);
+		snprintf(b_note, sizeof(b_note), "KDOS %s ", ver);
+	}
+
 	emit('N', "kernel and initramfs onto the ESP");
 	mkpath(TARGET "/boot/efi/EFI/kdos/a");
 	copy_file(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
@@ -3576,15 +3640,15 @@ static void do_boot(void)
 		write_slot_release("b");
 		snprintf(b_entry, sizeof(b_entry),
 			 "\n"
-			 "/KDOS (slot b)\n"
-			 "    comment: The other root, for one boot: nothing is "
-			 "confirmed\n"
+			 "/%s(slot B)\n"
+			 "    comment: The other version, for one boot; nothing "
+			 "changes\n"
 			 "    protocol: linux\n"
 			 "    path: boot():/EFI/kdos/b/vmlinuz\n"
 			 "    module_path: boot():/EFI/kdos/b/initramfs.cpio.gz\n"
 			 "    cmdline: kdos_slot=b %s%sroot=UUID=%s rw "
 			 "console=tty0 " KI_QUIET "\n",
-			 slot_opt, crypt_opt, b_uuid);
+			 b_note, slot_opt, crypt_opt, b_uuid);
 	} else {
 		esp_room_for_b();
 	}
@@ -3701,7 +3765,7 @@ static void do_boot(void)
 	   "%s%s"
 	   "\n"
 	   "/KDOS\n"
-	   "    comment: Start this machine (slot a)\n"
+	   "    comment: Start this computer (slot A%s)\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
@@ -3721,7 +3785,7 @@ static void do_boot(void)
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s%s",
-	   theme, paper, fontline,
+	   theme, paper, fontline, a_note,
 	   slot_opt, crypt_opt, root_uuid,
 	   slot_opt, crypt_opt, root_uuid,
 	   slot_opt, crypt_opt, root_uuid, b_entry, memtest);
@@ -3763,6 +3827,23 @@ static void do_boot(void)
 		   "attempts = 0\n",
 		   root_uuid, b_uuid, luks_uuid, b_uuid[0] ? luks_uuid : "");
 	}
+
+	/*
+	 * THE CONSOLE MAP FOR THE DISK PASSPHRASE, beside the boot state: the
+	 * initramfs reads EFI/kdos/keymap while it has the ESP mounted for
+	 * `select` and loads that map on tty1 before it asks. It is one image
+	 * for every machine and runs before the root holding /etc/keymap is
+	 * open, so without this file the prompt types with the kernel's US map
+	 * and a passphrase set on any other layout cannot be entered. The
+	 * name is the one the keyboard step resolved into /etc/keymap, which
+	 * runs before this one; kdos-settingsd keeps the two in step after.
+	 */
+	if (ki_keymap_name_ok(cfg.keymap))
+		wr("/boot/efi/EFI/kdos/keymap", "%s\n", cfg.keymap);
+	else
+		emit('W', "the console keymap '%s' is not a kbd map name — the "
+			  "disk passphrase prompt types with the US map",
+		     cfg.keymap);
 
 	/*
 	 * THE BIOS BOOT CODE IS WRITTEN WHATEVER THIS MACHINE BOOTED AS, so a

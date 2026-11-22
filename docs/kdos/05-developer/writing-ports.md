@@ -223,7 +223,7 @@ recipe helper (see [Recipe helpers](#recipe-helpers)).
 | `sha256` | | yes | `<64 hex>  <filename>`, one per declared file: every `source`, plus a vendor bundle or anything else beside the recipe the build opens |
 | `description` | preflight | | One line. `kpkg info` prints it and the binary-package index carries it; it is not a comment. It reads exactly as the port's row in [the ports catalogue](../06-reference/ports-catalogue.md) |
 | `homepage` | preflight | | Upstream's home page. The version checker reads it |
-| `license` | preflight | | Upstream's licence as an SPDX expression: `MIT`, `GPL-2.0-or-later`, `MIT OR Apache-2.0`, `GPL-2.0-only WITH Linux-syscall-note`. `kpkg info` prints it. The licence texts themselves are copied into the package by `kpkg` (see [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)) |
+| `license` | preflight | | Upstream's licence as an SPDX expression: `MIT`, `GPL-2.0-or-later`, `MIT OR Apache-2.0`, `GPL-2.0-only WITH Linux-syscall-note`. `kpkg info` prints it. `kpkg` copies the texts at the top of the source into the package (see [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)); a text kept anywhere else, `doc/COPYING`, a README section or a header's opening comment, is installed by `build.sh` as `install -Dm644 <file> "$PKG/usr/share/licenses/$name/<file>"`; a licence the source only names is copied the same way from a package already in the tree that ships its text (`vpnc-script` takes iproute2's GPL-2.0, `tessdata-eng` OpenSSL's Apache-2.0), and a public-domain or CC0 source, which holds none, installs none. A port of our own under `MIT` alone needs nothing: the image links its `LICENSE` to `/usr/share/licenses/kdos/LICENSE`; one under `MIT AND` another licence installs that other text |
 | `depends` | | | One line of space-separated port names, at most 128. The solver, which decides build order, reads the first `depends` line and ignores any other |
 | `replaces` | | | One line of space-separated package names whose paths this package may take. `kpkgadd` refuses to install a path another package owns unless its owner is named here, and then moves the path from the owner's manifest to this package's; see [Who owns a file](../03-architecture/packaging.md#who-owns-a-file). Name a package only when this one is meant to supersede some of its files, and name it in `depends` too: the named package installing after this one, a reinstall included, is refused while this one holds the paths. A path claimed by accident is fixed in the build, by not installing it |
 | `facet_dev` | | | One line of whitespace-separated globs, each matched against the package's own paths without the `./` (`*` crosses `/`): a file that matches is in the development [facet](../03-architecture/packaging.md#facets), left out on a `FACETS=run` machine, even where the rules call it run time. It only adds to `dev`. Read verbatim by `kpkgadd` and `kpkg facets --strip`, never expanded and never passed to `build.sh`; it is part of the recipe hash. `gcc` names its compiler with it |
@@ -474,7 +474,10 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    source tree or `/usr/share` (automake's `--add-missing` links `COPYING` there). Whatever
    `build.sh` already put at a target name, a file or a symlink, is kept and never written through,
    and nothing is copied when `usr/share/licenses/<name>` or a parent of it is a symlink. A
-   licence that lives elsewhere in the source is installed by `build.sh`.
+   licence that lives elsewhere in the source, under `doc/`, in a README or in a header's opening
+   comment, is installed by `build.sh`; so is the text of a tarball whose paths begin with `./`,
+   which leaves the real top one directory down (`appstream`, `hdf5`). The image gates list every
+   package that ends with no `usr/share/licenses/<name>`.
 10. Apply the [size and language policy](#size-and-language-policy): remove HTML and PDF manuals and
    every non-English catalog, handbook and manual page, and the symbol table of an executable or
    shared object over 32 MiB.
@@ -1794,11 +1797,16 @@ into `$PKG/usr/share/applications/`. A package owns its entry, so installing the
 row to the application launcher and removing the port takes it away; the same file under `fs/` is
 owned by nothing and outlives the program it names.
 
-The two entries under `fs/usr/share/applications/` are both `NoDisplay=true`.
+The three entries under `fs/usr/share/applications/` are all `NoDisplay=true`.
 `kdos-openarchive.desktop` is a handler that exists for its `MimeType=` line and names a script
 that is itself under `fs/` (`fs/usr/local/bin/kdos-openarchive`), so entry and program have the
-same lifetime. `kdos-doc.desktop` names `kdos-doc`, the book viewer the `kdos-doc` port installs;
-it is the exception to this rule, and without that port it would name a program that is not there.
+same lifetime. The other two break that rule: each names a program a port installs, and without
+that port it names a program that is not there. `kdos-doc.desktop` names `kdos-doc`, the book
+viewer the `kdos-doc` port installs. `kdos-nomail.desktop` claims `mailto:` so that a mail link on
+the base, where no mail program is installed, opens a `kdialog` note naming the `internet` group;
+`kdialog` is a port on the base, and with it removed a mail link with no mail program installed
+starts nothing. The entry passes the link as `%u`, without which KIO hands it to `kioexec`, which
+reads it as a file.
 
 ```bash
 install -d "$PKG/usr/share/applications"
@@ -2095,7 +2103,9 @@ the new root without what it needs. Take the root as `"${PKG_ROOT:-/}"`, prefix 
 and hand it to the tool: `groupadd -R`, `useradd -R`, `depmod -b`. `chown` resolves a name against
 the running root's `/etc/passwd`, so read the ids out of `$PKG_ROOT/etc/passwd` and pass them as
 numbers, as the `dbus` hook does. A hook runs on every install and reinstall, so each step checks
-before it acts.
+before it acts. `PKG_OLD_VERSION` is the `<version>-<release>` the install replaced, empty on a
+first install; a hook that compares it with its own `$version-$release` can tell a same-version
+reinstall, as `linux`'s does to leave the ESP alone.
 
 The one exception is `linux`'s write to the ESP. The ESP is not part of any root: each slot's kernel
 lives in its own `EFI/kdos/<slot>/` there. The hook runs `kdos-bootctl deploy /` only when

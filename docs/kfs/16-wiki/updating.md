@@ -186,9 +186,13 @@ did.
    release, is older than its recipe in `/ports`, and which of them the verified binhost index
    covers; counts the installed packages that have no recipe there; names the tree's commit; says
    whether a verified slot image of a newer release is cached, which a machine with one slot is
-   never offered; and reports the last problem a fetch or an apply recorded. Its `binhost:` line
+   never offered; and reports the last problem a fetch or an apply recorded. It asks no server:
+   on a machine with no fetch recorded it says `no fetch is recorded yet` before the counts, and
+   `sudo kdos update fetch` (or `sudo kdos update check --fetch`) is what learns whether a newer
+   release is published. Its `binhost:` line
    says how much of what is behind the verified index covers, or, with no index, the step that
-   takes one. When the index in place came from another base than the one named now, as after
+   takes one; when the keys in `/etc/kdos/keys/` are why there is none, that step is putting the
+   release's public keys there, not the fetch, which the same keys would refuse again. When the index in place came from another base than the one named now, as after
    `binhost =` changed and the fetch of the new base found nothing, a further `binhost:` line
    names both, the last fetch of the named base and that installs still read the index in place.
    A tree fetch that refused the published tree as older than this machine's ranks below every
@@ -390,8 +394,9 @@ time it builds.
    sudo kdos update install --source --build-deps=source <port>
    ```
 
-   Each package prints `==> installing <pkg> (prebuilt)` or `==> installing <pkg> (built here)`.
-   A source install runs `kpkg fetch` for every source first, then builds under
+   Each download prints `==> downloading <file> (<size>)` as it starts, and each package
+   `==> installing <pkg> (prebuilt)` or `==> installing <pkg> (built here)`. A download cut off
+   part way is continued by running the same command again. A source install runs `kpkg fetch` for every source first, then builds under
    `/etc/kdos/chroot.env`, so what it builds has the build configuration the binhost's packages
    have; under `build-deps = prebuilt` a dependency the binhost does not hold is built too. The
    port joins `/var/lib/kdos/world`, and each package it added gets its route in
@@ -407,11 +412,13 @@ build tools. It installs each member of the `build-tools` group the machine lack
 installed package the build compiles against that lacks its development files, `==> restoring the
 development files of <pkg> (prebuilt)`. The dry run lists both first, as `<pkg> prebuilt …` and
 `<pkg> dev <file> <bytes>` lines. To bring a package's development files back without building
-anything:
+anything, the second form with those of everything a build against it compiles against, and the
+third with a working `cc` and the C library's and kernel's headers:
 
 ```bash
 sudo kdos update install --dev zlib
-sudo kdos update install --dev kde-devtools
+sudo kdos update install --dev --deps qt6-qtbase
+sudo kdos update install build-tools
 ```
 
 #### Groups
@@ -652,8 +659,10 @@ Discover offers no system update, or `kdos update check` reports a problem
   replaced.
 
 `no-network`
-: `curl` could not reach the server. Check the connection with `nmcli general status`, or fetch
-  from a stick with `--from`.
+: The server's name did not resolve, or the machine has no default route. Check the connection
+  with `nmcli general status`, or fetch from a stick with `--from`. A server that refused the
+  connection or did not answer while a route exists is `fetch-failed`, "the server at
+  <host:port> did not answer": the network is up and the server is not.
 
 `build-failed`
 : A package did not build, or, on a machine with two slots, the slot failed its `kpkg check`, the

@@ -13,7 +13,8 @@
  *   /run/kdos/bless/graphical   a Plasma session answered for a minute
  *                               (io.kdos.Slots1.Bless, from kdos-notice
  *                               --bless), or the login greeter stayed up
- *                               for a minute on a machine nobody logs in to
+ *                               for a minute on a machine SDDM does not
+ *                               log in automatically
  *
  * and then this daemon runs `kdos-bootctl mark-good`, once per boot, writing
  * /run/kdos/bless/confirmed after it succeeds. Either mark alone confirms
@@ -28,10 +29,14 @@
  * which polkit grants to the active local session and to nobody else. The
  * greeter's half counts only processes of SDDM's own account, `sddm`.
  *
- * THE GREETER COUNTS ONLY ON A MACHINE NOBODY LOGS IN TO. With SDDM set to
- * log a user in, or once any user session has existed this boot, the
- * session's own Bless is the confirmation: a greeter that came back because
- * the session crashed must not confirm the slot that crashed it.
+ * THE GREETER COUNTS ON A MACHINE THAT LOGS NOBODY IN AUTOMATICALLY: there
+ * the greeter on kwin_wayland is the graphical check, and a desktop that
+ * fails only after a login is not caught. Waiting for a session there would
+ * roll a good release back whenever its one trial boot is left at the login
+ * screen. With SDDM set to log a user in, or once any user session has
+ * existed this boot, the session's own Bless is the confirmation: a greeter
+ * that came back because the session crashed must not confirm the slot that
+ * crashed it.
  * ---------------------------------
  */
 

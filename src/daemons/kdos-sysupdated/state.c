@@ -133,13 +133,15 @@ static int state_line(const char *step, char *code, size_t ccap,
 }
 
 /*
- * When the network was last asked for what CheckNew fetches here; 0 for
- * never. A machine with slots fetches a newer tree (the `fetch` line); one
- * with no second slot, the live medium among them, fetches only its own
- * release's binhost index (the `binhost` line), and a binhost fetch that
- * found no network or could not download counts as none, so the "Check for
- * updates" pressed after connecting asks again rather than waiting out
- * --refresh-after.
+ * When the network last answered what CheckNew fetches here; 0 for never.
+ * A machine with slots fetches a newer tree (the `fetch` line); one with no
+ * second slot, the live medium among them, fetches only its own release's
+ * binhost index (the `binhost` line). A fetch that found no network counts as
+ * none on both, so the Refresh pressed after connecting asks again rather
+ * than waiting out --refresh-after. A binhost fetch that could not download
+ * counts as none too; a tree fetch-failed keeps its time, since the server
+ * answered (a published tree older than this machine's is one) and treating
+ * it as none would make every CheckNew ask the network again.
  */
 long long state_fetch_time(void)
 {
@@ -151,7 +153,10 @@ long long state_fetch_time(void)
 			return 0;
 		return t;
 	}
-	return state_line("fetch", code, sizeof(code), &t, NULL, 0) == 0 ? t : 0;
+	if (state_line("fetch", code, sizeof(code), &t, NULL, 0) != 0 ||
+	    !strcmp(code, "no-network"))
+		return 0;
+	return t;
 }
 
 static int fetch_offline(void)

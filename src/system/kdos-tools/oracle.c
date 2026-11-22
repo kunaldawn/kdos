@@ -71,9 +71,11 @@ static char *pick_file(void)
 /*
  * "the aphorism · the scar". `cite:` is the file's own attribution and the
  * first `port:` is the fallback — a reason always claims something, so there
- * is always an attribution to print.
+ * is always an attribution to print. The attribution names source files and
+ * symbols, which is what `kdos oracle` is asked for and noise to somebody
+ * logging in, so the login banner asks without it (cite 0).
  */
-char *kdt_oracle_line(void)
+char *kdt_oracle_line(int with_cite)
 {
 	char *path = pick_file();
 	if (!path)
@@ -84,10 +86,10 @@ char *kdt_oracle_line(void)
 		return NULL;
 
 	char *title = kdt_reason_header(text, "title", 0);
-	char *cite = kdt_reason_header(text, "cite", 0);
-	if (!cite)
+	char *cite = with_cite ? kdt_reason_header(text, "cite", 0) : NULL;
+	if (with_cite && !cite)
 		cite = kdt_reason_header(text, "port", 0);
-	if (!cite)
+	if (with_cite && !cite)
 		cite = kdt_reason_header(text, "path", 0);
 
 	char *out = NULL;
@@ -109,7 +111,7 @@ int oracle_main(int argc, char **argv)
 {
 	int plain = argc > 1 && !strcmp(argv[1], "--plain");
 
-	char *line = kdt_oracle_line();
+	char *line = kdt_oracle_line(1);
 	if (!line) {
 		fprintf(stderr, "kdos oracle: no reasons installed (%s)\n",
 			kdt_reason_dir());

@@ -368,6 +368,11 @@ private Q_SLOTS:
         kcm->metaObject()->invokeMethod(kcm.get(), "startNextTime", Q_ARG(QString, u"b"_s));
         QTRY_VERIFY(kcm->property("trialArmed").toBool());
         QTest::qWait(200);
+        /* The armed trial's banner names the same rule as the prompt. */
+        auto *banner = ui->findChild<QObject *>(u"trialBanner"_s);
+        QVERIFY(banner);
+        QVERIFY(banner->property("visible").toBool());
+        QVERIFY(banner->property("text").toString().contains(u"when the login screen does"_s));
         missing.clear();
         controls = 0;
         unnamed(window.contentItem(), &missing, &controls);
@@ -416,7 +421,7 @@ private Q_SLOTS:
         QVERIFY(namesExactly(ui, u"Slot B state: Incomplete"_s));
         QCOMPARE(countShown(ui, u"Incomplete"_s), 1);
         QCOMPARE(countShown(ui, u"An update stopped while writing"_s), 1);
-        QVERIFY(showsText(ui, u"An update stopped while writing this slot. The next update writes it again."_s));
+        QVERIFY(showsText(ui, u"An update stopped while writing this slot. The next update writes it again; to write it at once, run kdos update apply --mount as root."_s));
         /* No Version row: the record's version is the system the update
          * began overwriting. Slot A's row stays. */
         QVERIFY(!namesStartingWith(ui, u"Slot B version:"_s));
@@ -666,6 +671,10 @@ private Q_SLOTS:
         QCOMPARE(prompt->transientParent(), &scene);
         QCOMPARE(dialog->property("title").toString(), u"Start Next Time?"_s);
         QVERIFY(dialog->property("subtitle").toString().contains(slotList.at(1)->property("title").toString()));
+        /* The prompt says what keeps the trial where nobody is logged in
+         * automatically, and that the other slot lacks what changed since. */
+        QVERIFY(dialog->property("subtitle").toString().contains(u"when the login screen does"_s));
+        QVERIFY(dialog->property("subtitle").toString().contains(u"since the last update are not in"_s));
 
         /* Open, the prompt's window is held at the size it settled at,
          * which leaves the window system nothing to maximise; closed, it is

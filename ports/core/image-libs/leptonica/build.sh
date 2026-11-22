@@ -23,3 +23,5 @@
 	--with-zlib
 make
 make DESTDIR=$PKG install
+
+install -Dm644 "$SRC/leptonica-license.txt" "$PKG/usr/share/licenses/$name/leptonica-license.txt"

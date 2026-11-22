@@ -893,9 +893,11 @@ package that was built on the machine is built again in the slot, and the rest a
 `kdos update apply --source` builds the release's signed recipe tree on the machine instead.
 
 The new slot is kept only once a boot of it has finished `rcS` and then had a Plasma session (or,
-on a machine where nobody logs in, the login screen) up and answering for a minute; `kdos-sysupdated`
+on a machine SDDM does not log in automatically, the login screen) up and answering for a minute; `kdos-sysupdated`
 marks it good only when both have happened. A trial that never gets that far uses up its attempts
-and the next boot falls back to the slot that worked.
+and the next boot falls back to the slot that worked. Waiting for a session on every machine would
+roll a good release back whenever its one trial boot is left at the login screen, so a desktop that
+breaks only after a login is kept, and System Versions starts the other slot by hand.
 
 Building every update on the machine was the alternative, and it needs no published binaries at
 all: one signed recipe tree is the whole trust root, and every source is checked against a hash it

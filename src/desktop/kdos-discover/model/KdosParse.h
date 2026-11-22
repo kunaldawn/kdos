@@ -188,11 +188,14 @@ int countCveFindings(const QByteArray &out);
 // <version>-<release>` or `<pkg> dev-source <version>-<release>` line per
 // package built here, and `total <downloads> <bytes> <builds>`, which is
 // what the counts are taken from. A group's dry run has a total per member,
-// and they add up. `valid` is false when no total line came: the output is
-// not a dry run's.
+// and they add up. `downloads` counts the `dev` lines too, which restore the
+// development files of a package already installed, and `restores` counts
+// them alone, so the prebuilt installs are the difference. `valid` is false
+// when no total line came: the output is not a dry run's.
 struct InstallPreview {
     bool valid = false;
     int downloads = 0;
+    int restores = 0; // the `dev` lines, also in downloads
     quint64 bytes = 0;
     int builds = 0;
     QStringList built; // the packages built here, in the order printed

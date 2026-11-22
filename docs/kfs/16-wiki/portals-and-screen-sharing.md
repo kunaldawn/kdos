@@ -98,7 +98,7 @@ user alone, and a box's root, a subordinate uid, could not even stat it.
   in which box.
 - GTK 4 applications use the portal file chooser by themselves, and GTK 3 ones that use GTK's
   native chooser do because every login shell exports `GTK_USE_PORTAL=1`; a GTK 3 application
-  that builds GTK's own dialog, such as AbiWord, keeps it.
+  that builds GTK's own dialog, such as GIMP, Inkscape or AbiWord, keeps it.
 
 ## Troubleshooting
 

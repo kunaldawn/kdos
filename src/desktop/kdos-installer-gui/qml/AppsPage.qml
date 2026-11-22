@@ -11,15 +11,15 @@
  * downloaded prebuilt into the new system during the install when the
  * medium names a binary host and the network answers, and recorded for
  * `kdos update install --pending` otherwise; the header and each row's
- * accessible name say which, from the plan's `binhost`, and call it a
- * binary host in every variant, as the Summary and the terminal installer
- * do. The header puts the command on a line of its own. The page asks for
- * the plan as it opens (Backend.checkPlan): the Disk page asks only on the
- * erase plan, and the Summary's comes after this page. Until the plan
+ * accessible name say which, from the plan's `binhost` and `network`, and
+ * call it a binary host in every variant, as the Summary and the terminal
+ * installer do. The header puts the command on a line of its own. The page
+ * asks for the plan as it opens (Backend.checkPlan): the Disk page asks only
+ * on the erase plan, and the Summary's comes after this page. Until the plan
  * answers, the fact is unknown and the text names both routes, since a
  * missing key read as "no binary host" would tell a medium that names one it
- * downloads nothing. The language group the keyboard or the time zone
- * points at starts ticked, and says so; each names how many ports it installs, a
+ * downloads nothing. The language group the keyboard or the time zone points
+ * at starts ticked, and says so; each names how many ports it installs, a
  * meta-port member counted by kinstall as the ports it depends on. The
  * catalogue's groups are boxed applications, recorded and offered by the
  * first login, which builds them. The page says how each arrives, because a
@@ -42,6 +42,9 @@ WizardPage {
 
     /* true, false, or undefined while the plan has not said. */
     readonly property var binhost: Backend.plan.binhost
+    /* A binary host named, and no network to reach it over: the groups
+     * are recorded and installed after the first boot. */
+    readonly property bool offline: binhost === true && Backend.plan.network === false
 
     onEntered: {
         Backend.refreshApps();
@@ -58,11 +61,13 @@ WizardPage {
         Layout.fillWidth: true
         visible: page.nativeGroups.length > 0
         wrapMode: Text.Wrap
-        /* With no binary host named nothing is downloaded during the
-         * install: the header says what the Summary page says, before the
-         * choice. The command stands on a line of its own, so the label's
+        /* With no binary host named, or no network, nothing is downloaded
+         * during the install: the header says what the Summary page says,
+         * before the choice. The command stands on a line of its own, so the label's
          * wrapping never splits it at a space. */
-        text: page.binhost === true
+        text: page.offline
+            ? i18n("Native programs. No network was found, so the install only records the groups chosen here, and this installs them after the first boot once there is a network:\nsudo kdos update install --pending")
+            : page.binhost === true
             ? i18n("Native programs, downloaded prebuilt into the new system during the install. This needs a network; without one the choice is kept, and this installs it later:\nsudo kdos update install --pending")
             : page.binhost === false
             ? i18n("Native programs. This system names no binary host, so the install only records the groups chosen here, and this installs them once a binary host answers:\nsudo kdos update install --pending")
@@ -75,6 +80,20 @@ WizardPage {
             id: nativeGroup
             required property var modelData
             Layout.fillWidth: true
+            /* A delegate takes no focus by default, which leaves a
+             * keyboard no way to tick the group. */
+            focusPolicy: Qt.StrongFocus
+            /* The keyboard's place, framed: the delegate's own focus is a
+             * faint shade beside the tick, which a ticked row hides. */
+            Rectangle {
+                anchors.fill: parent
+                z: 1
+                visible: nativeGroup.visualFocus
+                color: "transparent"
+                border.color: Kirigami.Theme.focusColor
+                border.width: 2
+                radius: Kirigami.Units.cornerRadius
+            }
             text: modelData.title || modelData.id
             checked: page.answers.groups.indexOf(modelData.id) >= 0
             /* Why a language group is ticked nobody ticked: the
@@ -83,8 +102,11 @@ WizardPage {
                 ? (checked ? i18nc("@info %1 the Japanese keyboard", "Ticked for %1", modelData.why)
                            : i18nc("@info %1 the Japanese keyboard", "Suggested for %1", modelData.why))
                 : ""
-            /* With no binary host named the install only records the group. */
-            readonly property string fate: page.binhost === true
+            /* With no binary host named, or no network, the install only
+             * records the group. */
+            readonly property string fate: page.offline
+                ? i18n("recorded; installed after the first boot once there is a network")
+                : page.binhost === true
                 ? i18n("downloaded during the install")
                 : page.binhost === false
                 ? i18n("recorded; sudo kdos update install --pending installs it once a binary host answers")
@@ -139,6 +161,20 @@ WizardPage {
             id: group
             required property var modelData
             Layout.fillWidth: true
+            /* A delegate takes no focus by default, which leaves a
+             * keyboard no way to tick the group. */
+            focusPolicy: Qt.StrongFocus
+            /* The keyboard's place, framed: the delegate's own focus is a
+             * faint shade beside the tick, which a ticked row hides. */
+            Rectangle {
+                anchors.fill: parent
+                z: 1
+                visible: group.visualFocus
+                color: "transparent"
+                border.color: Kirigami.Theme.focusColor
+                border.width: 2
+                radius: Kirigami.Units.cornerRadius
+            }
             text: modelData.desc || modelData.id
             checked: page.answers.apps.indexOf(modelData.id) >= 0
             Accessible.name: i18nc("@info:whatsthis %1 group %2 count %3 size", "%1, %2 applications, about %3",

@@ -32,3 +32,5 @@ install -m755 Linux*/bin/{certutil,cmsutil,crlutil,modutil,pk12util,signtool,sig
 install -m644 Linux*/lib/pkgconfig/nss.pc "$PKG/usr/lib/pkgconfig/"
 rm -f "$PKG/usr/lib/libnssckbi.so" "$PKG/usr/lib/libnssckbi-testlib.so"
 ln -sf pkcs11/p11-kit-trust.so "$PKG/usr/lib/libnssckbi.so"
+
+install -Dm644 "$SRC/nss/COPYING" "$PKG/usr/share/licenses/$name/COPYING"

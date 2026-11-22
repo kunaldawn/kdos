@@ -30,7 +30,7 @@ const Service ki_services[] = {
 	{ "networkmanager", "NetworkManager", "wired, wifi and VPN", 1 },
 	{ "bluetooth", "Bluetooth", "bluez daemon", 1 },
 	{ "alsa", "ALSA state", "restore mixer levels at boot", 1 },
-	{ "cups", "CUPS", "printing daemon", 0 },
+	{ "cups", "CUPS", "printing daemon", 1 },
 	{ "sshd", "OpenSSH server", "accepts remote logins", 0 },
 };
 
@@ -91,6 +91,16 @@ unsigned long long ki_need_bytes(void)
 					    ? ki_sys.payload_kb
 					    : ki_sys.payload_kb - ki_sys.appbox_kb) *
 	       1024;
+}
+
+unsigned long long ki_root_need_bytes(void)
+{
+	return ki_need_bytes() + (KI_ROOT_FREE_MB << 20);
+}
+
+unsigned long long ki_disk_need_bytes(void)
+{
+	return ki_root_need_bytes() + KI_DISK_MARGIN;
 }
 
 void ki_part_name(const char *disk, int n, char *out, size_t cap)
@@ -265,13 +275,29 @@ static int keymap_installed(const char *share, const char *name)
 	return keymap_in(p, name, 0);
 }
 
+/* A kbd map name loadkeys looks up, never a path or an option: the
+ * initramfs refuses anything else in EFI/kdos/keymap by the same rule. */
+int ki_keymap_name_ok(const char *s)
+{
+	if (!s || !*s || *s == '.' || *s == '-' || strlen(s) > 63)
+		return 0;
+	for (; *s; s++)
+		if (!isalnum((unsigned char)*s) && !strchr("_.+-", *s))
+			return 0;
+	return 1;
+}
+
 /*
- * THE CONSOLE MAP NEAREST AN XKB LAYOUT, for the text consoles and the
- * recovery login: the layout's own variant first where kbd has a map of that
- * shape, then the layouts kbd names differently, then `<layout>` and
- * `<layout>-latin1`, which is how kbd names most of the rest. Each candidate
- * must be installed; a layout with no console map at all leaves `us`, which
- * every kbd carries, rather than a name loadkeys cannot load.
+ * THE CONSOLE MAP NEAREST AN XKB LAYOUT, for the text consoles, the recovery
+ * login and the LUKS prompt of the initramfs: the layout's own variant first
+ * where kbd has a map of that shape, then the layouts kbd names differently,
+ * then `<layout>-latin1` and only after it `<layout>`. A BARE kbd NAME IS THE
+ * 7-BIT MAP for most of Europe: `de`, `dk`, `no`, `fr`, `sg` and `fr_CH` are
+ * the ISO-646 national variants, where the keys for ü ö ä ß type @ [ ] \, and
+ * `pt` is the OLPC laptop's. Taking the bare name first would leave a German
+ * console unable to type a password with an umlaut in it. Each candidate must
+ * be installed; a layout with no console map at all leaves `us`, which every
+ * kbd carries, rather than a name loadkeys cannot load.
  */
 void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 		  char *out, size_t cap)
@@ -284,13 +310,20 @@ void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 		{ "us", "intl", "us-acentos" },
 		{ "de", "nodeadkeys", "de-latin1-nodeadkeys" },
 		{ "de", "neo", "neo" },
+		{ "de", "", "de-latin1" },
 		{ "fr", "bepo", "fr-bepo" },
+		{ "fr", "", "fr-latin1" },
 		{ "gb", "", "uk" },
 		{ "ee", "", "et" },
 		{ "ca", "", "cf" },
 		{ "latam", "", "la-latin1" },
 		{ "se", "", "sv-latin1" },
+		{ "dk", "", "dk-latin1" },
+		{ "no", "", "no-latin1" },
+		{ "pt", "", "pt-latin1" },
+		{ "ch", "fr", "fr_CH-latin1" },
 		{ "ch", "fr", "fr_CH" },
+		{ "ch", "", "sg-latin1" },
 		{ "ch", "", "sg" },
 		{ "si", "", "slovene" },
 		{ "hr", "", "croat" },
@@ -317,13 +350,13 @@ void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 			return;
 		}
 	}
-	if (keymap_installed(share, layout)) {
-		kb_strlcpy(out, layout, cap);
+	snprintf(cand, sizeof(cand), "%s-latin1", layout);
+	if (keymap_installed(share, cand)) {
+		kb_strlcpy(out, cand, cap);
 		return;
 	}
-	snprintf(cand, sizeof(cand), "%s-latin1", layout);
-	if (keymap_installed(share, cand))
-		kb_strlcpy(out, cand, cap);
+	if (keymap_installed(share, layout))
+		kb_strlcpy(out, layout, cap);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -718,7 +751,7 @@ int ki_answers_check(char *err, size_t n)
 		return 1;
 	}
 	if (!ki_host_ok(cfg.hostname)) {
-		snprintf(err, n, "a host name is letters, digits and dashes, "
+		snprintf(err, n, "a host name is letters a–z, digits and dashes, "
 				 "and does not start or end with a dash");
 		return 1;
 	}
@@ -801,7 +834,7 @@ int ki_answers_check(char *err, size_t n)
 
 int ki_disk_check(const Disk *d, char *err, size_t n)
 {
-	unsigned long long need = ki_need_bytes() + KI_DISK_MARGIN;
+	unsigned long long need = ki_disk_need_bytes();
 
 	if (d->is_boot_media) {
 		snprintf(err, n, "%s is the medium this runs from", d->path);
@@ -914,18 +947,20 @@ static int reuse_check(char *err, size_t n)
 	}
 	/* Partition and volume sizes are in /sys's 512-byte units. The swap
 	 * file is made in this root after the copy, so it is counted here or
-	 * it is what runs the root out of space. */
-	need = ki_need_bytes();
+	 * it is what runs the root out of space, and KI_ROOT_FREE_MB is kept
+	 * free beside both. */
+	need = ki_root_need_bytes();
 	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0)
 		need += (unsigned long long)cfg.swap_mb << 20;
 	if (sectors * 512ULL < need) {
 		snprintf(err, n, "%s holds %llu MiB, smaller than the %llu MiB "
-				 "this install%s needs",
+				 "this install%s needs with %llu MiB left free",
 			 cfg.part_root, (sectors * 512ULL) >> 20,
 			 (need + (1ULL << 20) - 1) >> 20,
 			 cfg.swap == SWAP_FILE && cfg.swap_mb > 0
 				 ? " and its swap file"
-				 : "");
+				 : "",
+			 KI_ROOT_FREE_MB);
 		return 1;
 	}
 	/* A disk that could not start on this machine is refused before the
@@ -947,7 +982,8 @@ static int reuse_check(char *err, size_t n)
  * ki_disk_check() never counted, and a disk that holds the install alone is
  * erased and then runs out of space. The rule is ki_disk_check()'s with the
  * swap added, and the volume metadata when the root is on LVM or inside
- * LUKS; the refusal names the largest swap that fits.
+ * LUKS; the refusal names the largest swap that fits, which is one that
+ * still leaves the root KI_ROOT_FREE_MB free.
  */
 static int swap_fit_check(const Disk *d, char *err, size_t n)
 {
@@ -957,7 +993,7 @@ static int swap_fit_check(const Disk *d, char *err, size_t n)
 	    cfg.swap_mb <= 0)
 		return 0;
 	swp = (unsigned long long)cfg.swap_mb << 20;
-	need = ki_need_bytes() + KI_DISK_MARGIN +
+	need = ki_disk_need_bytes() +
 	       (cfg.lvm || cfg.luks ? KI_VOLUME_META_MB << 20 : 0);
 	if (disk >= need + swp)
 		return 0;
@@ -971,6 +1007,32 @@ static int swap_fit_check(const Disk *d, char *err, size_t n)
 				 "on %s: choose no swap",
 			 cfg.swap_mb, d->path);
 	return 1;
+}
+
+long long ki_root_free_bytes(void)
+{
+	unsigned long long size, take = ki_need_bytes();
+	const Part *rp;
+	const Lv *l;
+
+	if (cfg.plan == PLAN_WIPE) {
+		if (ki_ab() || !disk_by_path(cfg.disk))
+			return -1;
+		size = ki_wipe_root_bytes();
+		if (cfg.lvm || cfg.luks)
+			size = size > KI_VOLUME_META_MB << 20
+				       ? size - (KI_VOLUME_META_MB << 20)
+				       : 0;
+	} else {
+		l = lv_by_path(cfg.part_root);
+		rp = l ? NULL : part_by_path(cfg.part_root);
+		if (!l && !rp)
+			return -1;
+		size = (l ? l->sectors : rp->sectors) * 512ULL;
+	}
+	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0)
+		take += (unsigned long long)cfg.swap_mb << 20;
+	return size > take ? (long long)(size - take) : 0;
 }
 
 int ki_swap_check(char *err, size_t n)

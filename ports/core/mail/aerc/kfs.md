@@ -45,7 +45,12 @@ because `mutool` opens a document by path.
 - A filter's error output is shown as the message body, so a renderer missing from the image shows
   as `command not found` in place of the message. Each program the script calls is in `depends`.
 
-The desktop entry is KDOS's own, written over upstream's `contrib/aerc.desktop`. It sets
+The desktop entry is KDOS's own, written over upstream's `contrib/aerc.desktop`. Its `Name` is
+`aerc` and its `GenericName` and `Comment` say it runs in a terminal: the entry is the component
+Discover and the Kickoff menu list it by, and a name of `Mail` there would offer a terminal client to
+someone looking for a mail program that draws a window. `Keywords` keep `mail` and `email`, and the
+`ConsoleOnly` category is what Discover's search ranks a terminal program by, so a search for "mail"
+lists [thunderbird](#port-thunderbird) and [kmail](#port-kmail) ahead of aerc and still finds it. It sets
 `Terminal=true` and passes `%u`, so a `mailto:` link opened through the entry reaches aerc as its
 argument. It claims no MIME type. Every row of `/usr/share/kdos/xdg/kde-mimeapps.list` names an application
 that draws its own window, so `mailto:` and `message/rfc822` go to

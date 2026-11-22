@@ -8,7 +8,8 @@
 # evdev.lst beside this script.
 #
 #   <dir>/etc     KDOS_SETTINGSD_ETC   — what the image ships
-#   <dir>/share   KDOS_SETTINGSD_SHARE — zoneinfo, keymaps, xkb
+#   <dir>/share   KDOS_SETTINGSD_SHARE — zoneinfo, keymaps, xkb, the
+#                                        musl-locales definitions
 #   <dir>/sys     KDOS_SETTINGSD_SYS   — one laptop's firmware, as sysfs
 #                                        shows it
 #   <dir>/bin     first on PATH        — service, loadkeys, iw and chronyd,
@@ -88,13 +89,28 @@ EOF
 
 # ── xkeyboard-config ─────────────────────────────────────────────────────
 cp "$HERE/evdev.lst" "$D/share/X11/xkb/rules/evdev.lst"
-for l in us gb de ch fr; do : > "$D/share/X11/xkb/symbols/$l"; done
+for l in us gb de ch fr dk pt; do : > "$D/share/X11/xkb/symbols/$l"; done
 
 # ── kbd's keymaps ────────────────────────────────────────────────────────
-for m in qwerty/us qwerty/uk qwertz/de-latin1 qwertz/de-latin1-nodeadkeys \
-         qwertz/sg qwertz/fr_CH azerty/fr dvorak/dvorak; do
+# The bare 7-bit maps beside their -latin1 forms (de, dk, sg, fr_CH), pt
+# under olpc/ as kbd ships it, and it alone where a layout has no other.
+mkdir -p "$D/share/keymaps/i386/olpc"
+for m in qwerty/us qwerty/uk qwertz/de qwertz/de-latin1 \
+         qwertz/de-latin1-nodeadkeys qwertz/sg qwertz/sg-latin1 \
+         qwertz/fr_CH qwertz/fr_CH-latin1 qwerty/dk qwerty/dk-latin1 \
+         qwerty/pt-latin1 olpc/pt azerty/fr dvorak/dvorak; do
     : > "$D/share/keymaps/i386/$m.map.gz"
 done
+
+# ── musl-locales and the gettext catalogues ──────────────────────────────
+# A definition is any file under i18n/locales/musl; its name is the locale.
+# Under locale/ a directory per translated language: ja has catalogues and
+# no definition, as on the image.
+mkdir -p "$D/share/i18n/locales/musl"
+for l in en_US.UTF-8 en_GB.UTF-8 de_DE.UTF-8; do
+    : > "$D/share/i18n/locales/musl/$l"
+done
+for l in de ja sr@latin; do mkdir -p "$D/share/locale/$l/LC_MESSAGES"; done
 
 # ── the programs, each a recorder ────────────────────────────────────────
 for p in service loadkeys iw chronyd; do

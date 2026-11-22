@@ -50,7 +50,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3436-3454 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3475-3493 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -62,7 +62,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3714-3726 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3753-3765 pin=d5c38affc180 -->
 
 On the A/B layout both root slots are volumes of one LVM group inside the one container, so
 `crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The
@@ -241,11 +241,13 @@ in [Only an LVM erase install gets a second root slot](../../kdos/06-reference/k
 
 ## Tips
 
-- The initramfs loads no keyboard layout; `090_initramfs.sh` carries no `loadkeys`, and the layout
-  in `/etc/keymap` is applied only after the root is mounted. The prompt therefore reads keys in
-  the kernel's built-in layout, US English. A passphrase that was typed on another layout at
-  install time has to be typed by the US positions of its keys; a passphrase whose characters sit
-  on the same keys in both layouts, added with `luksAddKey`, avoids the question.
+- The prompt types with the console keymap named in `/boot/efi/EFI/kdos/keymap`, which the
+  installer writes and `kdos-settingsd` keeps equal to `/etc/keymap`; `090_initramfs.sh` carries
+  `loadkeys` and kbd's keymaps for it. A character that console map has no key for cannot be
+  typed there, and a layout kbd has no console map for (Arabic, the Asian scripts) gets the
+  kernel's US map. For such a layout, add with `luksAddKey` a passphrase that a US keyboard
+  types. `cat /boot/efi/EFI/kdos/keymap` shows the map the next boot loads; see
+  [Unlocking an encrypted root](../../kdos/03-architecture/boot-and-init.md#unlocking-an-encrypted-root).
 - Never pass a passphrase as a command-line argument. Any process can read another's arguments
   through `/proc/<pid>/cmdline`, which is why every KDOS program that feeds `cryptsetup` uses
   standard input. Typed at cryptsetup's own prompt, as in the procedures above, it is not exposed.
@@ -270,9 +272,11 @@ sync; echo b > /proc/sysrq-trigger
 ```
 
 **`Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again.`** The container rejected
-every attempt. Besides a mistyped passphrase, the keyboard layout can cause this (see
-[Tips](#tips)). Restart and type the passphrase by its US key positions, or open the root from the
-live medium, whose layout you can set, and add a passphrase that types the same on both.
+every attempt. Besides a mistyped passphrase, the keyboard map can cause this (see
+[Tips](#tips)): an ESP with no `EFI/kdos/keymap`, or one naming a map without the passphrase's
+characters, leaves the US map. Restart and type the passphrase by its US key positions, or open the
+root from the live medium, whose layout you can set, and add a passphrase that types the same on
+both.
 
 **`cryptdevice: no device for UUID=…:kdosroot`.** No partition carries the container UUID the boot
 asked for. In the [rescue shell]{.idx}, compare the two:

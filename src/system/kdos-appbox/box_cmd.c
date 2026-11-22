@@ -122,13 +122,61 @@ typedef struct {
 	char state[32];
 	char manager[32];
 	long long created;
+	unsigned long long rw;	/* what the container itself has written */
 } ListRow;
+
+/*
+ * WHAT EACH CONTAINER HAS WRITTEN, from one `podman ps --all --size` for the
+ * whole list. The template reads `.ListContainer.Size.RwSize`: the reporter's
+ * `Size` method returns podman's human string and shadows the struct beneath
+ * it, which is reached through the embedded ListContainer. A store box and a
+ * distrobox keep everything they install there. A pack box (`base=pack:`) is
+ * a `--rootfs` container, whose RwSize podman takes by walking the whole
+ * composed rootfs, so the list never adds it: that box's writes are in its
+ * upper, under its directory, and dir_bytes counts them. A podman that
+ * cannot say leaves every row's figure at what its directory holds.
+ */
+static void list_sizes(ListRow *rows, int nrows)
+{
+	KbBuf out = {0};
+	KbArgv a = {0};
+	char *line, *save;
+
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "ps");
+	kb_argv_add(&a, "--all");
+	kb_argv_add(&a, "--size");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Names}}\t{{.ListContainer.Size.RwSize}}");
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &out) != 0) {
+		kb_buf_free(&out);
+		return;
+	}
+	kb_buf_add(&out, "", 0);
+	for (line = strtok_r(out.p, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char *tab = strchr(line, '\t');
+
+		if (!tab)
+			continue;
+		*tab++ = '\0';
+		for (int i = 0; i < nrows; i++)
+			if (!strcmp(rows[i].name, line)) {
+				rows[i].rw = strtoull(tab, NULL, 10);
+				break;
+			}
+	}
+	kb_buf_free(&out);
+}
 
 /*
  * `kdos-box list [--json]`. The table is for a person; the JSON array is for
  * the Boxes page, one object per box with `name`, `base`, `state`,
  * `persistence`, `accent`, `disk` (bytes), `created` (seconds since the
- * epoch, 0 for a box with no container), `confinement` (what the box's
+ * epoch, 0 for a box with no container; `disk` is what its directory under
+ * ~/.local/share/kdos/boxes holds and what its container has written, see
+ * list_sizes), `confinement` (what the box's
  * last launch recorded, "" when nothing is recorded) and `manager` (the
  * container's `manager` label: "distrobox" for one distrobox made, kdos-box's
  * own boxes included, "" for none).
@@ -228,6 +276,8 @@ static int cmd_box_list(int json)
 	}
 	kb_strv_free(profiles);
 	free(pdir);
+	if (!failed)
+		list_sizes(rows, nrows);
 
 	/* The BOX and BASE columns are as wide as their longest entry: a
 	 * store box's base is image:kdos/<id>, longer than any fixed width,
@@ -255,12 +305,14 @@ static int cmd_box_list(int json)
 		Profile p;
 		char *bd = box_dir(rows[i].name);
 		int created = strcmp(rows[i].state, "not created") != 0;
-		unsigned long long disk = created ? dir_bytes(bd) : 0;
+		unsigned long long disk;
 		const char *base;
 		char conf[32];
 
-		free(bd);
 		profile_load(&p, rows[i].name);
+		disk = !created ? 0 : dir_bytes(bd) +
+		       (strncmp(p.base, "pack:", 5) ? rows[i].rw : 0);
+		free(bd);
 		base = p.base[0] ? p.base : p.image[0] ? p.image : "-";
 		if (!json) {
 			printf("%-*s %-*s %-11s %-11s %8s  %s\n", wname,
@@ -338,11 +390,36 @@ static int base_pull(const char *ref)
 	return podman(w, 2);
 }
 
+/* The profile as a create found it: deleted when the create wrote it, its
+ * old text back when one was there (a profile `remove` kept). */
+static void profile_restore(const char *box, const char *was)
+{
+	char *pp = profile_path(box);
+
+	if (was)
+		kb_write_file_atomic(pp, was);
+	else
+		unlink(pp);
+	free(pp);
+}
+
+/*
+ * NOTHING IS WRITTEN UNTIL THE COMMAND LINE IS KNOWN GOOD. Every key=value is
+ * read into the profile before its file is touched, and a word with no `=`,
+ * an unknown key or a base that names nothing — none at all, `image:` with no
+ * reference, `pack:` with no id, `box:` of a box with no pack or image base —
+ * ends the create with one line and leaves the file as it was. A create that
+ * fails after that puts the profile back as it found it (profile_restore), so
+ * neither a refusal nor a failure leaves a box behind for `list` and the
+ * Boxes page to show as not created. One that succeeds writes the boxes'
+ * window rules again, so the new box's title bar takes its accent at once.
+ */
 static int cmd_box_create(int argc, char **argv)
 {
 	Profile p;
 	const char *box;
 	char merged[MAX_LINE];
+	char *pp, *was;
 	int rc;
 
 	if (argc < 1) {
@@ -354,16 +431,54 @@ static int cmd_box_create(int argc, char **argv)
 	kb_proc_verbose = 1;
 	box = argv[0];
 	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
+		kb_die(BOX_NAME_RULE);
 	if (box_exists(box)) {
 		kb_warn("%s already exists", box);
 		return 1;
 	}
 
 	profile_load(&p, box);
-	for (int i = 1; i < argc; i++)
+	for (int i = 1; i < argc; i++) {
+		if (!strchr(argv[i], '='))
+			kb_die("'%s' is not key=value — nothing was written",
+			       argv[i]);
 		if (profile_set(&p, argv[i]) != 0)
-			kb_warn("unknown key in '%s'", argv[i]);
+			kb_die("unknown key in '%s' — nothing was written",
+			       argv[i]);
+	}
+
+	/*
+	 * `box:<src>` RESOLVES TO <src>'S OWN BASE, IN PLACE. Clone another
+	 * box's LOWER stack, not its upper: a clone starts from the same
+	 * software with an empty workspace, which is what somebody asking for
+	 * one means. `kdos-box clone` copies the upper as well and is the other
+	 * verb. The resolved base is what is saved and what the lanes below
+	 * take; saving `box:` would resolve it again for ever.
+	 */
+	if (!strncmp(p.base, "box:", 4)) {
+		Profile src;
+		if (!name_ok(p.base + 4))
+			kb_die("box:<name> — " BOX_NAME_RULE);
+		profile_load(&src, p.base + 4);
+		if ((strncmp(src.base, "pack:", 5) || !src.base[5]) &&
+		    (strncmp(src.base, "image:", 6) || !src.base[6]))
+			kb_die("%s has no pack or image base to clone — nothing "
+			       "was written", p.base + 4);
+		kb_strlcpy(p.base, src.base, sizeof(p.base));
+	}
+	if (!strcmp(p.base, "pack:") || !strcmp(p.base, "image:"))
+		kb_die("%s: base=%s names no %s — nothing was written", box,
+		       p.base, p.base[0] == 'p' ? "pack id" : "image reference");
+	if (strncmp(p.base, "pack:", 5) && strncmp(p.base, "image:", 6))
+		kb_die("%s: a box is made of something — base=pack:<id>, "
+		       "base=image:<ref> or base=box:<name>", box);
+	if (strpbrk(p.base, " \t"))
+		kb_die("%s: base=%s is not one word — nothing was written", box,
+		       p.base);
+
+	pp = profile_path(box);
+	was = kb_read_whole(pp, NULL);
+	free(pp);
 	profile_save(&p);
 
 	/*
@@ -378,49 +493,25 @@ static int cmd_box_create(int argc, char **argv)
 	 */
 	kb_proc_verbose = 1;
 
-	/*
-	 * `box:<src>` RESOLVES TO <src>'S OWN BASE, IN PLACE. Clone another
-	 * box's LOWER stack, not its upper: a clone starts from the same
-	 * software with an empty workspace, which is what somebody asking for
-	 * one means. `kdos-box clone` copies the upper as well and is the other
-	 * verb. The resolved base is saved and the lanes below take it from
-	 * here; re-reading the command line would put `box:` back and resolve
-	 * it again for ever.
-	 */
-	if (!strncmp(p.base, "box:", 4)) {
-		Profile src;
-		if (!name_ok(p.base + 4))
-			kb_die("box:<name> — and a name is [A-Za-z0-9._-]");
-		profile_load(&src, p.base + 4);
-		if (strncmp(src.base, "pack:", 5) && strncmp(src.base, "image:", 6))
-			kb_die("%s has no pack or image base to clone",
-			       p.base + 4);
-		kb_strlcpy(p.base, src.base, sizeof(p.base));
-		profile_save(&p);
-	}
-
 	/* The box's private runtime directory is a volume source of every
 	 * create below but distrobox's, and podman refuses a missing one. */
-	if (box_lane(&p) != BOX_LANE_DISTROBOX &&
-	    rundir_prepare(&p)
-	    != 0)
-		return 1;
-	if (!strncmp(p.base, "pack:", 5)) {
+	if (box_lane(&p) != BOX_LANE_DISTROBOX && rundir_prepare(&p) != 0) {
+		rc = 1;
+	} else if (!strncmp(p.base, "pack:", 5)) {
 		rc = pack_compose(box, p.base + 5, merged, sizeof(merged));
 		if (rc != 0) {
 			if (rc < 0)
-				kb_die("kdos-packd is not running");
-			kb_die("%s", merged);
-		}
-		rc = pack_box_create(&p, merged, NULL, 0, 0);
-		if (rc != 0) {
+				kb_warn("kdos-packd is not running");
+			else
+				kb_warn("%s", merged);
+			rc = 1;
+		} else if ((rc = pack_box_create(&p, merged, NULL, 0, 0)) != 0) {
 			pack_decompose(box);
 			/*
 			 * A CREATE THAT FAILS MUST SAY SO. pack_box_create
 			 * prints podman's last line, and there are runs where
-			 * podman prints nothing at all — a bare exit 125 with a
-			 * profile left on disk reads as a box that exists and
-			 * will not start. The one cause this program can name
+			 * podman prints nothing at all — a bare exit 125 reads
+			 * as nothing. The one cause this program can name
 			 * for itself is the live session: an overlay upper
 			 * cannot sit on overlayfs, which is what $HOME is on a
 			 * booted ISO, and it is the same reading `kdos doctor`
@@ -436,21 +527,24 @@ static int cmd_box_create(int argc, char **argv)
 				kb_warn("%s: podman could not create the box "
 					"(exit %d)", box, rc);
 		}
-	} else if (!strncmp(p.base, "image:", 6)) {
-		if (base_pull(p.base + 6) != 0)
-			kb_die("could not fetch %s", p.base + 6);
+	} else if (base_pull(p.base + 6) != 0) {
+		kb_warn("could not fetch %s", p.base + 6);
+		rc = 1;
+	} else {
 		kb_strlcpy(p.image, p.base + 6, sizeof(p.image));
 		/* An image this machine built for the store is made the way a
 		 * pack box is, with its own runtime directory; anybody else's
 		 * image is distrobox's, whose init expects the session's. */
 		rc = box_lane(&p) == BOX_LANE_STORE
 			? pack_box_create(&p, NULL, NULL, 0, 0) : box_create(&p);
-	} else {
-		kb_die("%s: a box is made of something — base=pack:<id>, "
-		       "base=image:<ref> or base=box:<name>", box);
 	}
-	if (rc != 0)
+	if (rc != 0) {
+		profile_restore(box, was);
+		free(was);
 		return rc;
+	}
+	free(was);
+	box_rules_refresh();
 
 	/* The line that enters a box is this program's, printed here for
 	 * every lane; box_create drops distrobox's own "To enter, run:" and
@@ -615,11 +709,12 @@ static int cmd_box_enter(int argc, char **argv)
 	}
 	box = argv[0];
 	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
+		kb_die(BOX_NAME_RULE);
 	profile_load(&p, box);
 
 	if (!box_exists(box))
-		kb_die("%s does not exist — `kdos-box create %s`", box, box);
+		kb_die("there is no box named %s — `kdos-box create %s "
+		       "base=...` makes one", box, box);
 	if (pack_box_start(box) != 0)
 		kb_die("could not start %s", box);
 
@@ -637,9 +732,22 @@ static int cmd_box_enter(int argc, char **argv)
 		enter_wait(box);
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "exec");
-		kb_argv_add(&a, "--interactive");
-		if (isatty(STDIN_FILENO))
+		/* A terminal is handed on only from its foreground group, and a
+		 * background job gets /dev/null instead: main.c's run path says
+		 * why. */
+		if (tty_foreground(STDIN_FILENO)) {
+			kb_argv_add(&a, "--interactive");
 			kb_argv_add(&a, "--tty");
+		} else if (isatty(STDIN_FILENO)) {
+			int null = open("/dev/null", O_RDONLY | O_CLOEXEC);
+
+			if (null >= 0) {
+				dup2(null, STDIN_FILENO);
+				close(null);
+			}
+		} else {
+			kb_argv_add(&a, "--interactive");
+		}
 		kb_argv_addf(&a, "--user=%u:%u", (unsigned)getuid(),
 			     (unsigned)getgid());
 		kb_argv_addf(&a, "--workdir=%s", kb_home_dir());
@@ -747,7 +855,7 @@ static int cmd_box_apps(const char *box)
 	char *buf = kb_calloc(1, 1 << 16);
 
 	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
+		kb_die(BOX_NAME_RULE);
 	if (pack_box_start(box) != 0)
 		kb_die("could not start %s", box);
 	kb_argv_add(&a, "podman");
@@ -787,13 +895,15 @@ static int cmd_box_apps(const char *box)
  * <app> IS A DESKTOP ID OR A COMMAND. `kdos-box apps` lists the box's desktop
  * ids, and an id is not a program — `org.gnome.TextEditor` runs
  * `gnome-text-editor` — so an id that names an entry in the box's
- * /usr/share/applications has its Exec, Name and Icon read from that entry. A
- * word that names no entry is taken as the command itself.
+ * /usr/share/applications has its Exec, Name, Comment and Icon read from that
+ * entry, and its icon copied out of the box (export_box_icon). A word that
+ * names no entry is taken as the command itself.
  */
 struct box_entry {
 	char exec[512];
 	char name[128];
-	char icon[128];
+	char comment[256];
+	char icon[256];
 	char wmclass[128];
 };
 
@@ -839,6 +949,8 @@ static int box_read_entry(const char *box, const char *app,
 			kb_strlcpy(e->exec, line + 5, sizeof(e->exec));
 		else if (!strncmp(line, "Name=", 5) && !e->name[0])
 			kb_strlcpy(e->name, line + 5, sizeof(e->name));
+		else if (!strncmp(line, "Comment=", 8) && !e->comment[0])
+			kb_strlcpy(e->comment, line + 8, sizeof(e->comment));
 		else if (!strncmp(line, "Icon=", 5) && !e->icon[0])
 			kb_strlcpy(e->icon, line + 5, sizeof(e->icon));
 		else if (!strncmp(line, "StartupWMClass=", 15) && !e->wmclass[0])
@@ -858,12 +970,100 @@ static char *export_apps_dir(void)
 			   : kb_path_join(kb_home_dir(), ".local/share/applications");
 }
 
+/* The data directory the icons go under: export_apps_dir's parent. */
+static char *export_data_dir(void)
+{
+	const char *xdg = getenv("XDG_DATA_HOME");
+
+	return xdg && *xdg ? kb_strdup(xdg)
+			   : kb_path_join(kb_home_dir(), ".local/share");
+}
+
+/*
+ * THE ICON IS COPIED OUT OF THE BOX, under the launcher id's name. An entry's
+ * `Icon=` is a theme name the HOST's icon themes are searched for, and the
+ * application's own icon is inside the box, so a launcher naming it shows the
+ * menu's blank placeholder. The box is asked, with the name as the shell's
+ * `$1` and never part of its script, which files of that name it has under
+ * /usr/share/icons/hicolor/<size>/apps and /usr/share/pixmaps; each is read
+ * out with `podman exec <box> cat`, which follows the symbolic links icon
+ * themes are made of, into a scratch root under $XDG_RUNTIME_DIR, and
+ * launcher_icons_copy (launchers.c) lays them out as the pack lane's
+ * launchers have theirs: `<data>/icons/hicolor/<size>/apps/<lid>.<ext>`, or
+ * `<data>/pixmaps/<lid>.<ext>` when the box has no hicolor copy. An absolute
+ * `Icon=` path is copied as it is. Returns how many files were written; 0
+ * leaves the entry naming the box's icon, which a theme on the host may have.
+ */
+static int export_box_icon(const char *box, const char *icon, const char *lid)
+{
+	KbArgv a = {0};
+	char *list = kb_calloc(1, 1 << 15), *line, *save = NULL;
+	char root[MAX_LINE];
+	char *data;
+	int n = 0;
+
+	if (!icon[0] || (icon[0] != '/' && strchr(icon, '/')) ||
+	    strstr(icon, "..")) {
+		free(list);
+		return 0;
+	}
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "exec");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, "sh");
+	kb_argv_add(&a, "-c");
+	kb_argv_add(&a, "case $1 in /*) [ -f \"$1\" ] && echo \"$1\"; exit 0;; esac; "
+			"for f in /usr/share/icons/hicolor/*/apps/\"$1\".* "
+			"/usr/share/pixmaps/\"$1\".*; do "
+			"[ -f \"$f\" ] && echo \"$f\"; done; exit 0");
+	kb_argv_add(&a, "sh");
+	kb_argv_add(&a, icon);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, list, 1 << 15) != 0 || !list[0]) {
+		free(list);
+		return 0;
+	}
+	snprintf(root, sizeof(root), "%s/kdos-export-%ld", kb_runtime_dir(),
+		 (long)getpid());
+	kb_rmtree(root);
+	for (line = strtok_r(list, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		KbArgv c = {0};
+		char dst[MAX_LINE * 2], dir[MAX_LINE * 2], *slash;
+
+		if (line[0] != '/' || strstr(line, "..") ||
+		    (icon[0] != '/' && strncmp(line, "/usr/share/", 11)))
+			continue;
+		snprintf(dst, sizeof(dst), "%s%s", root, line);
+		kb_strlcpy(dir, dst, sizeof(dir));
+		if ((slash = strrchr(dir, '/')))
+			*slash = '\0';
+		kb_mkdir_p(dir);
+		kb_argv_add(&c, "podman");
+		kb_argv_add(&c, "exec");
+		kb_argv_add(&c, box);
+		kb_argv_add(&c, "cat");
+		kb_argv_add(&c, "--");
+		kb_argv_add(&c, line);
+		kb_argv_end(&c);
+		if (kb_run_to_file(&c, dst) != 0)
+			unlink(dst);
+	}
+	free(list);
+	data = export_data_dir();
+	n = launcher_icons_copy(root, icon, lid, data, NULL);
+	free(data);
+	kb_rmtree(root);
+	return n;
+}
+
 /*
  * EVERY EXPORT OF ONE BOX, for `kdos-box remove`: a launcher whose box is
  * gone is a Start menu row that opens nothing, and its shim a command that
  * fails. An entry is the box's when export wrote it — `X-KDOS-Export=true`
  * and `X-KDOS-Box=<box>` — and a shim when it is `<command>@<box>` in
- * ~/.local/bin linked to kdos-appbox; nothing else in either directory is
+ * ~/.local/bin linked to kdos-appbox; the icons export copied for an entry,
+ * named with its launcher id, go with it. Nothing else in either directory is
  * touched, and a box whose name is another's with a suffix (`t4` and
  * `t4.x`) keeps its own. KService's cache is rebuilt when anything went, so
  * the menu drops the rows now. Returns how many files were removed.
@@ -871,6 +1071,7 @@ static char *export_apps_dir(void)
 static int box_unexport_all(const char *box)
 {
 	char *dir = export_apps_dir();
+	char *data = export_data_dir();
 	char *bin = kb_path_join(kb_home_dir(), ".local/bin");
 	char **names = kb_listdir(dir, NULL);
 	size_t bl = strlen(box);
@@ -891,8 +1092,14 @@ static int box_unexport_all(const char *box)
 			       !strcmp(kxdg_get(&e, "X-KDOS-Box", ""), box);
 			kxdg_free(&e);
 		}
-		if (ours && unlink(p) == 0)
+		if (ours && unlink(p) == 0) {
+			char lid[256];
+
+			kb_strlcpy(lid, *f, sizeof(lid));
+			lid[l - 8 < sizeof(lid) ? l - 8 : sizeof(lid) - 1] = '\0';
+			launcher_icons_remove(lid, data);
 			n++;
+		}
 		free(p);
 	}
 	kb_strv_free(names);
@@ -920,6 +1127,7 @@ static int box_unexport_all(const char *box)
 	kb_strv_free(names);
 	free(bin);
 	free(dir);
+	free(data);
 
 	if (n && kb_have_prog("kbuildsycoca6")) {
 		KbArgv a = {0};
@@ -977,6 +1185,8 @@ static int box_has_command(const char *box, const char *app)
 	return -1;
 }
 
+static int box_known(const char *box);
+
 static int cmd_box_export(const char *box, const char *app, int undo)
 {
 	char *skel, *entry, *shim, *bin;
@@ -990,6 +1200,12 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 	if (!name_ok(box) || !app || !*app || app[0] == '-')
 		kb_die("usage: kdos-box %s <box> <app>",
 		       undo ? "unexport" : "export");
+	/* A box that is not a container, a profile or an installed pack's id
+	 * — the boxes `kdos-box run` accepts — is a typo, and an export of it
+	 * would be a Start menu row and a command that open nothing. Asked
+	 * before anything starts or writes. */
+	if (!undo && !box_known(box))
+		kb_die("there is no box named %s", box);
 
 	/* An unexport reads the box's entry only from a box already up:
 	 * starting one to learn which shim to delete costs a box start, and
@@ -1056,9 +1272,12 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 	shim = kb_path_join(bin, id);
 
 	if (undo) {
+		char *data = export_data_dir();
 		int n = 0;
 		n += unlink(entry) == 0;
 		n += unlink(shim) == 0;
+		launcher_icons_remove(lid, data);
+		free(data);
 		if (strcmp(key, app)) {
 			char *alt;
 			snprintf(id, sizeof(id), "%s@%s", app, box);
@@ -1120,8 +1339,13 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 		 * the menu's subtitle saying which box it runs in.
 		 */
 		if (found) {
+			const char *icon = be.icon[0] ? be.icon : app;
+
+			if (be.comment[0])
+				kb_buf_printf(&d, "Comment=%s\n", be.comment);
 			kb_buf_printf(&d, "Icon=%s\n",
-				      be.icon[0] ? be.icon : app);
+				      export_box_icon(box, icon, lid) > 0
+				      ? lid : icon);
 			kb_buf_printf(&d, "Terminal=false\n");
 		} else {
 			kb_buf_printf(&d, "Comment=%s in the box %s\n", app,
@@ -1176,7 +1400,7 @@ static int cmd_box_freeze(int argc, char **argv)
 	}
 	box = argv[0];
 	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
+		kb_die(BOX_NAME_RULE);
 	profile_load(&p, box);
 
 	/* The daemon knows where it put the upper; asking is the only way that
@@ -1315,7 +1539,7 @@ static int cmd_box_snapshot(const char *box, const char *tag)
 	KbArgv a = {0};
 
 	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
+		kb_die(BOX_NAME_RULE);
 	if (!tag) {
 		time_t t = time(NULL);
 		struct tm tm;
@@ -1324,7 +1548,8 @@ static int cmd_box_snapshot(const char *box, const char *tag)
 		tag = stamp;
 	}
 	if (!name_ok(tag))
-		kb_die("a tag is [A-Za-z0-9._-]");
+		kb_die("a tag is 1 to 63 of the characters A-Z a-z 0-9 . _ -, "
+		       "starting with a letter or a digit");
 
 	snprintf(from, sizeof(from), "%s/upper", bd);
 	snprintf(to, sizeof(to), "%s/snapshots/%s", bd, tag);
@@ -1412,84 +1637,160 @@ static int cmd_box_rollback(const char *box, const char *tag)
  * and leaves the applications its launches started running (box.c says why).
  * The boxes are stopped together, so the logout's stop of every box fits one
  * grace period rather than one per box. 0 when every one is down; otherwise
- * each box still up is named with its state, and 1.
+ * each box still up is named with its state, and 1. A name that is neither a
+ * container nor a profile is refused by name and makes the status 1 too.
  */
 static int cmd_box_stop(const char *const *boxes, int n)
 {
+	const char **up = kb_calloc((size_t)n + 1, sizeof(*up));
 	char state[64];
-	int left;
+	int left, nup = 0, missing = 0;
 
 	for (int i = 0; i < n; i++)
 		if (!name_ok(boxes[i]))
-			kb_die("a box name is [A-Za-z0-9._-]");
-	left = box_stop_many(boxes, n, 10);
-	if (!left)
-		return 0;
+			kb_die(BOX_NAME_RULE);
+	/* A box with no container has nothing running: one with a profile is
+	 * stopped already, and a name with neither is no box at all. */
 	for (int i = 0; i < n; i++) {
-		box_state(boxes[i], state, sizeof(state));
+		char *pp;
+
+		if (box_exists(boxes[i])) {
+			up[nup++] = boxes[i];
+			continue;
+		}
+		pp = profile_path(boxes[i]);
+		if (!kb_path_exists(pp)) {
+			kb_warn("there is no box named %s", boxes[i]);
+			missing++;
+		}
+		free(pp);
+	}
+	left = nup ? box_stop_many(up, nup, 10) : 0;
+	for (int i = 0; left && i < nup; i++) {
+		box_state(up[i], state, sizeof(state));
 		if (!strcmp(state, "running") || !strcmp(state, "stopping"))
 			kb_warn("%s did not stop: it is still %s after SIGKILL",
-				boxes[i], state);
-		else if (box_signal_all(boxes[i], 0) > 0)
+				up[i], state);
+		else if (box_signal_all(up[i], 0) > 0)
 			kb_warn("%s stopped, and processes it started are still "
-				"alive", boxes[i]);
+				"alive", up[i]);
 	}
-	return 1;
+	free(up);
+	return left || missing ? 1 : 0;
+}
+
+/* Every run of 32 or more hexadecimal digits in `s` — a container's or an
+ * image's id, which podman's sentences name things by — replaced with
+ * `word`, in place. */
+static void fold_ids(char *s, size_t n, const char *word)
+{
+	char out[1024];
+	size_t o = 0;
+
+	for (const char *c = s; *c && o + 1 < sizeof(out);) {
+		size_t h = strspn(c, "0123456789abcdef");
+
+		if (h >= 32) {
+			o += (size_t)snprintf(out + o, sizeof(out) - o, "%s", word);
+			if (o >= sizeof(out))
+				o = sizeof(out) - 1;
+			c += h;
+			continue;
+		}
+		if (!h)
+			h = 1;
+		while (h-- && *c && o + 1 < sizeof(out))
+			out[o++] = *c++;
+	}
+	out[o] = '\0';
+	kb_strlcpy(s, out, n);
 }
 
 /*
- * A PROFILE `remove` KEPT ON PURPOSE CARRIES THIS LINE AT ITS TOP. The line is
- * a comment, which profile_load skips, so it changes no setting and is no
- * unknown key; the next profile_save, which a create runs, drops it, and the
- * `profile` verb writes it back for a box with no container. A remove that finds no container deletes
- * only a profile without it — one a failed create left — and keeps a marked
- * one, so repeating a remove never deletes what the first said it kept.
+ * `--purge` OF A BOX OVER AN IMAGE RELEASES THE IMAGE, `base=image:<ref>`, a
+ * distrobox's base or a store box's own: a removed Fedora box otherwise keeps
+ * its few hundred megabytes for good. It is kept while another profile names
+ * the same base, and `podman rmi` without --force refuses one a container
+ * still uses — a box made outside kdos-box, or a running one — and that
+ * refusal is the line printed, ids folded. A store application's runtime
+ * images are its uninstall's: `kdos app remove` is the route that releases
+ * them too.
  */
-#define BOX_KEPT_MARK "# kept by kdos-box remove; remove --purge deletes it\n"
-
-static int profile_is_kept(const char *box)
+static void release_image(const Profile *p)
 {
-	char *pp = profile_path(box);
-	char *t = kb_read_whole(pp, NULL);
-	int kept = t && !strncmp(t, BOX_KEPT_MARK, strlen(BOX_KEPT_MARK));
+	char pdir[MAX_LINE], why[512] = "";
+	char **names;
+	const char *img;
+	KbArgv r = {0};
 
-	free(t);
-	free(pp);
-	return kept;
-}
+	if (strncmp(p->base, "image:", 6) || !p->base[6])
+		return;
+	img = p->base + 6;
+	snprintf(pdir, sizeof(pdir), "%s/.config/kdos/boxes", kb_home_dir());
+	names = kb_listdir(pdir, NULL);
+	for (char **f = names; f && *f; f++) {
+		size_t l = strlen(*f);
+		char nm[64];
+		Profile o;
 
-static void profile_mark_kept(const char *box)
-{
-	char *pp = profile_path(box);
-	char *t = kb_read_whole(pp, NULL);
-
-	if (t && strncmp(t, BOX_KEPT_MARK, strlen(BOX_KEPT_MARK))) {
-		KbBuf b = {0};
-
-		kb_buf_printf(&b, "%s%s", BOX_KEPT_MARK, t);
-		if (kb_write_file_atomic(pp, b.p) != 0)
-			kb_warn("%s: %s", pp, strerror(errno));
-		kb_buf_free(&b);
+		if (l < 6 || l - 5 >= sizeof(nm) || strcmp(*f + l - 5, ".conf"))
+			continue;
+		memcpy(nm, *f, l - 5);
+		nm[l - 5] = '\0';
+		if (!strcmp(nm, p->name) || !name_ok(nm))
+			continue;
+		profile_load(&o, nm);
+		if (!strcmp(o.base, p->base)) {
+			printf("  its image %s is kept: the box %s is made of it "
+			       "too\n", img, nm);
+			kb_strv_free(names);
+			return;
+		}
 	}
-	free(t);
-	free(pp);
+	kb_strv_free(names);
+	if (!image_exists(img))
+		return;
+	kb_argv_add(&r, "podman");
+	kb_argv_add(&r, "rmi");
+	kb_argv_add(&r, img);
+	kb_argv_end(&r);
+	if (run_last_line(&r, why, sizeof(why)) == 0) {
+		printf("  and its image %s, which no other box uses, is "
+		       "released\n", img);
+		return;
+	}
+	fold_ids(why, sizeof(why), "another container");
+	printf("  its image %s is kept: %s\n", img, why);
 }
 
 /*
+ * A PROFILE `remove` KEPT ON PURPOSE CARRIES BOX_KEPT_MARK AT ITS TOP (box.c),
+ * and the `profile` verb writes it back for a box with no container. A remove
+ * that finds no container deletes only a profile without it — one a failed
+ * store install left — and keeps a marked one, so repeating a remove never
+ * deletes what the first said it kept.
+ *
  * The stack is released only once the container is gone: decomposing under a
  * container podman refused to remove (a running box without --force) pulls
- * the root out from under a live box. Podman's own sentence is the diagnosis,
- * so it is printed. `purge` deletes the profile as well, marked or not.
+ * the root out from under a live box. `purge` deletes the profile as well,
+ * marked or not, and releases the box's image (release_image). Whatever
+ * podman prints is caught, and a refusal is this program's one line with
+ * podman's reason in it, its ids folded into the box's name; nothing of the
+ * stop sequence's own podman calls reaches the terminal. A remove that took
+ * anything writes the boxes' window rules again, so a removed box's rule
+ * leaves kwinrulesrc.
  */
 static int cmd_box_remove(const char *box, int force, int purge)
 {
 	KbArgv a = {0};
 	KbArgv q = {0};
+	Profile p;
+	char why[512] = "";
 	int rc;
 
 	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
-	kb_proc_verbose = 1;
+		kb_die(BOX_NAME_RULE);
+	profile_load(&p, box);
 	/* `podman container exists` is 0 for yes, 1 for no and 125 for a
 	 * podman that could not tell; only a 1 is "no container". box_exists
 	 * folds the 125 into "no", and that would release the stack of a box
@@ -1520,15 +1821,17 @@ static int cmd_box_remove(const char *box, int force, int purge)
 			return 0;
 		}
 		free(pp);
-		print_unexported(box, ex);
-		if (had) {
+		if (had)
 			printf("%s had no container — its profile is removed\n",
 			       box);
+		if (had && purge)
+			release_image(&p);
+		print_unexported(box, ex);
+		if (had || ex) {
+			box_rules_refresh();
 			return 0;
 		}
-		if (ex)
-			return 0;
-		kb_warn("%s has no container to remove", box);
+		kb_warn("there is no box named %s", box);
 		return 1;
 	}
 	if (rc != 0) {
@@ -1553,9 +1856,10 @@ static int cmd_box_remove(const char *box, int force, int purge)
 		kb_argv_add(&a, "-f");
 	kb_argv_add(&a, box);
 	kb_argv_end(&a);
-	rc = podman_run_reason(&a, box);
+	rc = run_last_line(&a, why, sizeof(why));
 	if (rc != 0) {
-		kb_warn("%s was not removed (podman rm exited %d)%s", box, rc,
+		fold_ids(why, sizeof(why), box);
+		kb_warn("%s was not removed: %s%s", box, why,
 			force ? "" : " — a running box needs `kdos-box stop` "
 				     "first, or --force");
 		return rc;
@@ -1577,6 +1881,7 @@ static int cmd_box_remove(const char *box, int force, int purge)
 			unlink(pp);
 			printf("%s removed, and its profile %s deleted\n", box,
 			       pp);
+			release_image(&p);
 		} else {
 			profile_mark_kept(box);
 			printf("%s removed — its profile is kept in %s\n", box,
@@ -1589,6 +1894,7 @@ static int cmd_box_remove(const char *box, int force, int purge)
 		free(bd);
 		free(pp);
 	}
+	box_rules_refresh();
 	return 0;
 }
 
@@ -1722,9 +2028,9 @@ static int cmd_box_gc(int dry, int session_end)
 
 /* ── the dispatch ──────────────────────────────────────────────────────── */
 
-static int box_usage(void)
+static int box_usage(FILE *to, int rc)
 {
-	fprintf(stderr,
+	fprintf(to,
 "usage: kdos-box list [--json]\n"
 "       kdos-box create <name> [base=pack:<id>|image:<ref>|box:<name>] [key=value ...]\n"
 "       kdos-box enter  <name> [command ...] | --window\n"
@@ -1739,12 +2045,37 @@ static int box_usage(void)
 "       kdos-box stop   <name> ...          SIGTERM, 10 s, then SIGKILL\n"
 "       kdos-box remove <name> [--force] [--purge]\n"
 "                                         --force removes a running box,\n"
-"                                         --purge deletes its profile too\n"
+"                                         --purge deletes its profile and\n"
+"                                         releases an image no box uses\n"
 "       kdos-box profile <name> [key=value ...]\n"
 "       kdos-box gc [--dry-run] [--session-end]\n"
 "\nAn app box and a dev box differ in three profile keys, not in kind:\n"
 "`persistence`, `base` and `export`.\n");
-	return 2;
+	return rc;
+}
+
+/* 1 when `box` is a container, a profile or an installed pack's id: what a
+ * launch of it can start from. A pack box takes its name from its pack and
+ * has neither until its first launch composes it. */
+static int box_known(const char *box)
+{
+	char *pp = profile_path(box);
+	int known = kb_path_exists(pp) || box_exists(box);
+	char *list;
+
+	free(pp);
+	if (known || !(list = pack_list()))
+		return known;
+	for (char *line = list, *nl; line && *line && !known; line = nl) {
+		size_t l = strcspn(line, "\t\n");
+
+		nl = strchr(line, '\n');
+		if (nl)
+			nl++;
+		known = l == strlen(box) && !strncmp(line, box, l);
+	}
+	free(list);
+	return known;
 }
 
 int box_main(int argc, char **argv)
@@ -1752,12 +2083,24 @@ int box_main(int argc, char **argv)
 	const char *cmd;
 
 	if (argc < 1)
-		return box_usage();
+		return box_usage(stderr, 2);
 	cmd = argv[0];
 
 #define BCMD(s) (!strcmp(cmd, s))
-	if (BCMD("list") || BCMD("ls"))
-		return cmd_box_list(argc > 1 && !strcmp(argv[1], "--json"));
+	if (BCMD("--help") || BCMD("-h") || BCMD("help"))
+		return box_usage(stdout, 0);
+	if (BCMD("list") || BCMD("ls")) {
+		int json = 0;
+
+		for (int i = 1; i < argc; i++) {
+			if (strcmp(argv[i], "--json")) {
+				fprintf(stderr, "usage: kdos-box list [--json]\n");
+				return 2;
+			}
+			json = 1;
+		}
+		return cmd_box_list(json);
+	}
 	if (BCMD("create"))
 		return cmd_box_create(argc - 1, argv + 1);
 	if (BCMD("enter")) {
@@ -1786,11 +2129,17 @@ int box_main(int argc, char **argv)
 		}
 		if (argc > at + 1) {
 			if (!name_ok(argv[at]))
-				kb_die("a box name is [A-Za-z0-9._-]");
+				kb_die(BOX_NAME_RULE);
+			/* A name that is no box is refused before the launch
+			 * path composes, creates or records anything. */
+			if (!box_known(argv[at]))
+				kb_die("there is no box named %s", argv[at]);
 			g_box = argv[at];
 			return cmd_run(argc - at - 1, argv + at + 1);
 		}
-		return box_usage();
+		fprintf(stderr, "usage: kdos-box run [-l <launcher-id>] <name> "
+				"<app> [args ...]\n");
+		return 2;
 	}
 	if (BCMD("apps") && argc > 1)
 		return cmd_box_apps(argv[1]);
@@ -1808,10 +2157,15 @@ int box_main(int argc, char **argv)
 		char *cargv[2];
 		char *bd, *nd;
 		KbArgv a = {0};
+		int has;
 
 		if (!name_ok(argv[1]) || !name_ok(argv[2]))
-			kb_die("a box name is [A-Za-z0-9._-]");
-		profile_load(&src, argv[1]);
+			kb_die(BOX_NAME_RULE);
+		has = profile_load(&src, argv[1]);
+		if (!has && !box_exists(argv[1]))
+			kb_die("there is no box named %s", argv[1]);
+		if (!src.base[0])
+			kb_die("%s has no pack or image base to clone", argv[1]);
 		snprintf(kv, sizeof(kv), "base=%s", src.base);
 		cargv[0] = argv[2];
 		cargv[1] = kv;
@@ -1838,8 +2192,14 @@ int box_main(int argc, char **argv)
 		return cmd_box_snapshots(argv[1]);
 	if (BCMD("rollback") && argc > 2)
 		return cmd_box_rollback(argv[1], argv[2]);
-	if (BCMD("start") && argc > 1)
+	if (BCMD("start") && argc > 1) {
+		if (!name_ok(argv[1]))
+			kb_die(BOX_NAME_RULE);
+		if (!box_exists(argv[1]))
+			kb_die("there is no box named %s — `kdos-box create %s "
+			       "base=...` makes one", argv[1], argv[1]);
 		return pack_box_start(argv[1]);
+	}
 	if (BCMD("stop") && argc > 1)
 		return cmd_box_stop((const char *const *)argv + 1, argc - 1);
 	if (BCMD("restart") && argc > 1) {
@@ -1847,28 +2207,38 @@ int box_main(int argc, char **argv)
 			return 1;
 		return pack_box_start(argv[1]);
 	}
-	if (BCMD("remove") && argc > 1) {
+	if (BCMD("remove")) {
 		int force = 0, purge = 0;
+		const char *name = NULL;
 
-		for (int i = 2; i < argc; i++) {
+		for (int i = 1; i < argc; i++) {
 			if (!strcmp(argv[i], "--force"))
 				force = 1;
 			else if (!strcmp(argv[i], "--purge"))
 				purge = 1;
+			else if (!name && argv[i][0] != '-')
+				name = argv[i];
 			else
-				return box_usage();
+				name = NULL, i = argc;
 		}
-		return cmd_box_remove(argv[1], force, purge);
+		if (!name || argc - 1 != 1 + force + purge) {
+			fprintf(stderr, "usage: kdos-box remove <name> [--force] "
+					"[--purge]\n");
+			return 2;
+		}
+		return cmd_box_remove(name, force, purge);
 	}
 	if (BCMD("profile") && argc > 1) {
 		Profile p;
 		if (!name_ok(argv[1]))
-			kb_die("a box name is [A-Za-z0-9._-]");
+			kb_die(BOX_NAME_RULE);
 		profile_load(&p, argv[1]);
 		if (argc > 2) {
 			char before[sizeof(p.accent)];
+			char d0[PROFILE_DIGEST_MAX], d1[PROFILE_DIGEST_MAX];
+			char keys[256];
 			Profile old = p;
-			int only_accent;
+			int only_accent, ncreate;
 			int kept = profile_is_kept(argv[1]) &&
 				   !box_exists(argv[1]);
 
@@ -1878,8 +2248,7 @@ int box_main(int argc, char **argv)
 			profile_save(&p);
 			/* An edit of a profile remove kept keeps it kept. A
 			 * box with a container needs no mark — its remove
-			 * writes one — and rewriting the file would move the
-			 * mtime an accent-only write keeps. */
+			 * writes one. */
 			if (kept)
 				profile_mark_kept(argv[1]);
 			/* The title-bar colour is a KWin rule, not a create
@@ -1887,21 +2256,29 @@ int box_main(int argc, char **argv)
 			if (strcmp(before, p.accent))
 				box_rules_refresh();
 			/* Whether anything but the accent changed, field by
-			 * field: an accent alone needs no new container. */
+			 * field, and which create-time keys did: a launch-time
+			 * key needs no new container. */
 			memcpy(old.accent, p.accent, sizeof(old.accent));
 			only_accent = strcmp(before, p.accent) &&
 				      !memcmp(&old, &p, sizeof(p));
+			profile_create_digest(&old, d0, sizeof(d0));
+			profile_create_digest(&p, d1, sizeof(d1));
+			ncreate = profile_digest_diff(d0, d1, keys, sizeof(keys));
 			/* Only a box with a container is removed and made
 			 * again: removing one without a container deletes the
 			 * profile just written. */
 			if (only_accent)
 				printf("%s: written — the title-bar colour "
 				       "changes now.\n", argv[1]);
+			else if (!ncreate)
+				printf("%s: written — it applies at the box's "
+				       "next launch.\n", argv[1]);
 			else if (box_exists(argv[1]))
-				printf("%s: written — namespaces and volumes "
-				       "apply at CREATE time, so run `kdos-box "
-				       "remove %s` and create it again for those "
-				       "to take effect.\n", argv[1], argv[1]);
+				printf("%s: written — %s %s at CREATE time, so "
+				       "run `kdos-box remove %s` and create it "
+				       "again for %s to take effect.\n", argv[1],
+				       keys, ncreate == 1 ? "applies" : "apply",
+				       argv[1], ncreate == 1 ? "it" : "them");
 			else
 				printf("%s: written — it applies when the box "
 				       "is created.\n", argv[1]);
@@ -1918,9 +2295,9 @@ int box_main(int argc, char **argv)
 			else if (!strcmp(argv[i], "--session-end"))
 				end = 1;
 			else
-				return box_usage();
+				return box_usage(stderr, 2);
 		}
 		return cmd_box_gc(dry, end);
 	}
-	return box_usage();
+	return box_usage(stderr, 2);
 }

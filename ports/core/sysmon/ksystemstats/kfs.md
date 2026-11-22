@@ -35,3 +35,7 @@ The daemon is started by D-Bus activation from
 under `/usr/lib/systemd`; `build.sh` removes the directory, since KDOS has no systemd (see
 [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager)).
 The activation file's `SystemdService=` line is then unused and the bus runs the `Exec=` line.
+
+`refresh-rate-loop.patch` keeps two sessions' network plugins from setting NetworkManager's
+statistics refresh rate back and forth for as long as both are logged in. The patch is to be
+offered upstream.

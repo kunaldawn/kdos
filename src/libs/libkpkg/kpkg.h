@@ -16,10 +16,11 @@
  *     `./`-prefixed and every DIRECTORY carrying a trailing `/`.
  *     Removal keys its rmdir-vs-unlink decision off that slash, and four
  *     things on the running system count the files in that directory.
- *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Three
- *     callers rely on it (kpkg's own -f, the build driver, mini_build.py)
- *     and it works because `/dev/null/<name>` cannot be a file. Anything here
- *     that stats the DIRECTORY first would silently break all three.
+ *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Two
+ *     callers rely on it (the build driver's kpkgdepends phase resolution
+ *     and testing/mini_build.py) and it works because `/dev/null/<name>`
+ *     cannot be a file. Anything here that stats the DIRECTORY first would
+ *     silently break both.
  *   - `PORT_REPO` is a whitespace-separated list of at most KP_MAX_REPOS
  *     repositories, and the first repository holding a name wins. A
  *     repository holds its ports directly (`<repo>/<name>/kpkgbuild`, the
@@ -589,6 +590,16 @@ typedef struct {
 	int n;
 } KpOrder;
 
+/* The names and every dependency not installed at its current recipe, each
+ * after what it needs. An installed, current dependency ends the walk along
+ * that edge, so nothing under it is reached. */
 void kp_resolve(const KpConf *c, char **names, int nnames, KpOrder *out);
+
+/* kp_resolve() for a forced install: every named package is walked and
+ * emitted whatever its installed state, and their dependencies follow
+ * kp_resolve()'s rule. The order is exactly what `kpkg install -f` builds —
+ * the named packages, and beneath them only what is missing or stale. */
+void kp_resolve_forced(const KpConf *c, char **names, int nnames,
+		       KpOrder *out);
 
 #endif /* KPKG_H */

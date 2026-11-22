@@ -34,6 +34,7 @@
 #include "kdos-tools.h"
 
 #define GROUPS_CONF "/usr/share/kdos/keycard-groups.conf"
+#define KEY_FIELD 28
 
 static const char *const ORDER[] = { "windows", "desktops", "launch", "kdos",
 				     "accessibility", "system" };
@@ -349,6 +350,38 @@ static void read_entry(Keys *k, const char *dir, const char *file)
 	free(path);
 }
 
+/* A launch key bound in System Settings for a program that declares none
+ * under kglobalaccel/ is a [services][<id>] line with no name: the program's
+ * own desktop entry under applications/ names it, and without one the id
+ * loses its .desktop, so the sheet never shows a raw desktop id. */
+static char *app_name(const char *id, const char *ddirs)
+{
+	char *copy = kb_strdup(ddirs), *save = NULL, *name = NULL;
+	char *rel = kb_path_join("applications", id), *p;
+	size_t l;
+
+	p = kdt_data_home(rel);
+	name = kdt_kcfg_get(p, "Desktop Entry", "Name");
+	free(p);
+	for (char *d = strtok_r(copy, ":", &save); d && !(name && *name);
+	     d = strtok_r(NULL, ":", &save)) {
+		free(name);
+		p = kb_path_join(d, rel);
+		name = kdt_kcfg_get(p, "Desktop Entry", "Name");
+		free(p);
+	}
+	free(rel);
+	free(copy);
+	if (name && *name)
+		return name;
+	free(name);
+	name = kb_strdup(id);
+	l = strlen(name);
+	if (l > 8 && !strcmp(name + l - 8, ".desktop"))
+		name[l - 8] = '\0';
+	return name;
+}
+
 static void collect(Keys *k)
 {
 	char *user = kdt_cfg_home("kglobalshortcutsrc");
@@ -387,6 +420,12 @@ static void collect(Keys *k)
 		free(dir);
 	}
 	free(copy);
+
+	for (int i = 0; i < k->n; i++)
+		if (!k->k[i].label && !strcmp(k->k[i].action, "_launch"))
+			k->k[i].label = app_name(k->k[i].component,
+						 ddirs && *ddirs ? ddirs
+						 : "/usr/local/share:/usr/share");
 }
 
 static int by_group(const void *a, const void *b)
@@ -416,6 +455,7 @@ int kdt_keys_print(FILE *o, const char *head, const char *key,
 	qsort(k.k, (size_t)k.n, sizeof(*k.k), by_group);
 	for (int i = 0; i < k.n; i++) {
 		const Key *x = &k.k[i];
+		int launch = !strcmp(x->action, "_launch");
 
 		if (!*x->keys)
 			continue;
@@ -425,9 +465,26 @@ int kdt_keys_print(FILE *o, const char *head, const char *key,
 				reset);
 			last = x->group;
 		}
-		fprintf(o, "  %s%-28s%s %s", key, x->keys, reset,
-			x->label ? x->label : x->action);
-		if (x->group < 0 || !strcmp(x->action, "_launch"))
+		/* A chord list wider than the key field takes the line alone
+		 * and its description starts the next one at the description
+		 * column, so no description runs into a chord. */
+		if (strlen(x->keys) > KEY_FIELD)
+			fprintf(o, "  %s%s%s\n%*s", key, x->keys, reset,
+				KEY_FIELD + 3, "");
+		else
+			fprintf(o, "  %s%-*s%s ", key, KEY_FIELD, x->keys,
+				reset);
+		/* A launch row names the program it starts. KDOS's own
+		 * entries (org.kdos.*) are named as the action they take,
+		 * "Toggle Auto-Tiling", and print as named. The component is
+		 * shown only on a row the table placed nowhere, to say whose
+		 * shortcut an unfamiliar action is. */
+		if (launch && strncmp(x->component, "org.kdos.", 9))
+			fprintf(o, "Start %s", x->label ? x->label
+						       : x->component);
+		else
+			fputs(x->label ? x->label : x->action, o);
+		if (x->group < 0 && !launch)
 			fprintf(o, " (%s)", x->component);
 		fputc('\n', o);
 		shown++;

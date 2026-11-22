@@ -10,6 +10,11 @@
  * One passphrase at every boot opens all of it: with the two system slots the
  * whole volume group is inside the one container. There is no recovery key,
  * which the page says before anyone types one.
+ *
+ * The boot prompt types with the console keymap nearest the Keyboard page's
+ * layout (EFI/kdos/keymap, loaded by the initramfs), which the page says
+ * too: a character that console map has no key for can never be typed
+ * there, and a layout kbd has no console map for leaves the US map.
  */
 
 import QtQuick
@@ -56,6 +61,13 @@ WizardPage {
         type: Kirigami.MessageType.Warning
         visible: page.answers.luks
         text: i18n("There is no recovery key. Without the passphrase, nothing on this disk can be read again — not by you, not by anyone.")
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        type: Kirigami.MessageType.Information
+        visible: page.answers.luks
+        text: i18n("At every start the passphrase is typed with the text console's keymap nearest the layout chosen on the Keyboard page, so a character that keymap has no key for cannot be entered. A layout with no console keymap of its own, such as Arabic or the Asian scripts, types with the US map there.")
     }
 
     Kirigami.InlineMessage {

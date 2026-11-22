@@ -23,3 +23,5 @@ rm -rf "$PKG/usr/share/gtk-doc"
 rm -rf "$PKG/usr/share/gdm" "$PKG/usr/share/gnome" \
 	"$PKG/usr/lib/gnome-settings-daemon-3.0" "$PKG/usr/bin/canberra-boot"
 readelf -d "$PKG/usr/lib/libcanberra.so" | grep -q "NEEDED.*libtdb"
+
+install -Dm644 "$SRC/LGPL" "$PKG/usr/share/licenses/$name/LGPL"

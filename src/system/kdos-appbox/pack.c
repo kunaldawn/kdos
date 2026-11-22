@@ -347,7 +347,7 @@ int pack_box_create(const Profile *p, const char *merged,
 	KbArgv a = {0};
 	struct passwd *pw = getpwuid(getuid());
 	char hostname[128] = "kdos";
-	char pdir[MAX_LINE], cgparent[1024];
+	char pdir[MAX_LINE], cgparent[1024], digest[PROFILE_DIGEST_MAX];
 	const char *home = kb_home_dir();
 	int pack = merged != NULL;
 
@@ -386,6 +386,9 @@ int pack_box_create(const Profile *p, const char *merged,
 	kb_argv_addf(&a, "--hostname=%s.%s", p->name, hostname);
 	kb_argv_add(&a, "--label");
 	kb_argv_add(&a, "manager=kdos-box");
+	/* What the container is made from, for profile_print to compare. */
+	profile_create_digest(p, digest, sizeof(digest));
+	kb_argv_addf(&a, "--label=" BOX_PROFILE_LABEL "=%s", digest);
 	kb_argv_add(&a, "--security-opt");
 	kb_argv_add(&a, "label=disable");
 	kb_argv_add(&a, "--security-opt");
@@ -651,6 +654,20 @@ static int pack_box_outdated(const char *box, const Profile *p)
 }
 
 /*
+ * A KEPT BOX THE LAUNCH PATH MADE AGAIN is a box again: its profile loses
+ * BOX_KEPT_MARK, and the window rules, which skip a kept profile with no
+ * container, are written with it, so its first windows already wear its
+ * accent.
+ */
+static void pack_box_unkeep(const Profile *p)
+{
+	if (!profile_is_kept(p->name))
+		return;
+	profile_save(p);
+	box_rules_refresh();
+}
+
+/*
  * Create the box if it is missing, serialized against the login warmup exactly
  * as the image lane is: two creates racing produce one failure and one
  * container nobody expected.
@@ -706,6 +723,8 @@ int pack_box_ensure(const char *box, const char *id)
 			? pack_box_create(&p, NULL, NULL, 0, 0) : box_create(&p);
 		if (fd >= 0)
 			close(fd);
+		if (rc == 0)
+			pack_box_unkeep(&p);
 		return rc;
 	}
 
@@ -724,17 +743,25 @@ int pack_box_ensure(const char *box, const char *id)
 	tracef("composed %s", merged);
 
 	fprintf(stderr, "==> First launch: composing '%s' from packs...\n", box);
-	rc = pack_box_create(&p, merged, NULL, 0, 0);
-	if (rc == 0 && !p.base[0]) {
-		/* RECORD WHAT THE BOX IS MADE OF. A box the launch path
-		 * composed has no profile, so every reader that asks what its
-		 * base is — `kdos-box list`, the Boxes settings page —
-		 * falls back to podman's image and reports
-		 * `localhost/kdos-appbox:latest` for a box with no image in
-		 * it at all. The profile is the answer to that question and
-		 * this is the only place that knows it. */
-		snprintf(p.base, sizeof(p.base), "pack:%s", id);
-		profile_save(&p);
+	/* RECORD WHAT THE BOX IS MADE OF. A box the launch path composed has
+	 * no profile, so every reader that asks what its base is — `kdos-box
+	 * list`, the Boxes settings page — falls back to podman's image and
+	 * reports `localhost/kdos-appbox:latest` for a box with no image in it
+	 * at all. The profile is the answer to that question and this is the
+	 * only place that knows it. The base is set before the create, so the
+	 * container's profile label carries it, and the profile is written
+	 * only once the create has made a container: a launch that fails
+	 * leaves no profile behind. */
+	{
+		int had = p.base[0] != 0;
+
+		if (!had)
+			snprintf(p.base, sizeof(p.base), "pack:%s", id);
+		rc = pack_box_create(&p, merged, NULL, 0, 0);
+		if (rc == 0 && !had)
+			profile_save(&p);
+		else if (rc == 0)
+			pack_box_unkeep(&p);
 	}
 	if (rc != 0)
 		pack_decompose(box);

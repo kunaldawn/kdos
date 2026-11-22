@@ -5,8 +5,9 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   installertest — the answer file, the event stream, the layout list and
- *   the password pairs' keyboard path
+ *   installertest — the answer file, the event stream, the layout list, the
+ *   live session's layout files, the password pairs' keyboard path, the
+ *   application groups' keyboard path and the window's Quit
  *
  * The fixtures under fixtures/ are kinstall's own output: two streams a real
  * `kinstall --events json` wrote (refused answers; a dry run stopped for not
@@ -14,9 +15,11 @@
  * an XKB symbols directory holding `us` and `de` only, a zone1970.tab, and
  * two mounts tables, the live medium's and an installed machine's.
  *
- * The Encryption and Account pages are loaded from the source tree's qml/,
- * with a Backend that holds the answers and nothing else, in a window of the
- * installer's default size, and driven with keys.
+ * The Encryption, Account and Applications pages, and the wizard window
+ * with stand-ins for its pages, are loaded from the source tree's qml/, with
+ * a Backend that holds what each reads and nothing else, under the style the
+ * installer ships with, and driven with keys; the pages in a window of the
+ * installer's default size.
  */
 
 #include "answers.h"
@@ -24,10 +27,19 @@
 #include "eventstream.h"
 #include "keyboardmodel.h"
 
+#include <KConfig>
+#include <KConfigGroup>
+#include <KConfigWatcher>
+#include <KFormat>
+#include <KSharedConfig>
+
+#include <QDBusConnection>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -35,8 +47,9 @@
 
 using namespace Kdos;
 
-/* The pages' i18n() and i18nc(), as KLocalizedContext gives them: the text
- * with its arguments filled in, untranslated. */
+/* The pages' i18n(), i18nc(), i18np() and i18ncp(), as KLocalizedContext
+ * gives them: the text with its arguments filled in, untranslated, the
+ * plural form chosen by the count alone. */
 class PageStrings : public QObject
 {
     Q_OBJECT
@@ -48,6 +61,15 @@ public:
     Q_INVOKABLE QString i18nc(const QString &, const QString &text, const QVariant &a = {}, const QVariant &b = {}) const
     {
         return fill(text, a, b);
+    }
+    Q_INVOKABLE QString i18np(const QString &one, const QString &many, int n, const QVariant &a = {}, const QVariant &b = {}) const
+    {
+        return fill(fill(n == 1 ? one : many, n, a), b, {});
+    }
+    Q_INVOKABLE QString i18ncp(const QString &, const QString &one, const QString &many, int n, const QVariant &a = {}, const QVariant &b = {},
+                               const QVariant &c = {}) const
+    {
+        return fill(fill(n == 1 ? one : many, n, a), b, c);
     }
 
 private:
@@ -103,6 +125,16 @@ private:
     }
 
 private Q_SLOTS:
+    /* The pages run under the style the installer ships with, as main.cpp
+     * sets it: the mnemonics and the focus a dialog opens on are the
+     * style's, and the plain style has neither. */
+    void initTestCase()
+    {
+        if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
+            qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop");
+        }
+    }
+
     void answerFile()
     {
         Answers a;
@@ -332,6 +364,58 @@ private Q_SLOTS:
         QVERIFY(s.indexOf(QStringLiteral("us")) >= 0);
     }
 
+    /* The Keyboard page's choice as the live session types it: kxkbrc
+     * lists the layout before us and keeps its other keys. */
+    void liveLayout()
+    {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const QString cfg = home.path() + QStringLiteral("/config");
+        QVERIFY(QDir().mkpath(cfg));
+        write(cfg + QStringLiteral("/kxkbrc"), "[Layout]\nLayoutList=us\nVariantList=\nModel=pc105\n");
+
+        QVERIFY(Backend::writeLiveLayout(cfg, QStringLiteral("de"), QStringLiteral("nodeadkeys")));
+
+        KConfig kxkb(cfg + QStringLiteral("/kxkbrc"), KConfig::SimpleConfig);
+        const KConfigGroup layout(&kxkb, QStringLiteral("Layout"));
+        QCOMPARE(layout.readEntry("LayoutList", QString()), QStringLiteral("de,us"));
+        QCOMPARE(layout.readEntry("VariantList", QString()), QStringLiteral("nodeadkeys,"));
+        QCOMPARE(layout.readEntry("Use", false), true);
+        QCOMPARE(layout.readEntry("Model", QString()), QStringLiteral("pc105"));
+
+        /* us alone. */
+        const QString bare = home.path() + QStringLiteral("/bare");
+        QVERIFY(Backend::writeLiveLayout(bare, QStringLiteral("us"), QString()));
+        KConfig us(bare + QStringLiteral("/kxkbrc"), KConfig::SimpleConfig);
+        QCOMPARE(KConfigGroup(&us, QStringLiteral("Layout")).readEntry("LayoutList", QString()), QStringLiteral("us"));
+        QCOMPARE(KConfigGroup(&us, QStringLiteral("Layout")).readEntry("VariantList", QString()), QString());
+
+        /* A name outside XKB's set writes nothing. */
+        const QString odd = home.path() + QStringLiteral("/odd");
+        QVERIFY(!Backend::writeLiveLayout(odd, QStringLiteral("de\nUse=false"), QString()));
+        QVERIFY(!Backend::writeLiveLayout(odd, QStringLiteral("de"), QStringLiteral("a b")));
+        QVERIFY(!QFileInfo::exists(odd + QStringLiteral("/kxkbrc")));
+    }
+
+    /* The notice reaches a KConfigWatcher on kxkbrc, as KWin's keyboard
+     * layout code holds one, naming the [Layout] keys it rewrote. A write
+     * without it leaves KWin on the old keymap. */
+    void liveLayoutNotice()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        QVERIFY2(bus.isConnected(), "the test runs under dbus-run-session");
+        KConfigWatcher::Ptr watcher = KConfigWatcher::create(KSharedConfig::openConfig(QStringLiteral("kxkbrc"), KConfig::NoGlobals));
+        QSignalSpy spy(watcher.data(), &KConfigWatcher::configChanged);
+        QVERIFY(bus.send(Backend::layoutNotice()));
+        QVERIFY(spy.wait(5000));
+        const KConfigGroup group = spy.first().at(0).value<KConfigGroup>();
+        QCOMPARE(group.name(), QStringLiteral("Layout"));
+        const QByteArrayList names = spy.first().at(1).value<QByteArrayList>();
+        QVERIFY(names.contains("LayoutList"));
+        QVERIFY(names.contains("VariantList"));
+        QVERIFY(names.contains("Use"));
+    }
+
     void zones()
     {
         const QStringList z = Backend::readZones(QStringLiteral(FIXTURES_DIR "/zone1970.tab"));
@@ -347,6 +431,213 @@ private Q_SLOTS:
         QVERIFY(Backend::liveRoot(QStringLiteral(FIXTURES_DIR "/mounts-live")));
         QVERIFY(!Backend::liveRoot(QStringLiteral(FIXTURES_DIR "/mounts-installed")));
         QVERIFY(!Backend::liveRoot(QStringLiteral(FIXTURES_DIR "/absent.mounts")));
+    }
+
+    /* Welcome stops when no disk can take the install, saying why in the
+     * first refused disk's words, and goes on once one can. */
+    void welcomeNeedsUsableDisk()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        QVERIFY(QDir().mkpath(mod));
+        const QString src = QStringLiteral(FIXTURES_DIR "/../../qml/");
+        for (const char *f : {"WizardPage.qml", "WelcomePage.qml"}) {
+            QVERIFY(QFile::copy(src + QLatin1String(f), mod + QLatin1Char('/') + QLatin1String(f)));
+        }
+        write(mod + QStringLiteral("/qmldir"),
+              "module org.kdos.installer\n"
+              "WizardPage 1.0 WizardPage.qml\n"
+              "WelcomePage 1.0 WelcomePage.qml\n"
+              "singleton Backend 1.0 Backend.qml\n");
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    property var probe: ({ disks: [{ path: \"/dev/sda\", fits: false, problem: \"/dev/sda is the medium this runs from\" }] })\n"
+              "    property bool busy: false\n"
+              "    property var timeZones: [\"UTC\"]\n"
+              "    property QtObject answers: QtObject {\n"
+              "        signal changed()\n"
+              "        property string timezone: \"UTC\"\n"
+              "    }\n"
+              "    function localTime(z) { return \"12:00\"; }\n"
+              "    function formatSize(b) { return b + \" B\"; }\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")),
+              "import QtQuick\n"
+              "import QtQuick.Window\n"
+              "import org.kdos.installer\n"
+              "Window {\n"
+              "    width: 900; height: 700; visible: true\n"
+              "    property alias page: pageItem\n"
+              "    function setProbe(p) { Backend.probe = p; }\n"
+              "    WelcomePage { id: pageItem; anchors.fill: parent }\n"
+              "}\n");
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        QObject *page = engine.rootObjects().constFirst()->property("page").value<QObject *>();
+        QVERIFY(page);
+        QCOMPARE(page->property("complete").toBool(), false);
+        QCOMPARE(page->property("problem").toString(), QStringLiteral("No disk here can take the install: /dev/sda is the medium this runs from."));
+
+        QVERIFY(QMetaObject::invokeMethod(engine.rootObjects().constFirst(), "setProbe",
+                                          Q_ARG(QVariant, QVariant(QVariantMap{{QStringLiteral("disks"),
+                                          QVariantList{QVariantMap{{QStringLiteral("path"), QStringLiteral("/dev/sda")},
+                                                                   {QStringLiteral("fits"), false},
+                                                                   {QStringLiteral("problem"), QStringLiteral("/dev/sda is the medium this runs from")}},
+                                                       QVariantMap{{QStringLiteral("path"), QStringLiteral("/dev/vda")}, {QStringLiteral("fits"), true}}}}}))));
+        QCOMPARE(page->property("complete").toBool(), true);
+        QCOMPARE(page->property("problem").toString(), QString());
+    }
+
+    /* A disk and what an erase destroys, in the words the Disk page's row,
+     * the Summary's banner and the prompt share: a two-slot install's disk
+     * names its ESP by label and its physical volume partition by group,
+     * never as blkid's LVM2_member; a whole-disk PV names its group, a
+     * written stick its ISO 9660 image, and an empty disk lists nothing to
+     * destroy. */
+    void diskWords()
+    {
+        const auto part = [](const char *fstype, const char *label, double sectors, bool esp, bool biosBoot, const char *vg) {
+            return QVariantMap{{QStringLiteral("fstype"), QString::fromUtf8(fstype)},
+                               {QStringLiteral("label"), QString::fromUtf8(label)},
+                               {QStringLiteral("sectors"), sectors},
+                               {QStringLiteral("esp"), esp},
+                               {QStringLiteral("bios_boot"), biosBoot},
+                               {QStringLiteral("vg"), QString::fromUtf8(vg)}};
+        };
+        const auto size = [](double sectors) {
+            return KFormat().formatByteSize(sectors * 512, 1);
+        };
+        const QVariantMap reinstall{
+            {QStringLiteral("path"), QStringLiteral("/dev/vda")},
+            {QStringLiteral("model"), QString()},
+            {QStringLiteral("bytes"), 30.0 * 1073741824},
+            {QStringLiteral("fstype"), QString()},
+            {QStringLiteral("partitions"),
+             QVariantList{part("vfat", "KDOS_EFI", 1048576, true, false, ""), part("", "", 2048, false, true, ""),
+                          part("LVM2_member", "", 61861854, false, false, "kdos")}}};
+        const QString contents = QStringLiteral("EFI system “KDOS_EFI” %1, BIOS boot %2, LVM physical volume (volume group kdos) %3")
+                                     .arg(size(1048576), size(2048), size(61861854));
+        QCOMPARE(Backend::diskContents(reinstall), contents);
+        QCOMPARE(Backend::diskHolds(reinstall), QStringLiteral("Holds: ") + contents);
+        QVERIFY(!Backend::diskHolds(reinstall).contains(QStringLiteral("LVM2_member")));
+        QCOMPARE(Backend::diskTitle(reinstall), QStringLiteral("Disk, %1 (/dev/vda)").arg(KFormat().formatByteSize(30.0 * 1073741824, 1)));
+
+        const QVariantMap windows{{QStringLiteral("path"), QStringLiteral("/dev/nvme0n1")},
+                                  {QStringLiteral("model"), QStringLiteral("QEMU NVMe Ctrl")},
+                                  {QStringLiteral("sectors"), 62914560.0},
+                                  {QStringLiteral("partitions"),
+                                   QVariantList{part("ntfs", "Windows", 37748736, false, false, ""),
+                                                part("ext4", "linuxhome", 23068672, false, false, "")}}};
+        QCOMPARE(Backend::diskContents(windows),
+                 QStringLiteral("ntfs “Windows” %1, ext4 “linuxhome” %2").arg(size(37748736), size(23068672)));
+        QCOMPARE(Backend::diskTitle(windows), QStringLiteral("QEMU NVMe Ctrl, %1 (/dev/nvme0n1)").arg(size(62914560)));
+
+        const QVariantMap pv{{QStringLiteral("path"), QStringLiteral("/dev/sdb")},
+                             {QStringLiteral("fstype"), QStringLiteral("LVM2_member")},
+                             {QStringLiteral("vg"), QStringLiteral("kdos")},
+                             {QStringLiteral("partitions"), QVariantList{}}};
+        QCOMPARE(Backend::diskContents(pv), QStringLiteral("LVM physical volume (volume group kdos)"));
+        QCOMPARE(Backend::diskHolds(pv), QStringLiteral("LVM physical volume (volume group kdos)"));
+
+        /* A written stick: the image on the whole device, never its
+         * hybrid partitions as empty. */
+        const double image = 3463680.0 * 512;
+        const QVariantMap stick{{QStringLiteral("path"), QStringLiteral("/dev/sda")},
+                                {QStringLiteral("fstype"), QStringLiteral("iso9660")},
+                                {QStringLiteral("label"), QStringLiteral("KDOS_LIVE")},
+                                {QStringLiteral("fs_bytes"), image},
+                                {QStringLiteral("iso_image"), true},
+                                {QStringLiteral("partitions"),
+                                 QVariantList{part("", "", 64, false, false, ""), part("vfat", "", 4096, true, false, ""),
+                                              part("", "", 3463680, false, false, "")}}};
+        QCOMPARE(Backend::diskHolds(stick),
+                 QStringLiteral("Holds: ISO 9660 image “KDOS_LIVE” on the whole disk, %1").arg(KFormat().formatByteSize(image, 1)));
+        QVERIFY(!Backend::diskHolds(stick).contains(QStringLiteral("empty")));
+        QVariantMap unlabelled = stick;
+        unlabelled.insert(QStringLiteral("label"), QString());
+        unlabelled.insert(QStringLiteral("fs_bytes"), 0.0);
+        unlabelled.insert(QStringLiteral("partitions"), QVariantList{});
+        QCOMPARE(Backend::diskContents(unlabelled), QStringLiteral("ISO 9660 image on the whole disk"));
+        /* Repartitioned over the image: the descriptor still names the
+         * whole device, but the partitions are what an erase destroys. */
+        QVariantMap repartitioned = stick;
+        repartitioned.insert(QStringLiteral("iso_image"), false);
+        repartitioned.insert(QStringLiteral("partitions"), QVariantList{part("ext4", "data", 62912512, false, false, "")});
+        QCOMPARE(Backend::diskHolds(repartitioned), QStringLiteral("Holds: ext4 “data” %1").arg(size(62912512)));
+
+        const QVariantMap empty{{QStringLiteral("path"), QStringLiteral("/dev/sdc")}, {QStringLiteral("partitions"), QVariantList{}}};
+        QCOMPARE(Backend::diskContents(empty), QString());
+        QCOMPARE(Backend::diskHolds(empty), QStringLiteral("Empty"));
+
+        /* The reuse plan names each partition it formats by node and
+         * contents; a logical volume, in no partition list, by its path. */
+        QVariantMap esp = part("vfat", "KDOS_EFI", 1048576, true, false, "");
+        esp.insert(QStringLiteral("path"), QStringLiteral("/dev/vda1"));
+        QVariantMap fat = part("vfat", "PHOTOS", 1048576, false, false, "");
+        fat.insert(QStringLiteral("path"), QStringLiteral("/dev/sdb1"));
+        const QVariantMap probe{{QStringLiteral("disks"),
+                                 QVariantList{QVariantMap{{QStringLiteral("path"), QStringLiteral("/dev/vda")},
+                                                          {QStringLiteral("partitions"), QVariantList{esp}}}}}};
+        QCOMPARE(Backend::partitionNamed(probe, QStringLiteral("/dev/vda1")),
+                 QStringLiteral("/dev/vda1 (EFI system “KDOS_EFI” %1)").arg(size(1048576)));
+        QCOMPARE(Backend::partitionNamed(probe, QStringLiteral("/dev/mapper/kdos-root_a")), QStringLiteral("/dev/mapper/kdos-root_a"));
+
+        /* Only a lone partition typed as an ESP is chosen unasked: a lone
+         * FAT data partition would be formatted by default. */
+        QCOMPARE(Backend::soleEsp(QVariantList{esp}), QStringLiteral("/dev/vda1"));
+        QCOMPARE(Backend::soleEsp(QVariantList{fat}), QString());
+        QCOMPARE(Backend::soleEsp(QVariantList{esp, fat}), QString());
+        QCOMPARE(Backend::soleEsp(QVariantList{}), QString());
+    }
+
+    /* The install size is what the copy writes, the total the copy line
+     * counts to, split when there is a box store; a probe handed root's
+     * payload takes root's figures. */
+    void installSize()
+    {
+        const auto size = [](double b) { return KFormat().formatByteSize(b, 1); };
+        const double sys = 4.4 * 1073741824, store = 0.7 * 1073741824;
+        QCOMPARE(Backend::installSize({{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), 0.0}}), size(sys));
+        QCOMPARE(Backend::installSize({{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), store}}),
+                 QStringLiteral("%1 — %2 system and %3 boxed-app store").arg(size(sys + store), size(sys), size(store)));
+        QCOMPARE(Backend::installSize({{QStringLiteral("payload_kb"), 5345280.0}}), QStringLiteral("—"));
+
+        const QVariantMap root{{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), store}};
+        const QVariantMap given{{QStringLiteral("payload_kb"), 5345280.0},
+                                {QStringLiteral("copy_system_bytes"), QVariant()},
+                                {QStringLiteral("copy_store_bytes"), QVariant()}};
+        QCOMPARE(Backend::withCopyBytes(given, root).value(QStringLiteral("copy_system_bytes")).toDouble(), sys);
+        QCOMPARE(Backend::withCopyBytes(given, root).value(QStringLiteral("copy_store_bytes")).toDouble(), store);
+        const QVariantMap walked{{QStringLiteral("copy_system_bytes"), 1024.0}, {QStringLiteral("copy_store_bytes"), 0.0}};
+        QCOMPARE(Backend::withCopyBytes(walked, root), walked);
+    }
+
+    /* The Summary's swap row names the kind the plan makes. */
+    void swapText()
+    {
+        const QVariantMap file{{QStringLiteral("swap"), QStringLiteral("file")}, {QStringLiteral("swap_mb"), 4096}, {QStringLiteral("lvm"), QVariant()}};
+        QCOMPARE(Backend::swapText(file), QStringLiteral("4096 MiB, a file in the root"));
+        QVariantMap part = file;
+        part.insert(QStringLiteral("swap"), QStringLiteral("partition"));
+        QCOMPARE(Backend::swapText(part), QStringLiteral("4096 MiB, a partition"));
+        /* One slot on LVM: the swap is a file in the root. */
+        QVariantMap oneSlot = file;
+        oneSlot.insert(QStringLiteral("lvm"), QVariantMap{{QStringLiteral("ab"), false}, {QStringLiteral("swap_mb"), 0}});
+        QCOMPARE(Backend::swapText(oneSlot), QStringLiteral("4096 MiB, a file in the root"));
+        /* Two slots make it a volume, whichever kind was asked for. */
+        QVariantMap ab = part;
+        ab.insert(QStringLiteral("lvm"), QVariantMap{{QStringLiteral("ab"), true}, {QStringLiteral("swap_mb"), 4096}});
+        QCOMPARE(Backend::swapText(ab), QStringLiteral("4096 MiB, a volume in the group"));
+        const QVariantMap none{{QStringLiteral("swap"), QStringLiteral("none")}, {QStringLiteral("swap_mb"), 0}};
+        QCOMPARE(Backend::swapText(none), QStringLiteral("None"));
     }
 
     void diskPlan()
@@ -556,6 +847,236 @@ private Q_SLOTS:
         QTest::keyClick(window, Qt::Key_Space);
         QVERIFY(first->property("showPassword").toBool());
         QCOMPARE(first->property("text").toString(), QStringLiteral("abcd"));
+    }
+
+    /* Tab reaches every group row of the Applications page, native and
+     * boxed, framed in the focus colour while it holds the keyboard, and
+     * Space there ticks the group. */
+    void appsByKeyboard()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        QVERIFY(QDir().mkpath(mod));
+        const QString src = QStringLiteral(FIXTURES_DIR "/../../qml/");
+        for (const char *f : {"WizardPage.qml", "AppsPage.qml"}) {
+            QVERIFY(QFile::copy(src + QLatin1String(f), mod + QLatin1Char('/') + QLatin1String(f)));
+        }
+        write(mod + QStringLiteral("/qmldir"),
+              "module org.kdos.installer\n"
+              "WizardPage 1.0 WizardPage.qml\n"
+              "AppsPage 1.0 AppsPage.qml\n"
+              "singleton Backend 1.0 Backend.qml\n");
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    id: backend\n"
+              "    property var plan: ({ binhost: true })\n"
+              "    property var apps: ({ route: \"\",\n"
+              "        native: [{ id: \"games\", title: \"Games\", ports: 3 }, { id: \"office\", title: \"Office\", ports: 1 }],\n"
+              "        groups: [{ id: \"science\", desc: \"Science\", apps: 2, bytes: 100 }] })\n"
+              "    property string ticked\n"
+              "    property QtObject answers: QtObject {\n"
+              "        property var groups: []\n"
+              "        property var apps: []\n"
+              "        property bool alienApps: false\n"
+              "        function setGroupChosen(id, on) { if (on) backend.ticked += \"native:\" + id + \" \"; }\n"
+              "        function setAppChosen(id, on) { if (on) backend.ticked += \"boxed:\" + id + \" \"; }\n"
+              "    }\n"
+              "    function refreshApps() {}\n"
+              "    function checkPlan() {}\n"
+              "    function formatSize(b) { return b + \" B\"; }\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")),
+              "import QtQuick\n"
+              "import QtQuick.Window\n"
+              "import org.kde.kirigami as Kirigami\n"
+              "import org.kdos.installer\n"
+              "Window {\n"
+              "    width: Kirigami.Units.gridUnit * 58\n"
+              "    height: 752\n"
+              "    visible: true\n"
+              "    property string ticked: Backend.ticked\n"
+              "    AppsPage { x: Kirigami.Units.gridUnit * 11; width: parent.width - x; height: parent.height }\n"
+              "}\n");
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+
+        /* The group rows: the page's check delegates, whose text is a group's. */
+        const QStringList names{QStringLiteral("Games"), QStringLiteral("Office"), QStringLiteral("Science")};
+        QSet<QString> reached;
+        for (int i = 0; i < 12 && reached.size() < names.size(); ++i) {
+            QTest::keyClick(window, Qt::Key_Tab);
+            QObject *focus = window->property("activeFocusItem").value<QObject *>();
+            QVERIFY(focus);
+            const QString text = focus->property("text").toString();
+            if (!names.contains(text) || reached.contains(text)) {
+                continue;
+            }
+            reached.insert(text);
+            QVERIFY(focus->property("visualFocus").toBool());
+            bool framed = false;
+            for (QObject *c : focus->children()) {
+                QObject *border = c->property("border").value<QObject *>();
+                framed |= border && border->property("width").toInt() == 2 && c->property("visible").toBool();
+            }
+            QVERIFY2(framed, qPrintable(QStringLiteral("%1 has the keyboard and no focus frame").arg(text)));
+            QTest::keyClick(window, Qt::Key_Space);
+            QVERIFY(focus->property("checked").toBool());
+        }
+        QCOMPARE(reached.size(), names.size());
+        QCOMPARE(window->property("ticked").toString(), QStringLiteral("native:games native:office boxed:science "));
+    }
+
+    /* The wizard window, with stand-in pages: Alt+Q in a text field leaves
+     * the window and its answers alone; closing it past Welcome asks first,
+     * the prompt focused on Keep Going, and Tab then Space on Quit closes
+     * it; on Welcome it closes at once; and during an install the prompt
+     * says the window stays open. */
+    void quitAsks()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        QVERIFY(QDir().mkpath(mod));
+        QVERIFY(QFile::copy(QStringLiteral(FIXTURES_DIR "/../../qml/Main.qml"), mod + QStringLiteral("/Main.qml")));
+        QByteArray qmldir = "module org.kdos.installer\nMain 1.0 Main.qml\nsingleton Backend 1.0 Backend.qml\n";
+        for (const char *p : {"WelcomePage", "KeyboardPage", "DiskPage", "EncryptionPage", "AccountPage", "LookPage", "AppsPage", "SummaryPage",
+                              "InstallPage", "DonePage"}) {
+            const QByteArray name(p);
+            write(mod + QLatin1Char('/') + QLatin1String(p) + QStringLiteral(".qml"),
+                  "import QtQuick\n"
+                  "import QtQuick.Controls as QQC2\n"
+                  "Item {\n"
+                  "    property string heading\n"
+                  "    property bool complete: true\n"
+                  "    property string problem\n"
+                  "    signal entered()\n"
+                  "    signal retry()\n"
+                      + QByteArray(name == "KeyboardPage" ? "    QQC2.TextField { objectName: \"search\" }\n" : "") + "}\n");
+            qmldir += name + " 1.0 " + name + ".qml\n";
+        }
+        write(mod + QStringLiteral("/qmldir"), qmldir);
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    signal installFinished(bool ok)\n"
+              "    property var probe: ({ disks: [] })\n"
+              "    property bool installing: false\n"
+              "    property bool busy: false\n"
+              "    property string error\n"
+              "    property string logPath: \"/var/log/kinstall.log\"\n"
+              "    property QtObject events: QtObject { property bool started: false }\n"
+              "    property QtObject answers: QtObject {\n"
+              "        property string plan: \"wipe\"\n"
+              "        property string disk\n"
+              "        property string root\n"
+              "    }\n"
+              "    function refreshProbe() {}\n"
+              "    function refreshLook() {}\n"
+              "    function refreshApps() {}\n"
+              "    function formatSize(b) { return b + \" B\"; }\n"
+              "    function diskName(p) { return p; }\n"
+              "    function diskErased(p) { return \"\"; }\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")), "import org.kdos.installer\nMain {}\n");
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        const auto show = [window] {
+            window->show();
+            window->requestActivate();
+            return QTest::qWaitForWindowActive(window);
+        };
+        QVERIFY(show());
+        QObject *leave = window->findChild<QObject *>(QStringLiteral("leaveDialog"));
+        QObject *quit = window->findChild<QObject *>(QStringLiteral("quitDialog"));
+        QObject *search = window->findChild<QObject *>(QStringLiteral("search"));
+        QVERIFY(leave && quit && search);
+        const auto go = [window](int index) {
+            return QMetaObject::invokeMethod(window, "go", Q_ARG(QVariant, index));
+        };
+
+        /* Welcome: nothing to lose, so the window closes at once. */
+        window->close();
+        QTRY_VERIFY(!window->isVisible());
+        QVERIFY(!leave->property("opened").toBool());
+        QVERIFY(show());
+
+        /* Keyboard, typing in the search field: Alt+Q does nothing. */
+        QVERIFY(go(1));
+        QVERIFY(QMetaObject::invokeMethod(search, "forceActiveFocus"));
+        QTest::keyClick(window, Qt::Key_Q, Qt::AltModifier);
+        QTest::qWait(200);
+        QVERIFY2(window->isVisible(), "Alt+Q closed the installer");
+        QVERIFY(!leave->property("visible").toBool());
+
+        /* Disk: closing asks; Return does not close the window. */
+        QVERIFY(go(2));
+        window->close();
+        QTRY_VERIFY(leave->property("opened").toBool());
+        QVERIFY(window->isVisible());
+        QCOMPARE(leave->property("title").toString(), QStringLiteral("Leave the installer?"));
+        QObject *focus = window->property("activeFocusItem").value<QObject *>();
+        QVERIFY(focus);
+        QCOMPARE(focus->property("text").toString(), QStringLiteral("Keep Going"));
+        QTest::keyClick(window, Qt::Key_Return);
+        QTest::qWait(200);
+        QVERIFY2(window->isVisible(), "Return in the leave prompt closed the installer");
+        QVERIFY(QMetaObject::invokeMethod(leave, "close"));
+        QTRY_VERIFY(!leave->property("visible").toBool());
+
+        /* Closing again, then Tab to Quit and Space: the window goes. */
+        window->close();
+        QTRY_VERIFY(leave->property("opened").toBool());
+        QTest::keyClick(window, Qt::Key_Tab);
+        focus = window->property("activeFocusItem").value<QObject *>();
+        QVERIFY(focus);
+        QCOMPARE(focus->property("text").toString(), QStringLiteral("Quit"));
+        QTest::keyClick(window, Qt::Key_Space);
+        QTRY_VERIFY(!window->isVisible());
+        QVERIFY(window->setProperty("closeAnyway", false));
+
+        /* Back on Welcome after reaching Disk: the answers are still held,
+         * so closing asks. */
+        QVERIFY(show());
+        QVERIFY(go(0));
+        window->close();
+        QTRY_VERIFY2(leave->property("opened").toBool(), "Welcome after Disk closed without asking");
+        QVERIFY(window->isVisible());
+        QVERIFY(QMetaObject::invokeMethod(leave, "close"));
+        QTRY_VERIFY(!leave->property("visible").toBool());
+
+        /* During an install that has started: the window stays. */
+        QObject *backend = engine.singletonInstance<QObject *>("org.kdos.installer", "Backend");
+        QVERIFY(backend);
+        backend->setProperty("installing", true);
+        backend->property("events").value<QObject *>()->setProperty("started", true);
+        QVERIFY(go(8));
+        window->close();
+        QTRY_VERIFY(quit->property("opened").toBool());
+        QVERIFY(window->isVisible());
+        QVERIFY(!leave->property("visible").toBool());
+        QCOMPARE(quit->property("subtitle").toString(),
+                 QStringLiteral("The window stays open until the install ends: the disk is still being written, and its log is /var/log/kinstall.log."));
     }
 };
 

@@ -37,7 +37,7 @@ WizardPage {
             return i18n("Give the computer a name.");
         }
         if (!answers.hostnameOk(answers.hostname)) {
-            return i18n("The computer's name may hold letters, digits and dashes, and not start or end with a dash.");
+            return i18n("The computer's name may hold letters a–z, digits and dashes, and not start or end with a dash.");
         }
         if (!answers.rootLocked && (rootPass.text.length === 0 || rootPass.text !== rootAgain.text)) {
             return i18n("Give root a password, typed twice the same, or lock root.");

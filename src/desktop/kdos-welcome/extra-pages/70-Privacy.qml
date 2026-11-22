@@ -14,7 +14,13 @@
  * allowed; and with automatic login there is no password at login for the
  * wallet to open with, so it asks for its own on first use. The last is
  * shown only on a machine that logs in automatically, read from SDDM's
- * kde_settings.conf.
+ * kde_settings.conf. On the live medium, which always logs in automatically,
+ * the wallet is off (/usr/share/kdos/xdg-live/kwalletrc), so the paragraph
+ * says the live session keeps no wallet and an installed system's asks for
+ * its own password, and offers no Wallet Settings button, which would open
+ * on a switched-off subsystem. Live is the --live-environment argument
+ * Welcome Center's kded module and the live medium's launcher entry pass,
+ * the one 35-Persist.qml reads.
  * ---------------------------------
  */
 
@@ -39,6 +45,7 @@ Welcome.ScrollablePage {
         id: run
     }
 
+    readonly property bool live: Qt.application.arguments.indexOf("--live-environment") >= 0
     property string autologinUser: ""
     property string failure: ""
 
@@ -77,11 +84,13 @@ Welcome.ScrollablePage {
         }
 
         Kdos.Point {
-            visible: page.autologinUser.length > 0
+            visible: page.live || page.autologinUser.length > 0
             icon: "kwalletmanager"
             title: i18ndc("kdos-welcome", "@title", "The wallet and automatic login")
-            text: i18ndc("kdos-welcome", "@info", "This machine logs in without a password, so the wallet that keeps your saved passwords cannot be opened by your login. It asks for its own password the first time an application needs it; you may leave that empty if the disk is encrypted.")
-            action: i18ndc("kdos-welcome", "@action:button", "Wallet Settings…")
+            text: page.live
+                ? i18ndc("kdos-welcome", "@info", "The live session logs in without a password and keeps no wallet: nothing it is asked to save is kept, and a program that asks to save a password finds no wallet to save it in. On an installed system that logs in automatically, the wallet asks for its own password the first time an application needs it.")
+                : i18ndc("kdos-welcome", "@info", "This machine logs in without a password, so the wallet that keeps your saved passwords cannot be opened by your login. It asks for its own password the first time an application needs it; you may leave that empty if the disk is encrypted.")
+            action: page.live ? "" : i18ndc("kdos-welcome", "@action:button", "Wallet Settings…")
             actionIcon: "kwalletmanager"
             onTriggered: page.open(["kcmshell6", "kcm_kwallet5"])
         }

@@ -116,7 +116,7 @@ lists everything preflight checks.
 | `'fenv_t' has not been declared`, then `Cannot compile std module`, in `10_bootstrap` | [The installed C++ headers shadowing the ones being built](#the-installed-c-headers-shadowing-the-ones-being-built) |
 | `undefined reference to libintl_gettext` | [Gettext on musl](#gettext-on-musl) |
 | `checking if libtool supports shared libraries... no`, then only a `.a` installed, and a consumer that links it fails on the library's own dependencies | [A libtool 1.x package on musl](#a-libtool-1x-package-on-musl) |
-| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, `'canonicalize_file_name' was not declared`, or `'stat64' ... has incomplete type` | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
+| `'sem_clockwait' was not declared`, or `invalid operands of types 'int' and 'std::nullptr_t'` at a `strerror_r` call, `execinfo.h: No such file or directory`, `'canonicalize_file_name' was not declared`, `'stat64' ... has incomplete type`, or a program that runs but dies with `segfault at 28 ... in libc.so` when it reports an error | [A glibc-only call on musl](#a-glibc-only-call-on-musl) |
 | `'TCGETS2' undeclared`, or another kernel `ioctl` request missing, with the matching structure found | [A kernel ioctl request missing on musl](#a-kernel-ioctl-request-missing-on-musl) |
 | A wide-character curses function as an implicit declaration | [The wide curses API](#the-wide-curses-api) |
 | `ubrk_*` missing at link | [An ICU component not propagated](#an-icu-component-not-propagated) |
@@ -1045,6 +1045,11 @@ Code written against glibc alone fails on musl in a few recurring ways. All but 
   the fault.
 - `canonicalize_file_name(path)` is glibc's; `realpath(path, NULL)` returns the same allocated
   string.
+- glibc's `strerror_l` takes a null `locale_t` as the current locale; musl's reads the locale's
+  `LC_MESSAGES` slot and faults at address `0x28` inside `libc.so`. It compiles and runs until
+  the first error is formatted, so it shows as a crash on an error path. Pass
+  `newlocale(LC_ALL_MASK, "C", (locale_t) 0)`, which returns the static C locale on both C
+  libraries.
 - `stat64`, `fstat64`, `lseek64` and `off64_t` exist on musl only as macros for the plain names, and
   only under `_LARGEFILE64_SOURCE`, which `_GNU_SOURCE` does not imply. `aggregate '...::stat64 buf'
   has incomplete type` is the sign. Define it rather than patch: `libreoffice` exports
@@ -1052,7 +1057,8 @@ Code written against glibc alone fails on musl in a few recurring ways. All but 
   every library it compiles, for the CLucene it bundles.
 
 `freedv-gui`'s `musl.patch` and `backend-musl.patch` carry the first three; `labplot`'s
-`musl-execinfo.patch` the fourth; `avidemux`'s `musl-glibc-calls.patch` the fourth and fifth.
+`musl-execinfo.patch` the fourth; `avidemux`'s `musl-glibc-calls.patch` the fourth and fifth;
+`libblockdev`'s `c-locale-strerror.patch` the sixth.
 
 ### `NULL` used as an integer
 
@@ -2029,8 +2035,11 @@ locale to `/etc/locale.gen` and run `locale-gen`. musl has neither file nor tool
 the files `musl-locales` installs. Without `-D GLIBC_LOCALE_GEN=OFF` the page offers an action that
 fails, and the configure requires polkit-qt6 for it. The page also looks for locale definitions in
 `/usr/share/i18n/locales`, where musl-locales has none: the recipe's `locales.patch` points it at
-`/usr/share/i18n/locales/musl`, and without it the page lists no format and says it could not list
-them.
+`/usr/share/i18n/locales/musl`, and without it the page says it could not find the system's
+locales. With `GLIBC_LOCALE` on, the default, the page offers formats only for the regions that
+directory has a file for, and its "ISO C Standard" row shows another locale; the recipe passes
+`-D GLIBC_LOCALE=OFF`. With no generator, an Apply shows a red "generate locales" error that
+`region-no-generation.patch` removes.
 
 ### A recipe that names too many dependencies
 

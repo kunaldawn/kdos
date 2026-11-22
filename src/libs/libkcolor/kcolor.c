@@ -63,15 +63,29 @@ const KcolScheme *kcol_default(void)
  * and the text colour rather than a literal: the boot menu draws with the
  * first four and the last, and a colour invented for the two it never uses
  * would be the one value here that follows no scheme.
+ *
+ * THE PLATE AND THE `backdrop` KEY ARE BONE'S UNDER EVERY ACCENT. There is
+ * one kdos-backdrop.png, drawn on bone's `deep` (genbackdrop.py's FLOOR), and
+ * Limine cannot retint a wallpaper, so a plate in the accent's own `deep`
+ * shows as a coloured box from one margin to the other on the achromatic
+ * floor. The accent keeps the text, the palettes and the help colours. A
+ * light-ground scheme cannot keep even those — its `text` is dark ink and
+ * vanishes on the dark floor — so it draws the whole menu in bone.
  */
 int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 {
 	char primary[7], secondary[7], urgent[7], deep[7], text[7];
-	char dim[7], pdark[7], backdrop[7];
+	char dim[7], pdark[7], backdrop[7], plate[7];
+	const KcolScheme *floor = kcol_find("bone");
 
 	if (!sc)
 		sc = kcol_default();
+	if (!floor)
+		floor = kcol_default();
+	if (kcol_luma(sc->deep) >= 0.5)
+		sc = floor;
 
+	kcol_format(floor->deep, plate);
 	kcol_format(sc->primary, primary);
 	kcol_format(sc->secondary, secondary);
 	kcol_format(sc->urgent, urgent);
@@ -79,7 +93,7 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 	kcol_format(sc->text, text);
 	kcol_format(sc->dim, dim);
 	kcol_format(sc->pdark, pdark);
-	kcol_format(sc->backdrop, backdrop);
+	kcol_format(floor->backdrop, backdrop);
 
 	return snprintf(buf, cap,
 		/*
@@ -183,7 +197,7 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		 * a dense panel and leaves the menu width to say what an entry
 		 * is. */
 		"term_font_scale: 1x2\n",
-		pdark, primary, backdrop, deep, text,
+		pdark, primary, backdrop, plate, text,
 		deep, urgent, primary, secondary, pdark, text, primary, text,
 		dim, urgent, primary, secondary, pdark, primary);
 }

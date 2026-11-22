@@ -96,7 +96,10 @@ There are four places to switch, and they all end in the same command:
 Choosing a KDOS global theme on the Global Theme page, or a KDOS colour scheme on the Colors page,
 works too. Those change only Plasma's colours, so a small KDOS module in the session, `kded-kdos`,
 notices the new scheme and runs `kdos theme --from-plasma <accent>`, which carries it to the
-terminals, the wallpaper, the lock and login screens, the boot menu and the consoles. The Colors
+terminals, the wallpaper, the lock and login screens, the boot menu and the consoles. An account's
+first login brings only that account into step: its scheme is the default it was created with,
+not anybody's pick, so the boot menu, splash and login screen keep the machine's accent. Every
+pick after that, in the first session or any later one, carries to the whole machine. The Colors
 page also lists **KDOS Box** among the KDOS schemes: it is the title-bar colour of a box with no
 accent, not an accent, so choosing it, like choosing any scheme that is not one of the eight
 accents, changes Plasma's colours and nothing below the desktop.
@@ -284,6 +287,9 @@ accepts the request from root and from members of the `wheel` group, and asks po
 else; it accepts only one of the eight accent names, so there is no path or free text for a caller
 to supply. It writes `/etc/kdos/accent` itself, copies the accent's login-screen files into the
 `sddm` account's home, and runs `kdos-bootctl theme <accent>` for the boot menu and the consoles.
+The boot menu's text takes the accent, while its background stays the neutral near-black of the
+KDOS artwork behind it under every accent; Paper, whose dark text would not show on it, gets Bone's
+menu.
 
 The console palette is the accent's sixteen colours. `kdos-getty` loads `/etc/vtrgb` onto each
 virtual terminal before it clears the screen, so the login prompt, `/etc/issue` and the login
@@ -501,7 +507,7 @@ Applications on the host take the accent by one of three routes:
 | Toolkit | Route |
 |---|---|
 | Qt 6, KDE Frameworks | KDE's platform theme (`QT_QPA_PLATFORMTHEME=kde`, set for every login) reads the colours, fonts and icons of the global theme from `kdeglobals`, and repaints a running application on a switch |
-| GTK 3, GTK 4 and libadwaita | Plasma's GTK bridge sets the Breeze GTK theme, the icons, fonts and window buttons, and writes the scheme's colours under `~/.config/gtk-3.0` and `~/.config/gtk-4.0` from the first login; a running GTK 3 application repaints on a switch, a GTK 4 one at its next start. GTK 4 opens the KDE file dialog through the portal; a GTK 3 application does when it uses GTK's native file chooser, which `GTK_USE_PORTAL=1` sends to the portal, and keeps GTK's own dialog when it builds that itself, as AbiWord does |
+| GTK 3, GTK 4 and libadwaita | Plasma's GTK bridge sets the Breeze GTK theme, the icons, fonts and window buttons, and writes the scheme's colours under `~/.config/gtk-3.0` and `~/.config/gtk-4.0` from the first login; a running GTK 3 application repaints on a switch, a GTK 4 one at its next start. GTK 4 opens the KDE file dialog through the portal; a GTK 3 application does when it uses GTK's native file chooser, which `GTK_USE_PORTAL=1` sends to the portal, and keeps GTK's own dialog when it builds that itself, as GIMP, Inkscape and AbiWord do |
 | Qt 5 | qt5ct, under the same `kde` platform-theme name, reads `~/.config/qt5ct/qt5ct.conf`, which `kdos theme` points at the accent's palette, with the Fusion style and the KDOS icons |
 
 KDE's platform theme is built for Qt 6 only, and there are no KDE Frameworks for Qt 5, so qt5ct is

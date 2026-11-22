@@ -40,6 +40,30 @@ modifier. kglobalaccel hands an action's chords back in no stable order, so "the
 different chord from one session to the next; the KDOS Keys page reads them all and shows the one
 it teaches while that one is bound. It is to be offered upstream.
 
+`description-focus.patch` draws a frame in the theme's focus colour round a page's description
+while a Tab or Backtab has put the focus there. Upstream makes the description focusable so a
+screen reader reads it, and it is the first Tab stop of every page, Plasma's and the distribution's
+alike, but it draws no focus: without the frame the first Tab seems to do nothing. A click,
+which also focuses it, draws no frame: the label decides when it gains focus, from whether a press
+of any button is held on it at that moment, and keeps no mark from a press that gave no focus, so
+the next Tab is framed whichever button was pressed before it. Qt 6.12 focuses the label on a
+right or middle press as well as a left one. It is to be offered upstream.
+
+`kdos-powerful-cards.patch` changes two things on the "Powerful When Needed" page. Its Keyboard
+Shortcuts card lists the Meta chords from `globalShortcutTexts` for each action it teaches (the
+launcher, quick tiling, the task manager's entries, Spectacle's region recording, the lock screen,
+the screen reader, panel focus, System Monitor, the emoji selector and Show Desktop), and leaves
+out a row whose action has no chord; upstream's list is fixed text, and names `Meta+Shift+S` for
+the screen reader, which on KDOS is a region screenshot, while the screen reader is `Meta+Alt+S`.
+A row keeps only the chords that start with Meta, the key the card is about, so `Print` and
+`Alt+F1` are left out while the launcher's row keeps the Meta key alone; the chords are sorted,
+shortest first, because kglobalaccel returns them in no stable order and the row would otherwise
+change between sessions. The task manager row is the run of entries 1 to 9 (`Meta+1 to Meta+9`):
+entry 10 is `Meta+0`, which would end the run on a key that reads as lower than its start. The page also loses its Activities card, which teaches the activity switcher's
+chord: KDOS ships no activities interface and leaves that action unbound, so the card would name
+an unassigned shortcut. The chord-driven list is to be offered upstream; the card's removal is
+KDOS's alone.
+
 The post-update page offers to download a preview of the Plasma release announcement from
 kde.org. It does so only when the person asks, because `AutomaticUpdatePreview` defaults to
 false; every other link on the pages opens in the web browser.

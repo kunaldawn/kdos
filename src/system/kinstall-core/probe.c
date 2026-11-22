@@ -164,8 +164,9 @@ static int udev_prop(const char *dev, const char *key, char *out, size_t cap)
 }
 
 /* The superblock facts out of udev's database, for a device the probe
- * cannot read: the type, label and uuid, and the GPT type that marks an ESP
- * or a BIOS boot partition. */
+ * cannot read: the type, label and uuid, and the partition type that marks
+ * an ESP (GPT's type GUID, or MBR's 0xef as udev writes it) or a BIOS boot
+ * partition. */
 static void sniff_udev(const char *path, Part *p)
 {
 	char type[64];
@@ -174,7 +175,8 @@ static void sniff_udev(const char *path, Part *p)
 	udev_prop(path, "ID_FS_LABEL", p->label, sizeof(p->label));
 	udev_prop(path, "ID_FS_UUID", p->uuid, sizeof(p->uuid));
 	if (udev_prop(path, "ID_PART_ENTRY_TYPE", type, sizeof(type))) {
-		if (!strcasecmp(type, "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"))
+		if (!strcasecmp(type, "c12a7328-f81f-11d2-ba4b-00a0c93ec93b") ||
+		    !strcasecmp(type, "0xef"))
 			p->is_esp = 1;
 		if (!strcasecmp(type, KI_GUID_BIOS_BOOT))
 			p->is_bios_boot = 1;
@@ -285,6 +287,19 @@ static void sniff_fs(const char *path, Part *p)
 				break;
 			}
 
+	/* ISO 9660: the primary volume descriptor at 32 KiB, type 1 and
+	 * "CD001", with its volume id at +40 in 32 space-padded bytes. Tried
+	 * last, because a partition reformatted over an old image may keep
+	 * the descriptor; on the whole device of a written stick nothing
+	 * before it matches, and the stick reads as the image it holds. */
+	if (!p->fstype[0] && pread(fd, sb, 2048, 0x8000) == 2048 &&
+	    !memcmp(sb, "\x01" "CD001", 6)) {
+		kb_strlcpy(p->fstype, "iso9660", sizeof(p->fstype));
+		memcpy(p->label, sb + 40, 32);
+		p->label[32] = 0;
+		trim_label(p->label);
+	}
+
 	close(fd);
 }
 
@@ -297,9 +312,11 @@ void probe_part(const char *path, Part *p)
 	sniff_fs(path, p);
 }
 
-/* GPT: read the header, then the entry that matches this partition number, so
- * an ESP is identified by its type GUID rather than by "it looks like FAT". */
-static void read_gpt(Disk *d)
+/* The partition table: GPT's header, then the entry that matches each
+ * partition's start, so an ESP is identified by its type GUID rather than by
+ * "it looks like FAT"; on an MBR disk the primary entries typed 0xef, which
+ * is how a hybrid ISO written to a stick marks its ESP. */
+void ki_disk_table(Disk *d)
 {
 	/* Set before the open, not after: a disk we could not open at all
 	 * (running unprivileged, or a device that vanished mid-probe) has an
@@ -321,8 +338,26 @@ static void read_gpt(Disk *d)
 
 	unsigned char hdr[512], mbr[512];
 
-	if (pread(fd, mbr, 512, 0) == 512 && mbr[510] == 0x55 && mbr[511] == 0xaa)
+	if (pread(fd, mbr, 512, 0) == 512 && mbr[510] == 0x55 && mbr[511] == 0xaa) {
+		/* An MBR entry counts logical sectors; sysfs counts 512 bytes. */
+		unsigned long long unit = d->sector_size > 512
+					  ? (unsigned long long)d->sector_size / 512 : 1;
+
 		kb_strlcpy(d->table, "dos", sizeof(d->table));
+		for (int e = 0; e < 4; e++) {
+			const unsigned char *m = mbr + 446 + 16 * e;
+			unsigned long long lba = (unsigned long long)m[8] |
+						 ((unsigned long long)m[9] << 8) |
+						 ((unsigned long long)m[10] << 16) |
+						 ((unsigned long long)m[11] << 24);
+
+			if (m[4] != 0xef)
+				continue;
+			for (int k = 0; k < d->nparts; k++)
+				if (d->part[k].start == lba * unit)
+					d->part[k].is_esp = 1;
+		}
+	}
 
 	if (pread(fd, hdr, 512, 512) != 512 || memcmp(hdr, "EFI PART", 8)) {
 		close(fd);
@@ -373,6 +408,24 @@ static void read_gpt(Disk *d)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* The kernel name (dm-N) of the device-mapper block device whose node is
+ * dev, read through /sys/dev/block/MAJ:MIN; 0 when dev is not a block node
+ * or not a dm device. */
+static int dm_kernel_name(const char *dev, char *out, size_t outsz)
+{
+	struct stat st;
+	char path[64], real[PATH_MAX];
+
+	if (strncmp(dev, "/dev/", 5) || stat(dev, &st) || !S_ISBLK(st.st_mode))
+		return 0;
+	snprintf(path, sizeof(path), "/sys/dev/block/%u:%u",
+		 major(st.st_rdev), minor(st.st_rdev));
+	if (!realpath(path, real) || strncmp(kb_basename(real), "dm-", 3))
+		return 0;
+	kb_strlcpy(out, kb_basename(real), outsz);
+	return 1;
+}
+
 static void apply_mounts(void)
 {
 	/* Read to real EOF: a truncated /proc/mounts loses the tail, and the
@@ -391,6 +444,19 @@ static void apply_mounts(void)
 			continue;
 
 		int boot_media = !strcmp(type, "iso9660") || !strcmp(type, "squashfs");
+
+		/* A MEDIUM ON A dm DEVICE IS TRACED TO ITS DISK. A Ventoy stick's
+		 * medium is mounted as /dev/mapper/ventoy, a mapping over the ISO
+		 * file on the stick's data partition, and names no disk or
+		 * partition in /proc/mounts; without the walk down its slaves the
+		 * stick is offered as an install target. The kernel name comes
+		 * from the node's device number, not its path: /dev/mapper/ventoy
+		 * may be a node of its own rather than a link to dm-N. */
+		char kname[64];
+		if (boot_media && dm_kernel_name(dev, kname, sizeof(kname)))
+			for (int i = 0; i < ki_ndisk; i++)
+				if (ki_dev_on_disk(kname, ki_disk[i].name))
+					ki_disk[i].is_boot_media = 1;
 
 		for (int i = 0; i < ki_ndisk; i++) {
 			if (!strcmp(ki_disk[i].path, dev) && boot_media)
@@ -636,53 +702,105 @@ int ki_vg_off_disk(const char *vg, const char *disk)
 }
 
 /*
- * A WHOLE-DISK PHYSICAL VOLUME'S GROUP. An active volume on it lists the
- * disk itself among its `slaves`, which sysfs shows anybody; `lvm pvs`
- * names the group of an inactive one, and reads labels only as root.
+ * A PHYSICAL VOLUME'S GROUP, for a whole disk or a partition named `name`
+ * (sda, sda3) at `path`. An active volume on it lists the device among its
+ * `slaves`, which sysfs shows anybody; `lvm pvs` names the group of an
+ * inactive one, and reads labels only as root.
  */
-static void disk_pv_vg(Disk *d)
+static void pv_vg(const char *name, const char *path, char *out, size_t cap)
 {
 	char **ents = kb_listdir("/sys/block", NULL);
 	KbArgv a = {0};
-	KbBuf out = {0};
+	KbBuf out_b = {0};
 
-	for (char **e = ents; e && *e && !d->vg[0]; e++) {
-		char p[320], uuid[160] = "", name[160] = "", g[64], lv[128];
+	out[0] = 0;
+	for (char **e = ents; e && *e && !out[0]; e++) {
+		char p[320], uuid[160] = "", dname[160] = "", g[64], lv[128];
 
 		if (strncmp(*e, "dm-", 3))
 			continue;
 		snprintf(p, sizeof(p), "/sys/block/%.64s/slaves/%.31s", *e,
-			 d->name);
+			 name);
 		if (!kb_path_exists(p))
 			continue;
 		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/uuid", *e);
 		kb_read_line_file(p, uuid, sizeof(uuid));
 		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/name", *e);
-		kb_read_line_file(p, name, sizeof(name));
+		kb_read_line_file(p, dname, sizeof(dname));
 		if (!strncmp(uuid, "LVM-", 4) &&
-		    !ki_dm_split(name, g, sizeof(g), lv, sizeof(lv)))
-			kb_strlcpy(d->vg, g, sizeof(d->vg));
+		    !ki_dm_split(dname, g, sizeof(g), lv, sizeof(lv)))
+			kb_strlcpy(out, g, cap);
 	}
 	kb_strv_free(ents);
-	if (d->vg[0] || geteuid() != 0 || !kb_have_prog("lvm"))
+	if (out[0] || geteuid() != 0 || !kb_have_prog("lvm"))
 		return;
 	kb_argv_add(&a, "lvm");
 	kb_argv_add(&a, "pvs");
 	kb_argv_add(&a, "--noheadings");
 	kb_argv_add(&a, "-o");
 	kb_argv_add(&a, "vg_name");
-	kb_argv_add(&a, d->path);
+	kb_argv_add(&a, path);
 	kb_argv_end(&a);
-	if (kb_run_capture_buf(&a, &out) == 0 && out.p) {
-		char *v = out.p, *end;
+	if (kb_run_capture_buf(&a, &out_b) == 0 && out_b.p) {
+		char *v = out_b.p, *end;
 
 		while (isspace((unsigned char)*v))
 			v++;
 		end = v + strcspn(v, " \t\r\n");
 		*end = 0;
-		kb_strlcpy(d->vg, v, sizeof(d->vg));
+		kb_strlcpy(out, v, cap);
 	}
-	kb_buf_free(&out);
+	kb_buf_free(&out_b);
+}
+
+/* An ISO 9660 image's own size: the primary volume descriptor's block
+ * count (+80) times its block size (+128), both little-endian; 0 when the
+ * device cannot be read. */
+static unsigned long long iso_bytes(const char *path)
+{
+	unsigned char pvd[2048];
+	unsigned long long blocks, bsize;
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	ssize_t n;
+
+	if (fd < 0)
+		return 0;
+	n = pread(fd, pvd, sizeof(pvd), 0x8000);
+	close(fd);
+	if (n != (ssize_t)sizeof(pvd) || memcmp(pvd, "\x01" "CD001", 6))
+		return 0;
+	blocks = (unsigned long long)pvd[80] | ((unsigned long long)pvd[81] << 8) |
+		 ((unsigned long long)pvd[82] << 16) |
+		 ((unsigned long long)pvd[83] << 24);
+	bsize = (unsigned long long)pvd[128] | ((unsigned long long)pvd[129] << 8);
+	return blocks * bsize;
+}
+
+/* Whether every partition of `d` is a hybrid window of the ISO 9660
+ * image on its whole device. A window holds FAT (the image's ESP), ISO
+ * 9660 or nothing of its own. With the descriptor read (`sized`), each
+ * ends inside the image's d->fs_bytes; unread, as to the session's user,
+ * some partition starts inside the first MiB, where xorriso and isohybrid
+ * put the first window and where parted, fdisk and Windows never start
+ * one. A disk repartitioned after it was written fails both, as the new
+ * table leaves the descriptor at 32 KiB in place, and its partitions are
+ * what an erase destroys. */
+static int iso_windows(const Disk *d, int sized)
+{
+	int early = !d->nparts;
+
+	for (int k = 0; k < d->nparts; k++) {
+		const Part *p = &d->part[k];
+
+		if (p->fstype[0] && strcmp(p->fstype, "vfat") &&
+		    strcmp(p->fstype, "iso9660"))
+			return 0;
+		if (sized && (p->start + p->sectors) * 512 > d->fs_bytes)
+			return 0;
+		if (p->start < 2048)
+			early = 1;
+	}
+	return sized || early;
 }
 
 void ki_disk_signature(Disk *d)
@@ -690,11 +808,139 @@ void ki_disk_signature(Disk *d)
 	Part p;
 
 	memset(&p, 0, sizeof(p));
-	d->fstype[0] = d->vg[0] = 0;
+	d->fstype[0] = d->label[0] = d->vg[0] = 0;
+	d->fs_bytes = 0;
+	d->iso_image = 0;
 	sniff_fs(d->path, &p);
 	kb_strlcpy(d->fstype, p.fstype, sizeof(d->fstype));
+	kb_strlcpy(d->label, p.label, sizeof(d->label));
 	if (!strcmp(d->fstype, "LVM2_member"))
-		disk_pv_vg(d);
+		pv_vg(d->name, d->path, d->vg, sizeof(d->vg));
+	if (strcmp(d->fstype, "iso9660"))
+		return;
+	/* Unreadable, as to the session's user, the image ends where its
+	 * last partition does: a hybrid image's partitions all lie inside
+	 * it, and xorriso's last one, KDOS's among them, reaches its end. */
+	d->fs_bytes = iso_bytes(d->path);
+	d->iso_image = iso_windows(d, d->fs_bytes != 0);
+	for (int k = 0; !d->fs_bytes && k < d->nparts; k++) {
+		unsigned long long end = d->part[k].start + d->part[k].sectors;
+		int last = 1;
+
+		for (int j = 0; j < d->nparts; j++)
+			if (d->part[j].start + d->part[j].sectors > end)
+				last = 0;
+		if (last)
+			d->fs_bytes = end * 512;
+	}
+}
+
+void ki_disk_contents(const Disk *d, int max, char *out, size_t cap)
+{
+	/* The room an entry leaves for the tail naming those that do not
+	 * fit: ", and 2147483647 more partitions" and its NUL. */
+	const size_t tail = 40;
+	size_t at = 0;
+	int i;
+
+	out[0] = 0;
+	/* A written stick's hybrid partitions are windows into the image on
+	 * the whole device, and hold nothing of their own to name. */
+	if (d->iso_image) {
+		snprintf(out, cap, "ISO 9660 image%s%s%s on the whole disk%s%s",
+			 d->label[0] ? " \u201c" : "", d->label,
+			 d->label[0] ? "\u201d" : "", d->fs_bytes ? ", " : "",
+			 d->fs_bytes ? kb_human_size(d->fs_bytes) : "");
+		return;
+	}
+	if (!d->nparts) {
+		if (!strcmp(d->fstype, "LVM2_member") && d->vg[0])
+			snprintf(out, cap, "LVM physical volume (volume group %s)",
+				 d->vg);
+		else if (!strcmp(d->fstype, "LVM2_member"))
+			snprintf(out, cap, "LVM physical volume");
+		else if (d->fstype[0])
+			snprintf(out, cap, "%s on the whole disk", d->fstype);
+		return;
+	}
+	for (i = 0; i < d->nparts && (max <= 0 || i < max); i++) {
+		const Part *p = &d->part[i];
+		char kind[128], one[256];
+		int n;
+
+		if (p->is_esp)
+			kb_strlcpy(kind, "EFI system", sizeof(kind));
+		else if (p->is_bios_boot)
+			kb_strlcpy(kind, "BIOS boot", sizeof(kind));
+		else if (!strcmp(p->fstype, "LVM2_member") && p->vg[0])
+			snprintf(kind, sizeof(kind),
+				 "LVM physical volume (volume group %s)", p->vg);
+		else if (!strcmp(p->fstype, "LVM2_member"))
+			kb_strlcpy(kind, "LVM physical volume", sizeof(kind));
+		else
+			kb_strlcpy(kind, p->fstype[0] ? p->fstype : "empty",
+				   sizeof(kind));
+		n = snprintf(one, sizeof(one), "%s%s%s%s%s %s",
+			     i ? ", " : "", kind,
+			     p->label[0] ? " \u201c" : "", p->label,
+			     p->label[0] ? "\u201d" : "",
+			     kb_human_size(p->sectors * 512));
+		/* An entry goes in whole or not at all, so the list never ends
+		 * inside a label or a UTF-8 sequence; the last one may use the
+		 * tail's room, as nothing follows it. */
+		if (n < 0 || (size_t)n >= sizeof(one) ||
+		    at + (size_t)n + (i + 1 < d->nparts ? tail : 0) >= cap)
+			break;
+		memcpy(out + at, one, (size_t)n + 1);
+		at += (size_t)n;
+	}
+	if (i < d->nparts && at + tail <= cap)
+		snprintf(out + at, cap - at, "%s%d more partition%s",
+			 i ? ", and " : "", d->nparts - i,
+			 d->nparts - i == 1 ? "" : "s");
+}
+
+int ki_udev_model(const char *data, char *model, size_t cap)
+{
+	char line[512], dec[256];
+	size_t n = 0, ml = strlen(model);
+	const char *v = NULL, *s;
+	FILE *f = fopen(data, "re");
+
+	if (!f)
+		return 0;
+	while (fgets(line, sizeof(line), f)) {
+		if (!strncmp(line, "E:ID_MODEL_ENC=", 15)) {
+			line[strcspn(line, "\n")] = 0;
+			v = line + 15;
+			break;
+		}
+	}
+	fclose(f);
+	if (!v)
+		return 0;
+	for (s = v; *s && n + 1 < sizeof(dec); s++) {
+		unsigned int c;
+
+		if (s[0] == '\\' && s[1] == 'x' && isxdigit((unsigned char)s[2]) &&
+		    isxdigit((unsigned char)s[3]) &&
+		    sscanf(s + 2, "%2x", &c) == 1) {
+			dec[n++] = (char)c;
+			s += 3;
+		} else {
+			dec[n++] = *s;
+		}
+	}
+	dec[n] = 0;
+	while (n && isspace((unsigned char)dec[n - 1]))
+		dec[--n] = 0;
+	s = dec;
+	while (isspace((unsigned char)*s))
+		s++;
+	if (strlen(s) <= ml || strncmp(s, model, ml) || strlen(s) >= cap)
+		return 0;
+	kb_strlcpy(model, s, cap);
+	return 1;
 }
 
 /*
@@ -941,6 +1187,16 @@ void probe_disks(void)
 		if (!d->model[0])
 			sysfs_str(d->model, sizeof(d->model),
 				  "/sys/block/%s/device/name", d->name);
+		{
+			char mm[32] = "", data[64];
+
+			sysfs_str(mm, sizeof(mm), "/sys/block/%s/dev", d->name);
+			if (mm[0]) {
+				snprintf(data, sizeof(data), "/run/udev/data/b%s",
+					 mm);
+				ki_udev_model(data, d->model, sizeof(d->model));
+			}
+		}
 		disk_transport(d);
 		if (!d->model[0])
 			disk_fallback_name(d);
@@ -992,7 +1248,7 @@ void probe_disks(void)
 			d->part[k + 1] = t;
 		}
 
-		read_gpt(d);
+		ki_disk_table(d);
 		ki_ndisk++;
 	}
 	closedir(dir);
@@ -1010,9 +1266,15 @@ void probe_disks(void)
 	apply_mounts();
 	probe_lvs();
 	/* After the activation, so a whole-disk volume's group is in sysfs. */
-	for (int i = 0; i < ki_ndisk; i++)
-		if (!ki_disk[i].nparts)
-			ki_disk_signature(&ki_disk[i]);
+	for (int i = 0; i < ki_ndisk; i++) {
+		Disk *d = &ki_disk[i];
+
+		ki_disk_signature(d);
+		for (int k = 0; k < d->nparts; k++)
+			if (!strcmp(d->part[k].fstype, "LVM2_member"))
+				pv_vg(d->part[k].name, d->part[k].path,
+				      d->part[k].vg, sizeof(d->part[k].vg));
+	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -1235,11 +1497,77 @@ void probe_payload(void)
 	walk_nkind = walk_kind_cap = 0;
 }
 
+/* Whether interface `ifc` carries traffic: operstate up (or unknown, which a
+ * tun device and some drivers report while working) and carrier 1. A cable
+ * pulled leaves the route and reads operstate down. */
+static int if_up(const char *root, const char *ifc)
+{
+	char p[PATH_MAX], v[32];
+
+	if (!*ifc || !strcmp(ifc, "lo") || strchr(ifc, '/'))
+		return 0;
+	snprintf(p, sizeof(p), "%s/sys/class/net/%s/operstate", root, ifc);
+	if (kb_read_file(p, v, sizeof(v)) <= 0)
+		return 0;
+	v[strcspn(v, "\n")] = 0;
+	if (strcmp(v, "up") && strcmp(v, "unknown"))
+		return 0;
+	snprintf(p, sizeof(p), "%s/sys/class/net/%s/carrier", root, ifc);
+	return kb_read_file(p, v, sizeof(v)) > 0 && v[0] == '1';
+}
+
+/* A default route, IPv4 (/proc/net/route: destination 00000000, RTF_UP) or
+ * IPv6 (/proc/net/ipv6_route: ::/0, RTF_UP and not RTF_REJECT, the kernel's
+ * own unreachable entry on lo), on an interface that is up. */
+static int default_route(const char *root, int v6)
+{
+	char p[PATH_MAX];
+	char *data, *l;
+	int found = 0;
+
+	snprintf(p, sizeof(p), "%s/proc/net/%s", root,
+		 v6 ? "ipv6_route" : "route");
+	data = kb_read_all(p, NULL);
+	for (l = data; l && *l && !found;) {
+		char *nl = strchr(l, '\n');
+		char ifc[32] = "", dst[40] = "", plen[8] = "";
+		unsigned long flags = 0;
+
+		if (nl)
+			*nl = 0;
+		if (!v6) {
+			if (sscanf(l, "%31s %39s %*s %lx", ifc, dst, &flags) == 3 &&
+			    !strcmp(dst, "00000000") && (flags & 0x1) &&
+			    if_up(root, ifc))
+				found = 1;
+		} else if (sscanf(l, "%39s %7s %*s %*s %*s %*s %*s %*s %lx %31s",
+				  dst, plen, &flags, ifc) == 4 &&
+			   !strcmp(dst, "00000000000000000000000000000000") &&
+			   !strcmp(plen, "00") && (flags & 0x1) &&
+			   !(flags & 0x200) && if_up(root, ifc)) {
+			found = 1;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return found;
+}
+
+void ki_probe_network(void)
+{
+	const char *root = getenv("KDOS_NET_ROOT");
+
+	if (!root)
+		root = "";
+	ki_sys.network = default_route(root, 0) || default_route(root, 1);
+}
+
 void probe_system(void)
 {
 	memset(&ki_sys, 0, sizeof(ki_sys));
 
 	ki_sys.uefi = kb_path_exists("/sys/firmware/efi");
+	ki_probe_network();
 
 	/*
 	 * AND WHICH EFI BINARY THIS MACHINE CAN EXECUTE. The kernel publishes

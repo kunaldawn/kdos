@@ -19,6 +19,8 @@
 
 #include <KLocalizedString>
 
+#include <QProcess>
+
 using namespace Qt::StringLiterals;
 
 namespace Kdos
@@ -68,6 +70,8 @@ BoxesModule::BoxesModule(QObject *parent, const KPluginMetaData &metaData, const
         setRepresentsDefaults(m_current.isEmpty() || m_profile->isAtDefaults());
     });
     connect(m_profile, &BoxProfile::pendingChanged, this, &BoxesModule::currentChanged);
+    connect(m_profile, &BoxProfile::notesChanged, this, &BoxesModule::generalNotesChanged);
+    connect(this, &BoxesModule::currentChanged, this, &BoxesModule::generalNotesChanged);
     connect(m_boxes, &BoxListModel::refreshed, this, &BoxesModule::refreshCurrent);
     connect(m_tool, &BoxTool::progress, this, [this](const QString &line) {
         if (!m_progress.isEmpty() && !line.isEmpty()) {
@@ -192,6 +196,20 @@ int BoxesModule::messageType() const
     return m_messageType;
 }
 
+QStringList BoxesModule::generalNotes() const
+{
+    QStringList notes = m_profile->generalNotes();
+    if (needsRecreate()) {
+        notes.removeIf(&BoxesModule::isRecreateNote);
+    }
+    return notes;
+}
+
+bool BoxesModule::isRecreateNote(const QString &note)
+{
+    return note.contains(u"written after"_s) && note.contains(u"created"_s);
+}
+
 void BoxesModule::setMessage(const QString &text, MessageType type)
 {
     m_message = text;
@@ -263,7 +281,10 @@ void BoxesModule::refreshCurrent()
         m.insert(u"iconName"_s, row->iconName);
         m.insert(u"base"_s, row->base);
         m.insert(u"state"_s, row->state);
-        m.insert(u"stateText"_s, BoxListModel::stateText(row->state));
+        m.insert(u"stateText"_s, BoxListModel::stateText(row->state, row->kept));
+        m.insert(u"kept"_s, row->kept);
+        m.insert(u"appBox"_s, row->isAppBox());
+        m.insert(u"exports"_s, row->exports);
         m.insert(u"running"_s, row->isRunning());
         m.insert(u"created"_s, row->hasContainer());
         /* Only a pack box writes outside its container (kdos-packd's
@@ -282,6 +303,9 @@ void BoxesModule::refreshCurrent()
         m.insert(u"stateText"_s, m_boxes->isLoaded() ? BoxListModel::stateText(QString()) : QString());
         m.insert(u"running"_s, false);
         m.insert(u"created"_s, false);
+        m.insert(u"kept"_s, false);
+        m.insert(u"appBox"_s, false);
+        m.insert(u"exports"_s, QStringList());
     }
     m_currentRow = m;
     Q_EMIT currentChanged();
@@ -405,6 +429,29 @@ void BoxesModule::runLifecycle(const QList<std::pair<QString, QStringList>> &ste
     });
 }
 
+void BoxesModule::createBox()
+{
+    if (m_current.isEmpty() || refuseWhileEditing()) {
+        return;
+    }
+    const QString name = m_current;
+    if (m_currentRow.value(u"created"_s).toBool()) {
+        setMessage(i18nc("@info %1 box", "%1 already has a container.", name), Information);
+        return;
+    }
+    runLifecycle({{u"kdos-box"_s, {u"create"_s, name}}}, i18nc("@info:progress", "Creating %1…", name), [this, name](int code, int, const QString &last) {
+        if (code == 0) {
+            setMessage(i18nc("@info %1 box", "%1 was created from its settings.", name), Positive);
+            if (name == m_current) {
+                loadReport();
+            }
+        } else {
+            setMessage(failure(ki18nc("@info %1 box", "%1 was not created.").subs(name), ki18nc("@info %1 box, %2 error", "%1 was not created: %2").subs(name), last),
+                       Error);
+        }
+    });
+}
+
 void BoxesModule::startBox()
 {
     if (m_current.isEmpty() || refuseWhileEditing()) {
@@ -470,24 +517,41 @@ void BoxesModule::recreateBox()
     const int createStep = int(steps.size());
     steps.append({u"kdos-box"_s, {u"create"_s, name}});
 
-    runLifecycle(steps, i18nc("@info:progress", "Creating %1 again…", name), [this, name, createStep](int code, int step, const QString &last) {
+    const bool appBox = m_currentRow.value(u"appBox"_s).toBool();
+    runLifecycle(steps, i18nc("@info:progress", "Creating %1 again…", name), [this, name, createStep, appBox](int code, int step, const QString &last) {
         if (code == 0) {
             m_profile->clearPendingRecreate();
             setMessage(i18nc("@info %1 box", "%1 was created again with its current settings.", name), Positive);
+            /* The new container is newer than the profile, so kdos-box's
+             * report no longer warns about it. */
+            if (name == m_current) {
+                loadReport();
+            }
         } else if (step == createStep) {
             /* The container is gone and the profile is kept, so the box is
-             * still described: its next launch creates it. */
+             * still described: an application's box is made by its next
+             * launch, any other by Create. */
             m_profile->clearPendingRecreate();
-            setMessage(failure(ki18nc("@info %1 box",
-                                      "%1 was removed, but creating it again failed. Its settings are kept, and it is created the next time its application "
-                                      "starts.")
-                                   .subs(name),
-                               ki18nc("@info %1 box, %2 error",
-                                      "%1 was removed, but creating it again failed: %2. Its settings are kept, and it is created the next time its "
-                                      "application starts.")
-                                   .subs(name),
-                               last),
-                       Warning);
+            if (appBox) {
+                setMessage(failure(ki18nc("@info %1 box",
+                                          "%1 was removed, but creating it again failed. Its settings are kept, and it is created the next time its "
+                                          "application starts.")
+                                       .subs(name),
+                                   ki18nc("@info %1 box, %2 error",
+                                          "%1 was removed, but creating it again failed: %2. Its settings are kept, and it is created the next time its "
+                                          "application starts.")
+                                       .subs(name),
+                                   last),
+                           Warning);
+            } else {
+                setMessage(failure(ki18nc("@info %1 box", "%1 was removed, but creating it again failed. Its settings are kept; Create makes it again from them.")
+                                       .subs(name),
+                                   ki18nc("@info %1 box, %2 error",
+                                          "%1 was removed, but creating it again failed: %2. Its settings are kept; Create makes it again from them.")
+                                       .subs(name),
+                                   last),
+                           Warning);
+            }
         } else {
             setMessage(failure(ki18nc("@info %1 box", "%1 was not created again.").subs(name), ki18nc("@info %1 box, %2 error", "%1 was not created again: %2").subs(name), last), Error);
         }
@@ -501,6 +565,7 @@ void BoxesModule::removeBox()
     }
     const QString name = m_current;
     const bool created = m_currentRow.value(u"created"_s).toBool();
+    const bool appBox = m_currentRow.value(u"appBox"_s).toBool();
     QList<std::pair<QString, QStringList>> steps;
     if (m_currentRow.value(u"running"_s).toBool()) {
         steps.append({u"kdos-box"_s, {u"stop"_s, name}});
@@ -511,15 +576,22 @@ void BoxesModule::removeBox()
     }
     steps.append({u"kdos-box"_s, remove});
 
-    runLifecycle(steps, i18nc("@info:progress", "Removing %1…", name), [this, name, created](int code, int, const QString &last) {
+    runLifecycle(steps, i18nc("@info:progress", "Removing %1…", name), [this, name, created, appBox](int code, int, const QString &last) {
         if (code != 0) {
             setMessage(failure(ki18nc("@info %1 box", "%1 was not removed.").subs(name), ki18nc("@info %1 box, %2 error", "%1 was not removed: %2").subs(name), last), Error);
             return;
         }
         m_profile->clearPendingRecreate();
         if (created) {
-            setMessage(i18nc("@info %1 box", "%1 was removed. Its settings are kept, and it is created again the next time its application starts.", name),
-                       Positive);
+            if (appBox) {
+                setMessage(i18nc("@info %1 box", "%1 was removed. Its settings are kept, and it is created again the next time its application starts.", name),
+                           Positive);
+            } else {
+                setMessage(i18nc("@info %1 box", "%1 was removed. Its settings are kept; Create makes it again from them.", name), Positive);
+            }
+            if (name == m_current) {
+                loadReport();
+            }
         } else {
             /* A box with no container is only its profile, and `remove`
              * deleted that: there is nothing left to show. */
@@ -527,6 +599,24 @@ void BoxesModule::removeBox()
             closeBox();
         }
     });
+}
+
+void BoxesModule::openTerminal()
+{
+    if (m_current.isEmpty()) {
+        return;
+    }
+    const QString name = m_current;
+    if (!m_currentRow.value(u"created"_s).toBool()) {
+        setMessage(i18nc("@info %1 box", "%1 has no container yet, so there is nothing to open a terminal in.", name), Information);
+        return;
+    }
+    /* The terminal outlives the page: it is the person's shell, not a
+     * command this page waits on. `--window` opens Konsole in the box's
+     * colours whether or not this process has a terminal. */
+    if (!QProcess::startDetached(u"kdos-box"_s, {u"enter"_s, name, u"--window"_s})) {
+        setMessage(i18nc("@info %1 box", "No terminal could be opened in %1: kdos-box did not start.", name), Error);
+    }
 }
 
 void BoxesModule::exportBox(const QUrl &target)

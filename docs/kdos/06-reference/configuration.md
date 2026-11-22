@@ -101,7 +101,13 @@ the `=`, and `[Group][Subgroup]` for nested groups.
 One word, the accent in force: `phosphor`, `amber`, `ice`, `bone`, `norton`, `borland`, `perfect`
 or `paper`. `kdos theme <accent>` writes it; `kdos theme` with no argument prints it; and the
 `kded-kdos` module writes it through `kdos theme --from-plasma` when you pick a KDOS global theme in
-System Settings. Ships absent, which means `bone`, the default accent.
+System Settings. The image's `/etc/skel` carries it with the default accent, `bone`; the
+installer's [Theme step](../04-programs/kinstall.md#the-install-steps) re-seeds `/etc/skel` and the
+new account's home with the accent chosen at installation (`kdos theme --account`), so every
+account made later starts in it. A home without it means `bone`. An account's first login, which
+`kded-kdos` knows by the absence of `$XDG_STATE_HOME/kdos/accent-synced` (written at that login),
+writes it through `kdos theme --from-plasma --account`, which brings only that account into step
+and leaves `/etc/kdos/accent` and the boot menu, splash and login screen alone.
 
 Do not edit it by hand: the word is what `kdos theme` compares against when it decides which files
 still name a KDOS default, and an accent changed here alone leaves Plasma, the boot menu and the
@@ -407,7 +413,7 @@ upstream's default. A file of the same name in `/etc/xdg` is read before it, and
 | `kde-mimeapps.list` | Every program that opens files, inside Plasma and out | The default application for each file type; see [Default handlers](#default-handlers) |
 | `qt5ct/qt5ct.conf` | Qt 5 programs, through qt5ct | The bone palette, the KDOS icons, the Fusion style and the desktop's fonts, copied into `~/.config/qt5ct` by the first Qt 5 program you start; `kdos theme` keeps that copy in the accent |
 | `plasma-workspace/env/kdos.sh`, `kdos-shortcuts.sh` | `startplasma`, before anything else starts | The session's environment, and the one-time seeding of the KDOS chords into your `kglobalshortcutsrc`, recorded in `$XDG_STATE_HOME/kdos/kglobalshortcutsrc.seeded` |
-| `plasma-workspace/shutdown/kdos.sh`, `kdos-boxes.sh` | `plasma-shutdown`, at Log Out, Restart and Shut Down | The session's own cleanup, and `kdos-appbox session save` |
+| `plasma-workspace/shutdown/kdos.sh`, `kdos-boxes.sh`, `kdos-speech.sh` | `plasma-shutdown`, at Log Out, Restart and Shut Down | The session's own cleanup, `kdos-appbox session save`, and the end of the session's Speech Dispatcher |
 | `autostart/` | Plasma's autostart | The entries of `kdos-notice` and the firewall's question, `kdos-fwask` |
 
 **The overlays.** Two directories go in front of `/etc/xdg`, each only where it applies; your own
@@ -426,8 +432,9 @@ only Plasma:
 |---|---|
 | `/etc/xdg/kdeglobals` | `LookAndFeelPackage=org.kdos.bone.desktop`, so a program run outside the session, under `sudo` or `pkexec`, still wears the KDOS look. The installer rewrites it with the accent you choose |
 | `/etc/xdg/konsolerc` | Konsole's default profile, `KDOS Bone` when Plasma is dark and `KDOS Paper` when it is light |
-| `/etc/xdg/mimeapps.list` | The handlers for the types no desktop application opens: `kdos-openarchive` for comic books packed as 7z or rar |
+| `/etc/xdg/mimeapps.list` | The handlers for the types no desktop application opens: `kdos-openarchive` for comic books packed as 7z or rar. |
 | `/etc/xdg/fcitx5/config` | The keys that move between input-method groups, `Super+Alt+Space` and `Super+Alt+Shift+Space` |
+| `/etc/xdg/fcitx5/conf/wayland.conf` | `Allow Overriding System XKB Settings=False`, so fcitx5 never writes its group's layout into `~/.config/kxkbrc` and the layout list stays KWin's: the installer's, locale1's and the Keyboard page's |
 | `/etc/xdg/autostart/kdos-boxes-restore.desktop` | `kdos-appbox session restore` at login: the boxes that were running when the last session ended |
 | `/etc/xdg/autostart/kdos-session-good.desktop` | `kdos-notice --bless` at login: confirms the booted system version once Plasma has stayed up |
 | `/etc/xdg/autostart/kdos-mpris.desktop` | `kdos-mpctl mpris`, the bridge that puts mpd on the session bus for the media keys and the Media Player widget |
@@ -811,6 +818,7 @@ and Keyboard pages, `kdos locale`, `kdos keymap`) and by the installer.
 |---|---|---|
 | `/etc/locale.conf` | `NAME=value` lines with no quotes; ships `LANG=en_US.UTF-8` | `kdos-dm` and SDDM, for the login screen and every session |
 | `/etc/keymap` | The console keymap name; not shipped | `kdos-getty`, on every console it starts |
+| `/boot/efi/EFI/kdos/keymap` | The same name, one line, on the ESP; written by the installer and kept equal to `/etc/keymap` by `kdos-settingsd` | The initramfs, which loads it on `tty1` before the disk passphrase prompt |
 | `/etc/kdos/xkb.conf` | `XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT` and `XKBOPTIONS`, the graphical layout; ships with all four empty | `kdos-settingsd`, which answers `locale1`'s X11 properties from it; the login screen's KWin reads those. An empty layout follows `/etc/keymap` |
 
 A person's own keyboard layout in Plasma is in `~/.config/kxkbrc`, and outranks these inside their
@@ -932,7 +940,7 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/lf/lfrc`, `~/.config/lf/preview` | The terminal file manager `lf` | |
 | `~/.config/GIMP/3.0/gimprc` | GIMP | Selects the system theme; without it GIMP keeps its own |
 | `~/.config/keepassxc/keepassxc.ini` | KeePassXC | Selects the `classic` theme, so qt5ct's KDOS palette applies; without it KeePassXC draws its own grey or light style in every accent |
-| `~/.config/fcitx5/profile` | The input method `fcitx5` | One group, `Default`, with the four input methods the image carries: `keyboard-us`, `pinyin`, `anthy` and `hangul` |
+| `~/.config/fcitx5/profile` | The input method `fcitx5` | Not in `/etc/skel`: the session writes it at the first login, before KWin starts fcitx5, when the home has none (`kdos_session_fcitx5_profile` in `/usr/local/lib/kdos/session-common.sh`). One group, `Default`, whose `Default Layout` is the system layout from `/etc/kdos/xkb.conf` — the first entry of `XKBLAYOUT`, with the first of `XKBVARIANT` after a dash, such as `de-nodeadkeys`; locale1's layout when the file names none, else `us` — and the four input methods the image carries: `keyboard-<layout>`, `pinyin`, `anthy` and `hangul`. With *Allow Overriding System XKB Settings* on, fcitx5 writes the group's layout into `~/.config/kxkbrc`, so a profile naming another layout would replace the system's in the session and at the lock screen; `/etc/xdg/fcitx5/conf/wayland.conf` turns that option off, and the Input Method page can turn it back on. A profile that exists is never rewritten |
 | `~/.config/vlc/vlcrc` | VLC | `qt-privacy-ask=0` under `[qt]`, so the first-run privacy dialog never opens, and `metadata-network-access=0` under `[core]`, so no album art or track details are fetched, the dialog's own default. VLC rewrites the file whole, without its comments, when its preferences are saved |
 | `~/.config/mimeapps.list` | Your own choices of which application opens which file type | Ships with an empty `[Default Applications]` section. This file outranks the system tables, and the *Open With* dialog's *Remember* writes to it |
 | `~/.config/tealdeer/config.toml` | The `tldr` client `tealdeer` | Installed into `/etc/skel` by the `tealdeer` package. `cache_dir` is `/usr/share/tldr`, where the pages ship, so nothing is downloaded. `tldr --update` needs a `cache_dir` you can write |
@@ -956,7 +964,10 @@ Which application opens a file type is decided the same way by Dolphin, every KD
 
 In each file the `[Default Applications]` section is read first; the account files'
 `[Added Associations]` are read after the account defaults and before the system tables. The
-generated `mimeinfo.cache` files beside the installed launchers are consulted last. An entry counts
+generated `mimeinfo.cache` files beside the installed launchers are consulted last. KService and
+GLib read `[Added Associations]` and `[Removed Associations]` only from a file named
+`mimeapps.list`, never from a `kde-mimeapps.list`, so a removal KDOS ships goes in
+`/etc/xdg/mimeapps.list`. An entry counts
 only while its application is installed, so a list naming a removed application falls through to
 the next one. `testing/mimecheck.py` fails the build of the image when the shipped list names an
 application the image does not install. Which application each shipped line names is in
@@ -1030,7 +1041,7 @@ shell; every other entry first checks that its program is installed:
 | Aliases | Colour for `grep` and `diff`; `-i` on `cp`, `mv` and `rm`; `-p` on `mkdir`; `-h` on `df`, `du` and `free`; `path` prints `PATH` one directory per line; `ports` counts the installed packages; `..`, `...` and `....` go up one, two and three directories; `kfetch`, `kstatic` and `khelp` for `kdos-fetch-app`, `kdos-fetch-static` and `kdos help`. When their programs are installed: `ls`, `ll`, `la`, `lt` and `l` through `eza` (plain `ls` with colour otherwise); `cat` through `bat`; `top` through `btop`; `lg` for lazygit; `dud`, `dff` and `psx` for `dust`, `duf` and `procs` |
 | Prompt | `starship` when installed, else a plain prompt that names the box inside one. Every prompt emits the OSC 133 marks a terminal uses to find where each command's output starts and ends |
 | `EDITOR`, `VISUAL` | `nvim` when neovim is installed, replacing any exported value (with `vi` and `vim` aliased to it). Otherwise an `EDITOR` you exported is kept, else `nano`. `VISUAL` always equals `EDITOR` |
-| `MANPAGER` | Set only when `bat` is installed: `/usr/libexec/bat/man-pager`, from `bat`: it strips the page's overstrike and hands it to `bat -l man`. It is a script rather than a pipeline because `mandoc`'s `man` splits the variable on spaces and runs it without a shell |
+| `MANPAGER` | When `bat` is installed, `/usr/libexec/bat/man-pager`, from `bat`: it strips the page's overstrike and hands it to `bat -l man`. It is a script rather than a pipeline because `mandoc`'s `man` splits the variable on spaces and runs it without a shell. Without `bat`, and when nothing set it before, `less -Ps?e(END):?pB%pB\%..`: `mandoc` hands the pager the page as a temp file, and this prompt shows the position (a percentage, or `(END)`) in place of that file's `/tmp/man.…` name |
 | `BAT_THEME` | `ansi` |
 | `FZF_DEFAULT_OPTS`, `FZF_DEFAULT_COMMAND`, fzf's keys | fzf's layout and a fixed phosphor-green colour set, and, when `fd` is installed, `fd --type f --hidden --follow --exclude .git` as the file source. fzf's own key bindings (`Ctrl+T`, `Alt+C`) and completion are loaded too. The login shell itself runs this file before the `profile.d` files, so there `30-kdos-colors.sh` appends the accent colours afterwards and they win; every shell started after it, such as each terminal window, runs this file again and the assignment replaces them |
 | `GPG_TTY` | This shell's terminal, where `pinentry` asks for a passphrase when the session has no display to draw its dialog on |
@@ -1047,6 +1058,7 @@ System-wide files that packages install for the tools above:
 | `/etc/gitconfig` | `git-lfs` | Registers the `lfs` filter, so cloning an LFS repository checks out content rather than pointer files, with no `git lfs install` |
 | `/etc/nanorc` | `nano` | Includes every syntax definition under `/usr/share/nano` |
 | `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` | `networkmanager` | `dns=dnsmasq`: a local caching `dnsmasq` on `127.0.0.1`, with split DNS for VPNs. A file of the same name in `/etc/NetworkManager/conf.d` overrides it |
+| `/etc/NetworkManager/dnsmasq.d/kdos-mdns.conf` | the base filesystem | `server=/local/127.0.0.1#5380`: that `dnsmasq` forwards every `.local` name to [`kdos-mdnsd`](../04-programs/daemons.md#kdos-mdnsd), which asks Avahi. Without it no program but Avahi's tools and libcups resolves a `.local` name |
 | `/etc/resolvconf.conf` | `openresolv` | `resolvconf`'s own settings. It is the one writer of `/etc/resolv.conf`, for NetworkManager, `dhcpcd` and `wg-quick` alike |
 | `/etc/resolv.conf` | musl's resolver, every name lookup | Before a network is up it names only `nameserver 127.0.0.1`, where nothing answers until NetworkManager starts its `dnsmasq`, so an early lookup fails at once and reaches no outside resolver. `resolvconf` replaces it with the servers of the link that comes up. Its first line, `# Generated by resolvconf`, is openresolv's signature: `resolvconf` refuses to replace a file that does not start with it, and every `resolvconf -a` then fails |
 | `/etc/sudoers.d/00-sudo` | `sudo` | Mode 0440. Members of `wheel` may run anything. `secure_path` is `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`, which is what lets `sudo kdos` find `kdos`. `EDITOR`, `VISUAL` and `SUDO_EDITOR` survive `env_reset`, so `sudoedit` and `visudo` open your editor; with none of the three set they open `nvim`, or `nano` where neovim is not installed |

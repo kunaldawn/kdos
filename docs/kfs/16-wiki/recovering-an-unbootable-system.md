@@ -186,7 +186,8 @@ variable. It refuses, and writes nothing, when the ESP has no room for both file
 initramfs carries no modules for the kernel.
 
 When the boot state itself is gone, the same variable recreates it: `kdos-bootctl status` reports
-`no boot state at …` and exits 1, and `set-slot a <filesystem-uuid>` writes a fresh state with
+`no boot state at …` and exits 1 (`the ESP is not mounted at …` when the target's ESP is not
+mounted, which is mounted first), and `set-slot a <filesystem-uuid>` writes a fresh state with
 slot A active (`set-slot b <uuid>` then records a second slot). Both procedures have been run
 from the live medium against an installed virtual machine whose `limine.conf` and boot state had
 been lost, and the machine booted again afterwards.

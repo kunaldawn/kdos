@@ -64,6 +64,36 @@ else
 	echo "Warning: depmod not found, skipping."
 fi
 
+# A reinstall of this same version into the running system (PKG_OLD_VERSION
+# is the version kpkgadd replaced: a `--dev` restore, a forced reinstall)
+# builds and deploys nothing when this boot's ESP directory already holds what
+# a deploy would write: a vmlinuz of this version identical to
+# /boot/vmlinuz-kdos, beside an initramfs identical to the one deploy takes
+# (/boot/initramfs-kdos.cpio.gz where it exists, else the image's
+# /boot/initramfs.cpio.gz, which is all a freshly installed root has). The
+# directory is the one this boot's menu entry names with kdos_slot=, or the
+# flat EFI/kdos/ of an ESP with no slot directories. Any other install, a
+# rebuilt kernel of the same version, and an initramfs-kdos built but never
+# deployed, builds and deploys.
+on_esp=
+if [ -z "$root" ] && [ "${PKG_OLD_VERSION:-}" = "$version-$release" ] &&
+	mountpoint -q /boot/efi 2>/dev/null; then
+	slot=$(tr ' ' '\n' < /proc/cmdline 2>/dev/null |
+		sed -n 's/^kdos_slot=\([ab]\)$/\1/p' | head -n 1)
+	dir="$esp${slot:+/$slot}"
+	rd="$root/boot/initramfs-kdos.cpio.gz"
+	[ -f "$rd" ] || rd="$root/boot/initramfs.cpio.gz"
+	if [ -f "$rd" ] && cmp -s "$rd" "$dir/initramfs.cpio.gz" &&
+		[ "$(kernel_version "$dir/vmlinuz" 2>/dev/null)" = "$version" ] &&
+		cmp -s "$root/boot/vmlinuz-kdos" "$dir/vmlinuz"; then
+		on_esp=1
+	fi
+fi
+if [ -n "$on_esp" ]; then
+	echo "linux $version is already on the ESP"
+	exit 0
+fi
+
 # The new kernel's initramfs, kept in the root beside the kernel as
 # /boot/initramfs-kdos.cpio.gz: `kdos-bootctl deploy` and kinstall take it
 # over the image's own, which is built for the image's kernel. The image's

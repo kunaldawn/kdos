@@ -124,8 +124,12 @@ disk: `sudo cfdisk /dev/sdb`, which asks before it writes.
 
 Every way of writing replaces the whole disk, partition table and all. Choose one:
 
-- **ISO Image Writer**: pick the image and the stick, and **Write**. It asks for an administrator's
-  password through polkit and verifies what it wrote.
+- **ISO Image Writer**: pick the image and the stick, press **Create**, and confirm the stick it
+  names by its `/dev` node and size. It lists removable and USB disks but not a stick the image
+  was written to when a live session runs from it; a Ventoy stick is listed, because the session
+  holds its `/dev/mapper/ventoy` mapping rather than the disk, and opening it fails because it is
+  in use. It opens the disk through udisks2, which polkit allows a `wheel` member and asks
+  anyone else for an administrator's password, and does not read back what it wrote.
 - **[`caligula`]{.idx}**, in a terminal, which lists only removable disks unless given `--show-all-disks`,
   offers to become root through `sudo` when it cannot open the disk, and verifies what it wrote:
 

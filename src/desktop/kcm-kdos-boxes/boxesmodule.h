@@ -21,6 +21,13 @@
  * page is refused with a sentence, so "Recreate" never makes a box from
  * settings the person has not applied.
  *
+ * A BOX WITH NO CONTAINER IS MADE BY CREATE, NEVER BY START. `kdos-box
+ * start` refuses a box that has no container, and only an application's box
+ * (BoxRow::isAppBox) is made again by its application's next launch; any
+ * other box removed with its settings kept comes back only through
+ * `kdos-box create <box>`, which reads the kept profile. What Remove says it
+ * leaves follows the same split.
+ *
  * NO ROOT. A box is the user's own: its profile is in their home and podman
  * is rootless, so nothing here asks polkit.
  */
@@ -62,6 +69,9 @@ class BoxesModule : public KQuickConfigModule
     Q_PROPERTY(QString progressText READ progressText NOTIFY progressTextChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(int messageType READ messageType NOTIFY messageChanged)
+    /* The profile's `!` lines about no one control, less the one that says
+     * what the Recreate banner already says while that banner shows. */
+    Q_PROPERTY(QStringList generalNotes READ generalNotes NOTIFY generalNotesChanged)
 
 public:
     /* Kirigami.MessageType's values. */
@@ -88,18 +98,28 @@ public:
     QString progressText() const;
     QString message() const;
     int messageType() const;
+    QStringList generalNotes() const;
+
+    /* The `!` line kdos-box prints for a profile written after its box was
+     * created. */
+    static bool isRecreateNote(const QString &note);
 
     /* Loads one box's profile and report; false for a name kdos-box would
      * refuse. Edits on the page are discarded, so QML asks first. */
     Q_INVOKABLE bool openBox(const QString &name);
     Q_INVOKABLE void closeBox();
 
+    /* `kdos-box create <box>` over the profile, for a box with none. */
+    Q_INVOKABLE void createBox();
     Q_INVOKABLE void startBox();
     Q_INVOKABLE void stopBox();
     Q_INVOKABLE void restartBox();
     Q_INVOKABLE void recreateBox();
     Q_INVOKABLE void removeBox();
     Q_INVOKABLE void exportBox(const QUrl &target);
+    /* A terminal inside the box, `kdos-box enter <box> --window`, left
+     * running on its own. */
+    Q_INVOKABLE void openTerminal();
     Q_INVOKABLE void dismissMessage();
 
 public Q_SLOTS:
@@ -113,6 +133,7 @@ Q_SIGNALS:
     void busyChanged();
     void progressTextChanged();
     void messageChanged();
+    void generalNotesChanged();
     /* A System Settings already showing this page was asked for `box`; the
      * page opens it the way a click on its row would. */
     void boxRequested(const QString &box);

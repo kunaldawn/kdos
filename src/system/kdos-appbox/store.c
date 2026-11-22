@@ -396,7 +396,7 @@ static int extract_entries(const char *id, const char *root)
  * regeneration from either source alone deletes the other's launchers. With
  * no catalogue or no podman answer it is the pack walk alone.
  */
-int store_launchers(void)
+int store_launchers(int verbose)
 {
 	char boxes[1 << 16] = "";
 	char root[MAX_LINE];
@@ -406,7 +406,7 @@ int store_launchers(void)
 	int n = 0;
 
 	if (!cat_count() && cat_load(NULL, err, sizeof(err)) != 0) {
-		cmd_genlaunchers(NULL, NULL, 1, 0);
+		cmd_genlaunchers(NULL, NULL, 1, 0, verbose);
 		return 0;
 	}
 
@@ -417,7 +417,7 @@ int store_launchers(void)
 	kb_argv_add(&a, "{{.Names}}");
 	kb_argv_end(&a);
 	if (kb_run_capture(&a, boxes, sizeof(boxes)) != 0) {
-		cmd_genlaunchers(NULL, NULL, 1, 0);
+		cmd_genlaunchers(NULL, NULL, 1, 0, verbose);
 		return 0;
 	}
 
@@ -464,9 +464,9 @@ int store_launchers(void)
 		}
 	}
 	if (n)
-		cmd_genlaunchers(root, NULL, 1, 1);
+		cmd_genlaunchers(root, NULL, 1, 1, verbose);
 	else
-		cmd_genlaunchers(NULL, NULL, 1, 0);
+		cmd_genlaunchers(NULL, NULL, 1, 0, verbose);
 
 	{
 		KbArgv rm = {0};
@@ -586,7 +586,7 @@ int store_install(const char *id, int dry)
 		}
 	}
 
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s installed\n", id);
 	fflush(stdout);
 	return 0;
@@ -741,12 +741,18 @@ int store_uninstall(const char *id)
 	n = cat_chain(id, chain);
 	/* The application's own image first, then any runtime above the base
 	 * that nothing else needs. The base itself is never removed: it is
-	 * every chain's floor and about 550 MB. */
+	 * every chain's floor and about 550 MB. The application's image is
+	 * gone already when the `kdos-box remove --purge` above released it,
+	 * and the runtimes are still looked at then. */
 	for (int i = n - 1; i >= 1; i--) {
 		KbArgv r = {0};
+		char img[CAT_ID_MAX + sizeof(STORE_IMG_PREFIX)];
 
 		if (i < n - 1 && still_wanted(chain[i]->id, id))
 			break;
+		snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, chain[i]->id);
+		if (i == n - 1 && !image_exists(img))
+			continue;
 		kb_argv_add(&r, "podman");
 		kb_argv_add(&r, "rmi");
 		kb_argv_addf(&r, "%s%s", STORE_IMG_PREFIX, chain[i]->id);
@@ -758,7 +764,7 @@ int store_uninstall(const char *id)
 
 	/* The table, the mime cache and the shims are written whole, so this
 	 * regenerates from what REMAINS rather than removing one entry. */
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s removed\n", id);
 	return 0;
 }
@@ -879,7 +885,7 @@ int store_deb_install(const char *spec, int dry)
 			return 1;
 		}
 	}
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s installed\n", spec);
 	fflush(stdout);
 	return 0;
@@ -928,7 +934,7 @@ int store_deb_uninstall(const char *spec)
 	kb_argv_end(&r);
 	if (kb_run(&r) == 0)
 		printf("    removed %s%s\n", STORE_IMG_PREFIX, box);
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s removed\n", spec);
 	return 0;
 }
@@ -1573,7 +1579,7 @@ int store_import(const char *archive, const char *const *ids, int n)
 		unstage_index();
 
 	if (done)
-		store_launchers();
+		store_launchers(0);
 	{
 		KbArgv rm = {0};
 		kb_argv_add(&rm, "rm");

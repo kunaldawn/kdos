@@ -163,6 +163,13 @@ const KcolScheme *kcol_default(void);
  * retuned; it is the difference between a menu that can be read and one that
  * cannot.
  *
+ * THE PLATE IS BONE'S `deep` UNDER EVERY ACCENT, and so is the `backdrop` key
+ * bone's `backdrop`. The one kdos-backdrop.png is drawn on that floor and
+ * Limine cannot retint it, so a plate in the accent's own ground would sit on
+ * it as a visible box. The accent supplies the text, palettes and help
+ * colours; a light-ground scheme (`paper`) is given bone's whole menu, since
+ * its dark text cannot be read on the dark floor.
+ *
  * Returns the number of bytes that would have been written, snprintf-style, so
  * a truncated buffer is detectable rather than silent.
  * ──────────────────────────────────────────────────────────────────────── */

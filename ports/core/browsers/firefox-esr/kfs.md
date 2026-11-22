@@ -114,7 +114,16 @@ After `mach install`, `build.sh` adds what makes the package KDOS's:
 - `browser/defaults/preferences/kdos.js`, which points the spelling checker at the
   [hunspell-en](#port-hunspell-en) dictionaries in `/usr/share/hunspell`, opens files through the
   desktop's FileChooser portal, and turns off the media plugin downloads (OpenH264) and the
-  remaining data reporting;
+  remaining data reporting. It also empties `browser.region.network.url`, sets
+  `browser.region.update.enabled` to false, empties `geo.provider.network.url` and sets
+  `geo.provider.use_geoclue` to false. Without the first two Firefox asks Mozilla's region
+  service at its first start, and again on a timer, and sets `browser.search.region` from the
+  machine's IP address. Without the last two a page granted the user's location is answered
+  first by [geoclue](#port-geoclue), on the base for `xdg-desktop-portal`, whose wifi source asks
+  BeaconDB and falls back to the IP address, and then by Google's geolocation service, the
+  default `geo.provider.network.url`. With all four the region follows the locale and Firefox
+  has no network location source, so a page's location request fails, which is what the
+  Welcome tour's "Nothing on KDOS phones home" claims of the default browser;
 - the branding PNGs installed as `firefox-esr` icons in hicolor, and `firefox-esr.desktop`, named
   plain `Firefox`.
 

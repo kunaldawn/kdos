@@ -195,18 +195,21 @@ returns once nothing of the box holds its storage, so the box starts again at on
 `<name> removed — its profile is kept in ~/.config/kdos/boxes/<name>.conf`, followed by
 `and its writable layer, snapshots and home in ~/.local/share/kdos/boxes/<name>` when that
 directory exists, and exits 0. A store box has no such directory: its writes were inside its
-container and go with it. When podman refuses, podman's own error is printed, then
-`<name> was not removed (podman rm exited N)`, which without `--force` goes on to say that a
-running box needs `kdos-box stop` first, and `kdos-box remove` exits with podman's status;
+container and go with it. When podman refuses, one line is printed,
+`<name> was not removed: <podman's reason>`, with any container id in podman's reason replaced by
+the box's name, which without `--force` goes on to say that a running box needs `kdos-box stop`
+first, and `kdos-box remove` exits with podman's status;
 the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
 it. `--force` (`kdos-box remove app.hugin --force`) runs `kdos-box stop`'s sequence first and adds
-`-f` to `podman rm`, so a running box goes with it. `--purge` deletes the profile too. A
+`-f` to `podman rm`, so a running box goes with it. `--purge` deletes the profile too, and runs
+`podman rmi` on an `image:` base no other box's profile names, saying whether the image was
+released or why it was kept. A
 profile a remove kept carries that remove's mark, and a later remove that finds no container keeps
 it and answers ``<name> has no container; its profile is kept in …; `kdos-box remove <name>
 --purge` deletes it``, exit 0. A box with no container and an unmarked profile, such as one whose
 `create` failed, has its profile deleted
 and any composed stack released, answers `<name> had no container — its profile is removed` and
-exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
+exits 0; a name with neither a container nor a profile answers `there is no box named <name>`
 and exits 1, after releasing any composed stack the same way.
 
 `kdos-box enter` with no command, typed at a shell in a terminal, opens a new Konsole window in the

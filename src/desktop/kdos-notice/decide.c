@@ -35,9 +35,12 @@
  * ---------------------------------
  */
 
+#include <grp.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "notice.h"
 
@@ -663,11 +666,45 @@ void kn_parse_pending(const char *apps, const char *groups,
 
 /* The command on a line of its own, so no wrap splits it at a hyphen:
  * Plasma's notification server turns the newline into a line break, and the
- * line is the command alone, plain ASCII, as a reader copies it. "binary
- * host" is the installer's term for the same server. The line before it
- * fits the popup's width unwrapped, so it costs one popup line. */
-#define KN_PENDING_RUN "Once a binary host answers, run:\n" \
-		       "sudo kdos update install --pending"
+ * line is the command alone, plain ASCII, as a reader copies it: `sudo` for
+ * an administrator, `su -c` for any other account (user_admin below). "binary
+ * host" is the installer's term for the same server. Each line fits the
+ * popup's KN_POPUP_COLS unwrapped, so the command costs two popup lines
+ * either way. */
+#define KN_PENDING_SUDO "Once a binary host answers, run:\n" \
+			"sudo kdos update install --pending"
+#define KN_PENDING_SU "Once a binary host answers, run:\n" \
+		      "su -c 'kdos update install --pending'"
+
+/*
+ * WHO RUNS THE COMMAND. sudo grants on membership of `wheel` (the sudo
+ * port's `%wheel ALL=(ALL) ALL`), and an account the installer made without
+ * the Administrator choice is outside it: sudo refuses that account, so its
+ * notices name `su -c` and root's password instead. Membership is read from
+ * the group database (getgrouplist), as sudo reads it, on every decision, so
+ * an account added to `wheel` is told `sudo` at the next notice.
+ * $KDOS_NOTICE_ADMIN_GROUP names another group in place of `wheel`, for the
+ * tests; no group, no account or no answer reads as outside it.
+ */
+static int user_admin(void)
+{
+	const char *name = getenv("KDOS_NOTICE_ADMIN_GROUP");
+	struct passwd *pw = getpwuid(getuid());
+	struct group *gr;
+	gid_t want, gids[256];
+	int n = (int)(sizeof(gids) / sizeof(gids[0]));
+
+	gr = getgrnam(name && *name ? name : "wheel");
+	if (!gr || !pw)
+		return 0;
+	want = gr->gr_gid;
+	if (getgrouplist(pw->pw_name, pw->pw_gid, gids, &n) < 0)
+		return 0;
+	for (int i = 0; i < n; i++)
+		if (gids[i] == want)
+			return 1;
+	return 0;
+}
 
 /* What Plasma's notification popup shows before it scrolls: eight lines,
  * each 38 to 41 characters wide on a 1920x1080 session as its proportional
@@ -770,14 +807,15 @@ static int list_groups(const KnPending *pd, int budget, char *out,
  * the software was chosen during the install and is not installed yet, so
  * the count line says no more than that the groups wait, and the command
  * stands on the popup's third line. */
-static void groups_alone(const KnPending *pd, char *out, size_t cap)
+static void groups_alone(const KnPending *pd, const char *run, char *out,
+			 size_t cap)
 {
 	char titles[sizeof(pd->groups)], *save = NULL;
 	size_t o;
 
 	kb_strlcpy(titles, pd->groups, sizeof(titles));
 	o = (size_t)snprintf(out, cap, "%d KDOS application groups wait.\n"
-			     KN_PENDING_RUN "\nThey are:", pd->ngroups);
+			     "%s\nThey are:", pd->ngroups, run);
 	for (char *l = strtok_r(titles, "\n", &save); l && o < cap;
 	     l = strtok_r(NULL, "\n", &save))
 		o += (size_t)snprintf(out + o, cap - o, "\n%s", l);
@@ -786,6 +824,7 @@ static void groups_alone(const KnPending *pd, char *out, size_t cap)
 int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 {
 	char apps[384] = "", groups[640] = "";
+	const char *run;
 	int budget;
 
 	if (pd->n <= 0 && pd->ngroups <= 0) {
@@ -817,6 +856,7 @@ int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 	 * with no budget, so a scroll hides nothing but titles: the notice is
 	 * the one place on the desktop that names them, since Discover does
 	 * not list a group and there is no Details action to show the rest. */
+	run = user_admin() ? KN_PENDING_SUDO : KN_PENDING_SU;
 	if (pd->n == 1 && pd->ngroups > 0)
 		kb_strlcpy(apps, "1 boxed app also waits in Discover.",
 			   sizeof(apps));
@@ -831,30 +871,30 @@ int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 		snprintf(apps, sizeof(apps), "%d selections are waiting: "
 			 "Discover lists them under Selected during install, "
 			 "and installs them from there.", pd->n);
-	budget = KN_POPUP_LINES - popup_lines(KN_PENDING_RUN) -
+	budget = KN_POPUP_LINES - popup_lines(run) -
 		 popup_lines(apps);
 	/* "Not installed yet" and never "could not be installed": a medium
 	 * with no binary host records the groups without trying them. */
 	if (pd->ngroups == 1 && pd->groups[0])
 		snprintf(groups, sizeof(groups), "%s%s was chosen during the "
-			 "install and is not installed yet. " KN_PENDING_RUN,
+			 "install and is not installed yet. %s",
 			 pd->untitled ? "The KDOS application group " : "",
-			 pd->groups);
+			 pd->groups, run);
 	else if (pd->ngroups == 1)
-		kb_strlcpy(groups, "1 KDOS application group chosen during the "
-			   "install is not installed yet. " KN_PENDING_RUN,
-			   sizeof(groups));
+		snprintf(groups, sizeof(groups), "1 KDOS application group "
+			 "chosen during the install is not installed yet. %s",
+			 run);
 	else if (pd->ngroups > 1 && pd->groups[0] && !apps[0])
-		groups_alone(pd, groups, sizeof(groups));
+		groups_alone(pd, run, groups, sizeof(groups));
 	else if (pd->ngroups > 1 && pd->groups[0] &&
 		 list_groups(pd, budget, groups, sizeof(groups) -
-			     sizeof(KN_PENDING_RUN)))
-		kb_strlcpy(groups + strlen(groups), "\n" KN_PENDING_RUN,
-			   sizeof(groups) - strlen(groups));
+			     strlen(run) - 1))
+		snprintf(groups + strlen(groups), sizeof(groups) -
+			 strlen(groups), "\n%s", run);
 	else if (pd->ngroups > 1)
 		snprintf(groups, sizeof(groups), "%d KDOS application groups "
-			 "chosen during the install are not installed yet. "
-			 KN_PENDING_RUN, pd->ngroups);
+			 "chosen during the install are not installed yet. %s",
+			 pd->ngroups, run);
 	snprintf(out->body, sizeof(out->body), "%s%s%s", groups,
 		 apps[0] && groups[0] ? "\n" : "", apps);
 	if (pd->n > 0) {
@@ -871,12 +911,15 @@ int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
  * carries the common vendors' firmware; a device whose driver wants another
  * vendor's, or a firmware load the kernel logged as failed, names the port
  * that ships it. Said once per set of ports, withdrawn when `kdos firmware
- * sync` (or anything else) has installed them all.
+ * sync` (or anything else) has installed them all. Install runs the sync in
+ * Konsole through sudo, or for an account outside `wheel` through `su -c`,
+ * which asks for root's password there (user_admin).
  */
 int kn_decide_firmware(const KnFirmware *f, const KnState *s, KnPost *out)
 {
 	char names[KN_FW_PORTS][128], set[KN_FW_PORTS * 65 + 1], key[32];
 	char list[200];
+	const char *run;
 	size_t o = 0;
 
 	if (!f->ok)
@@ -907,14 +950,15 @@ int kn_decide_firmware(const KnFirmware *f, const KnState *s, KnPost *out)
 	join_names(names, f->n, "more", list, sizeof(list));
 	snprintf(out->summary, sizeof(out->summary),
 		 "This computer's hardware needs %s", list);
+	run = user_admin() ? "sudo kdos firmware sync"
+			   : "su -c 'kdos firmware sync' (root's password)";
 	if (f->n == 1)
 		snprintf(out->body, sizeof(out->body),
 			 "Its firmware is not installed (%s). Install it with: "
-			 "sudo kdos firmware sync", f->reason[0]);
+			 "%s", f->reason[0], run);
 	else
-		kb_strlcpy(out->body, "Their firmware is not installed. "
-			   "Install it with: sudo kdos firmware sync",
-			   sizeof(out->body));
+		snprintf(out->body, sizeof(out->body), "Their firmware is not "
+			 "installed. Install it with: %s", run);
 	out->actions[0] = KN_ACT_DETAILS;
 	out->actions[1] = "Install";
 	return 1;
@@ -947,10 +991,16 @@ int kn_action_argv(int kind, const char *action, KbArgv *a)
 		kb_argv_add(a, "konsole");
 		kb_argv_add(a, "--hold");
 		kb_argv_add(a, "-e");
-		kb_argv_add(a, "sudo");
-		kb_argv_add(a, "kdos");
-		kb_argv_add(a, "firmware");
-		kb_argv_add(a, "sync");
+		if (user_admin()) {
+			kb_argv_add(a, "sudo");
+			kb_argv_add(a, "kdos");
+			kb_argv_add(a, "firmware");
+			kb_argv_add(a, "sync");
+		} else {
+			kb_argv_add(a, "su");
+			kb_argv_add(a, "-c");
+			kb_argv_add(a, "kdos firmware sync");
+		}
 		break;
 	case KN_PENDING:
 		kb_argv_add(a, "plasma-discover");

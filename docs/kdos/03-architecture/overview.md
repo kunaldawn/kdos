@@ -299,8 +299,9 @@ init (PID 1, sysvinit)
  │   │    75 mumble-server   76 postgresql   77 radicale   78 maddy
  │   │    79 ngircd   83 samba   84 minidlna   85 gnuhealth
  │   │    86 kiwix-serve   87 kolibri   88 llama-server   89 step-ca
- │   └─ the KDOS root daemons:
+ │   └─ the KDOS daemons, all root but kdos-mdnsd:
  │        43 kdos-settingsd    hostname1, timedate1, locale1 on the system bus
+ │        45 kdos-mdnsd       UDP 127.0.0.1:5380       .local names, as nobody
  │        46 kdos-sysupdated  sysupdate1 and io.kdos.Slots1: updates and slots
  │        55 kdos-powerd      /run/kdos-powerd.sock and io.kdos.Power1
  │        56 kdos-energyd     /run/kdos-energyd.sock   per-application energy
@@ -337,7 +338,7 @@ shutdown, stops the same set in reverse, except the firewall ruleset, which stay
 shutdown. Forty-nine of the scripts ship in the image's `fs/` tree, and twenty-two ports install
 twenty-four more, such as `43_boltd` by `bolt` and `83_samba` by `samba`. The image ships `sshd`
 with its marker in place; the installer offers NetworkManager, Bluetooth, the mixer state, CUPS
-and `sshd` as choices, and leaves CUPS and `sshd` off unless they are switched on
+and `sshd` as choices, and leaves `sshd` off unless it is switched on
 ([Answer files](../04-programs/kinstall.md#answer-files) lists them). A script that starts a
 long-running daemon runs it under `ksvc`, KDOS's service supervisor, which keeps the daemon in the
 foreground and restarts it when it exits; the one-shot scripts (modules, sysctl, zram, the

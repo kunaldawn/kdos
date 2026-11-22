@@ -600,6 +600,17 @@ void ktui_draw_put(int x, int y, const KtuiCell *cell)
 	back[y * bw + x] = *cell;
 }
 
+void ktui_draw_swatch(int x, int y, int slot, KRgb c)
+{
+	uint32_t full;
+	KtuiCell cell = { .fg = (uint8_t)slot, .bg = KT_BG, .attr = KT_A_FGRGB,
+			  .fgc = (uint32_t)c.r << 16 | (uint32_t)c.g << 8 | c.b };
+
+	ktui_utf8_next(ktui_glyph[KT_G_FULL], &full);
+	cell.ch = full;
+	ktui_draw_put(x, y, &cell);
+}
+
 /*
  * A RECTANGLE OF BACKDROP, CLIPPED ONCE AND WRITTEN BY THE ROW.
  *

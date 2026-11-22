@@ -18,6 +18,7 @@ patch -p1 -i "$PORT_SRC/sysupdate-appstream-after-check.patch"
 patch -p1 -i "$PORT_SRC/notifier-reboot-clears.patch"
 patch -p1 -i "$PORT_SRC/sysupdate-licenses.patch"
 patch -p1 -i "$PORT_SRC/notifyrc-update-restart.patch"
+patch -p1 -i "$PORT_SRC/notifier-restart-labels.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

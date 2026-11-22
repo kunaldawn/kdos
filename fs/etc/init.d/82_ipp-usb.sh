@@ -10,6 +10,15 @@ case "$1" in
             echo "[SKIP] $NAME: $DAEMON not found"
             exit 0
         fi
+        # CUPS is ipp-usb's consumer on KDOS's default path, so with cups
+        # disabled it does not start, and an IPP-over-USB scanner, which
+        # sane-airscan reaches through it, then needs cups enabled too.
+        # Whoever enables cups later starts it by hand (service start
+        # ipp-usb) or reboots.
+        if [ -e /etc/service.disabled/cups ]; then
+            echo "[SKIP] $NAME: CUPS is disabled (/etc/service.disabled/cups)"
+            exit 0
+        fi
         echo "[KDOS] Starting $NAME..."
         # standalone = run for ever and serve every IPP-over-USB device as it
         # is plugged in, in the foreground for supervision (no -bg). udev mode

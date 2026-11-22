@@ -158,6 +158,10 @@ typedef struct {
 	 * rollback notice a session shows once. Cleared by the next `try` and
 	 * by a confirmation. */
 	int failed;
+	/* The slot whose trial was set aside by picking the confirmed slot at
+	 * the boot menu, -1 for none. Nothing failed, so no rollback notice
+	 * reads it; it is cleared where `failed` is. */
+	int abandoned;
 	/* The boot id of the boot that ran `try`, "" when it could not be read.
 	 * See CONFIRMATION COMES AFTER THE SESSION at the top of this file. */
 	char armed[40];
@@ -170,6 +174,13 @@ typedef struct {
 static const char *slot_name(int i)
 {
 	return i == 1 ? "b" : "a";
+}
+
+/* The letter a person reads: the boot menu and System Versions say
+ * "slot A"; slot_name's lowercase is the state file's and kdos_slot='s. */
+static char slot_letter(int i)
+{
+	return i == 1 ? 'B' : 'A';
 }
 
 static int slot_index(const char *s)
@@ -198,6 +209,7 @@ static int state_load(BootState *st)
 	memset(st, 0, sizeof(*st));
 	st->trying = -1;
 	st->failed = -1;
+	st->abandoned = -1;
 	st->unfilled = -1;
 	st->active = 0;
 
@@ -258,6 +270,8 @@ static int state_load(BootState *st)
 			st->bootnext = !strcmp(v, "yes");
 		} else if (!strcmp(k, "failed")) {
 			st->failed = v[0] ? slot_index(v) : -1;
+		} else if (!strcmp(k, "abandoned")) {
+			st->abandoned = v[0] ? slot_index(v) : -1;
 		} else if (!strcmp(k, "armed")) {
 			kb_strlcpy(st->armed, v, sizeof(st->armed));
 		} else if (!strcmp(k, "unfilled")) {
@@ -399,6 +413,7 @@ static int state_save(const BootState *st)
 		      "bootnext = %s\n"
 		      "armed    = %s\n"
 		      "failed   = %s\n"
+		      "abandoned = %s\n"
 		      "unfilled = %s\n",
 		      st->slot[0], st->slot[1], st->crypt[0], st->crypt[1],
 		      slot_name(st->active),
@@ -407,6 +422,7 @@ static int state_save(const BootState *st)
 		      st->trying >= 0 && st->bootnext ? "yes" : "",
 		      st->trying >= 0 ? st->armed : "",
 		      st->failed >= 0 ? slot_name(st->failed) : "",
+		      st->abandoned >= 0 ? slot_name(st->abandoned) : "",
 		      st->unfilled >= 0 ? slot_name(st->unfilled) : "");
 
 	/* The data, the rename, then the renamed file's own entry and the FAT.
@@ -1204,12 +1220,33 @@ static int cmd_splash(int argc, char **argv)
 	return 0;
 }
 
+static int ident_from_esp(const char *esp, int i, SlotIdent *id);
+
+/* The release EFI/kdos/<slot>/release records for slot i, without its
+ * `+<build>`: "KDOS 0.2.1" with `lead` before it, for the first entry's
+ * comment and the other entry's title, or "" when the slot has no record,
+ * and the menu then names no release. The menu is where a person picks a
+ * slot before anything else can say which release each holds. */
+static void menu_release(const char *esp, int i, const char *lead, char *out,
+			 size_t n)
+{
+	SlotIdent id;
+
+	out[0] = 0;
+	if (ident_from_esp(esp, i, &id) != 0 || !id.version[0])
+		return;
+	id.version[strcspn(id.version, "+")] = 0;
+	if (id.version[0])
+		snprintf(out, n, "%sKDOS %s", lead, id.version);
+}
+
 /*
  * Make the /KDOS entries of limine.conf match the state: the next slot's three
  * entries first, then one for the other slot when it has a root and a kernel
  * and is not marked `unfilled`: a slot an update stopped writing has no entry
- * to pick by hand until `deploy` finishes it. Every other line of the file — the theme, the timeout, memtest86+ — is left
- * where it is. `default_entry` is pointed at the first /KDOS entry.
+ * to pick by hand until `deploy` finishes it. Every other line of the file —
+ * the theme, the timeout, memtest86+ — is left where it is. `default_entry`
+ * is pointed at the first /KDOS entry.
  *
  * A pending BootNext trial also gets EFI/kdos/trial/limine.conf: the same
  * file with `default_entry` on the candidate's entry, which is the fourth of
@@ -1258,11 +1295,12 @@ static int menu_sync(const BootState *st)
 	if (st->unfilled == other)
 		dir[other] = NULL;
 	int trial = trial_pending(st) && dir[other];
-	char c[160];
+	char c[200], rel[96];
 	KbBuf block = {0};
-	snprintf(c, sizeof(c), led ? "Try the update in slot %s"
-				   : "Start this machine (slot %s)",
-		 slot_name(next));
+	menu_release(esp, next, ", ", rel, sizeof(rel));
+	snprintf(c, sizeof(c), led ? "Try the update (slot %c%s)"
+				   : "Start this computer (slot %c%s)",
+		 slot_letter(next), rel);
 	menu_entry(&block, "KDOS", c, dir[next], next, st->slot[next],
 		   base.p, BC_QUIET);
 	kb_buf_str(&block, "\n");
@@ -1274,18 +1312,22 @@ static int menu_sync(const BootState *st)
 		   "A root shell for root's password, no desktop", dir[next],
 		   next, st->slot[next], base.p, "loglevel=7 single");
 	if (dir[other]) {
-		char t[32];
+		char t[128];
 		int panics = !strncmp(base.p, "panic=", 6) ||
 			     strstr(base.p, " panic=");
-		snprintf(t, sizeof(t), "KDOS (slot %s)", slot_name(other));
+		/* "KDOS 0.2.1 (slot A)", the name System Versions gives the
+		 * slot, or "KDOS (slot A)" for a slot with no release record. */
+		menu_release(esp, other, "", rel, sizeof(rel));
+		snprintf(t, sizeof(t), "%s (slot %c)", rel[0] ? rel : "KDOS",
+			 slot_letter(other));
 		snprintf(c, sizeof(c), "%s",
-			 led ? "The confirmed root: picking it abandons the "
-			       "update"
+			 led ? "The confirmed version: picking it sets the "
+			       "update aside"
 			 : st->bootnext && st->trying == other
-			     ? "The update on trial: one boot, then the "
-			       "confirmed root again"
-			     : "The other root, for one boot: nothing is "
-			       "confirmed");
+			     ? "The update, for one boot; then the confirmed "
+			       "version again"
+			     : "The other version, for one boot; nothing "
+			       "changes");
 		kb_buf_str(&block, "\n");
 		menu_entry(&block, t, c, dir[other], other, st->slot[other],
 			   base.p, trial && !panics ? BC_QUIET " panic=10"
@@ -2343,10 +2385,14 @@ static void trial_disarm(void)
  * What a slot is, in the words the System Versions page shows: `empty` (no
  * root recorded), `armed` (the next boot tries it), `trial` (running, not
  * yet confirmed), `running` (the confirmed slot, running), `confirmed` (the
- * confirmed slot while the other one is on trial), `incomplete` (marked by
+ * confirmed slot while the other one is on trial), `visiting` (running,
+ * neither confirmed nor on trial: picked at the boot menu for this boot
+ * alone, the next boot starting the confirmed slot; reported ahead of the
+ * three below, because it is the root in use), `incomplete` (marked by
  * `unfill`: an update stopped while writing it; reported ahead of `failed`),
- * `failed` (its last trial ended unconfirmed) or `inactive` (the other root,
- * holding what it held).
+ * `failed` (its last trial ended unconfirmed), `abandoned` (its trial was
+ * set aside by picking the confirmed slot at the boot menu) or `inactive`
+ * (the other root, holding what it held).
  */
 static const char *slot_state(const BootState *st, int i, int run)
 {
@@ -2356,10 +2402,14 @@ static const char *slot_state(const BootState *st, int i, int run)
 		return i == run ? "trial" : "armed";
 	if (i == st->active)
 		return i == run || run < 0 ? "running" : "confirmed";
+	if (i == run)
+		return "visiting";
 	if (i == st->unfilled)
 		return "incomplete";
 	if (i == st->failed)
 		return "failed";
+	if (i == st->abandoned)
+		return "abandoned";
 	return "inactive";
 }
 
@@ -2404,6 +2454,93 @@ static void slots_describe(const BootState *st, SlotIdent id[2],
 }
 
 /*
+ * What `status` prints, as text: the lines a person reads, which root's
+ * `status` prints and publishes beside the JSON so a user's `status` can
+ * print them too (THE COPIES A SESSION CAN READ, below).
+ */
+static void status_text(const BootState *st, KbBuf *b)
+{
+	int run = this_slot(st);
+	SlotIdent id[2];
+	char title[2][160], kver[2][128], esp[1024];
+	int on_esp = esp_root(esp, sizeof(esp)) == 0;
+	int other = !st->active;
+
+	slots_describe(st, id, title, kver);
+	for (int i = 0; i < 2; i++)
+		if (st->slot[i][0]) {
+			const char *state = slot_state(st, i, run);
+			kb_buf_printf(b, "slot %s   %s, %s%s\n", slot_name(i),
+				      title[i], state,
+				      strcmp(state, "visiting") ? ""
+				      : " (this boot only)");
+		}
+	if (st->failed >= 0)
+		kb_buf_printf(b, "failed   %s's last trial ended without being "
+				 "confirmed\n", slot_name(st->failed));
+	if (st->abandoned >= 0)
+		kb_buf_printf(b, "abandoned %s: set aside at the boot menu\n",
+			      slot_name(st->abandoned));
+	if (st->unfilled >= 0)
+		kb_buf_printf(b, "unfilled %s: an update stopped while writing "
+				 "this slot. The next update writes it again; to "
+				 "write it at once, run kdos update apply --mount "
+				 "as root\n", slot_name(st->unfilled));
+	kb_buf_printf(b, "active   %s  %s\n", slot_name(st->active),
+		      st->slot[st->active][0] ? st->slot[st->active]
+					      : "(no root)");
+	if (st->crypt[st->active][0])
+		kb_buf_printf(b, "         inside LUKS %s\n",
+			      st->crypt[st->active]);
+	/* A one-root layout has no other slot to name: the letter would read
+	 * as a slot that exists and is empty. */
+	if (st->slot[other][0])
+		kb_buf_printf(b, "other    %s  %s\n", slot_name(other),
+			      st->slot[other]);
+	else
+		kb_buf_str(b, "other    none: this machine has one root and no "
+			      "rollback\n");
+	if (st->crypt[other][0])
+		kb_buf_printf(b, "         inside LUKS %s\n", st->crypt[other]);
+	/* The kernel each slot boots, read out of the bzImage on the ESP. */
+	if (on_esp)
+		for (int i = 0; i < 2; i++) {
+			char d[64], f[PATH_MAX], ver[128];
+			int own;
+			if (!st->slot[i][0])
+				continue;
+			if (!slot_boot_dir(esp, i, d, sizeof(d), &own)) {
+				kb_buf_printf(b, "kernel   %s  none on the ESP\n",
+					      slot_name(i));
+				continue;
+			}
+			snprintf(f, sizeof(f), "%s/%s/vmlinuz", esp, d);
+			kernel_version(f, ver, sizeof(ver));
+			kb_buf_printf(b, "kernel   %s  %s from %s%s\n",
+				      slot_name(i),
+				      ver[0] ? ver : "(no version)", d,
+				      own ? "" : ", the pair either slot boots");
+		}
+	if (trial_pending(st))
+		kb_buf_printf(b, "trying   %s once, through UEFI BootNext — any "
+				 "boot after that one starts %s\n",
+			      slot_name(st->trying), slot_name(st->active));
+	else if (st->trying >= 0 && st->bootnext)
+		kb_buf_printf(b, "trying   %s, booted once and not confirmed — "
+				 "the next boot starts %s\n",
+			      slot_name(st->trying), slot_name(st->active));
+	else if (st->trying >= 0)
+		kb_buf_printf(b, "trying   %s, %d attempt(s) left\n",
+			      slot_name(st->trying), st->attempts);
+	else if (run >= 0 && run != st->active)
+		kb_buf_printf(b, "trying   nothing — this boot was picked from "
+				 "the menu; the next boot starts %s\n",
+			      slot_name(st->active));
+	else
+		kb_buf_str(b, "trying   nothing — this slot is confirmed good\n");
+}
+
+/*
  * ONE LINE, AND EACH `"key": value` WITH THE SPACE. `kdos update` reads
  * `configured`, `active`, `trying`, `slot_a`, `slot_b`, `crypt_a`, `crypt_b`
  * and `running` with strstr, so their spelling and that space are an
@@ -2435,6 +2572,8 @@ static void status_json(const BootState *st, KbBuf *b)
 	json_slot(b, next_slot(st), 0);
 	kb_buf_str(b, ", \"failed\": ");
 	json_slot(b, st->failed, st->failed);
+	kb_buf_str(b, ", \"abandoned\": ");
+	json_slot(b, st->abandoned, st->abandoned);
 	kb_buf_str(b, ", \"unfilled\": ");
 	json_slot(b, st->unfilled, st->unfilled);
 	kb_buf_str(b, ", \"entry\": ");
@@ -2470,18 +2609,19 @@ static void list_json(const BootState *st, int pretty, KbBuf *b);
  * THE COPIES A SESSION CAN READ. The ESP is root's alone (mounted
  * umask=0077), so the state file is closed to everything that runs as a
  * user: the logout screen asking what the restart will start, the welcome
- * tour's System page, the update tray, About this System. Every run as root
- * against this machine's own state therefore writes `status --json`, `list
- * --json=short` and the flat slot.json to /run, world-readable, and a
- * `--json` read that cannot open the state file prints those copies
- * instead. kdos-sysupdated runs `status
+ * tour's System page, the update tray, About this System, a person running
+ * `kdos-bootctl status` at a shell. Every run as root against this
+ * machine's own state therefore writes `status --json`, `status`'s text
+ * (bootstate.txt), `list --json=short` and the flat slot.json to /run,
+ * world-readable, and a `status` or `--json` read that cannot open the
+ * state file prints those copies instead. kdos-sysupdated runs `status
  * --json` at start, every half minute and after each change it makes, and
  * `try`, `cancel`, `mark-good`, `set-slot` and `deploy` write them as they
  * change the state, so a copy trails the state by half a minute at most.
  *
- * KDOS_BOOTSTATE_PUB, KDOS_BOOT_ENTRIES and KDOS_SLOT_PUB stand in for the
- * three paths; a fixture state file publishes nothing without them, and only
- * root writes the real ones.
+ * KDOS_BOOTSTATE_PUB, KDOS_BOOTSTATE_TXT, KDOS_BOOT_ENTRIES and
+ * KDOS_SLOT_PUB stand in for the four paths; a fixture state file publishes
+ * nothing without them, and only root writes the real ones.
  */
 static const char *pub_path(const char *var, const char *def, int *forced)
 {
@@ -2499,6 +2639,11 @@ static const char *pub_path(const char *var, const char *def, int *forced)
 static const char *pub_status_path(int *forced)
 {
 	return pub_path("KDOS_BOOTSTATE_PUB", "/run/kdos/bootstate.json", forced);
+}
+
+static const char *pub_text_path(int *forced)
+{
+	return pub_path("KDOS_BOOTSTATE_TXT", "/run/kdos/bootstate.txt", forced);
 }
 
 static const char *boot_entries_path(int *forced)
@@ -2571,6 +2716,13 @@ static void publish(const BootState *st)
 				strerror(errno));
 		kb_buf_free(&b);
 	}
+	if ((p = pub_text_path(&forced)) && (forced || geteuid() == 0)) {
+		status_text(st, &b);
+		if (write_run_file(p, b.p) != 0)
+			fprintf(stderr, "bootctl: cannot write %s: %s\n", p,
+				strerror(errno));
+		kb_buf_free(&b);
+	}
 	if ((p = slot_pub_path(&forced)) && (forced || geteuid() == 0)) {
 		if (slot_json(st, &b) == 0) {
 			if (write_run_file(p, b.p) != 0)
@@ -2602,6 +2754,28 @@ static int state_closed(void)
 }
 
 /*
+ * The ESP is not mounted where the state file lives: the directory that
+ * holds `EFI/kdos/bootstate` exists and sits on its parent's filesystem, as
+ * `/boot/efi` does in the emergency shell, where only the initramfs's
+ * mounts are made. Without this the missing file reads as a one-root
+ * machine, and a person repairing a two-slot one is told slot B does not
+ * exist.
+ */
+static int esp_unmounted(char *esp, size_t n)
+{
+	char up[PATH_MAX];
+	struct stat sb, pb;
+
+	if (esp_root(esp, n) != 0 || !esp[0] || access(state_path(), F_OK) == 0)
+		return 0;
+	if (snprintf(up, sizeof(up), "%s/..", esp) >= (int)sizeof(up))
+		return 0;
+	if (stat(esp, &sb) != 0 || !S_ISDIR(sb.st_mode) || stat(up, &pb) != 0)
+		return 0;
+	return sb.st_dev == pb.st_dev && sb.st_ino != pb.st_ino;
+}
+
+/*
  * The live medium: `/` is an overlay of a RAM upper on the medium's image,
  * the test 63_live-installer.sh and `kdos doctor` make. It has no boot state
  * and no slots, and says so in those words rather than as a one-root
@@ -2609,7 +2783,7 @@ static int state_closed(void)
  * the next restart discards. $KDOS_MOUNTS names another mount table, for a
  * test.
  */
-static int root_is_live(void)
+int kdt_root_is_live(void)
 {
 	const char *e = getenv("KDOS_MOUNTS");
 	char *m = kb_read_all(e && *e ? e : "/proc/mounts", NULL);
@@ -2630,11 +2804,12 @@ static int root_is_live(void)
 }
 
 /* A published copy, printed as it was written when it is the shape `want`
- * opens with; 0 when one was printed. */
+ * opens with, or when it is any line of text for a `want` of 0; 0 when one
+ * was printed. */
 static int print_copy(const char *p, char want)
 {
 	char *d = p ? kb_read_all(p, NULL) : NULL;
-	int ok = d && d[0] == want && strchr(d, '\n');
+	int ok = d && (want ? d[0] == want : d[0] != 0) && strchr(d, '\n');
 
 	if (ok)
 		fputs(d, stdout);
@@ -2649,7 +2824,11 @@ static int cmd_status(const BootState *st, int have, int json)
 		if (json && closed &&
 		    print_copy(pub_status_path(&forced), '{') == 0)
 			return 0;
-		int live = !closed && root_is_live();
+		if (!json && closed &&
+		    print_copy(pub_text_path(&forced), 0) == 0)
+			return 0;
+		int live = !closed && kdt_root_is_live();
+		char esp[1024];
 		if (json)
 			printf("{\"configured\": false%s}\n",
 			       live ? ", \"live\": true" : "");
@@ -2661,6 +2840,9 @@ static int cmd_status(const BootState *st, int have, int json)
 			printf("this is the live medium — it has no boot state "
 			       "and no slots; install KDOS for A/B updates and "
 			       "rollback\n");
+		else if (esp_unmounted(esp, sizeof(esp)))
+			printf("the ESP is not mounted at %s, so the boot state "
+			       "cannot be read; mount %s\n", esp, esp);
 		else
 			printf("no boot state at %s — this machine has one "
 			       "root and no rollback\n", state_path());
@@ -2673,61 +2855,10 @@ static int cmd_status(const BootState *st, int have, int json)
 		kb_buf_free(&b);
 		return 0;
 	}
-	int run = this_slot(st);
-	SlotIdent id[2];
-	char title[2][160], kver[2][128], esp[1024];
-	int on_esp = esp_root(esp, sizeof(esp)) == 0;
-	slots_describe(st, id, title, kver);
-	for (int i = 0; i < 2; i++)
-		if (st->slot[i][0])
-			printf("slot %s   %s, %s\n", slot_name(i), title[i],
-			       slot_state(st, i, run));
-	if (st->failed >= 0)
-		printf("failed   %s's last trial ended without being "
-		       "confirmed\n", slot_name(st->failed));
-	if (st->unfilled >= 0)
-		printf("unfilled %s: an update stopped while writing it; it is "
-		       "not tried until an update writes it again\n",
-		       slot_name(st->unfilled));
-	printf("active   %s  %s\n", slot_name(st->active),
-	       st->slot[st->active][0] ? st->slot[st->active] : "(no root)");
-	if (st->crypt[st->active][0])
-		printf("         inside LUKS %s\n", st->crypt[st->active]);
-	printf("other    %s  %s\n", slot_name(!st->active),
-	       st->slot[!st->active][0] ? st->slot[!st->active] : "(no root)");
-	if (st->crypt[!st->active][0])
-		printf("         inside LUKS %s\n", st->crypt[!st->active]);
-	/* The kernel each slot boots, read out of the bzImage on the ESP. */
-	if (on_esp)
-		for (int i = 0; i < 2; i++) {
-			char d[64], f[PATH_MAX], ver[128];
-			int own;
-			if (!st->slot[i][0])
-				continue;
-			if (!slot_boot_dir(esp, i, d, sizeof(d), &own)) {
-				printf("kernel   %s  none on the ESP\n",
-				       slot_name(i));
-				continue;
-			}
-			snprintf(f, sizeof(f), "%s/%s/vmlinuz", esp, d);
-			kernel_version(f, ver, sizeof(ver));
-			printf("kernel   %s  %s from %s%s\n", slot_name(i),
-			       ver[0] ? ver : "(no version)", d,
-			       own ? "" : ", the pair either slot boots");
-		}
-	if (trial_pending(st))
-		printf("trying   %s once, through UEFI BootNext — any boot after "
-		       "that one starts %s\n", slot_name(st->trying),
-		       slot_name(st->active));
-	else if (st->trying >= 0 && st->bootnext)
-		printf("trying   %s, booted once and not confirmed — the next "
-		       "boot starts %s\n", slot_name(st->trying),
-		       slot_name(st->active));
-	else if (st->trying >= 0)
-		printf("trying   %s, %d attempt(s) left\n",
-		       slot_name(st->trying), st->attempts);
-	else
-		printf("trying   nothing — this slot is confirmed good\n");
+	KbBuf b = {0};
+	status_text(st, &b);
+	fputs(b.p, stdout);
+	kb_buf_free(&b);
 	return 0;
 }
 
@@ -2821,7 +2952,7 @@ static int cmd_list(const BootState *st, int have, int argc, char **argv)
 			printf("the boot state at %s is readable by root alone; "
 			       "`kdos-bootctl list --json` prints the copy "
 			       "published in /run/kdos\n", state_path());
-		else if (root_is_live())
+		else if (kdt_root_is_live())
 			printf("this is the live medium — it has no boot state "
 			       "and no slots; install KDOS for A/B updates and "
 			       "rollback\n");
@@ -2973,20 +3104,26 @@ static int cmd_select(BootState *st, int have, int entry)
 	 * THE ENTRY'S SLOT IS NOT THE ONE THE MENU LEADS WITH, so somebody
 	 * picked the other entry by hand, and the kernel running this is that
 	 * slot's: it boots that slot and no other. Picking the confirmed slot
-	 * while a candidate is on trial abandons the candidate — that entry is
-	 * the way back from a kernel that dies before this initramfs can count
-	 * anything. Any other hand-picked boot is one boot of the other root:
-	 * nothing spent and nothing promoted, except that a candidate picked
-	 * after its last attempt is still the candidate, and `mark-good`
-	 * confirms it. An abandoned candidate is recorded in `failed`, as any
-	 * trial is that ends unconfirmed.
+	 * while a candidate is on trial sets the candidate aside — that entry
+	 * is the way back from a kernel that dies before this initramfs can
+	 * count anything. Any other hand-picked boot is one boot of the other
+	 * root: nothing spent and nothing promoted, except that a candidate
+	 * picked after its last attempt is still the candidate, and
+	 * `mark-good` confirms it.
+	 *
+	 * A CANDIDATE SET ASIDE IS RECORDED IN `abandoned`, NEVER IN `failed`.
+	 * The person chose it and nothing failed to start; `failed` is what
+	 * kdos-notice and kdos-sysupdated read for the "did not start
+	 * properly" notice and banner, so recording the choice there tells
+	 * the person a working update broke.
 	 */
 	if (entry >= 0 && entry != next_slot(st)) {
 		if (st->trying >= 0 && entry == st->active) {
 			fprintf(stderr, "bootctl: slot %s picked from the menu "
-					"— abandoning the update in slot %s\n",
+					"— setting aside the update in slot %s\n",
 				slot_name(entry), slot_name(st->trying));
-			st->failed = st->trying;
+			st->abandoned = st->trying;
+			st->failed = -1;
 			st->trying = -1;
 			st->attempts = 0;
 			if (state_save(st) != 0)
@@ -3162,6 +3299,7 @@ static int cmd_mark_good(BootState *st, int have)
 	st->attempts = 0;
 	st->bootnext = 0;
 	st->failed = -1;
+	st->abandoned = -1;
 	if (state_save(st) != 0) {
 		fprintf(stderr, "bootctl: cannot write the boot state\n");
 		return 1;
@@ -3298,6 +3436,7 @@ static int bootctl_run(int argc, char **argv)
 			memset(&st, 0, sizeof(st));
 			st.trying = -1;
 			st.failed = -1;
+			st.abandoned = -1;
 			st.unfilled = -1;
 			st.active = i;
 		}
@@ -3390,6 +3529,7 @@ static int bootctl_run(int argc, char **argv)
 		st.bootnext = on_esp && vars && kb_path_exists(vars);
 		st.attempts = st.bootnext ? 1 : n;
 		st.failed = -1;
+		st.abandoned = -1;
 		boot_id(st.armed, sizeof(st.armed));
 		trial_disarm();
 		if (state_save(&st) != 0)
@@ -3426,9 +3566,10 @@ static int bootctl_run(int argc, char **argv)
 		else
 			printf("will boot slot %s up to %d time(s), then roll "
 			       "back to %s; a kernel that dies before its "
-			       "initramfs is left by picking /KDOS (slot %s)\n",
+			       "initramfs is left by picking the slot %c entry "
+			       "at the boot menu\n",
 			       slot_name(i), st.attempts,
-			       slot_name(st.active), slot_name(st.active));
+			       slot_name(st.active), slot_letter(st.active));
 		return 0;
 	}
 

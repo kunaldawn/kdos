@@ -24,6 +24,10 @@ rm -rf "$D"
 mkdir -p "$D/state" "$D/data/applications"
 export XDG_STATE_HOME=$D/state XDG_DATA_HOME=$D/data XDG_DATA_DIRS=$D/none
 export KDOS_NOTICE_BOOT_ID=boot-1
+# An administrator's notices unless a step says otherwise: the account's own
+# primary group stands for wheel, whatever groups the host gives it.
+ADMIN=$(id -gn) NOADMIN=kdos-notice-nosuch-group
+export KDOS_NOTICE_ADMIN_GROUP=$ADMIN
 
 fail() { echo "  FAIL  $*"; sed 's/^/        /' "$D/out" | head -30; exit 1; }
 ok() { echo "  ok    $*"; }
@@ -155,7 +159,7 @@ fits() {
 	body=$(sed -n '/^  body /,/^  icon /p' "$D/out" | sed '1s/^  body //;$d')
 	while IFS= read -r line; do
 		lines=$((lines + 1)) col=0
-		[ "$line" = "sudo kdos update install --pending" ] && cmd=1
+		[ "$line" = "${CMD:-sudo kdos update install --pending}" ] && cmd=1
 		set -f
 		for w in $line; do
 			n=${#w}
@@ -202,6 +206,16 @@ done
 ! grep -qE '^and [0-9]+ more$' "$D/out" || fail "seven groups alone: a title held back"
 grep -qx "sudo kdos update install --pending" "$D/out" \
 	|| fail "seven groups alone: no command line"
+KDOS_NOTICE_ADMIN_GROUP=$NOADMIN
+CMD="su -c 'kdos update install --pending'"
+pend org.kde.kate "kde-system kde-network kde-pim kde-multimedia kde-utilities kde-devtools"
+fits "1 boxed app also waits in Discover." "outside wheel: six groups and an app"
+hasnt "sudo" "outside wheel: six groups and an app"
+pend "" "kde-system kde-network"
+grep -qx "$CMD" "$D/out" || fail "outside wheel: groups alone: no su -c line"
+hasnt "sudo" "outside wheel: groups alone"
+KDOS_NOTICE_ADMIN_GROUP=$ADMIN
+unset CMD
 unset LC_ALL
 ok "pending: groups and boxed apps fit the popup, command and boxed line above the scroll"
 
@@ -229,6 +243,20 @@ step action firmware details
 [ "$(tr '\n' ' ' < "$D/out")" = "[konsole] [--hold] [-e] [sudo] [kdos] [firmware] [sync] " ] \
 	|| fail "firmware details"
 ok "firmware: said once per set of ports, withdrawn when they are installed"
+
+# ── an account outside wheel, which sudo refuses ──────────────────────
+export KDOS_NOTICE_ADMIN_GROUP=$NOADMIN
+step firmware "$F/firmware-nvidia.json"
+has "post firmware" "outside wheel: the port posts"
+has "Install it with: su -c 'kdos firmware sync' (root's password)" "outside wheel: su -c named"
+hasnt "sudo" "outside wheel: the firmware body"
+step action firmware details
+[ "$(tr '\n' ' ' < "$D/out")" = "[konsole] [--hold] [-e] [su] [-c] [kdos firmware sync] " ] \
+	|| fail "outside wheel: firmware details"
+step firmware "$F/firmware-none.json"
+has "close firmware" "outside wheel: withdrawn"
+export KDOS_NOTICE_ADMIN_GROUP=$ADMIN
+ok "outside wheel: the notices and Install name su -c and root's password, never sudo"
 
 # ── actions ────────────────────────────────────────────────────────────
 step action cve details

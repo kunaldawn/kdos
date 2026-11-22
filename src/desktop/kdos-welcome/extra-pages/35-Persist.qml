@@ -11,7 +11,10 @@
  * On the live medium alone: a live session writes into RAM, and `kdos
  * persist create` gives it a store from the next boot. Live is Welcome
  * Center's Live mode, which its kded module starts with --live-environment
- * whenever plasma-welcomerc says LiveEnvironment=true. The page reads that
+ * whenever plasma-welcomerc says LiveEnvironment=true, and which the live
+ * medium's launcher entry (/usr/share/kdos/data-live/applications, in front
+ * of XDG_DATA_DIRS there alone) passes too, so a tour reopened from Kickoff
+ * keeps this page. The page reads that
  * argument, because `show` is read the moment the page is made and must not
  * wait on a command; the mode itself lives in Welcome Center's private
  * module, which is compiled into the program, installs no module files to

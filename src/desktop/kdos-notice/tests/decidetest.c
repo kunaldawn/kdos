@@ -25,6 +25,9 @@
  *   decidetest firmware FILE      `kdos firmware sync --dry-run --json`
  *   decidetest action KIND ACTION the vector an action runs
  *
+ * $KDOS_NOTICE_ADMIN_GROUP stands for `wheel`; pending-cases sets it for
+ * both an administrator and an account outside `wheel`.
+ *
  * Each prints what kdos-notice would do — `post KIND`, `close KIND` or
  * `none KIND` — and records it in $XDG_STATE_HOME/kdos/notice as main.c
  * does after a server accepted it, ids counting up, so a run of calls is a
@@ -32,9 +35,11 @@
  * ---------------------------------
  */
 
+#include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "notice.h"
 
@@ -224,6 +229,31 @@ static int pc_fits(const KnPost *p, const char *apps)
 	       !strstr(p->body, "more selection");
 }
 
+/* The group kdos-notice takes for `wheel`: this account's primary group
+ * for an administrator, a group no database holds for anyone else. */
+static void admin_group(int admin)
+{
+	struct group *g = getgrgid(getgid());
+
+	setenv("KDOS_NOTICE_ADMIN_GROUP",
+	       admin && g ? g->gr_name : "kdos-notice-nosuch-group", 1);
+}
+
+/* pc_fits for an account outside `wheel`: the su -c command alone on its
+ * line, followed by the boxed line `apps`, inside eight popup lines. */
+static int pc_su_fits(const KnPost *p, const char *apps)
+{
+	static const char cmd[] = "\nsu -c 'kdos update install --pending'\n";
+	const char *c = strstr(p->body, cmd);
+	size_t n = strlen(p->body), m = strlen(apps);
+	int total = 0;
+
+	pc_layout(p, 38, &total);
+	return c && n > m && !strcmp(p->body + n - m, apps) &&
+	       c + strlen(cmd) == p->body + n - m && total <= 8 &&
+	       !strstr(p->body, "sudo");
+}
+
 static int pending_cases(const char *dir)
 {
 	static const char run[] = "Once a binary host answers, run:\n"
@@ -257,6 +287,9 @@ static int pending_cases(const char *dir)
 	KnPost p;
 	int got;
 
+	/* The cases below are an administrator's: the account's own primary
+	 * group stands for `wheel`, whatever groups the host gives it. */
+	admin_group(1);
 	memset(&s, 0, sizeof(s));
 	got = pc_look(dir, "", "kde-artwork\n", tree, &s, &p);
 	pc_check(got && !p.close && p.persistent, "groups alone post", &p);
@@ -496,6 +529,26 @@ static int pending_cases(const char *dir)
 	pc_check(got && p.close, "both empty withdraw the notice", &p);
 	got = pc_look(dir, "# nothing\n", hdr, tree, &s, &p);
 	pc_check(!got, "and nothing more while both name nothing", &p);
+
+	/* An account outside `wheel`, which sudo refuses: every layout names
+	 * su -c on a line of its own, and the boxed line still ends the body
+	 * inside the popup. */
+	admin_group(0);
+	got = pc_look(dir, "", "kde-artwork\n", tree, &s, &p);
+	pc_check(got && pc_has(&p, "\nsu -c 'kdos update install --pending'") &&
+		 !pc_has(&p, "sudo"),
+		 "outside wheel: one group names su -c, never sudo", &p);
+	got = pc_look(dir, "", "kde-artwork\nkde-games\n", tree, &s, &p);
+	pc_check(got && pc_has(&p, "wait.\nOnce a binary host answers, run:\n"
+			       "su -c 'kdos update install --pending'\n"
+			       "They are:") && !pc_has(&p, "sudo"),
+		 "outside wheel: groups alone name su -c", &p);
+	got = pc_look(dir, "org.kde.kate\n", "kde-system\nkde-online\n", tree,
+		      &s, &p);
+	pc_check(got && pc_su_fits(&p, "1 boxed app also waits in Discover."),
+		 "outside wheel: groups and an app fit the popup with su -c",
+		 &p);
+	admin_group(1);
 	return pc_fail;
 }
 

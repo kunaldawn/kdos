@@ -36,8 +36,9 @@ hardware. See [Boot and init](../03-architecture/boot-and-init.md).
 ### A greeter that keeps failing is not seen by `kdos-dm`
 
 `kdos-dm` gives a password prompt on `tty1` when SDDM is missing or exits three times in a minute.
-A greeter that crashes is restarted by SDDM itself, which stays up, so a greeter that never draws
-leaves a black `tty1` and nothing for `kdos-dm` to see. `tty2` is the recovery console for that:
+A greeter that crashes is restarted by SDDM itself, which stays up; after three crashes in a row,
+each within a minute of its start, SDDM stops restarting it. A greeter that never draws leaves a
+black `tty1` and nothing for `kdos-dm` to see. `tty2` is the recovery console for that:
 `Ctrl+Alt+F2`, log in, and read `/var/log/sddm.log`.
 
 ### The screen reader at the login screen has no sound
@@ -82,14 +83,14 @@ QtKeychain program, and the secret portal, report that the service is missing, a
 offers only to turn the wallet on. See
 [The security model](../03-architecture/security-model.md).
 
-### Some programs open their first window at their minimum size
+### Dolphin's Places panel cuts its longer labels
 
-A KXmlGui program with no saved window size sizes its first window from its widgets' minimum size
-hints, and on Wayland nothing makes it larger: Kapman opens at 200x178, Bomber at 453x228 and
-KNetWalk at 396x141, and KDiskFree, Shotcut and digiKam are small too. The window memory keeps
-whatever size the window closes at, so a person who enlarges the window once has it enlarged from
-then on; until then, it opens at the program's size. See
-[Placement](../03-architecture/window-model.md#placement).
+Dolphin opens its Places panel at the panel's own default width, whatever the window's size, so
+*Recent Locations* and *Removable Devices* end in an ellipsis even in a maximised window. The window
+memory grows Dolphin's first window but cannot reach a panel inside it, and Dolphin keeps the panel
+width only inside the binary window state it writes to `~/.local/state/dolphinstaterc`, which no
+shipped default can set. Dragging the panel's edge wider once fixes it: Dolphin keeps that width
+from then on. See [Placement](../03-architecture/window-model.md#placement).
 
 ### System Monitor's Applications page lists nothing
 
@@ -135,6 +136,24 @@ scheme only in programs that load them through KDE's icon loader. A GTK, libadwa
 program draws them in the blue baked into the files. The KDOS marks themselves are raster images
 and keep their colours under every accent.
 
+### Celluloid draws three of its buttons as missing icons
+
+In a Plasma session, Celluloid, a GTK 4 program, draws its seek-back, seek-forward and sidebar
+buttons as GTK's page-with-warning placeholder. GTK's icon lookup (`GTK_DEBUG=icontheme`) finds
+no icon for `media-seek-backward-symbolic`, `media-seek-forward-symbolic` or
+`sidebar-show-right-symbolic` and falls back to `image-missing`. Both seek names are in
+`breeze-dark` and in Adwaita, the last theme of the chain, and the sidebar name is in Adwaita
+alone; every theme cache lists them, yet GTK misses all three in every theme, so the cause is not
+Breeze's files. Its play and volume buttons, also Breeze Dark's, draw. The same GTK 4.24 with the
+same icon tree finds and draws all three under a bare Wayland compositor, with no portal and GTK's
+software renderer, whether or not the caches are present, so the miss comes from something the
+Plasma session adds: the portal's settings, the GL renderer, the session's scale, the
+`~/.config/gtk-4.0/settings.ini` Plasma writes, or the session's `XDG_DATA_DIRS`. None of them has
+been measured; the next step is `GTK_DEBUG=icontheme,iconfallback celluloid` in the session,
+then again with `GDK_DEBUG=no-portals` and with `GSK_RENDERER=cairo`. There is no workaround; the
+buttons still act when clicked. Other GTK 4 programs may show the
+same placeholder on other buttons.
+
 ### A program started with `pkexec` reads none of KDOS's defaults
 
 `pkexec` clears the environment of the program it starts, so `XDG_CONFIG_DIRS` is unset and a KDE
@@ -148,7 +167,12 @@ program a person starts with `pkexec` looks like stock KDE.
 KDE's platform theme and the Breeze widget style exist for Qt 6 only. A Qt 5 program (VLC,
 KeePassXC, LMMS, Mumble and the rest) loads qt5ct under the same platform theme name, `kde`, and
 draws in the Fusion style with the accent's palette, the KDOS icons and the desktop's fonts, which
-`kdos theme` keeps in step; its widgets are Fusion's shapes, not Breeze's.
+`kdos theme` keeps in step; its widgets are Fusion's shapes, not Breeze's. Its Open and Save
+dialogs are Qt's own widget dialog, not KDE's: qt5ct's `standard_dialogs=default` leaves them to
+Qt. The portal's dialog theme, `xdgdesktopportal`, builds its base theme from the desktop's theme
+names, and under `XDG_CURRENT_DESKTOP=KDE` that name is `kde`, the key qt5ct answers, so naming it
+in qt5ct.conf makes each copy of qt5ct load another and every Qt 5 program dies of a stack overflow
+at start.
 
 ### Tk, FLTK and Java programs keep their own colours
 
@@ -222,8 +246,8 @@ host-wide (see [the session](../03-architecture/session.md#input-methods)).
 
 A GTK 4 program asks the file-chooser portal for its Open and Save dialogs, and so does a GTK 3
 program that uses GTK's native chooser, which `GTK_USE_PORTAL=1` sends to the portal; both get
-KDE's dialog. A GTK 3 program that builds GTK's own dialog widget never asks the portal: AbiWord's
-Open dialog is GTK's. Nothing short of changing the program moves it.
+KDE's dialog. A GTK 3 program that builds GTK's own dialog widget never asks the portal: the Open
+dialogs of GIMP, Inkscape and AbiWord are GTK's. Nothing short of changing the program moves it.
 
 ### A corporate VPN is a terminal program
 
@@ -348,8 +372,10 @@ measured.
 A boxed GTK program is given its theme as `GTK_THEME` when it starts, and with the variable set GTK
 follows no later change of theme or of the dark preference, whatever theme name the settings portal
 announces. Its colours are the `colors.css` it read
-at start: `colorreload-gtk-module`, which repaints a running GTK 3 program on the host, is loaded by
-the modules `org.gtk.Settings` names on the session bus, which a box's filtered bus does not reach.
+at start: `colorreload-gtk-module`, which repaints a running GTK 3 program on the host, is not in
+any box's runtime. A boxed GTK 3 program that shares your home reads the `gtk-modules` line
+kde-gtk-config writes to `~/.config/gtk-3.0/settings.ini`, so it prints `Failed to load module`
+for that module and for `window-decorations-gtk-module` and runs without them.
 An accent switch, or a switch between dark and light, therefore reaches a boxed GTK program when it
 next starts.
 
@@ -505,6 +531,22 @@ broadcasts is missing from it. It can still be reached by typing `smb://host`.
 GTK programs' `network://` view lists less: `gvfs` is built without its WS-Discovery (`wsdd`)
 backend, because `wsdd` is not a port, so it lists only the hosts Avahi finds.
 
+### `.local` names resolve only through NetworkManager's dnsmasq
+
+musl has no NSS, so no `nss-mdns` module can answer a `<host>.local` name for `getaddrinfo()`.
+KDOS answers it in DNS instead: NetworkManager's dnsmasq, the resolver `/etc/resolv.conf` names,
+forwards the `local` domain to [kdos-mdnsd](../04-programs/daemons.md#kdos-mdnsd), which asks
+Avahi, so `ping`, `ssh`, `curl`, a browser and `getent hosts` resolve one. A machine whose network
+is run by `30_network`'s dhcpcd instead of NetworkManager has a resolver that knows nothing of
+`.local`. There a name is resolved with `avahi-resolve-host-name -4 <host>.local`, by programs that
+ask Avahi themselves (Dolphin's `smb://` and `sftp://`), and by libcups, whose lookup asks Avahi
+when the C library cannot, so printing still reaches a printer by its `.local` name.
+
+Each lookup returns one address per family, the one Avahi resolved first, and only the address:
+a host's IPv6 link-local address is not answered, because a DNS record cannot carry the interface
+it belongs to. A name nothing answers takes three seconds to fail.
+See [Avahi and mDNS](../../kfs/16-wiki/avahi-and-mdns.md#resolving-a-local-name).
+
 ### An NFSv3 mount needs `-o nolock`
 
 NFSv4 mounts and the v4-only server (`72_nfsd`) work. There is no `rpcbind` port, so `rpc.statd`
@@ -565,6 +607,20 @@ them behaves beyond starting describes its recipe. No harness in the tree repeat
 it is not part of a check. How much of a build of them has been measured is under
 [Build times and snapshot sizes are measured for part of the build
 only](#build-times-and-snapshot-sizes-are-measured-for-part-of-the-build-only).
+
+### Discover cannot install a native group
+
+Discover's Sets are the box catalogue's sets, which install boxed applications. The native groups
+of ports in `/ports/groups`, such as `office`, `graphics` and `internet`, have no resource in
+Discover, so a group is installed with `sudo kdos update install <group>` or in the installer
+([Native groups](../02-user-guide/applications.md#native-groups)); Discover installs each member
+from its own page.
+
+### Krita's welcome page says "DEV BUILD"
+
+The DEV BUILD label on Krita's welcome page, and the beta mark on its splash, are upstream's:
+Krita counts every Qt 6 build as a development build, and no build switch removes the label. The
+port is Krita's release.
 
 ### Five applications have no port
 
@@ -672,9 +728,34 @@ pages are removed as the package is built, so setting `LANG` or `LC_MESSAGES` to
 changes no program's text, because there is nothing for it to load. KDE's catalogues go too, and
 four KDE Frameworks keep the English plural forms of their messages only in a catalogue, so a few
 counts read "(s)" where an English plural belongs. Text in any language can still
-be typed, shown and edited: fonts, keyboard layouts and the input methods for Chinese, Japanese and
-Korean ship. The rule is in
+be typed, shown and edited: the base's fonts draw Latin, Greek, Cyrillic, Arabic, Hebrew,
+Armenian, Georgian, the Indic scripts, Sinhala, Thai, Lao, Khmer, Myanmar and Ethiopic, and every
+keyboard layout ships. Chinese, Japanese and Korean are not on the base
+([below](#chinese-japanese-and-korean-text-needs-a-font-that-is-not-on-the-base)). The rule is in
 [Writing ports](../05-developer/writing-ports.md#size-and-language-policy).
+
+### A command-line program's dates follow seventeen regions, and its numbers none
+
+System Settings → Region & Language offers every region Qt's locale data knows, and KDE programs
+format dates, numbers and currency by it. A program that formats through the C library instead,
+such as `date` or `ls -l`, reads musl's locale: it names days and months in a
+region's language only for the seventeen regions musl-locales defines (`locale -a` lists them,
+`cs_CZ` to `sv_SE`), in English for every other, and musl writes every number and amount the C
+way, with a decimal point and no currency symbol, whatever `LC_NUMERIC` or `LC_MONETARY` says. See
+[Language](../02-user-guide/administration.md#language).
+
+### Chinese, Japanese and Korean text needs a font that is not on the base
+
+The base image has no Chinese, Japanese or Korean face, so their text shows as boxes holding the
+character's hex code, in documents, file names and web pages alike (the Chinese line of
+`https://example.com` among them). `sudo kdos update install noto-cjk` installs the faces alone
+(Noto Sans CJK, one collection for all three), and with them alone every Han character takes its
+Korean form, which is wrong for Chinese and Japanese text. `sudo kdos update install lang-zh`,
+`lang-ja` or `lang-ko` installs the faces with that language's fcitx5 input method and its glyph
+forms (`noto-cjk-prefer-zh`, `-ja` or `-ko` alone gives the forms without the input method); see
+[Input methods](../02-user-guide/administration.md#input-methods). A program started afterwards
+draws the text. The base's fonts and what they cover are in
+[Administration](../02-user-guide/administration.md#language).
 
 ### `texdoc` finds no manuals, and HTML and PDF manuals are not installed
 
@@ -697,8 +778,11 @@ later phase builds with it.
 ### Secure Boot is not supported
 
 Limine's EFI binary is unsigned and KDOS enrols no keys, so a machine with Secure Boot enabled
-refuses to load it. The installer reports the firmware state on its first page; turning Secure Boot
-off in firmware setup is the only way.
+refuses to load it: the firmware rejects the medium itself, with a message such as `Access
+Denied`, `Secure Boot Violation` or `Invalid signature`, and nothing of KDOS appears. Turning
+Secure Boot off in firmware setup is the only way. The installer's `Secure Boot on` line is for a
+firmware that started it anyway, past a boot manager that skips verification such as Ventoy's
+secure-boot mode, and there the installed machine still does not start.
 
 ### 32-bit UEFI is built and has never been booted
 
@@ -707,6 +791,15 @@ Torito UEFI record, and the installer writes a firmware boot entry naming it whe
 `/sys/firmware/efi/fw_platform_size` says 32, but the machine that needs it is an early Atom tablet,
 and nothing here has one. What is verified is that the binary is built and placed. BIOS and 64-bit
 UEFI are the two that have been booted.
+
+### No hibernation
+
+KDOS suspends to RAM only. Swap is zram, which is memory and holds nothing across a power-off, and
+the initramfs sets up no `resume=` device, so there is no disk image to wake from.
+`/etc/elogind/sleep.conf.d/50-kdos.conf` turns hibernation and the hybrid modes off (see
+[Configuration](configuration.md)), elogind answers `CanHibernate` with `no`, and neither the Leave
+menu, PowerDevil nor the login screen offers a Hibernate button. To keep a session across a
+power-off, save the work and shut down; sleep keeps it only while the battery lasts.
 
 ### Broad hardware support is not a goal
 
@@ -837,8 +930,21 @@ network. None of the optical paths has read a disc here, because the rig has no 
 ### Burning a disc and writing an image are unproved on hardware
 
 K3b burns discs through `cdrdao`, `cdrskin` and `growisofs`, and ISO Image Writer writes an image
-to a stick. The rig has no optical drive and no stick, so neither has burnt or written anything,
-and no disc has been read back.
+to a stick. The rig has no optical drive, so K3b has burnt nothing and no disc has been read back;
+ISO Image Writer has written only to an emulated USB stick, never to a real one.
+
+### A Ventoy stick boots in normal mode only, and holds no persistence store
+
+Ventoy 1.1.18's normal mode has started KDOS under UEFI and BIOS on virtual firmware, and an
+install from it has finished, on an image whose medium scan mounted the stick partition node
+that Ventoy's hook points at the ISO. The scan in this tree mounts Ventoy's `/dev/mapper/ventoy`
+mapping first, and that path has not been booted: neither the live session from it, the udev
+rule that hides it, nor the installer's refusal of the stick beneath it is measured. Its grub2 and memdisk modes stop before the desktop: grub2 mode
+finds no boot file, and memdisk mode leaves the ISO in memory where the initramfs's medium scan
+does not look. Ventoy's Secure Boot mode has not been tried, and the installed machine would
+not start under Secure Boot in any case (see [Secure Boot is not supported](#secure-boot-is-not-supported)).
+A Ventoy stick's KDOS is a file inside Ventoy's own partition, so it takes no persistence store:
+`kdos persist create` refuses it, and every live session from it starts fresh.
 
 ## Boot and updates
 
@@ -859,6 +965,52 @@ commit names its release, and `kdos update fetch` replaces a same-commit tree th
 the published one that does (see
 [Where the binary host comes from](../04-programs/kdos-command.md#kdos-update)).
 
+A v0.2 machine takes the v0.2.1 slot image from Discover's Updates page, or with
+`sudo kdos update fetch` and then `sudo kdos update apply --mount`, applied by its own v0.2 `kdos`:
+that `apply` takes an image only when `fetch` has cached and verified it, falls back to packages
+otherwise, and refuses an unmounted inactive slot without `--mount`. The image names `/boot/efi`,
+which that apply would otherwise delete from the new slot. Once the machine runs 0.2.1, delete the
+`binhost = …/v0.2` line: v0.2.1's `/ports/TREE` names its own release, and the line would keep the
+machine on v0.2's binary host.
+
+### An account made on v0.2 keeps the US keyboard layout
+
+On v0.2, fcitx5 wrote `LayoutList=us` into each account's `~/.config/kxkbrc` at login. v0.2.1
+ships `/etc/xdg/fcitx5/conf/wayland.conf`, which stops that write, but the file already written
+stays: it names a layout, so neither the installer's layout in `/etc/xdg/kxkbrc` nor locale1's
+reaches the session or the lock screen. After taking v0.2.1, set the layout once on System
+Settings → Keyboard, or delete `~/.config/kxkbrc` and log in again. An account made on v0.2.1
+starts with no `kxkbrc` and takes the system layout.
+
+### A v0.2 machine keeps a 7-bit console keymap
+
+The v0.2 installer took kbd's bare map for a layout before its `-latin1` one, so a v0.2 machine
+with a German, French, Danish, Norwegian, Swiss or Portuguese keyboard has `de`, `fr`, `dk`, `no`,
+`sg`, `fr_CH` or `pt` in `/etc/keymap`. The bare names are the 7-bit ISO-646 maps, on which the
+keys for ü ö ä ß type `@ [ ] \`, and `pt` is the OLPC laptop's. The update carries `/etc/keymap`
+as it is, and kdos-settingsd copies that name to `/boot/efi/EFI/kdos/keymap` for the passphrase
+prompt. After taking v0.2.1, `sudo kdos keymap <layout>-latin1` once (`sg-latin1` for Swiss German,
+`fr_CH-latin1` for Swiss French) sets the consoles and the prompt. A machine installed from v0.2.1
+gets the `-latin1` map from the installer.
+
+The ESP copy is first written when kdos-settingsd starts on the new slot, after the root is open,
+so on an encrypted v0.2 machine the first start of v0.2.1 asks for the passphrase with the kernel's
+US map, as v0.2 did. Every later start uses the machine's map.
+
+### A v0.2 machine has printing off
+
+The v0.2 installer disabled CUPS by default and wrote `/etc/service.disabled/cups`, and an
+update carries that file, which no package owns, into the new slot, so that machine still has
+printing off, and System Settings' Printers page says the print service is not available. A
+machine installed from v0.2.1 has printing on. After taking v0.2.1, run once:
+
+```sh
+sudo service enable cups
+sudo service start cups
+sudo service start cups-browsed
+sudo service start ipp-usb
+```
+
 ### A disk-encryption key is typed, not sealed in the TPM
 
 `tpm2-tss` and the `tpm2_*` tools ship, so a key *can* be sealed to the chip by hand, but nothing in
@@ -866,13 +1018,26 @@ the boot path unseals one: `unlock_root` reads a passphrase from `tty1` and has 
 Adding one means a sealed blob on the EFI partition, a PCR policy, and an answer for what happens
 when a firmware update changes the measurements, none of which is decided.
 
+### The installer cannot install beside another system
+
+Neither the window nor `kinstall` offers to shrink a partition or to install alongside another
+operating system. Its partitions are resized first in Partition Manager (`ntfsresize`, `ntfs-3g`
+and `parted` ship) and then reused, as
+[Installation](../02-user-guide/installation.md#beside-another-system) describes. The Limine menu
+lists only KDOS and has no entry for the other system: on UEFI it starts from the firmware's boot
+menu, and on legacy BIOS, where Limine replaces the disk's boot code, it does not start from that
+disk at all.
+
 ### Only an LVM erase install gets a second root slot
 
 The installer lays a disk out for A/B updates when it erases the disk onto LVM and the disk holds
 two slots, the swap and a home of their own: it makes `root_a` and `root_b`, copies the finished
 system into slot B, and records both. Two slots need each slot's 1.5 times the install or 30% of the room
 past the swap, at least 8 GiB, the swap and a 4 GiB home: about 24.5 GiB with the default 4 GiB
-swap, and 20.5 GiB with none, for the 4.7 GiB base. A disk
+swap, and 20.5 GiB with none, for the base: the size is figured on the walk's payload
+(`payload 5220 MB` in `kinstall --dump probe`), which counts every name of a hard-linked file,
+while the installer's Welcome page and the copy's progress line give what the copy writes, 4.4 GiB
+(the probe's `copies` line). A disk
 too small for two slots, and every manual layout, get slot A only, and a second slot there is made,
 filled and recorded with
 `kdos-bootctl set-slot b <uuid> [<luks-uuid>]` by hand; the steps are in
@@ -914,6 +1079,14 @@ key has an empty `/etc/kdos/keys/tree`, and on it `fetch` stops before the netwo
 One defect is known: a Discover started again while an update is downloading does not pick the running job back up; the System Versions page shows it. See
 [Discover](../04-programs/discover.md#system-updates).
 
+### Without automatic login, a desktop that breaks only after a login is not rolled back
+
+A trial slot is kept once its boot scripts finish and a Plasma session runs for a minute. On a
+machine SDDM does not log in automatically, the login screen staying up for a minute keeps it
+instead, so a release whose desktop fails only once somebody logs in is confirmed and stays. The
+way back is by hand, from System Versions or `sudo kdos-bootctl try <slot>`; see
+[A/B root slots](../02-user-guide/installation.md#ab-root-slots).
+
 ### Per-slot kernels have been booted on virtual firmware only
 
 On an installed virtual machine with UEFI firmware (OVMF), `kdos-bootctl deploy` put slot B's
@@ -922,11 +1095,12 @@ entry, and the boot confirmed it. A trial led by the menu, with `efivarfs` unmou
 confirmed the same way, and a trial boot that hung in `rcS` was reset and came back on the
 confirmed slot with the trial cleared. No physical firmware has run a trial, so a firmware that
 ignores `BootNext`, or deletes a `Boot####` entry that is not in `BootOrder`, has not been met: by
-the code it rolls every candidate back unbooted rather than looping. Neither BIOS boot of a slot nor
-the `linux` postinstall's appended initramfs has been started, as no newer `linux` package exists
-to install. On BIOS, a candidate kernel that dies before its initramfs runs spends no attempt,
+the code it rolls every candidate back unbooted rather than looping. On BIOS both slots boot when
+picked from the menu, but no trial boot through `kdos-bootctl` has run there, and the `linux`
+postinstall's appended initramfs has not been started, as no newer `linux` package exists to
+install. On BIOS, a candidate kernel that dies before its initramfs runs spends no attempt,
 because Limine counts nothing: the menu keeps leading with it until you pick the confirmed slot's
-`/KDOS (slot <x>)` entry by hand; see
+`/KDOS <version> (slot <X>)` entry by hand; see
 [One boot through BootNext](../03-architecture/boot-and-init.md#one-boot-through-bootnext).
 
 A root that has no `/boot/initramfs.modules` builds a new kernel's initramfs from the module set its
@@ -1256,9 +1430,11 @@ installed after the importer; and a module a host program registers in-process, 
 
 ### No boot is timed per codec
 
-`110_iso.sh` fails a base ISO over 1,900 MiB. The base ISO this tree builds, with Orca, BRLTTY,
-plocate, ISO Image Writer and Adwaita, measures 1,662,947,328 bytes (1,585 MiB) in the default
-zstd:19 (see [The codec](../05-developer/build-system.md#the-codec)), 315 MiB under the gate. The ledger
+`110_iso.sh` fails a base ISO over 1,900 MiB. A base ISO with Orca, BRLTTY,
+plocate, ISO Image Writer and Adwaita measures 1,775,599,616 bytes (1,693 MiB) in the default
+zstd:19 (see [The codec](../05-developer/build-system.md#the-codec)), 207 MiB under the gate.
+`ports/base` also names noto-fonts-extra (Indic and Southeast Asian scripts, 13 MB unpacked,
+2.9 MB as an xz package), and no ISO carrying it has been measured. The ledger
 `088_ledger.sh` writes names the largest packages and why each is there, `KDOS_ISO_COMP=xz-bcj` is
 about 100 MiB smaller, and `KDOS_ISO_GATE=0` builds the same image as a developer one. The codec
 was chosen from decompression measured on one core, not from a boot to Plasma timed under QEMU, so
@@ -1361,6 +1537,16 @@ version string, its build user and host and its module-signing key, but signs ea
 ECDSA, which draws a fresh random number for every signature, so every module's appended signature
 differs between two builds and `kpkg verify --repro linux` reports them. Whether anything else in
 the package differs has not been measured.
+
+### Kernel headers are not a package of their own
+
+The kernel's user-space API headers under `/usr/include` ship in the `linux` package, in its
+`dev` facet, beside the kernel and its modules. A machine's first build from source restores
+that facet by downloading and installing the whole kernel package again, about 190 MiB, even for a
+program of a few kilobytes (see
+[Building here](../03-architecture/packaging.md#building-here)). The reinstall keeps every
+unchanged file in place and leaves the ESP untouched, so it costs the download and nothing else.
+A `linux-headers` port would take the headers out; there is none.
 
 ## Sources and publishing
 

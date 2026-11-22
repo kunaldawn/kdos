@@ -84,9 +84,9 @@ print on the serial line and leave the splash alone.
 
 ## The rescue shell
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=559-606 pin=18b5c5c61345 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=573-643 -->
 
-`rescue MESSAGE` is the end of every path that cannot boot. It shows the message on the
+`rescue MESSAGE [HINT]` is the end of every path that cannot boot. It shows the message on the
 splash as a detail line, holds it there for `RESCUE_HOLD`, four seconds, on a quiet boot so it can
 be read before the fade, and quits the splash, which hands the screen back. It runs `sync`, since a
 failure after the root was mounted leaves a disk mounted read-write and `Ctrl+Alt+Del`, which the
@@ -95,14 +95,24 @@ active consoles from `/sys/class/tty/console/active`; the last name there is the
 `/dev/console` is.
 
 - When that is a virtual terminal (`tty0`, `tty1` and so on), there is one screen, and the message
-  is printed on it once. The message, a line saying this is a rescue shell and the line
-  `Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk.` are printed,
-  and the script replaces itself with `/bin/sh`.
-- Otherwise `/dev/console` is a serial line. The message is printed there, the message and the
-  same restart line go to `tty1` as well, `setsid -f -c` starts an interactive shell there in a session of its own with `tty1` as its
-  controlling terminal, and the script becomes the shell on the serial line.
+  is printed on it once. The message, the hint when one is given, a line saying this is a rescue
+  shell and `RESCUE_RESTART`, `Ctrl+Alt+Del restarts at once; run sync first if you changed a
+  disk.`, are printed, and the script opens an interactive shell on that terminal with
+  `setsid -c -w`, which makes the terminal the shell's controlling terminal (`/dev/console` can
+  never be one, and a shell there has no job control), and waits for it, in a loop, so an `exit`
+  opens a fresh shell; a shell that ends non-zero, a failed start among them, waits a second
+  before the next, so one that cannot start does not spin the loop.
+- Otherwise `/dev/console` is a serial line. The message and the hint are printed there, and go to
+  `tty1` as well with the rescue-shell line, `RESCUE_VERBOSE` (`The boot menu's '(verbose)' entry
+  shows the boot log on this screen.`) and the same restart line; `setsid -f -c` starts an
+  interactive shell there in a session of its own with `tty1` as its controlling terminal, and the
+  script becomes the shell on the serial line.
 
-In either case the shell on `/dev/console` is process 1, and leaving it panics the kernel. There is
+Every fixed line and every hint is 80 columns or fewer: they are printed before fbcon's deferred
+takeover has widened the console, and a longer line wraps.
+
+Process 1 never returns from `rescue`: on a serial console it is the shell there, and leaving that
+shell panics the kernel. There is
 no `reboot` program in the initramfs, so `Ctrl+Alt+Del` is the restart; see
 [The rescue shell](../../kdos/03-architecture/boot-and-init.md#the-rescue-shell) for how to restart
 from it, and [The initramfs](090-initramfs.md#the-gnu-programs) for the programs it has.
@@ -154,18 +164,33 @@ set.
 
 ## The unlock function
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=703-739 pin=b0fb0aa9b1c6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=717-762 -->
 
-The comment sets out the `cryptdevice=` syntax and the two different UUIDs it involves. The two
-`: "${VAR:=default}"` lines give `PASS_TTY` and `CRYPT_MAPPER_DIR` their real values unless the
-environment already set them, which only the self-test does.
+The comment sets out the `cryptdevice=` syntax and the two different UUIDs it involves. The three
+`: "${VAR:=default}"` lines give `PASS_TTY`, `CRYPT_MAPPER_DIR` and `LOADKEYS` their real values
+(`/dev/tty1`, `/dev/mapper` and `/bin/loadkeys`) unless the environment already set them, which
+only the self-test does. `KEYMAP` starts empty.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=741-797 pin=8d30342c016d -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=764-774 -->
+
+`esp_keymap` sets `KEYMAP` from the first line of `EFI/kdos/keymap` under the ESP it is given. It
+takes the line only when it is a map name: not empty, not starting with `.` or `-`, and made only
+of letters, digits and `_ . + -`. Anything else, or a missing file, leaves `KEYMAP` empty. The file
+is on a FAT partition anybody holding the disk can edit, and `loadkeys` would read a path or an
+option as readily as a name. The installer and kdos-settingsd write the file; the
+[Boot slot](#boot-slot) block below calls this function.
+
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=776-837 -->
 
 `unlock_root` accepts `UUID=<luks-uuid>:<name>` or `/dev/<node>:<name>`, and anything else is an
 error. An empty name becomes `kdosroot`. Given a UUID, it asks `blkid -U` once a second, for up to
 ten seconds, for the device holding that container. It fails when no device turns up, or when the
 initramfs carries no `cryptsetup`.
+
+Before the first try, when `KEYMAP` is set, it runs `$LOADKEYS -q -u -C $PASS_TTY $KEYMAP` once,
+so the passphrase is typed with the machine's console map. `-u` loads the map in Unicode mode,
+because the passphrase was set in a UTF-8 session. A map that fails to load leaves the kernel's US
+map, and the prompt runs anyway. With no `KEYMAP` the US map is the only one.
 
 Then it allows three tries. Each one shows `DISK PASSPHRASE (attempt N of 3)` on the splash, or
 `Disk passphrase (attempt N of 3): ` on `PASS_TTY` when no splash draws, never the mapper name,
@@ -183,7 +208,7 @@ which may change the container it is given.
 
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=799-821 pin=780e010816fe -->
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=822-877 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=862-920 -->
 
 On a machine with A/B slots, the command line names the ESP that holds the state file. The script
 loads `vfat`, waits up to ten seconds for that ESP, and mounts it at `/esp`. Two questions are put
@@ -194,7 +219,8 @@ to `kdos-bootctl`, both against `/esp/EFI/kdos/bootstate`:
    the boot menu on the ESP. Its messages go to the console.
 2. `crypt <uuid>` prints the LUKS container that filesystem is inside, if it is in one.
 
-The ESP is unmounted at once. A UUID from `select` replaces `ROOT_UUID`, and a container from
+While the ESP is still mounted, `esp_keymap /esp` reads `EFI/kdos/keymap` into `KEYMAP` for the
+unlock: the ESP is not mounted again before the passphrase prompt. Then the ESP is unmounted. A UUID from `select` replaces `ROOT_UUID`, and a container from
 `crypt` replaces `CRYPTDEV`, always under the mapper name `kdosroot`. When there is no ESP, no state
 file or no answer, the script prints which, keeps the command line's `root=` and closes the stage as
 passed: a machine whose slot state cannot be read still boots the root its menu entry names. The
@@ -300,30 +326,38 @@ is reached `USB storage still settling after 10s; no persistence store found`.
 
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1133-1202 pin=2ce5a9d1e31f -->
 
-With no `root=UUID=`, the script looks for the medium the image was booted from. It tries every node
-of `/dev/sr*`, `/dev/sd*`, `/dev/vd*`, `/dev/nvme*` and `/dev/mmcblk*` in turn, mounting each as
-ISO9660 on `/mnt/iso` and looking for `system.sfs` at its top. It stops at the first that has one,
+With no `root=UUID=`, the script looks for the medium the image was booted from. It tries
+`/dev/mapper/ventoy` and then every block node of `/dev/sr*`, `/dev/sd*`, `/dev/vd*`, `/dev/nvme*`
+and `/dev/mmcblk*` in turn, mounting each as ISO9660 on `/mnt/iso` and looking for `system.sfs` at
+its top. `/dev/mapper/ventoy` is the device Ventoy's hook maps over the ISO file on a Ventoy stick;
+on any other boot it does not exist. It stops at the first that has one,
 and keeps its name in `MEDIUM` for the persistence store.
 
 The scan repeats every tenth of a second until ten seconds of uptime have passed since it started,
 with these rules:
 
-- A node that cannot be opened for reading is passed over without a mount or a message: an
-  optical drive with no disc, or a card reader with no card, whose open fails with `ENOMEDIUM` and
+- A node that cannot be opened for reading is passed over without a mount, and `WHY` records
+  `no medium` for it: an optical drive with no disc, or a card reader with no card, whose open fails with `ENOMEDIUM` and
   which mount would only answer with `Can't open blockdev`. The size in
   `/sys/class/block/<name>/size` is no test for this, because an empty optical drive reports a
   guessed size rather than 0. The node is not recorded, so a disc that is still spinning up is
   tried on a later pass.
-- `CHECKED` lists, space-separated, every node that has mounted. A node on that list is skipped on
-  later passes, because a filesystem without `system.sfs` will not grow one; only nodes that have
-  not mounted yet are retried.
-- Only the first pass prints the name of each node it tries and mount's errors; later passes are
-  silent.
+- `CHECKED` lists, space-separated, every node that has mounted, and every node other than an
+  optical drive (`/dev/sr*`) whose ISO9660 mount failed. A node on that list is skipped on later
+  passes, because a filesystem without `system.sfs` will not grow one and a disk that is not
+  ISO9660 will not become one; each failed mount also puts an `ISOFS` line in the kernel log. An
+  optical drive is retried, for a disc still spinning up.
+- `SEEN` lists every node the scan has come across. The first time a node is seen, on whichever
+  pass, the scan prints `Checking <dev>...`, and that first mount alone prints its errors.
+- `WHY`, an associative array, keeps what each node turned out to be: `no medium`,
+  `not ISO 9660` or `ISO 9660 without system.sfs`.
 - An unmount that fails sets `STUCK` and ends the scan, because a second mount on a busy `/mnt/iso`
   would stack on top of the first.
 
-`FOUND=0` at the end, after the time is up or after a stuck unmount, opens the rescue shell with
-`Failed to find KDOS installation media.` The scan relies on the medium's ISO9660 filesystem being
+`FOUND=0` at the end, after the time is up or after a stuck unmount, prints one line,
+`No KDOS media; tried:` and each node of `SEEN` with its `WHY`, and opens the rescue shell with
+`Failed to find KDOS installation media.` and the hint `MEDIA_HINT`, `Write the whole ISO with dd,
+Rufus DD mode or Ventoy; copied files cannot boot.` The scan relies on the medium's ISO9660 filesystem being
 at the start of the whole-disk node; [The ISO](110-iso.md#xorriso) shows how the image keeps it
 there.
 

@@ -27,3 +27,4 @@ meson setup build \
 	-Dwith-system-data-files=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+install -Dm644 "$SRC/src/egl/opengl/eglinfo.c" "$PKG/usr/share/licenses/$name/eglinfo.c"

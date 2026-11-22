@@ -106,6 +106,16 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   names a program and at most its first argument: granting `/usr/bin/kdos` would grant every
   subcommand. The helper's two actions each name their verb in `exec.argv1`, since pkexec takes
   the first action that matches and one naming the path alone would match either verb.
+- **The helper's standard input is its cancel.** After pkexec the helper is root, and Discover's
+  SIGTERM to its process group is refused, so a build would go on until its next write met a
+  closed pipe. The transaction starts every step with an open stdin pipe and Cancel closes it;
+  the helper runs `kdos update` in a process group of its own with `/dev/null` for input, and on
+  end of file or a hang-up on stdin (or SIGTERM, SIGINT, SIGHUP to itself) sends SIGTERM to that
+  group, SIGKILL after 60 seconds, waits for the group to be gone, writes no catalogue and exits
+  130 with `==> <port>: cancelled`. The transaction ends Cancelled only on the process's exit, so
+  the backend's refresh never meets a run still holding the package lock. A helper started with
+  stdin on `/dev/null` cancels at once. The backend test's fake helper ignores SIGTERM, as a root
+  one does, and leaves only when stdin closes.
 - **Host software is read from its two catalogue files, not from the AppStream pool.** The pool
   keys every component of the OS catalogue by a data id with the origin `os`, so `org.kde.kate`
   from `kdos-ports.xml` and `org.kde.kate` from Debian's DEP-11 file would be one component,

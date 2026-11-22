@@ -104,8 +104,11 @@ date and time strings.
    export LC_TIME=de_DE.UTF-8
    ```
 
-   The name must be one that `locale -a` lists: `C`, `C.UTF-8` and seventeen musl-locales
-   files, `cs_CZ.UTF-8` to `sv_SE.UTF-8`. With this one `date` prints `Mi Okt 21 19:14:39 UTC 2026`.
+   For a program that formats through the C library, such as `date`, the name must be one that
+   `locale -a` lists: `C`, `C.UTF-8` and seventeen musl-locales files, `cs_CZ.UTF-8` to
+   `sv_SE.UTF-8`. With this one `date` prints `Mi Okt 21 19:14:39 UTC 2026`; with any other it
+   prints English names, and musl writes numbers and currency the C way for every name. Region &
+   Language offers every region Qt's locale data knows, and KDE programs format by any of them.
 
 2. Log out and in again. The session wrapper runs a login shell, so the desktop inherits it.
 
@@ -230,6 +233,7 @@ of sixteen numbers each. Setting the accent again rewrites it; see
 ## Known gaps
 
 - [Every program speaks English](../../kdos/06-reference/known-gaps.md#every-program-speaks-english)
+- [A command-line program's dates follow seventeen regions, and its numbers none](../../kdos/06-reference/known-gaps.md#a-command-line-programs-dates-follow-seventeen-regions-and-its-numbers-none)
 - [Emoji draw everywhere except the text console on `tty1`](../../kdos/06-reference/known-gaps.md#emoji-draw-everywhere-except-the-text-console-on-tty1)
 - [Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off everywhere](../../kdos/06-reference/known-gaps.md#nerd-font-icons-are-blank-on-tty1-and-the-shipped-configurations-turn-them-off-everywhere)
 

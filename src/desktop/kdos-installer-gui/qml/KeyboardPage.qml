@@ -9,7 +9,12 @@
  *
  * An XKB layout and variant, which the installed machine's login screen reads
  * through locale1 and the Keyboard page of System Settings shows; the text
- * consoles get the console map nearest it.
+ * consoles get the console map nearest it. On the live medium the choice is
+ * also this session's layout from that moment (Backend.applyLiveLayout), so
+ * the full name and the passwords typed on the later pages hold the
+ * characters the same keys type at the installed machine's greeter. The
+ * test field under the form is for trying the keys; nothing typed in it is
+ * kept.
  *
  * The list opens on the chosen layout, centred, and comes back to it when
  * the search is emptied. From the keyboard, Tab reaches the list and the
@@ -55,6 +60,7 @@ WizardPage {
         if (layout && layout !== Backend.answers.xkbLayout) {
             Backend.answers.xkbLayout = layout;
             Backend.answers.xkbVariant = "";
+            Backend.applyLiveLayout(layout, "");
         }
     }
 
@@ -108,6 +114,7 @@ WizardPage {
                     filterCaseSensitivity: Qt.CaseInsensitive
                 }
                 delegate: QQC2.ItemDelegate {
+                    id: layoutRow
                     required property string layout
                     required property string description
                     required property int index
@@ -120,6 +127,18 @@ WizardPage {
                     onClicked: {
                         list.currentIndex = index;
                         page.choose(index);
+                    }
+                    /* The list's current row, framed while the list has
+                     * the keyboard: the delegates take no focus of their
+                     * own, so nothing else shows where Up and Down start. */
+                    Rectangle {
+                        anchors.fill: parent
+                        z: 1
+                        visible: layoutRow.ListView.isCurrentItem && list.activeFocus
+                        color: "transparent"
+                        border.color: Kirigami.Theme.focusColor
+                        border.width: 2
+                        radius: Kirigami.Units.cornerRadius
                     }
                 }
             }
@@ -164,8 +183,18 @@ WizardPage {
             }
             popup.width: width
             Accessible.name: i18nc("@label:listbox", "Keyboard variant")
-            onActivated: index => Backend.answers.xkbVariant = pairs[index * 2]
+            onActivated: index => {
+                Backend.answers.xkbVariant = pairs[index * 2];
+                Backend.applyLiveLayout(Backend.answers.xkbLayout, Backend.answers.xkbVariant);
+            }
         }
 
+        QQC2.TextField {
+            Kirigami.FormData.label: i18nc("@label:textbox", "Test:")
+            Layout.preferredWidth: form.fieldWidth
+            Layout.maximumWidth: form.fieldWidth
+            placeholderText: i18nc("@info:placeholder", "Type here to try the layout")
+            Accessible.name: i18nc("@label:textbox", "Type here to try the layout")
+        }
     }
 }

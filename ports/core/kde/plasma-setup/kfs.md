@@ -3,7 +3,7 @@
 Plasma Setup is the first-boot wizard for a machine handed over without an account (KDOS's
 "Let the first person set it up" install). On that boot the login manager signs in a special
 `plasma-setup` user with no password, whose session runs only the wizard: it creates the first
-real account in the groups KDOS gives its own account, and sets the language, keyboard layout, time zone, host name and
+real account in the groups KDOS gives its own account, and sets the keyboard layout, time zone, host name and
 Wi-Fi network, then writes `/etc/plasma-setup-done` so it never runs again and logs the new user
 in.
 
@@ -33,7 +33,36 @@ the printer pages ask for an administrator. Every group named must exist in `/et
 `useradd` refuses the account; the list follows `fs/etc/group`'s `kdos` lines. It is not proposed
 upstream: the file is upstream's documented place for a distribution's choice.
 
+`plasma-setup-kdos-firstboot.patch` makes three changes, and its code is to be offered upstream.
+The keyboard page's variant list sorts through a new `LayoutVariantSortModel`: the layout's own row
+without a variant first, then the variants by description, and while a search is applied by its
+match score, best first, with equal scores by description. Upstream sorts that list by the
+fuzzy-match score, ascending, whether or not a search is applied; an empty search scores the
+longest descriptions highest, so German's list opens on *Romanian (Germany, no dead keys)* and
+plain *German* is last, where a click on the first row picks the wrong layout. The model's
+`searching` property follows the search string the layout search model holds, which the field sets
+when Enter is pressed. The landing page takes its background from the wallpaper package named by
+`[Appearance] Wallpaper` in `plasmasetuprc` (default `Next`): of the images named `WxH` in the
+screen's orientation, the one with the longest short side, from `images_dark` first when the
+active colour scheme's window background is dark by Kirigami's `ColorUtils.brightnessForColor`.
+Upstream asks the Dark Theme page's `PrepareUtil.usingDarkTheme`, which is true only for the scheme
+named `BreezeDark`, so every KDOS scheme would show the light image under the wizard's white
+headline; and it names `Next`'s own `5120x2880.png` and `1440x2960.png`, which no KDOS wallpaper
+carries. And the landing page's headline is `[Appearance] Welcome` when that key is set, instead of
+*Welcome to Plasma Desktop*.
+
+The same patch sets KDOS's values in `plasmasetuprc`: `Wallpaper=KDOS-Bone`, the default accent's
+wallpaper (an install in another accent still shows Bone's here), and `Welcome=Welcome to KDOS` in
+the upstream headline's two-line form. Those two lines are KDOS's choice, not part of the offer.
+
 ## Notes
+
+`build.sh` removes two of the wizard's pages, which are KPackages the wizard finds by listing
+`/usr/share/plasma/packages`: `org.kde.plasmasetup.language`, whose list holds the one language
+the image ships, and `org.kde.plasmasetup.prepare` (*Before we get started*), whose only control is
+a Dark Theme switch that applies the Breeze or Breeze Dark global theme over the KDOS accent. The
+`prepareutil` QML module that page used stays installed and is loaded by nothing. The wizard's pages are Keyboard,
+Account, Host name, Time and Wi-Fi, then Finished.
 
 Upstream arms the wizard with three systemd pieces, and `build.sh` deletes all three:
 `plasma-setup.service` under `/usr/lib/systemd/system`, the `plasma-setup` user in

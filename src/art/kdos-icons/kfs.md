@@ -58,6 +58,11 @@ release that redraws those icons is shown in its older drawing until the script 
 `KDOS-Light` needs none: `paper`'s
 accent and status colours are dark, and the white glyph holds on them.
 
+Breeze's own licence file is in `breeze-icons`, which builds after this port, so the last lines
+of `build.sh` install the LGPL-3.0 and GPL-3.0 texts from gcc's `/usr/share/licenses/gcc`
+(`COPYING3.LIB`, `COPYING3`), which is in every tree that can build this port; `105_ports.sh`
+links the MIT text beside them.
+
 KIconLoader tries a name and then its dash-stripped forms in each theme before it moves to the
 next, so a name a theme above `hicolor` answers in a shorter form never reaches `hicolor`:
 `start-here-kdos` would be answered by AdwaitaLegacy's `start-here`, GNOME's foot, under Adwaita,

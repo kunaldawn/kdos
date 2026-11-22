@@ -37,7 +37,7 @@ is mounted:
 [`/boot/efi`]{.idx} is where the installer mounts the ESP of an installed system, in the `fstab` it writes
 (`src/system/kinstall-core/install.c`):
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2813-2818 pin=d44ca257584d -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2852-2857 pin=d44ca257584d -->
 
 fwupd asks udisks for the ESP. When udisks names none, the recipe's patch describes the FAT
 filesystem mounted at `EspLocation` itself, from sysfs and the udev database; a path that is not a

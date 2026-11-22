@@ -78,3 +78,5 @@ xmlcatalog --noout --add "rewriteURI" \
     "file:///usr/share/xml/docbook/xml-dtd-$vers" \
     $PKG/etc/xml/docbook
 done
+
+install -Dm644 "$SRC/docbook-xml-4.5/docbookx.dtd" "$PKG/usr/share/licenses/$name/docbookx.dtd"

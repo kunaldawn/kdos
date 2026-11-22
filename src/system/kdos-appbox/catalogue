@@ -177,9 +177,13 @@ base    base      -        bash bc bzip2 ca-certificates curl diffutils findutil
 # and every launch exports that name as GTK_THEME; a box with no Breeze GTK
 # theme draws GTK's built-in Adwaita under every accent. breeze-gtk-theme is
 # that theme, GTK 2, 3 and 4, light and dark. NOT kde-config-gtk-style for its
-# colorreload-gtk-module: GTK 3 on Wayland loads the modules org.gtk.Settings
-# names on the session bus, which a box's filtered bus does not reach, so in a
-# box the module is KDE Frameworks pulled in for a library that never loads.
+# colorreload-gtk-module and window-decorations-gtk-module: GTK 3 reads
+# `gtk-modules` from the ~/.config/gtk-3.0/settings.ini kde-gtk-config writes,
+# which a box with a shared home reads too and no launch environment can take
+# a key out of, so a boxed GTK 3 program prints `Failed to load module` for
+# each of the two and runs without them. Shipping them would be KDE Frameworks
+# for a repaint on a colour change that a program in a box gets at its next
+# start anyway.
 runtime rt-gtk    base     libgtk-3-0t64 libgtk-4-1 libadwaita-1-0 gtk-update-icon-cache xfonts-base x11-xserver-utils breeze-gtk-theme
 
 # Qt, and NOTHING KDE. qt6-wayland/qtwayland5 are the platform PLUGIN and are
@@ -569,7 +573,7 @@ meta app.siril                Siril|Science|39508199|Astronomical image processo
 meta app.sonicpi              SuperCollider IDE|AudioVideo|265815844|realtime computer music system
 meta app.surf                 Surf|Network|275196928|Simple web browser by the suckless community
 meta app.vorta                Vorta|Utility|33146013|Backup client
-meta app.vscodium             VSCodium|Development|371281015|VSCodium. Code editing. Redefined.
+meta app.vscodium             VSCodium|Development|371281015|Code editor: VS Code (vscode) built from its open sources
 meta app.xarchiver            Xarchiver|Utility|5275935|Create, extract and modify archives
 meta app.xournalpp            Xournal++|Office|13530622|Take handwritten notes
 meta app.xtb                  xtb|Science|4281157|Semi-empirical extended tight-binding quantum chemistry

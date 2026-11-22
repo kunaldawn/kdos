@@ -240,6 +240,53 @@ TestCase {
         compare(Memory.recentre({ x: 960, y: 517, width: 2400, height: 1200 }, area), { x: 0, y: 0, width: 1920, height: 1034 }, "larger than the area");
     }
 
+    function test_firstSize() {
+        const area = { x: 0, y: 0, width: 1920, height: 1080 };
+        compare(Memory.firstSize({ width: 470, height: 370 }, area), { x: 384, y: 162, width: 1152, height: 756 }, "grown and centred");
+        compare(Memory.firstSize({ width: 640, height: 510 }, area), { x: 384, y: 162, width: 1152, height: 756 }, "Kate's first window");
+        compare(Memory.firstSize({ width: 760, height: 580 }, area), { x: 384, y: 162, width: 1152, height: 756 }, "Dolphin's first window");
+        compare(Memory.firstSize({ width: 1200, height: 800 }, area), null, "already usable");
+        compare(Memory.firstSize({ width: 1200, height: 400 }, area), { x: 360, y: 162, width: 1200, height: 756 }, "short only: keeps its width");
+        compare(Memory.firstSize({ width: 1, height: 29 }, area), null, "still a placeholder");
+        const right = { x: 1920, y: 40, width: 1280, height: 984 };
+        compare(Memory.firstSize({ width: 470, height: 370 }, right), { x: 2176, y: 188, width: 768, height: 689 }, "on the screen it opened on");
+        compare(Memory.firstSize({ width: 470, height: 2000 }, area), { x: 384, y: 0, width: 1152, height: 1080 }, "never past the area");
+    }
+
+    function test_growable_data() {
+        return [
+            { tag: "decorated", w: win(), r: true },
+            { tag: "borderless splash", w: win({ desktopFileName: "org.freecad.FreeCAD", noBorder: true }), r: false },
+            { tag: "own title bar", w: win({ desktopFileName: "chromium", noBorder: true }), r: false },
+            { tag: "kcalc", w: win({ desktopFileName: "org.kde.kcalc" }), r: false },
+            { tag: "kalk", w: win({ desktopFileName: "org.kde.kalk" }), r: false },
+            { tag: "qalculate", w: win({ desktopFileName: "io.github.Qalculate.qalculate-qt" }), r: false },
+            { tag: "kcolorchooser", w: win({ desktopFileName: "org.kde.kcolorchooser" }), r: false },
+            { tag: "kcharselect", w: win({ desktopFileName: "org.kde.kcharselect" }), r: false },
+            { tag: "kteatime", w: win({ desktopFileName: "org.kde.kteatime" }), r: false },
+            { tag: "dolphin", w: win({ desktopFileName: "org.kde.dolphin" }), r: true },
+        ];
+    }
+
+    function test_growable(data) {
+        compare(Memory.growable(data.w), data.r);
+    }
+
+    // What a first launch does, as main.qml decides it: only an eligible,
+    // floating window with no record is "settle", the one case firstSize()
+    // is asked; a window with a record takes the record.
+    function test_firstLaunch() {
+        compare(Memory.openAction(null, Memory.isFloating(win()), true, false), "settle");
+        verify(!Memory.eligible(win({ transient: true }), Memory.defaultExclude), "a dialog is never resized");
+        verify(!Memory.eligible(win({ resizeable: false }), Memory.defaultExclude), "nor a fixed-size notice");
+        compare(Memory.openAction(null, Memory.isFloating(win({ maximizeMode: 3 })), true, false), "none", "nor a maximised window");
+        const records = [record("org.kde.kate", 100, 100)];
+        const kept = Memory.find(records, Memory.appKey(win()));
+        compare(Memory.openAction(kept, true, true, false), "restore");
+        const area = { x: 0, y: 0, width: 1920, height: 1080 };
+        compare(Memory.restoreTarget(kept, { width: 470, height: 370 }, 0, area).set, { x: 100, y: 100, width: 800, height: 600 }, "the record wins");
+    }
+
     function test_fit() {
         const area = { x: 0, y: 0, width: 1920, height: 1034 };
         compare(Memory.fit({ x: 487, y: 0, width: 945, height: 1088 }, area), { x: 487, y: 0, width: 945, height: 1034 }, "taller than the area");

@@ -186,7 +186,7 @@ at all, and those entries go with it.
 | `KDOS Live`: start from the medium | `KDOS`: start this machine |
 | `KDOS Live (clean session)`: adds `nopersist`, ignoring the persistence store | `KDOS (verbose)`: `loglevel=7` and no `quiet`: every kernel and boot message on the screen, no splash |
 | `KDOS Live (verbose)`: `loglevel=7` and no `quiet`, with the screen last of the `console=` words: every kernel and boot message on the screen, no splash | `KDOS (single user)`: `loglevel=7 single`, a verbose boot (see below) |
-| `Memory Test (memtest86+)`: UEFI only | `KDOS (slot <x>)`: the other root slot, when it has a root and a kernel |
+| `Memory Test (memtest86+)`: UEFI only | `KDOS <version> (slot <X>)`: the other root slot, when it has a root and a kernel |
 | | `Memory Test (memtest86+)`: UEFI only |
 
 The `KDOS (single user)` entry boots to runlevel `S`: `rcS` runs as on every boot, so every
@@ -291,6 +291,13 @@ origin the moment an entry is picked, and with no plate those lines land across 
 an opaque plate the loading text can only appear inside it. Limine's own default over a wallpaper
 is `80`, half transparent, which makes the menu unreadable.
 
+The plate's colour is the artwork's floor under every accent: `kcol_limine_conf()` writes Bone's
+`deep` as `term_background` and Bone's `backdrop` as `backdrop`, whichever accent it is given. The
+one backdrop image sits under all eight accents and Limine cannot retint it, so a plate in the
+accent's own ground would show as a coloured box from one margin to the other. The accent sets the
+text, the palettes and the help colours. Paper, the light accent, has dark text that cannot be read
+on the dark floor, so it writes Bone's whole menu.
+
 A `centered` wallpaper is drawn at its own size in the middle of the screen, which is exactly where
 the menu is, so the style is `stretched`. `term_font_scale` is `1x2`: doubling both axes of an
 8x16 face would fill a 1080-row screen with four entries.
@@ -324,7 +331,8 @@ Limine's default green under every accent.
 ### The artwork
 
 The backdrop is the penguin and the wordmark, sized to fit the margin.
-`src/art/kdos-splash/genbackdrop.py` lays them on a fixed near-black floor, `(10,10,9)`, in
+`src/art/kdos-splash/genbackdrop.py` lays them on a fixed near-black floor, `(10,10,9)`, which is
+Bone's `deep` in `libkcolor` and the menu plate's colour (the two must stay equal), in
 greyscale, on a 1920x1080 canvas. It is achromatic because Limine cannot retint a wallpaper, and
 `kdos-bootctl theme` rewrites text keys only: this one file sits under all eight accents, and a
 green penguin would stay green under amber. Four of the generator's constants are fixed by the
@@ -396,10 +404,13 @@ no container in it. When a vendor's source is absent altogether, the build says 
 ## The initramfs
 
 `script/phases/70_image/090_initramfs.sh` generates it in the image phase as
-`build/initramfs.cpio.gz`, and `110_iso.sh` copies that file to the ISO's `boot/` and to `/boot/initramfs.cpio.gz` in the image,
-so an installed system carries it. It carries bash, GNU coreutils, grep and sed, a module set,
-and the programs early boot needs. The `init` it generates is a bash script; the sections that follow this one describe
-what it does, in the order it does it.
+`build/initramfs.cpio.gz`, and `110_iso.sh` copies that file to the ISO's `boot/initrd.img` and to
+`/boot/initramfs.cpio.gz` in the image, so an installed system carries it. The medium's name is
+one Ventoy knows: Ventoy boots an ISO without reading `limine.conf` and adds its hook only to an
+initrd at a path it recognises, so under another name a Ventoy stick starts a kernel with no
+device holding the medium. The initramfs carries bash, GNU coreutils, grep and sed, a module set,
+and the programs early boot needs. The `init` it generates is a bash script; the sections that
+follow this one describe what it does, in the order it does it.
 
 The module list decides which machines can boot at all, because a root filesystem whose driver is
 missing installs perfectly and never boots again:
@@ -455,6 +466,7 @@ The programs carried, and the rule each follows:
 | `cp`, `mv`, `rm`, `ln`, `rmdir`, `head`, `tail`, `wc`, `stat`, `df`, `dd`, `sync`, `uname`, `readlink`, `touch`, `basename`, `sort`, `tr`, `grep`, `sed` | GNU coreutils, grep and sed, for the [rescue shell](#the-rescue-shell) and the udev rules (`63-md-raid-arrays.rules` runs `readlink` and `basename`), under the same check. |
 | `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid` | Always util-linux's: the build stops unless each one's `--version` names util-linux. See [`switch_root`](#switch_root). |
 | `blkid` | Always util-linux's, under the same check; see [`blkid`](#blkid). |
+| `loadkeys` | Always kbd's, with `libxkbcommon` and the whole of `/usr/share/keymaps` (about 1.4 MB), every map the installer offers, for the [passphrase prompt](#unlocking-an-encrypted-root). |
 | `kdos-splash` | Carried with `/usr/share/kdos/splash.psf` when installed; otherwise the build warns and the machine boots without a splash. |
 | `udevd`, `udevadm`, `kmod` (as `modprobe`, `insmod`, `depmod`) | Always, with the udev rules from `/usr/lib/udev` and `/etc/udev` whose programs the initramfs carries (below). |
 | `mdadm` | When installed, at `/usr/sbin/mdadm`, the path its udev rules run, with `bin/mdadm` a link to it. |
@@ -539,18 +551,26 @@ that will not unlock, a `system.sfs` that will not mount) ends in one helper, `r
    then quits the splash, which hands the framebuffer back in text mode;
 2. runs `sync`, so whatever the boot itself wrote to a disk already mounted read-write is on disk
    before anybody can restart;
-3. prints the reason on `/dev/console` and writes it to `tty1`, where fbcon takes the screen over at the first write and the
-   keyboard is, with `KDOS cannot boot. This is a rescue shell; the boot log is on the serial
-   console.` and `Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a
+3. prints the reason, and the hint a caller passes as a second line, on `/dev/console`, and writes
+   both to `tty1`, where fbcon takes the screen over at the first write and the keyboard is, with
+   `KDOS cannot boot. This is a rescue shell.`, `The boot menu's '(verbose)' entry shows the boot
+   log on this screen.` and `Ctrl+Alt+Del restarts at once; run sync first if you changed a
    disk.`, and opens a shell there in its own session, with `tty1` as its controlling terminal;
 4. becomes the shell on `/dev/console`, so the serial line keeps a shell beside the log it has been
    reading.
 
 When `/dev/console` is itself a virtual terminal (an installed machine's entries carry
 `console=tty0` alone, and `KDOS Live (verbose)` names it last), there is one screen and one shell,
-and it prints the reason once, then `KDOS cannot boot. This is a rescue shell.` and the same
-Ctrl+Alt+Del line. The
-shell on `/dev/console` is process 1: leaving it panics the kernel with `Attempted to kill init`.
+and it prints the reason and its hint once, then `KDOS cannot boot. This is a rescue shell.` and
+the same Ctrl+Alt+Del line. Its shell is opened on that terminal itself (`/dev/tty1`, say) rather
+than on `/dev/console`, which can never be a controlling terminal: `setsid -c -w` gives it the
+terminal as its controlling terminal, so job control works and Ctrl+C stops the program it runs,
+and process 1 waits for it in a loop, so `exit` opens a fresh shell. On a serial console the shell
+on `/dev/console` is process 1 itself: leaving it panics the kernel with `Attempted to kill init`. Every fixed line, and every hint, is 80 columns or fewer: they are
+printed before fbcon's deferred takeover has widened the console, and a longer line would wrap a
+lone word onto a line of its own. The medium scan's failure passes the hint `Write the whole ISO
+with dd, Rufus DD mode or Ventoy; copied files cannot boot.`, since a stick holding copies of the
+ISO's files has no ISO 9660 filesystem for the scan to find.
 
 Ctrl+Alt+Del is the kernel's own restart (`C_A_D=1`), which holds until init takes the key over,
 and nothing in the initramfs does: it reboots at once and syncs nothing, which is why the screen
@@ -665,7 +685,9 @@ that share (it never knows which batch is its last), and the first total sent af
 tells the halves apart by its own root: `switch_root` deletes the initramfs's files, so once
 `/init` is gone from the splash's view the boot is in the real root. The bar stops one segment
 short of full until `quit` or `handoff` arrives, so it never shows 100% before the boot has
-finished.
+finished. The session's splash, KSplash, starts its bar at that hold, which `kdos-plasma-look`
+reads out of `kdos-splash.c` at build time, and sets its two lines in Terminus's scalable face,
+the face of the splash's bitmap font, so the bar and the type carry on across the login.
 
 A failure is kept on screen. When a stage fails, `rcS` sends the last six lines of the script's
 output as `detail` lines, and the splash draws them under the stage list as `WHY:` in the alarm
@@ -714,10 +736,14 @@ attempts = 1                how many boots it has left
 bootnext = yes              tried through UEFI BootNext, or empty
 armed    = <boot id>        the boot that put the candidate on trial
 failed   = b                the slot whose last trial ended unconfirmed, or empty
+abandoned = b               the slot whose trial was set aside at the boot menu, or empty
 unfilled = b                the slot an update is writing, or empty
 ```
 
-Every key is written every time, `unfilled =` included when no slot is marked.
+Every key is written every time, `unfilled =` included when no slot is marked. `failed` is what
+the rollback notice and the System Versions banner report; a trial set aside by picking the
+confirmed slot at the boot menu goes in `abandoned` instead, because nothing failed to start. A
+new `try` and a confirmation clear both.
 
 `kinstall` writes the first version whenever the install has an ESP: `active = a` and no
 candidate. On its A/B layout it also creates slot B as a second logical volume beside slot A,
@@ -751,7 +777,9 @@ network's, Bluetooth's, the accounts service's, SDDM's and the rest) is copied w
 
 In the initramfs, when the command line names `bootstate=UUID=`, the init loads `vfat`, waits up
 to ten seconds for that ESP to appear, mounts it at `/esp`, and asks `kdos-bootctl select` which
-root to boot. The answer replaces the command line's `root=`. A state file that cannot be read, or
+root to boot. The answer replaces the command line's `root=`. While it is mounted the init also
+reads `EFI/kdos/keymap`, the console map the [passphrase prompt](#unlocking-an-encrypted-root)
+loads. A state file that cannot be read, or
 an ESP that cannot be found, leaves the command line's `root=` in force, and the `BOOT SLOT` stage
 still closes as passed.
 
@@ -761,7 +789,7 @@ still closes as passed.
 
 | Command | What it does |
 |---|---|
-| `kdos-bootctl status [--json]` | Print what the state file says, with each slot's version and state: `empty`, `armed`, `trial`, `running`, `confirmed`, `incomplete` (marked by `unfill`, reported ahead of `failed`), `failed` or `inactive`. The JSON carries `"unfilled": "<x>"` or `null`, and the text adds `unfilled <x>: an update stopped while writing it; it is not tried until an update writes it again` |
+| `kdos-bootctl status [--json]` | Print what the state file says, with each slot's version and state: `empty`, `armed`, `trial`, `running`, `confirmed`, `visiting` (running, neither confirmed nor on trial: picked at the boot menu for this boot only, reported ahead of the next three), `incomplete` (marked by `unfill`, reported ahead of `failed`), `failed`, `abandoned` or `inactive`. With no state file where the directory that holds it is no mount point, the text says `the ESP is not mounted at /boot/efi, so the boot state cannot be read; mount /boot/efi`. The JSON carries `"failed"`, `"abandoned"` and `"unfilled"`, each `"<x>"` or `null`; the text adds ``unfilled <x>: an update stopped while writing this slot. The next update writes it again; to write it at once, run kdos update apply --mount as root`` and `abandoned <x>: set aside at the boot menu`, and on a one-root layout its `other` line reads `other    none: this machine has one root and no rollback` |
 | `kdos-bootctl list [--json[=short\|pretty]]` | The boot entries, one per slot, in the shape systemd's `bootctl list --json` prints; the logout screen reads it to say which version a restart starts |
 | `kdos-bootctl set-slot <a\|b> <uuid> [<luks-uuid>]` | Record where a slot's filesystem is, and which container it is inside |
 | `kdos-bootctl crypt <fs-uuid>` | Print the container UUID that filesystem is inside, for the initramfs |
@@ -777,11 +805,12 @@ still closes as passed.
 | `kdos-bootctl splash phosphor\|modern` | Set the splash's motion on every KDOS entry, and on a pending trial's menu |
 
 The ESP is mounted `umask=0077`, so nothing that runs as a user can read the state file. Every run
-as root against the machine's own state therefore publishes three world-readable copies, which the
-logout screen, the welcome tour, the update notices and System Settings read: `status --json` as
-`/run/kdos/bootstate.json`, `list --json=short` as `/run/kdos/boot-entries.json`, and a flat
-`/run/kdos/slot.json` (this boot's slot, its version and state, and the other slot's). A `--json`
-read that cannot open the state file prints those copies instead. `kdos-sysupdated` runs
+as root against the machine's own state therefore publishes four world-readable copies, which the
+logout screen, the welcome tour, the update notices, System Settings and a user's `status` read:
+`status --json` as `/run/kdos/bootstate.json`, `status`'s text as `/run/kdos/bootstate.txt`,
+`list --json=short` as `/run/kdos/boot-entries.json`, and a flat `/run/kdos/slot.json` (this
+boot's slot, its version and state, and the other slot's). A `status` or `--json` read that cannot
+open the state file prints those copies instead. `kdos-sysupdated` runs
 `status --json` at start and every half minute, so a copy trails the state by half a minute at most.
 `try` also writes `/run/systemd/reboot-to-boot-loader-entry`, which elogind reports as login1's
 `RebootToBootLoaderEntry` (its init script exports `SYSTEMD_REBOOT_TO_BOOT_LOADER_ENTRY=1` for
@@ -800,7 +829,7 @@ exercises it against fixtures without touching the machine running it:
 | `KDOS_ESP_DISK` | Read from the mount table and `/sys/class/block` | `<image>:<partition>`, the disk and partition number of the ESP |
 | `KDOS_BOOT_ID` | `/proc/sys/kernel/random/boot_id` | This boot's id, which `try` records as `armed` |
 | `KDOS_SYSROOT` | `/` | The running root, read for its own version |
-| `KDOS_BOOTSTATE_PUB`, `KDOS_BOOT_ENTRIES`, `KDOS_SLOT_PUB` | `/run/kdos/bootstate.json`, `boot-entries.json`, `slot.json` | The published copies. With `KDOS_BOOTSTATE` redirected and these unset, nothing is published |
+| `KDOS_BOOTSTATE_PUB`, `KDOS_BOOTSTATE_TXT`, `KDOS_BOOT_ENTRIES`, `KDOS_SLOT_PUB` | `/run/kdos/bootstate.json`, `bootstate.txt`, `boot-entries.json`, `slot.json` | The published copies. With `KDOS_BOOTSTATE` redirected and these unset, nothing is published |
 | `KDOS_REBOOT_ENTRY` | `/run/systemd/reboot-to-boot-loader-entry` | The one-shot entry elogind reports |
 
 ### Counting and confirming
@@ -830,11 +859,13 @@ The session's call comes from `kdos-notice --bless`, an autostart entry, once
 `org.kde.plasmashell` has answered on the session bus for a minute without a gap or a restart.
 polkit grants `io.kdos.slots.bless` to the active local session alone, never with a prompt, and
 nothing under a user's runtime directory is read, so a mark cannot be forged from a session that is
-not the one at the machine. On a machine nobody logs in to (SDDM is not set to log anyone in, and
-no user session has existed this boot), the login screen staying up for a minute writes the
-`graphical` mark instead; once any user session has existed, a console login included, only a
-session's call counts, because a login screen that came back after a crashed session must not
-confirm the slot that crashed it. A machine whose `/etc/inittab` starts no display manager, or
+not the one at the machine. On a machine SDDM does not log in automatically (SDDM is not set to
+log anyone in, and no user session has existed this boot), the login screen staying up for a
+minute writes the `graphical` mark instead; once any user session has existed, a console login
+included, only a session's call counts, because a login screen that came back after a crashed
+session must not confirm the slot that crashed it. There the login screen is the graphical check,
+so a desktop that breaks only after a login is kept, and System Versions > Start This Version Next
+Time on the other slot is the way back. A machine whose `/etc/inittab` starts no display manager, or
 that has no executable `/usr/bin/sddm`, has no graphical half, and the first mark is enough.
 
 `kdos-sysupdated` watches the directory and runs `mark-good` once per boot when both marks exist,
@@ -948,13 +979,18 @@ differs:
 | Entry | Boots |
 |---|---|
 | `/KDOS`, `/KDOS (verbose)`, `/KDOS (single user)` | The slot an unattended boot must reach: the active slot, except during a menu-led trial, where it is the candidate while it has attempts left |
-| `/KDOS (slot <x>)` | The other slot, when it has a root and a kernel and is not marked `unfilled` |
+| `/KDOS <version> (slot <X>)` | The other slot, when it has a root and a kernel and is not marked `unfilled` |
 
-The first entry's comment says which: `Start this machine (slot a)`, or `Try the update in slot b`
-during a menu-led trial. The `(slot <x>)` entry's comment reads
-`The confirmed root: picking it abandons the update` during a menu-led trial,
-`The update on trial: one boot, then the confirmed root again` during a `BootNext` trial, and
-`The other root, for one boot: nothing is confirmed` otherwise. `default_entry` points at the
+The first entry's comment says which, and names the release the slot holds:
+`Start this computer (slot A, KDOS 0.2.1)`, or `Try the update (slot B, KDOS 0.2.1)` during a
+menu-led trial. The other slot's entry is titled with its release, `KDOS 0.2 (slot A)`, the name
+System Versions gives it, and its comment reads
+`The confirmed version: picking it sets the update aside` during a menu-led trial,
+`The update, for one boot; then the confirmed version again` during a `BootNext` trial, and
+`The other version, for one boot; nothing changes` otherwise. The release is the `VERSION` of the
+slot's `EFI/kdos/<x>/release` without its `+<build>`; a slot with no release file is named without
+it (`Start this computer (slot A)`, `KDOS (slot B)`). The installer writes the first menu in the
+same shape, from the target's `/etc/kdos-release`. `default_entry` points at the
 first `/KDOS` entry. Every other line of the file (the theme, the timeout, memtest86+) stays where
 it is. The command line comes from the first `/KDOS` entry: `root=` and `kdos_slot=` are set per
 slot, the verbosity per entry, and every other word carries over, including anything you added by
@@ -965,9 +1001,10 @@ Every entry carries `kdos_slot=<x>`, and the initramfs hands it to `select`. Tha
 hand-picked entry is recognised: its slot is not the one the menu leads with. It boots its own
 slot and no other, because the running kernel is that slot's.
 
-- **Picking the confirmed slot while a candidate is on trial** abandons the candidate. On BIOS
-  that entry is the way back from a candidate kernel that dies before the initramfs can count
-  anything.
+- **Picking the confirmed slot while a candidate is on trial** sets the candidate aside and
+  records it in `abandoned`, not `failed`: no notice says the update did not start, and System
+  Versions shows the slot as installed, not in use, with no banner. On BIOS that entry is the way back from a candidate kernel
+  that dies before the initramfs can count anything.
 - **Any other hand-picked entry** is one boot of that root. No attempt is spent and nothing is
   confirmed, except a candidate picked after its last attempt, which is still the candidate and is
   confirmed as usual.
@@ -978,7 +1015,7 @@ own kernel, with no reboot in between.
 
 `try` refuses a slot that has no kernel on the ESP once any slot has a directory of its own. The
 menu could not lead with it, so the confirmed slot's entry would boot, and `select` would read that
-as a hand pick and abandon the candidate.
+as a hand pick and set the candidate aside.
 
 A menu whose entries boot a flat pair, `EFI/kdos/vmlinuz` and `EFI/kdos/initramfs.cpio.gz`, has no
 per-slot directory, and either slot boots that pair. `kinstall` writes slot A's pair into
@@ -996,7 +1033,7 @@ that carries out a rollback. Two consequences follow:
 - `mark-good` regenerates the menu whenever it runs, whether or not a trial was pending, so a menu
   left leading with the wrong kernel is corrected on the first boot that is confirmed.
 - If the menu still leads with a candidate kernel that dies, pick the confirmed slot's
-  `KDOS (slot <x>)` entry by hand. That entry boots the slot's own kernel and root.
+  `KDOS <version> (slot <X>)` entry by hand. That entry boots the slot's own kernel and root.
 
 Two kernels and two initramfs images fit many times over in the 512 MiB ESP `kinstall` creates.
 An install that reuses a smaller ESP gets a warning when there is no room left for a second
@@ -1032,7 +1069,7 @@ Who deploys depends on the root the package went into:
 
 | Installed into | Deployed by | When |
 |---|---|---|
-| The running system | The postinstall, with `kdos-bootctl deploy /`, when `/boot/efi` is mounted | At once; the next boot runs the new kernel |
+| The running system | The postinstall, with `kdos-bootctl deploy /`, when `/boot/efi` is mounted | At once; the next boot runs the new kernel. A reinstall of the installed version whose kernel and initramfs (`initramfs-kdos` where the root has one, else the image's) are already, byte for byte, in this boot's ESP directory builds and deploys nothing and prints `linux <version> is already on the ESP` |
 | The inactive slot | `kdos update apply`, with `kdos-bootctl deploy <mount> <slot>` | After every package of the run is in, before `try` |
 
 `deploy` behaves as follows:
@@ -1065,7 +1102,7 @@ leads with a candidate. `try` leaves `default_entry` on the confirmed slot and a
 
 ```
 EFI/kdos/trial/BOOTX64.EFI      a copy of EFI/BOOT/'s loader (BOOTIA32.EFI on 32-bit firmware)
-EFI/kdos/trial/limine.conf      limine.conf, with default_entry on /KDOS (slot <x>)
+EFI/kdos/trial/limine.conf      limine.conf, with default_entry on the candidate's /KDOS … (slot <X>)
 Boot####  "KDOS update trial"   a load option starting that loader, not in BootOrder
 BootNext  = ####                one boot of it
 ```
@@ -1096,7 +1133,7 @@ slot <x> up to <n> time(s)`. Where the variables exist but the request still can
 per-slot directory to build a trial menu from, or a firmware that refuses the write), `try` prints
 `no UEFI BootNext — slot <x> is led by the menu instead` and falls back the same way. In the
 menu-led trial, a kernel that dies before its initramfs is recovered by hand, by picking the
-confirmed slot's `/KDOS (slot <x>)` entry.
+confirmed slot's `/KDOS <version> (slot <X>)` entry.
 
 ## Activating volume groups
 
@@ -1156,7 +1193,16 @@ The prompt is designed around three facts:
   draws, and the prompt and its outcome are printed on `/dev/tty1` instead. The init never does
   both: while the splash draws, tty1 is in graphics mode, so a prompt written there would only go
   to the terminal's buffer, where nobody can see it.
-- It reads keystrokes from `/dev/tty1`, which is where the keyboard is.
+- It reads keystrokes from `/dev/tty1`, which is where the keyboard is, and types them with the
+  machine's console keymap. The initramfs is one image for every machine and runs before the root
+  that holds `/etc/keymap` is open, so the map's name is kept on the ESP as `EFI/kdos/keymap`, one
+  line written by the installer and kept equal to `/etc/keymap` by
+  [kdos-settingsd](../04-programs/daemons.md#kdos-settingsd). The init reads it while the ESP is
+  mounted for the [boot slot](#ab-slot-selection) and runs `loadkeys -q -u -C
+  /dev/tty1 <map>` once, before the first prompt. A file that is absent, or holds anything but a
+  map name (letters, digits and `_ . + -`, not starting with `.` or `-`), leaves the kernel's US
+  map. A character the console map has no key for cannot be typed at the prompt, and a layout kbd
+  has no console map for (Arabic, the Asian scripts) gets the US map there.
 - It feeds the passphrase to `cryptsetup` on standard input, never as an argument:
   `/proc/<pid>/cmdline` is readable by every process for the life of the process.
 
@@ -1175,29 +1221,42 @@ runs a second volume-group activation, so a group inside the container is found.
 
 On an installed machine (the command line names `root=UUID=`), the init asks `blkid` for the root
 UUID once a second for up to ten seconds, activating any volume group that has appeared in between.
-On the live medium it rescans `/dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*` every 100 ms,
-for up to ten seconds from the start of the scan (counted on the uptime clock), and uses the first device that
-mounts as ISO9660 and holds `system.sfs`. Neither waits before its first attempt: udev has already
+On the live medium it rescans `/dev/mapper/ventoy /dev/sr* /dev/sd* /dev/vd* /dev/nvme*
+/dev/mmcblk*` every 100 ms, for up to ten seconds from the start of the scan (counted on the
+uptime clock), and uses the first device that mounts as ISO9660 and holds `system.sfs`. Neither waits before its first attempt: udev has already
 settled by then, so on a machine whose medium is already enumerated the first pass succeeds and
 costs nothing. The ten-second bound covers the slow cases, such as a USB stick or a device behind a
 bridge. The medium is found on the whole-disk node, which is why the ISO keeps its ISO9660
-filesystem at sector 0.
+filesystem at sector 0. `/dev/mapper/ventoy` comes first: a Ventoy stick holds the ISO as a file on
+its exFAT partition, and Ventoy's hook maps that file to the device-mapper device `ventoy`. Ventoy
+also swaps the stick's second partition node for the same device, but the scan does not rely on
+that. On the live system `70-kdos-live-medium.rules` keeps that mapping, and the swapped node,
+out of udisks as it does a written stick, and leaves Ventoy's own data partition listed, since it
+holds the user's files;
+`kinstall` traces the mapping down its `slaves` to the stick's disk and refuses it as the boot
+medium.
 
 Every pass of the live scan walks every device class again, because the first node to answer is
 not always the one holding the medium, and a class that has not appeared yet must still get its
 chance. A device that mounts is inspected only once, though: a filesystem without `system.sfs` on
 it will not grow one, so it is remembered and skipped, and only nodes that have not mounted yet are
-retried. That is one mount and unmount for a wrong disk across the whole scan, rather than one per
-pass. A node that cannot be opened, such as an optical drive with no disc in it or a card reader
-with no card (the open fails with `ENOMEDIUM`), is passed over without a mount and without a
-message, and looked at again on the next pass. Its size in `/sys/class/block` is no test, because
-an empty optical drive reports a guessed size rather than 0.
+retried. A disk that fails to mount as ISO 9660 is remembered too, since it will not become one,
+and each failed attempt puts an `ISOFS: Unable to identify CD-ROM format.` line in the kernel log;
+only an optical drive (`/dev/sr*`) is mounted again, for a disc still spinning up. That is one
+mount for a wrong disk across the whole scan, rather than one per pass. A node that cannot be
+opened, such as an optical drive with no disc in it or a card reader with no card (the open fails
+with `ENOMEDIUM`), is passed over without a mount and looked at again on the next pass. Its size in
+`/sys/class/block` is no test, because an empty optical drive reports a guessed size rather than 0.
 
 `/mnt/iso` is the only mount point the scan has, so the unmount is checked. A mount point left
 busy would take a second filesystem stacked on top of it and every later test would read the wrong
-one, so a failed unmount stops the scan with `Cannot release /mnt/iso after <dev>`. Only the first
-pass reports each device it tried; a hundred repetitions of the same two lines would bury the
-message that explains a failed boot.
+one, so a failed unmount stops the scan with `Cannot release /mnt/iso after <dev>`. Each device is
+reported once, with `Checking <dev>...`, on whichever pass it first appears, so a stick that
+enumerates late is named like one that was there at once; only that first mount prints its error,
+since a hundred repetitions would bury the message that explains a failed boot. When the bound
+passes with no medium, one line lists every device tried and what it was:
+`No KDOS media; tried: /dev/sr0 (no medium), /dev/sda (not ISO 9660), …`, where the third answer
+is `ISO 9660 without system.sfs`.
 
 When the root, the medium or `/sbin/init` on it cannot be found, the init marks the stage failed on
 the splash and opens [the rescue shell](#the-rescue-shell). Before `switch_root` it moves `/dev`, `/proc` and
@@ -1265,10 +1324,13 @@ initramfs, `/mnt` included.
 
 Neither the medium nor the overlay root is shown to the desktop as a device. The medium is in use
 for the whole session, so an Eject could only fail: `/etc/udev/rules.d/70-kdos-live-medium.rules`
-sets `UDISKS_IGNORE` on the device mounted at `/mnt/iso` and on every partition of that disk (the
-EFI partition, a store on the stick), which takes them out of Dolphin's Places, the file dialogs
-and the Device Notifier. It matches the mount, not the `KDOS_LIVE` label, so a KDOS stick plugged
-into an installed machine is listed like any other. Solid lists an overlay mounted on `/` as a
+sets `UDISKS_IGNORE` on every block device whose node has the device number of the mount at
+`/mnt/iso` (`mountpoint -x` against `findmnt -S MAJ:MIN`), and on every partition of the disk
+mounted there (the EFI partition, a store on the stick), which takes them out of Dolphin's Places,
+the file dialogs and the Device Notifier. The number, not the path, is what names a Ventoy medium:
+it is mounted as `/dev/mapper/ventoy`, and the stick partition whose node Ventoy points at the same
+mapping would otherwise be listed as a second `KDOS_LIVE` volume. It matches the mount, not the
+`KDOS_LIVE` label, so a KDOS stick plugged into an installed machine is listed like any other. Solid lists an overlay mounted on `/` as a
 nameless device unless the mount carries `x-gvfs-hide`, which it reads through libmount;
 `/etc/init.d/04_live-root.sh` records that option for `/` in `/run/mount/utab` when the root is an
 overlay. The record is in `/run` rather than `/etc/fstab` because the installer copies the live
@@ -1408,7 +1470,7 @@ The base filesystem ships these service scripts in `/etc/init.d/`:
 ```
 01_udev  02_modules  03_lvm  04_live-root  05_hostname  06_utmps  10_sysctl  12_zram
 15_cgroups  18_timers  20_dmesg  22_syslog  25_nftables  30_network  35_chrony  40_dbus  40_elogind
-41_polkitd  42_modemmanager  42_networkmanager  43_settingsd  44_accounts  45_avahi
+41_polkitd  42_modemmanager  42_networkmanager  43_settingsd  44_accounts  45_avahi  45_mdns
 46_hostapd  46_sysupdated  47_pcscd  48_iio-sensor-proxy  50_alsa  51_mdmonitor  52_smartd
 53_xfs_healer  54_thermald  55_powerd  55_tlp  56_energyd  56_tlppd  57_oomd  59_packd
 60_bluetooth  62_plasma-setup  63_live-installer  65_turnstiled  70_sshd  80_cups
@@ -1473,7 +1535,10 @@ and `88_llama-server` (`llama.cpp`). Each is listed as enabled and skips with
 `[SKIP] <name>: <program> not found` until `sudo kdos update install <port>` brings the program;
 `54_thermald` also skips on a processor that is not Intel's, and `46_hostapd` until its
 configuration exists. `65_brltty` is on the image with `brltty`, and skips with `[SKIP] brltty: no
-/etc/brltty.conf` until that file names a braille display.
+/etc/brltty.conf` until that file names a braille display. `81_cups-browsed` and `82_ipp-usb`
+follow `80_cups`: while `/etc/service.disabled/cups` exists each skips with `[SKIP] <name>: CUPS
+is disabled (/etc/service.disabled/cups)`, because both only hand printers to `cupsd`. CUPS is on
+by default, on the live medium and on an installed machine.
 
 A service is disabled by a marker file named after the script without its number and extension,
 rather than by editing anything:
@@ -1787,7 +1852,11 @@ password prompt through `kdos-getty` instead, and says why in syslog under `kdos
 never an automatic login: whatever broke the greeter must not also hand somebody a shell. When the
 login there ends, init starts `kdos-dm` again and SDDM is tried once the minute has passed. An SDDM
 that keeps running with a greeter that never draws is not seen from here, because SDDM restarts a
-failed greeter itself; tty2 is the console for that.
+failed greeter itself: a greeter that exits before anyone logs in is started again once its console
+is in front, and after three exits in a row, each within a minute of its start, SDDM stops trying and
+stays up with nothing drawn. tty2 is the console for that. Switching to a text console and back
+ends no greeter: it outlives its KWin dropping the outputs across the switch
+([`sddm-restart-greeter.patch`](../../../ports/core/auth/sddm/kfs.md#patches)).
 
 **What SDDM runs.** Its configuration is read from `/usr/lib/sddm/sddm.conf.d` (plasma-workspace's
 `plasma-wayland.conf`), then `/etc/sddm.conf.d/` by name, then `/etc/sddm.conf`, the last value of a
@@ -1975,7 +2044,8 @@ output a terminal, `CONTAINER_ID` unset). It paints the banner one raster line a
 bright beam leading the fill, then shows one frame in reverse video, imitating a CRT switching on.
 Any keypress skips the rest. When there is room, the day's line from
 [`kdos oracle`](../04-programs/kdos-command.md#kdos-oracle) (one of the short design notes that
-`kdos why` searches) follows the banner, in the secondary colour.
+`kdos why` searches) follows the banner, in the secondary colour, without the attribution
+`kdos oracle` prints after it.
 
 | Command | Effect |
 |---|---|
@@ -1984,6 +2054,10 @@ Any keypress skips the rest. When there is room, the day's line from
 
 It prints plainly, without animating, when standard output is not a terminal, when `TERM` is unset
 or `dumb`, when `KDOS_NO_ANIM` is set, or when the banner is at least as tall as the terminal.
+When the terminal's height is known (`LINES`, or the terminal itself) and the logo, the fetch and
+one row for the prompt do not fit in it, the logo is left out and the fetch is printed alone, so a
+25-row console keeps the `user@host` and OS lines on screen; output with no known height, such as
+a redirect, keeps the logo.
 `KDOS_BANNER_DELAY` sets the delay between frames in seconds (0.012 by default). Without
 `kdos-banner`, `bash.bashrc` runs `fastfetch`, or prints `/etc/motd`.
 

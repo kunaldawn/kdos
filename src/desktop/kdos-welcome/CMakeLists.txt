@@ -9,6 +9,7 @@ option(BUILD_TESTING "Build the tests" ON)
 set(WELCOME share/plasma/plasma-welcome)
 
 install(FILES intro-customization.desktop DESTINATION ${WELCOME})
+install(FILES io.kdos.releasenotes.desktop DESTINATION share/applications)
 file(GLOB PAGES ${CMAKE_CURRENT_SOURCE_DIR}/extra-pages/*.qml)
 install(FILES ${PAGES} DESTINATION ${WELCOME}/extra-pages)
 file(GLOB PARTS ${CMAKE_CURRENT_SOURCE_DIR}/extra-pages/kdos/*.qml
@@ -22,4 +23,8 @@ if(BUILD_TESTING)
     configure_file(tests/tst_groups.qml.in ${CMAKE_CURRENT_BINARY_DIR}/tests/tst_groups.qml @ONLY)
     add_test(NAME groups
              COMMAND ${QMLTESTRUNNER} -platform offscreen -input ${CMAKE_CURRENT_BINARY_DIR}/tests)
+    add_test(NAME launcher
+             COMMAND ${CMAKE_COMMAND} -D ENTRY=${CMAKE_CURRENT_SOURCE_DIR}/io.kdos.releasenotes.desktop
+                     -D PAGES=${CMAKE_CURRENT_SOURCE_DIR}/extra-pages
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/launcher.cmake)
 endif()

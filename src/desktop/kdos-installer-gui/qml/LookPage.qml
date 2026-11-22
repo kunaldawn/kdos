@@ -173,6 +173,19 @@ WizardPage {
                                         : i18nc("@info:whatsthis %1 accent", "%1 accent", label)
                 onClicked: page.answers.theme = modelData.name
 
+                /* The keyboard's place, framed in the focus colour: the
+                 * style's delegate focus is a shade the chosen card's
+                 * highlight drowns, and a frame reads apart from it. */
+                Rectangle {
+                    anchors.fill: parent
+                    z: 1
+                    visible: card.visualFocus
+                    color: "transparent"
+                    border.color: Kirigami.Theme.focusColor
+                    border.width: 2
+                    radius: Kirigami.Units.cornerRadius
+                }
+
                 contentItem: ColumnLayout {
                     spacing: Kirigami.Units.smallSpacing
 
@@ -255,6 +268,17 @@ WizardPage {
             checked: page.answers.desk === modelData.name
             Accessible.name: modelData.title + ": " + modelData.text
             onToggled: page.answers.desk = modelData.name
+            /* The keyboard's place: the style's delegate focus is a
+             * shade too faint to find on the dark ground. */
+            Rectangle {
+                anchors.fill: parent
+                z: 1
+                visible: desk.visualFocus
+                color: "transparent"
+                border.color: Kirigami.Theme.focusColor
+                border.width: 2
+                radius: Kirigami.Units.cornerRadius
+            }
             contentItem: RowLayout {
                 spacing: Kirigami.Units.largeSpacing
                 DeskPreview {

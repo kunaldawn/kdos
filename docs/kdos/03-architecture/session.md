@@ -141,7 +141,9 @@ The Plasma session entry, `/usr/share/wayland-sessions/plasma.desktop`, is plasm
 unedited. The pieces the wrapper and the environment script share are in
 `/usr/local/lib/kdos/session-common.sh`, sourced by both: `kdos_session_open` (sets `$BROWSER` to
 `xdg-open` when nothing has, so a program started by D-Bus has a link handler),
-`kdos_session_xdg_dirs` and `kdos_session_boxes`.
+`kdos_session_xdg_dirs`, `kdos_session_live_data`, `kdos_session_fcitx5_profile` (see
+[Input methods](#input-methods)) and
+`kdos_session_boxes`.
 
 ### The environment the session starts with
 
@@ -162,7 +164,7 @@ carried in is replaced:
 | `XDG_CONFIG_DIRS` | `/usr/share/kdos/xdg` appended after `/etc/xdg` when missing |
 | `QT_QPA_PLATFORM` | `wayland;xcb`: Qt uses Wayland and falls back to Xwayland only when its Wayland plugin cannot start, which is a Qt 5 program built without one |
 | `QT_QPA_PLATFORMTHEME` | `kde`: a Qt 6 program finds plasma-integration's theme and the colours of `kdeglobals`; a Qt 5 program finds the `qt5ct` port's plugin under the same name, which reads the qt5ct files `kdos theme` writes |
-| `GTK_USE_PORTAL` | `1`: GTK 3's native file chooser and print dialog go through the portals, so a GTK 3 program that uses them opens the KDE file dialog, and Firefox's file picker reads the same variable. GTK 4 uses the portal without it. A program that builds GTK's own file dialog widget, such as AbiWord, keeps GTK's dialog. GTK 3 also reads its theme, fonts and other settings from the Settings portal under the variable, and its `gtk-modules` from `org.gtk.Settings`, which the patched gtk3 opens beside the portal and kde-gtk-config's kded module serves whatever the variable says (see [Portals](#portals)) |
+| `GTK_USE_PORTAL` | `1`: GTK 3's native file chooser and print dialog go through the portals, so a GTK 3 program that uses them opens the KDE file dialog, and Firefox's file picker reads the same variable. GTK 4 uses the portal without it. A program that builds GTK's own file dialog widget, such as GIMP, Inkscape or AbiWord, keeps GTK's dialog. GTK 3 also reads its theme, fonts and other settings from the Settings portal under the variable, and its `gtk-modules` from `org.gtk.Settings`, which the patched gtk3 opens beside the portal and kde-gtk-config's kded module serves whatever the variable says (see [Portals](#portals)) |
 | `GDK_BACKEND` | Not set. GDK tries Wayland first by itself, and a value would override the `GDK_BACKEND=x11` an X11-only program sets for itself |
 | `MOZ_ENABLE_WAYLAND`, `SDL_VIDEODRIVER`, `CLUTTER_BACKEND` | Wayland, for Firefox ESR, LibreWolf and Thunderbird, SDL and Clutter |
 
@@ -186,10 +188,20 @@ login can carry one more directory first, `/etc/kdos/autologin-xdg`, which is ho
 logs in by itself starts behind the lock screen (see
 [The security model](security-model.md#the-login-stacks)).
 
+**`XDG_DATA_DIRS`** gains one directory on the live medium alone: `kdos_session_live_data` puts
+`/usr/share/kdos/data-live` in front of it once, by the same overlay-root test, keeping the
+specification's `/usr/local/share:/usr/share` behind it when the list is unset. It holds the
+desktop entries the live session starts differently, and an entry there replaces the image's of the
+same desktop id. Its one entry is Welcome Center's, whose `Exec` passes `--live-environment`, the
+argument the tour's live pages read; Welcome Center's kded module passes it at login, so the
+tour reopened from the launcher is the same live tour. An installed system's list has no such
+directory.
+
 **`plasma-workspace/env/`** in `/usr/share/kdos/xdg` holds two scripts `startplasma` sources before
 KWin starts, in one shell, keeping every variable they leave set:
 
-- `kdos.sh` runs the same `kdos_session_xdg_dirs` and `kdos_session_open`, so a
+- `kdos.sh` runs the same `kdos_session_xdg_dirs`, `kdos_session_live_data`, `kdos_session_open`
+  and `kdos_session_fcitx5_profile`, so a
   `startplasma-wayland` run by hand from a console settles the same names, exports
   `XDG_CURRENT_DESKTOP=KDE`, and sets `SSH_ASKPASS` to `ksshaskpass` when nothing has. A passphrase
   asked for with no terminal (ssh-add from an autostart entry, git or ssh run from an application)
@@ -255,7 +267,8 @@ The installer offers two kinds of application. The native groups (see
 binhost; a group that cannot be, because the network or the binhost did not answer, is written to
 the new disk's `/var/lib/kdos/groups-pending`, and `kdos update install --pending` installs it
 later. Discover does not list those groups; the first login's `kdos-notice` names each one and the
-`sudo kdos update install --pending` that installs it, in the same notice as the boxed selections
+`sudo kdos update install --pending` that installs it (`su -c 'kdos update install --pending'`
+for an account outside `wheel`, which `getgrouplist` tells it), in the same notice as the boxed selections
 below (the groups and their command first, the selections on a line after them), and withdraws the
 notice once neither file names anything.
 
@@ -539,17 +552,24 @@ OpenURI, screenshots and screen casting through KWin, remote desktop and input c
 e-mail, inhibit, background, global shortcuts, the clipboard, wallpaper, USB access, Access, and
 Settings, which hands an application the session's colour scheme, accent and fonts under
 `org.kde.*` and `org.freedesktop.appearance`. `kde-portals.conf` names `kde;gtk;` for Settings, and
-`xdg-desktop-portal-gtk` answers the keys the KDE backend does not: every `org.gnome.desktop.*`
+`xdg-desktop-portal-gtk`, which the base image carries for these keys (`default=kde` sends every
+interface a caller does not name to the KDE backend; only a caller that asks this backend by name
+gets its Print and Email), answers the keys the KDE backend does not: every `org.gnome.desktop.*`
 key (the GTK theme, icon and cursor themes, fonts, `gtk-im-module` and the window-button layout
 under `org.gnome.desktop.wm.preferences`) and `org.gnome.fontconfig`, read from the GSettings
 kde-gtk-config writes. GTK 4 on Wayland takes every one of those settings from the portal and
 none from `settings.ini`; a key no backend returns takes GTK's built-in fallback, which for
 `gtk-im-module` is `simple`, no input method, and for the button layout `menu:close`. GTK 3 on
 Wayland does the same under `GTK_USE_PORTAL=1`, on the host and in every box, except for two
-groups. `gtk-modules` and `gtk-fontconfig-timestamp` come only from kde-gtk-config's
-`org.gtk.Settings`, and the host's gtk3 is patched to open that service beside the portal, so
-`colorreload-gtk-module` loads and a running GTK 3 program repaints on a colour change; a box's own
-GTK 3 is not patched, and its filtered bus does not reach the service. `gtk-im-module` GTK 3 sets
+groups. `gtk-modules` and `gtk-fontconfig-timestamp` are not portal keys; GDK reads them from
+kde-gtk-config's `org.gtk.Settings`, and the host's gtk3 is patched to open that service beside
+the portal, so `colorreload-gtk-module` loads and a running GTK 3 program repaints on a colour
+change. A box's own GTK 3 is not patched and never opens the service, but every GTK 3 also loads
+`~/.config/gtk-3.0/settings.ini` as its defaults, and kde-gtk-config writes
+`gtk-modules=colorreload-gtk-module:window-decorations-gtk-module`. A box that shares your home
+reads that line, no launch environment can take a key out of the file, and the box's runtime
+carries neither module, so a boxed GTK 3 program prints `Gtk-Message: Failed to load module` for
+each of the two and runs without them. `gtk-im-module` GTK 3 sets
 itself to `wayland` on a compositor that offers `text-input-v3`, above the portal's empty value
 (see [Input methods](#input-methods)). Where both
 backends answer a key, as for `org.freedesktop.appearance`, the front end takes the KDE one's.
@@ -694,6 +714,22 @@ KWin offers the input-method protocol to that one process and to no other client
 engines are set on System Settings' Input Method page (`fcitx5-configtool`), and the Virtual
 Keyboard page chooses between fcitx5 and an on-screen keyboard.
 
+KWin owns the keyboard layout list. fcitx5's Wayland module, when its *Allow Overriding System
+XKB Settings* is on (its compiled default), writes the current group's layout into
+`~/.config/kxkbrc` at every start and on every input-method change, which would put the
+profile's layout over the one the installer, locale1 or System Settings → Keyboard set, and
+the lock screen would then check a password typed on that layout. `/etc/xdg/fcitx5/conf/wayland.conf` turns it off; fcitx5 finds it
+along `XDG_CONFIG_DIRS`, falling back to `/etc/xdg`, whatever environment KWin starts it with, and
+decodes keys with the keymap KWin hands it.
+
+The profile names the system layout too, so the system layout reaches a new account even where
+fcitx5 writes it. `/etc/skel` carries no `~/.config/fcitx5/profile`; at a login whose home has none,
+`kdos-session-wrapper` and the Plasma environment script write one before KWin starts fcitx5
+(`kdos_session_fcitx5_profile` in `session-common.sh`), whose group's layout and first item are
+`/etc/kdos/xkb.conf`'s first layout and variant (`de-nodeadkeys`, `keyboard-de-nodeadkeys`),
+locale1's when the file names none, and `us` when neither does. An existing profile is never
+rewritten, so the Input Method page's choices stand.
+
 An application reaches the engine one of two ways. Through KWin's text-input protocol: Qt 6, GTK 3
 and GTK 4 through `text-input-v3`, Qt 5 through `text-input-v2`. Or through a toolkit module that
 speaks to fcitx5's own D-Bus interface: `fcitx5-qt` for Qt 6, `fcitx5-gtk` for GTK 3 and GTK 4.
@@ -803,12 +839,13 @@ on overlayfs.
 
 Log Out, Restart and Shut Down are Plasma's. ksmserver asks each application to save its state and
 closes its windows, then `plasma-shutdown` runs every file in every `plasma-workspace/shutdown/`
-directory along `XDG_CONFIG_DIRS`, in name order, waiting for each, before KWin quits. KDOS ships two
+directory along `XDG_CONFIG_DIRS`, in name order, waiting for each, before KWin quits. KDOS ships three
 in `/usr/share/kdos/xdg/plasma-workspace/shutdown/`:
 
 | Script | Does | Bound |
 |---|---|---|
 | `kdos-boxes.sh` | `kdos-appbox session save`: records every running box, and every boxed application that was open when the logout began, in `$XDG_STATE_HOME/kdos/session-boxes` | 10 s |
+| `kdos-speech.sh` | Sends SIGTERM to the Speech Dispatcher server that Orca, KMouth or `spd-say` spawned, named by `$XDG_RUNTIME_DIR/speech-dispatcher/pid/speech-dispatcher.pid`, unless another login of the user (a console or a second graphical login) is open; the session `turnstiled` opens for the user's service manager is not counted. The server stops its eSpeak NG modules. A spawned server outlives its clients, and `turnstiled` removes the runtime directory it listens in at the last logout, so one left running would sit beside the next login's | 5 s |
 | `kdos.sh` | `kdos-box gc --session-end`: stops every box that has run past its profile's `autostop`, without asking the desktop which boxes still have a window, since every window is closed by now | 20 s |
 
 Before those, when the session is set to restore the previous one (System Settings → Session →

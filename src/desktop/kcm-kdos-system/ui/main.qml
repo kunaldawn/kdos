@@ -62,13 +62,14 @@ KCM.SimpleKCM {
         }
 
         Kirigami.InlineMessage {
+            objectName: "trialBanner"
             Layout.fillWidth: true
             position: Kirigami.InlineMessage.Position.Header
             visible: kcm.available && kcm.trialArmed
             type: Kirigami.MessageType.Information
             icon.name: "system-reboot"
             text: i18nc("@info %1 version to try, %2 confirmed version",
-                        "When restarted, the computer will start %1 once. It is kept if it starts properly; otherwise the computer goes back to %2.",
+                        "When restarted, the computer will start %1 once. It is kept when a session runs for a minute, or, on a computer that logs nobody in automatically, when the login screen does; otherwise the computer goes back to %2.",
                         kcm.trialTitle, kcm.fallbackTitle)
             actions: [
                 Kirigami.Action {
@@ -446,7 +447,7 @@ KCM.SimpleKCM {
         title: i18nc("@title:window", "Start Next Time?")
         subtitle: slotInfo
             ? i18nc("@info %1 version to try, %2 confirmed version",
-                    "The next restart starts %1 once. If it starts properly and this session runs for a minute, it becomes the version this computer starts. If it does not, the computer goes back to %2 by itself.",
+                    "The next restart starts %1 once. It becomes the version this computer starts when a session runs for a minute, or, on a computer that logs nobody in automatically, when the login screen does. If it does not start, the computer goes back to %2 by itself. Programs installed and settings changed in %2 since the last update are not in %1.",
                     slotInfo.title, kcm.fallbackTitle)
             : ""
         standardButtons: Kirigami.Dialog.NoButton

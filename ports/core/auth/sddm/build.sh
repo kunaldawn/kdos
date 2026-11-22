@@ -11,6 +11,7 @@
 
 patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/sddm-elogind-session-desktop.patch"
 patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/sddm-switch-user-greeter.patch"
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/sddm-restart-greeter.patch"
 
 export CXXFLAGS="$CXXFLAGS -I/usr/include/utmps"
 

@@ -53,11 +53,14 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3656-3688 pin=a862490fe7d7 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3759-3791 pin=e94fe2c872f0 -->
 
 `KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
 no text cursor is drawn between the splash and the login screen.
-The next-to-last `%s` is a `/KDOS (slot b)` entry, written only on the A/B layout, which boots the
+The `%s` in the first entry's comment becomes `, KDOS <version>` from the target's
+`/etc/kdos-release` (`Start this computer (slot A, KDOS 0.2.1)`), or nothing when the target has
+no record; the slot B entry's title names its release the same way (`KDOS 0.2.1 (slot B)`).
+The next-to-last `%s` is that `/KDOS <version> (slot B)` entry, written only on the A/B layout, which boots the
 second root once with nothing confirmed; the last is the memory test entry.
 
 The file is `/boot/efi/limine.conf`. The ESP is mounted with `umask=0077`, as the installer's
@@ -122,7 +125,7 @@ described on [Microcode and firmware](microcode-and-firmware.md#the-regulatory-d
 | `KDOS Live` | `KDOS` |
 | `KDOS Live (clean session)`: adds `nopersist` | `KDOS (verbose)`: `loglevel=7`, no `quiet` and no splash |
 | `KDOS Live (verbose)`: `loglevel=7`, no `quiet` and no splash | `KDOS (single user)`: `loglevel=7 single`, no splash |
-| `Memory Test (memtest86+)`, UEFI only | `KDOS (slot <x>)`, when the other root slot has a root and a kernel and is not marked `unfilled` |
+| `Memory Test (memtest86+)`, UEFI only | `KDOS <version> (slot <X>)`, when the other root slot has a root and a kernel and is not marked `unfilled` |
 | | `Memory Test (memtest86+)`, UEFI only |
 
 The live medium's quiet entries carry `console=tty0 console=ttyS0,115200n8`. The kernel prints its
@@ -156,7 +159,8 @@ theme sets `interface_help_hidden: yes`.
 3. Save the file and run `sync`. The ESP is FAT and has no journal.
 4. Reboot. Once the boot is confirmed, `kdos-bootctl mark-good` regenerates every `/KDOS` entry
    from the first, and the others carry the word as well. A boot is confirmed when `rcS` has
-   finished and the desktop session, or the login screen on a machine nobody logs in to, has
+   finished and the desktop session, or the login screen on a machine SDDM does not log in
+   automatically, has
    answered for a minute; `kdos-sysupdated` runs the command then (see
    [A/B slots and rollback](ab-slots-and-rollback.md)). The regeneration puts the added word in
    front of the words it sets per entry, so `… console=tty0 quiet loglevel=3
@@ -179,9 +183,11 @@ be reached. Limine's own description of the key is in `/usr/share/doc/limine/CON
 
 `kdos theme <accent>` repaints the menu along with the rest of the desktop: `kdos-powerd` runs
 `kdos-bootctl theme <accent>` for it, which rewrites only the theme keys of the menu and the
-console palette in `/etc/vtrgb`. Between two accents only the seven colour lines differ
-(`interface_help_colour`, `interface_help_colour_bright`, `backdrop`, `term_background`,
-`term_foreground`, `term_palette`, `term_palette_bright`). Run as root,
+console palette in `/etc/vtrgb`. Between two accents only the five colour lines differ
+(`interface_help_colour`, `interface_help_colour_bright`, `term_foreground`, `term_palette`,
+`term_palette_bright`). `backdrop` and `term_background` are the backdrop image's neutral floor
+under every accent, because Limine cannot retint the image, and `paper`, whose dark text cannot
+be read on that floor, writes the same block as `bone`. Run as root,
 `sudo kdos-bootctl theme <accent>` does the same without the session, and prints
 `text consoles are now <accent> at the next login prompt` and `boot menu is now <accent>`.
 To see the block an accent would write without changing anything:
@@ -243,7 +249,7 @@ root in `/boot/efi/limine.conf`.
 than the first `/KDOS` entry, or it is one of the words `kdos-bootctl` sets per entry, and the
 regeneration at the end of the last boot replaced it. Add it to the first `/KDOS` entry.
 
-**The menu shows a `KDOS (slot <x>)` entry, or its first entry's comment speaks of an update.**
+**The menu shows a `KDOS <version> (slot <X>)` entry, or its first entry's comment speaks of an update.**
 The other root slot has a root and a kernel, or an A/B trial is in progress. See
 [A/B slots and rollback](ab-slots-and-rollback.md).
 

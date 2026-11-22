@@ -32,6 +32,10 @@
 # application's, and names no type this file names. A person's own choice
 # lands in ~/.config/mimeapps.list and outranks both.
 #
+# KService and GLib read only [Default Applications] from a desktop-named
+# list such as this one, so a removed or added association written here is
+# ignored; it goes in /etc/xdg/mimeapps.list.
+#
 # Three roles of the table open no file and have no type to name here: the
 # terminal is kdeglobals' TerminalApplication (Konsole), the calculator is
 # KCalc through the Calculator key its own entry claims (Qalculate-Qt claims
@@ -248,7 +252,15 @@ application/vnd.efi.img=org.kde.isoimagewriter.desktop
 
 # Mail, calendars and contacts: Thunderbird, one application for all three
 # with no Akonadi server in the session. KMail, KOrganizer and KAddressBook
-# are installed and claim the same types.
+# claim the same types. Thunderbird is in the internet group, not on the
+# base; until it is installed a mailto: link falls to kdos-nomail.desktop,
+# the one entry on the base that claims the scheme, which says how to install
+# it. Without a claimant KIO reads the link as a file and reports that it
+# cannot read it. Kate claims text/calendar as a kind of plain text, so until
+# a mail or calendar program is installed Default Applications names Kate as
+# the calendar; taking Kate off the type needs a [Removed Associations] row
+# in /etc/xdg/mimeapps.list, a removal this list cannot make. A calendar
+# installed later (Merkuro, KOrganizer) offers itself through its own entry.
 x-scheme-handler/mailto=thunderbird.desktop
 message/rfc822=thunderbird.desktop
 text/calendar=thunderbird.desktop

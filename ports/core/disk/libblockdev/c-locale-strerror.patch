@@ -1,0 +1,74 @@
+Subject: Pass a real C locale to strerror_l() instead of a null locale_t
+
+--- a/src/plugins/fs/common.h
++++ b/src/plugins/fs/common.h
+@@ -4,8 +4,13 @@
+ #ifndef BD_FS_COMMON
+ #define BD_FS_COMMON
+ 
+-/* "C" locale to get the locale-agnostic error messages */
+-#define _C_LOCALE (locale_t) 0
++/* "C" locale to get the locale-agnostic error messages.  A null locale_t
++ * is not a locale: musl's strerror_l() reads its LC_MESSAGES slot and
++ * faults, so every error path that formats errno would crash the caller.
++ * newlocale() of "C" returns the C library's static C locale on glibc
++ * and musl alike, so it allocates nothing and cannot fail. */
++#include <locale.h>
++#define _C_LOCALE newlocale (LC_ALL_MASK, "C", (locale_t) 0)
+ 
+ gint synced_close (gint fd);
+ gboolean get_uuid_label (const gchar *device, gchar **uuid, gchar **label, GError **error);
+--- a/src/plugins/nvme/nvme-private.h
++++ b/src/plugins/nvme/nvme-private.h
+@@ -12,8 +12,13 @@
+ #define ZERO_INIT {0}
+ #endif
+ 
+-/* "C" locale to get the locale-agnostic error messages */
+-#define _C_LOCALE (locale_t) 0
++/* "C" locale to get the locale-agnostic error messages.  A null locale_t
++ * is not a locale: musl's strerror_l() reads its LC_MESSAGES slot and
++ * faults, so every error path that formats errno would crash the caller.
++ * newlocale() of "C" returns the C library's static C locale on glibc
++ * and musl alike, so it allocates nothing and cannot fail. */
++#include <locale.h>
++#define _C_LOCALE newlocale (LC_ALL_MASK, "C", (locale_t) 0)
+ 
+ /* nvme-error.c */
+ G_GNUC_INTERNAL
+--- a/src/plugins/smart/smart-private.h
++++ b/src/plugins/smart/smart-private.h
+@@ -7,8 +7,13 @@
+ #ifndef BD_SMART_PRIVATE
+ #define BD_SMART_PRIVATE
+ 
+-/* "C" locale to get the locale-agnostic error messages */
+-#define _C_LOCALE (locale_t) 0
++/* "C" locale to get the locale-agnostic error messages.  A null locale_t
++ * is not a locale: musl's strerror_l() reads its LC_MESSAGES slot and
++ * faults, so every error path that formats errno would crash the caller.
++ * newlocale() of "C" returns the C library's static C locale on glibc
++ * and musl alike, so it allocates nothing and cannot fail. */
++#include <locale.h>
++#define _C_LOCALE newlocale (LC_ALL_MASK, "C", (locale_t) 0)
+ 
+ typedef struct DriveDBAttr {
+     gint id;
+--- a/src/utils/dev_utils.h
++++ b/src/utils/dev_utils.h
+@@ -25,8 +25,13 @@
+ GQuark bd_utils_dev_utils_error_quark (void);
+ #define BD_UTILS_DEV_UTILS_ERROR bd_utils_dev_utils_error_quark ()
+ 
+-/* "C" locale to get the locale-agnostic error messages */
+-#define _C_LOCALE (locale_t) 0
++/* "C" locale to get the locale-agnostic error messages.  A null locale_t
++ * is not a locale: musl's strerror_l() reads its LC_MESSAGES slot and
++ * faults, so every error path that formats errno would crash the caller.
++ * newlocale() of "C" returns the C library's static C locale on glibc
++ * and musl alike, so it allocates nothing and cannot fail. */
++#include <locale.h>
++#define _C_LOCALE newlocale (LC_ALL_MASK, "C", (locale_t) 0)
+ 
+ typedef enum {
+     BD_UTILS_DEV_UTILS_ERROR_FAILED,

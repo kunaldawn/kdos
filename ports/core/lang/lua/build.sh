@@ -51,3 +51,5 @@ Cflags: -I${includedir}
 EOF
 
 ln -s lua.pc $PKG/usr/lib/pkgconfig/lua$_majorver.pc
+
+install -Dm644 "$SRC/src/lua.h" "$PKG/usr/share/licenses/$name/lua.h"

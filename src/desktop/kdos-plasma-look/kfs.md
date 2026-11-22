@@ -68,8 +68,8 @@ or above, the rule the Global Theme page uses. The light accent gets `KDOS-Light
 
 **Previews.** `preview.png`, `fullscreenpreview.jpg` and `splash.png` are drawn by `genlook.py`
 from the scheme's own roles: the desktop preview shows the mark on the ground, a window with a
-selected row and the KDOS desk's panel; the splash preview is the KSplash's settled frame at half
-its stages. They are generated rather than captured, so they are exact for every accent and need
+selected row and the KDOS desk's panel; the splash preview is the KSplash's settled frame at its
+third stage. They are generated rather than captured, so they are exact for every accent and need
 no session. The two small ones are drawn at three times their size and reduced, so the one-pixel
 rules come out as a tint rather than vanishing. `cjpeg` writes the JPEG, because the package
 structure names that file `fullscreenpreview.jpg`; a global theme missing any of the three shows
@@ -82,7 +82,15 @@ land on the pixels the boot splash left them on, and its colours are the running
 The three colours that are no scheme's (the mascot's body, the colour its rim is mixed towards,
 and the black of a screen with nothing on it, which KSplash's transparent window would otherwise
 show the starting desktop through) come from the generated `mark.js`, never from a literal in the
-QML. The motion is KDOS Modern's, a fade out of black with the mark flat; in Phosphor mode the
+QML. Its bar carries on from the boot splash's: `genlook.py` reads `BAR_SEGS` and `draw_bar()`'s
+hold (99% and one segment short, where an unfinished boot stops and where the bar stands when `rcS`
+hands the screen over) out of `kdos-splash.c` into `mark.js`. KSplash's bar starts at the handover
+value and never passes the hold, and its six stages share out whatever lies between; the two are
+the same, so the bar stands at 99% with its leading segment pulsing until the desktop is up and
+never moves backwards at the login; a `kdos-splash.c` whose hold or bar
+`genlook.py` cannot read fails the build. Its text is set in `Terminus (TTF)`, the scalable face
+of the Terminus font the boot splash's `splash.psf` is, sized so a column is the boot splash's
+8-pixel glyph; without that face it falls back to the fixed-width font. The motion is KDOS Modern's, a fade out of black with the mark flat; in Phosphor mode the
 CRT pass is KWin's and lies over the splash like everything else. The recipe hash covers this
 port and `src/libs`, not `src/art/kdos-splash`, so a new penguin reaches the splash when this port
 is next rebuilt.

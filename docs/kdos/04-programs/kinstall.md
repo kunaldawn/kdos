@@ -139,7 +139,7 @@ fails with "kinstall must run as root" instead.
 | Exit status | Means |
 |---|---|
 | 0 | Finished: help, version, a dump, a saved answer file, a completed install, or the wizard quit |
-| 1 | An unknown option, an unreadable `--config` file, a `--save` that could not be written, `--events` without `--unattended` or with anything but `json`, or an `--unattended` install that failed (with `reboot = 0`, or under `--events`) |
+| 1 | An unknown option, an unreadable `--config` file, a `--save` that could not be written, `--events` without `--unattended` or with anything but `json`, or an `--unattended` install that failed |
 | 2 | `--dump` given something other than `probe`, `plan`, `apps` or `look`, or, under `--events`, answers refused before anything was written |
 
 ## Keys
@@ -156,7 +156,7 @@ fails with "kinstall must run as root" instead.
 | L | The full log: drawn in the page on the Install page, in `less` (or `more`) on the Done page |
 | Ctrl+U | Clear a text field |
 | Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
-| Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
+| Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written. The question opens on **Stay** (**Keep going** during an install), so Enter keeps the installer; Left or Tab, then Enter, quits |
 
 Alt+B, Alt+N, the two arrows with Alt and Esc do nothing on the Install and Done pages, which have
 no navigation buttons.
@@ -203,46 +203,71 @@ runs to the column before **Back**, and one longer than that ends in an ellipsis
 **Next**.
 
 **Welcome.** Shows the machine: processor and thread count, memory, the number of disks, the
-install size, and the firmware (`UEFI` or `legacy BIOS`, with "32-bit firmware" and "Secure Boot
-enabled" added when they apply). A preflight list marks each item that fails:
+install size (what the copy writes, `ki_copy_bytes()`, split into the system and the box store
+when there is a store), and the firmware (`UEFI` or `legacy BIOS`, with "32-bit firmware" and "Secure Boot
+enabled" added when they apply; a firmware that enforces Secure Boot refuses the unsigned medium
+before the installer runs, so that one appears only where a boot manager skipped the check). A
+preflight list marks each item that fails with `!` and words it as the failure and its cost:
 
-- running as root (failing, the line reads "not running as root — start it with sudo kinstall");
-- at least one disk that is not read-only (the line reads "at least one writable disk");
-- `rsync` present;
-- `mkfs.ext4` and `mkfs.vfat` present;
-- the Limine payload, `/usr/share/limine`, present.
+| Check | Failing line |
+|---|---|
+| running as root | not running as root — start it with sudo kinstall |
+| a disk that is not read-only | no writable disk — nothing to install to |
+| `rsync` | rsync missing — nothing can be copied |
+| `mkfs.ext4` and `mkfs.vfat` | mkfs.ext4 or mkfs.vfat missing — the target cannot be formatted |
+| `/usr/share/limine` | no Limine payload at /usr/share/limine — the disk would not start |
 
-The page refuses to continue without root or without a disk that is not read-only. Neither firmware is refused or
+The page refuses to continue without root or without a disk that is not read-only. The Summary
+runs the same checks: while one fails it draws the failing line in the error colour above
+**BEGIN INSTALL**, the button is disabled and the status line reads "fix the marked Welcome line
+first". Each of these is needed after the disk has been erased, so an install started past one
+would wipe the target and stop with no system on it. **REHEARSE INSTALL** writes nothing and is
+not refused. A line that starts or stops failing while the Summary is up leaves the focus on the
+control it was on. The Prepare step asks for the Limine payload again, so a front end with no
+Welcome page refuses before writing as well. Neither firmware is refused or
 warned about: a disk the installer partitions starts on both (see [Both
 firmwares](#both-firmwares)).
 
 **Keyboard.** Lists every keymap under `/usr/share/keymaps` and `/usr/share/kbd/keymaps`, with a
-filter field (a name too long for the list ends in an ellipsis). Moving the selection applies
+filter field (a name too long for the list ends in an ellipsis; a filter that matches nothing
+leaves "(no keymap matches the filter)" in the list). Moving the selection applies
 the map at once with `loadkeys`, and a test field
 shows what the keys produce. The choice is written to `/etc/keymap` on the target, and the login
 screen and the session take the graphical layout nearest it (see
 [What the rest of the tree provides](#what-the-rest-of-the-tree-provides)).
 
 **Time.** Lists the zones in `/usr/share/zoneinfo/zone1970.tab` (`$KDOS_ZONEINFO` replaces the
-directory, for testing), with a filter; a name too long for the list ends in an ellipsis. Beside the
-list, **SELECTED** holds the chosen zone, its `TZ string` (`:/etc/localtime`) and its `local time`,
-each label on a row of its own with the value wrapped under it. A filter that leaves one zone chooses it; otherwise the zone changes only when the selection is moved
+directory, for testing) sorted by name, from `Africa/Abidjan`, with a filter; a name too long for
+the list ends in an ellipsis, and a filter that matches nothing leaves "(no zone matches the
+filter)" in the list. The note above it says the zone can be changed later in System Settings.
+Beside the list, **SELECTED** holds the chosen zone and its `local time`, each label on a row of
+its own with the value wrapped under it; the Summary names the zone alone. The `TZ` value the
+install writes (`:/etc/localtime`) is not shown on either page. A filter that leaves one zone chooses it; otherwise the zone changes only when the selection is moved
 or a row is chosen, so tabbing through the list leaves the chosen zone (UTC, which the table does
 not list, included) as it was. The hardware clock is left as it is. An image with no zone table offers `UTC` alone.
 
 **Disk.** Lists every disk except loop, RAM, optical, zram, device-mapper, MD, floppy and NBD
 devices, with its size, transport (`sata`, `nvme`, `usb`, `virtio` or `mmc`) and model, and draws
-its current partition table. A disk whose driver reports no model (virtio-blk is one) is named by
+its current partition table; under the table of a written stick a line names the image it holds,
+`ISO 9660 image “KDOS_LIVE” on the whole disk, 1.7G` (the probe's `iso_image`, in [the dumps](#checking-before-installing-the-dumps)). The model is sysfs's, or udev's `ID_MODEL_ENC` (from
+`/run/udev/data/b<major>:<minor>`, its `\xNN` escapes decoded) where that is longer and starts
+with it: libata's sysfs model is the 16 bytes of a SCSI INQUIRY reply, which cuts a longer ATA
+name such as `Kingston-SA400S37` mid-word. A disk whose driver reports no model (virtio-blk is one) is named by
 its transport, `Virtual disk`, `NVMe disk`, `Memory card` or `USB disk`, with its serial number
 where the driver has one. It preselects the first disk that is neither the boot medium nor
-read-only. It refuses the medium KDOS is running from, a read-only disk, and a disk smaller than
-the install size plus 768 MiB, by `ki_disk_check()`, the rule the window and every install share
+read-only. It refuses the medium KDOS is running from (the disk holding an ISO 9660 or squashfs
+mount, found through a device-mapper device's `slaves` for a Ventoy stick, whose medium is mounted
+as `/dev/mapper/ventoy`), a read-only disk, and a disk smaller than
+the payload plus 768 MiB plus 2 GiB, by `ki_disk_check()` on `ki_need_bytes()`, the rule the window and every
+install share: 768 MiB (`KI_DISK_MARGIN`) for the ESP, the BIOS boot partition and the copy's
+metadata, and 2 GiB (`KI_ROOT_FREE_MB`) that the root keeps free after the copy for ext4's 5%
+reserve, the journal, the logs and the first logins
 (see [Fallbacks, and how an unattended run ends](#fallbacks-and-how-an-unattended-run-ends)). The
 refusal is in whole MiB, "<disk> holds <X> MiB; the install needs at least <Y> MiB", the disk
 rounded down and the need rounded up, so a refused disk never reads as holding what it needs; a disk
 it would refuse is drawn in the warning colour in the list. Its **install needs** line is drawn in the error colour exactly when the
-selected disk is that small, so a disk drawn in the plain colour passes this check. The install size is what the live root holds, since
-the copy carries the live system whole, less the container library when **Install the alien app library**
+selected disk is that small, so a disk drawn in the plain colour passes this check. The payload is what the live root holds, every name of a hard-linked file counted, so it is more than the install size the Welcome page shows. It is the whole live root,
+since the copy carries the live system whole, less the container library when **Install the alien app library**
 is unticked; a native group the Applications page ticks is downloaded into the target and is not
 counted. That box is on the System page, after this one, so unticking it lowers the requirement
 only when the Disk page is passed again.
@@ -273,12 +298,13 @@ plan still applies: a swap file of the chosen size (4096 MiB by default) on the 
 swap at all when a swap partition was chosen, because the reuse plan makes no partitions.
 
 **The swap must fit beside one root.** On the erase plan without two slots, a swap file or
-partition comes out of the same disk as the install: the disk must hold the install, 768 MiB, the
-swap and, when the root is on LVM or inside LUKS, 32 MiB for their metadata. A plan that does not
+partition comes out of the same disk as the install: the disk must hold the payload, 768 MiB,
+the 2 GiB the root keeps free, the swap and, when the root is on LVM or inside LUKS, 32 MiB for
+their metadata, so the largest swap offered is one that still leaves the root 2 GiB free. A plan that does not
 fit is refused before anything is written, naming the largest swap that does: "a <N> MiB swap does
 not fit beside the install on <disk>: make it at most <M> MiB, or none", or "…: choose no swap"
-when nothing fits. A 5700 MiB disk and a 4847 MiB install leave at most 53 MiB on LVM and 85 MiB
-off it. The A/B layout counts its swap volume in `ki_ab()` instead (see [The A/B
+when nothing fits. A 7748 MiB disk and a 4847 MiB install leave at most 53 MiB on LVM and 85 MiB
+off it; an 8 GiB disk and a 5.1 GiB install leave at most 121 MiB on LVM, and the root 2303 MiB. The A/B layout counts its swap volume in `ki_ab()` instead (see [The A/B
 layout](#the-ab-layout)).
 
 The encryption checkbox is drawn on the erase plan only, but its value is not cleared when the plan
@@ -288,6 +314,9 @@ LUKS2 on every plan, in the erase plan's LVM line or else in an **encryption** l
 place to check. Untick the box before leaving the erase plan if the reused root is to stay
 unencrypted.
 
+Under the passphrase pair the page names the console keymap the boot prompt types with, the one
+chosen on the Keyboard page, and says that a character it has no key for cannot be typed there.
+
 The page refuses an empty or mismatched passphrase, a swap size of zero, the `manual` plan before
 `cfdisk` has run and a reuse plan with no ESP or root, then asks `ki_target_check()`, the target
 check every install shares (see [Fallbacks, and how an unattended run
@@ -295,14 +324,15 @@ ends](#fallbacks-and-how-an-unattended-run-ends)): encryption on an image withou
 LVM on an image without `lvm`, a volume-group name clash (see [A root on LVM](#a-root-on-lvm)), a
 swap that does not fit beside one root (above), an ESP and root that are the same partition, the disk's BIOS boot partition as either, an ESP that is
 held or, when it is not to be formatted, holds no FAT filesystem, a root that is an EFI system
-partition, an LVM physical volume or held, a root smaller than the install and its swap file ("<root>
-holds <X> MiB, smaller than the <Y> MiB this install and its swap file needs", or "…this install
-needs" without a swap file), and, on a machine that
+partition, an LVM physical volume or held, a root smaller than the install, its swap file and the
+2 GiB of `KI_ROOT_FREE_MB` ("<root> holds <X> MiB, smaller than the <Y> MiB this install and its
+swap file needs with 2048 MiB left free", or "…this install needs with 2048 MiB left free" without a
+swap file), and, on a machine that
 booted in legacy BIOS mode, a reuse plan on a GPT disk with no BIOS boot partition, which could
 not start there.
 
-**Accounts.** The hostname (letters, digits and `-`, neither starting nor ending with `-`, at
-most 63 characters; the hint beside it reads "letters, digits, inner -"), then **Who sets it up**:
+**Accounts.** The hostname (letters a–z, digits and `-`, neither starting nor ending with `-`, at
+most 63 characters; the hint beside it reads "letters a–z, digits, inner -"), then **Who sets it up**:
 
 - **Set up my account now**: full name, user name (lowercase letters, digits, `-` and `_`,
   starting with a letter or `_`, at most 32 characters; the hint reads "lowercase, no leading digit
@@ -314,11 +344,11 @@ most 63 characters; the hint beside it reads "letters, digits, inner -"), then *
   **Start the session locked**, ticked by default (unlocked with this password). On an unencrypted
   root the page says that the login screen asks for this password.
 - **Let the first person to start it set it up (OEM)**: no account is made. The first time the
-  machine is started, the setup wizard asks for the language, keyboard, time zone and network and
-  makes the account. See [An OEM install](#an-oem-install).
+  machine is started, the setup wizard asks for the keyboard, time zone and network and makes the
+  account. See [An OEM install](#an-oem-install).
 
 **Lock the root account** is ticked by default (log in as yourself and use sudo); unticked, a root
-password is asked for twice. The page refuses a malformed hostname ("a host name is letters, digits and dashes, and does not
+password is asked for twice. The page refuses a malformed hostname ("a host name is letters a–z, digits and dashes, and does not
 start or end with a dash") or user name ("a user name is lowercase letters, digits, - and _, and
 starts with a letter or _"), a full name
 holding `:` or a control character (it would split the `/etc/passwd` line), an empty or mismatched
@@ -335,31 +365,55 @@ so they draw no swatch, and the repaint is the preview. The desk, the panel layo
 `tiling`, the last with KWin's auto-tiling script on from the first login; each radio names the desk
 and its description wraps under it. **Install the alien app library** (the live user's
 container storage, with its size) is ticked by default. Then the five services of [the service
-table](#answer-files), each a checkbox named by the service, with what it is wrapped under it.
+table](#answer-files), each a checkbox named by the service with the name `service` takes in
+brackets (`NetworkManager (networkmanager)`), with what it is wrapped under it, and a note that
+each can be changed later with `sudo service enable <name>` or `sudo service disable <name>`, the
+name being the one in brackets (see [`service`](kdos-command.md#ksvc-and-service)).
 
 **Applications.** One list: the native groups first, each marked `native` with its number of
 ports, then the catalogue's boxed groups. Under it, `boxed` is the boxed selection and its
 estimated size, `how` the route the boxed groups take, `native` how many native groups are
-ticked and what happens to them: "downloaded during the install" when a binary host is named,
-and otherwise "recorded for later (no binary host)", with the command that installs them once a
-binary host answers, `sudo kdos update install --pending`, on a line of its own above the list
+ticked and what happens to them: "downloaded during the install" when a binary host is named
+and there is a network, "recorded; installed after the first boot once there is a network" when
+a binary host is named and there is none, and otherwise "recorded for later (no binary host)";
+the paragraph above the list then says which ("No network was found" or "This system names no
+binary host") with the command that installs them, `sudo kdos update install --pending`, on a
+line of its own above the list. The page reads the network again each time it opens
 (see [Native groups](#native-groups)), and `language`, when the keyboard or the time zone points at
 a language group, which one and why (`lang-ja ticked for the Japanese keyboard`). See [The
 applications step](#the-applications-step) and [Native groups](#native-groups).
 
 **Summary.** Every answer on one screen, above a line reading "EVERYTHING ABOVE THIS LINE IS STILL
-REVERSIBLE". **Next** is refused here ("press BEGIN INSTALL to start — Next does not"): the install
+REVERSIBLE". **Next** is refused here ("press BEGIN INSTALL to start — Next does not", "press
+REHEARSE INSTALL …" under `--dry-run`, and "fix the marked Welcome line first" while a preflight
+line fails): the install
 starts from the **BEGIN INSTALL** button (**REHEARSE INSTALL** under `--dry-run`) and only from
-it. **Save answer file** writes the answers to `/tmp/kinstall.conf` and installs nothing. The
+it. **BEGIN INSTALL** asks once more: *Erase the disk?*, "Everything on <model>, <size> (<device>)
+is erased: <contents>. There is no undo.", with **Erase and install** and **Back**; on the
+existing-partitions plan *Format <root>?*, naming the root and, with **Reformat the ESP** ticked,
+the ESP, with **Format and install** and **Back**. The dialog opens on **Back**, so the Enter that
+reached the page, or a doubled one, writes nothing. **REHEARSE INSTALL** executes nothing and
+starts at once. **Save answer file** writes the answers to `/tmp/kinstall.conf` and installs nothing. The
+target row names the disk by model, size and device, and under the line the erase plan names what
+it destroys, by `ki_disk_contents()`: up to three partitions by type, label and size (an LVM
+physical volume as `LVM physical volume (volume group kdos)`, the graphical installer's words)
+and a count of the rest (`, and 27 more partitions`), fewer when the review leaves too few rows
+under it, down to none, so BEGIN INSTALL stays on an 80x33 screen; or the signature on a whole
+disk with none. The existing-partitions plan names the root
+it reformats and, with **Reformat the ESP** ticked, the ESP too. The
 Summary also says which firmwares the disk will start on. Its swap row uses the Layout page's
 words: `swap volume` and `shared by both slots, <size> MiB` on the A/B layout, `swap` and `swap
-file, <size> MiB` or `swap partition, <size> MiB` on one root.
+file, <size> MiB` or `swap partition, <size> MiB` on one root. When one root will keep less than
+4 GiB (`KI_ROOT_LOW_BYTES`) free after the install and a swap file in it, a `root space` row in
+the warning colour reads "<size> free after the install: too little for application groups or
+boxed apps"; with more, the row is not drawn.
 
 **Install.** A bar over the whole install, each step counted by its
 [weight](#the-event-stream), each step with its state and time, the elapsed time, the
 warnings so far under **WARNINGS**, and the tail of the log. The elapsed time stops when the
-install finishes or stops, and the status line under the page then reads `finished` or `stopped`
-in place of `writing to disk`. The warnings are a bulleted list, one bullet each, a repeated one
+install finishes or stops. The status line under the page reads `preparing — nothing written
+yet` while the Prepare step runs, `writing to disk` from the next step on, and `finished` or
+`stopped` at the end. The warnings are a bulleted list, one bullet each, a repeated one
 once, each starting with a capital and without the backticks round its commands, with a blank row
 between two when the page has room. The running step's note (the copy's
 `364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15 left`) and a failed step's reason wrap under the
@@ -369,15 +423,24 @@ character dropped; `/var/log/kinstall.log` keeps the line as the program wrote i
 When a step fails, four buttons
 appear: **Retry step** runs the install again from the failed step, its elapsed time still counted from
 the first start, **View log** opens the full
-log, **Shell** runs a login `bash` on the console, and **Abort** quits. When every step has
-finished, **Continue** appears and moves to the Done page.
+log, **Shell** runs a login `bash` on the console under the line "A root shell. Type exit to
+return to the installer." (through `ktui_run_console_note`, so the shell starts with `SHLVL=2`
+and `bash.bashrc` draws no banner over that line), and **Abort** quits. When every step has
+finished, **Continue** appears and moves to the Done page. An unattended run draws none of these
+buttons, only a line saying it ends by itself.
 
 **Done.** The time taken, the figure the Install page's elapsed time stopped at, in words that
 agree with their numbers (`took 1 minute 11 seconds`, `took 45 seconds`), the disk and the log
 path, the warnings under **FINISHED WITH WARNINGS** as the Install page lists them, when there
-were any, a reminder to remove the boot medium, and three buttons: **Reboot
+were any, the order to restart in (choose **Reboot now**, and take the boot medium out when the
+screen goes dark), and three buttons: **Reboot
 now** (after a confirmation) and **Back to the live desktop** (quit) on one row, and **View log**
-(in `less`, or `more` where `less` is missing) on the row under them.
+(in `less`, or `more` where `less` is missing) on the row under them. The live root is a squashfs
+read from the medium, so once the medium is out no program on it can start. Entering the page
+locks kinstall's mapped pages in memory (`mlockall(MCL_CURRENT)`) while the medium is still in.
+**Reboot now** syncs the disks, runs `reboot`, and when `reboot` cannot run or exits with a failure
+tries the `reboot(RB_AUTOBOOT)` system call, which reads no file; when that fails too (without
+`CAP_SYS_BOOT`) it prints `kinstall: could not restart:` and the reason, and exits.
 
 The Summary's install button, the Install page's Continue button and an unattended run all find
 their page by its identifier (`install`, `done`) rather than by its position, so adding a page in
@@ -403,17 +466,20 @@ rather than run.
 | 7 | Firmware | Installs the firmware this machine's devices need and the medium does not carry, with `kdos firmware sync --root /mnt/kinstall` ([The firmware step](#the-firmware-step)) | — |
 | 8 | Configure | The swap file, `fstab`, hostname, time zone, keyboard, login screen, services, serial console | — |
 | 9 | Accounts | Users, passwords, groups, the new account's home | — |
-| 10 | Theme | Writes the accent and the desk the first login takes, the splash's and console's accent, and the login screen's look | — |
+| 10 | Theme | Writes the accent and the desk the first login takes, the splash's and console's accent, and the login screen's look, and seeds `/etc/skel` and the new home in the accent | — |
 | 11 | Slot B | Copies slot A, as it now stands, into the second root | The machine has one root |
-| 12 | Bootloader | Limine on the ESP, kernel and initramfs for each slot, the menu, the BIOS boot code ([Both firmwares](#both-firmwares)), the NVRAM entry | — |
+| 12 | Bootloader | Limine on the ESP, kernel and initramfs for each slot, the menu, the BIOS boot code ([Both firmwares](#both-firmwares)), and on UEFI firmware the NVRAM entry. The plan's line for the step names what this firmware gets: "Limine on the ESP, the BIOS boot code, the UEFI boot entry" on UEFI, "Limine on the ESP and the BIOS boot code" on BIOS | — |
 | 13 | Finish | Flushes and unmounts; on the erase plan, lets go of the disk's volume group and LUKS container | — |
 
 **Prepare** fails when no disk is chosen, the answers check refuses the answers, the disk has gone,
 the installer is not root, the target check refuses the target (both checks are in [Fallbacks, and
 how an unattended run ends](#fallbacks-and-how-an-unattended-run-ends)), or a tool is missing:
 `mount`, `umount`, `mkfs.vfat`, `rsync`, the chosen filesystem's `mkfs`, `cryptsetup` when
-encrypting, `lvm` for a root on LVM, and `limine` on a machine that booted in legacy BIOS mode.
-All of it is asked before anything is written. It then runs `swapoff` on every entry of `/proc/swaps` except `/dev/zram*`,
+encrypting, `lvm` for a root on LVM, and `limine` on a machine that booted in legacy BIOS mode;
+outside a dry run, also when `/usr/share/limine` is missing ("no Limine payload at
+/usr/share/limine — the disk would not start"), since the copy's source is the running root and
+the Bootloader step finds the payload there or nowhere. All of it is asked before anything is
+written. It then runs `swapoff` on every entry of `/proc/swaps` except `/dev/zram*`,
 so a swap partition or file on the disk does not keep it busy, while the live session's compressed
 swap in memory stays on through the copy. It unmounts everything under `/mnt/kinstall` and
 `/mnt/kinstall` itself, and lazily unmounts every mount whose device name begins with the disk's.
@@ -483,9 +549,9 @@ hard-linked file, and it copies the first and makes the others links at no cost.
 tree those names are about 15% of rsync's total, so its percentage stops near 85% as the copy
 ends. The payload walk adds up the bytes of every name of a file after its first (`st_nlink`
 above 1, one count per inode), and the total is rsync's, worked out from its percentage once that
-is 10% or more, less those bytes; before that, the install size less them. It is never less
+is 10% or more, less those bytes; before that, the payload less them. It is never less
 than the bytes done, so the bytes shown reach the total as the copy ends. The note's `<total>` is the
-install size less those bytes, the walk's own figure, which stays put: one worked out from rsync's
+payload less those bytes (the install size the Welcome page shows), the walk's own figure, which stays put: one worked out from rsync's
 whole-number percentage moves by a tenth of a GiB from line to line. Sizes are in the units the graphical installer's other pages use: KiB under a mebibyte,
 whole MiB under a gibibyte, GiB to one decimal. Only the byte count, the percentage and the file
 counts (`to-chk=<left>/<total>`, which `--no-inc-recursive` makes rsync print from its first line;
@@ -638,9 +704,16 @@ them), and everything handed to the account by number, because the target's `/et
 the live system's. An OEM install instead takes the live account out of every database: its
 `passwd` and `shadow` lines, its own group, its memberships and its subordinate ranges.
 
-**Theme** writes the look the first login takes, as files, and runs nothing: startplasma applies
+**Theme** writes the machine's half of the look as files the first login takes: startplasma applies
 the global theme at the first login, and the theme's layout script lays out the desk, so the
-account starts exactly as a new account on this machine would.
+account starts exactly as a new account on this machine would. The account's half (the accent
+file, the terminal programs' colours, `LS_COLORS`, qt5ct and the Konsole profile, which a text
+console or an SSH login reads before any Plasma login) is written by `kdos theme --account
+<accent>`, run with `env -i` and the home's `HOME` and XDG directories, the target's
+`XDG_CONFIG_DIRS`: once into the target's `/etc/skel`, so every account made later starts in the
+accent, and once into the new account's home, whose `.config`, `.cache` and `.local` are then
+handed to the account by number; `/etc/skel` stays root's. An OEM install has no account yet and seeds `/etc/skel` alone. A
+run that fails is a warning: the first Plasma login brings the account into step.
 
 | File | Holds |
 |---|---|
@@ -724,7 +797,7 @@ number (`format_esp`, `luks`, `lvm`, `root_locked`, `alien_apps`, `reboot`), whe
 | `apps` | Space-separated group ids, or `none` | `essential` | The catalogue's boxed groups. Empty or absent means `essential`. See [The applications step](#the-applications-step) |
 | `groups` | Space-separated native group ids, or `none` | `none` | The groups of `/ports/groups`, installed during the install. Empty means `none`, and an id no group has is ignored. See [Native groups](#native-groups) |
 | `reboot` | `1` or `0` | `1` | Reboot when an unattended terminal install ends |
-| `services` | Space-separated service names | `networkmanager bluetooth alsa` | A listed service is on when its name appears anywhere in the value; every other listed service is disabled |
+| `services` | Space-separated service names | `networkmanager bluetooth alsa cups` | A listed service is on when its name appears anywhere in the value; every other listed service is disabled |
 
 The services an answer file can turn on or off, and whether each is on by default:
 
@@ -733,12 +806,13 @@ The services an answer file can turn on or off, and whether each is on by defaul
 | `networkmanager` | NetworkManager — wired, Wi-Fi and VPN | on |
 | `bluetooth` | The bluez daemon | on |
 | `alsa` | Restore mixer levels at boot | on |
-| `cups` | The printing daemon | off |
+| `cups` | The printing daemon | on |
 | `sshd` | The OpenSSH server, which accepts remote logins | off |
 
 Each name matches an init script `/etc/init.d/NN_<name>.sh`. A disabled service gets an empty file
 `/etc/service.disabled/<name>` on the installed system, which `rcS` skips; removing the file
-turns the service back on. The live image ships `sshd`'s marker, and choosing the SSH server here
+turns the service back on. `cups`'s marker also keeps `cups-browsed` and `ipp-usb` from starting:
+their scripts skip while it exists, since both only hand printers to `cupsd`, and an IPP-over-USB scanner goes with `ipp-usb`. The live image ships `sshd`'s marker, and choosing the SSH server here
 is what removes it on the installed system; port 22 stays closed in the firewall until `ssh` is
 opened there (see [firewall](daemons.md#firewall)). Other services (udev, D-Bus, elogind, the
 display manager and the rest) are not choices and cannot be turned off here.
@@ -788,7 +862,10 @@ prompt are not touched.
 One choice sets the console and the session:
 
 - `/etc/keymap` is the console's keymap, which `kdos-getty` loads on every text console. An answer
-  that named only an XKB layout gets the console keymap nearest it.
+  that named only an XKB layout gets the console keymap nearest it: a table first, then
+  `<layout>-latin1`, then `<layout>`, because kbd's bare `de`, `dk`, `no`, `fr`, `sg` and `fr_CH` are
+  7-bit maps with no ü ö ä ß, and its bare `pt` is the OLPC laptop's. German gives `de-latin1`. The
+  Boot step copies the name to the ESP as `EFI/kdos/keymap`, for the disk passphrase prompt.
 - With an XKB layout, `/etc/kdos/xkb.conf` holds it for `kdos-settingsd`, which serves it as
   locale1's keyboard: the login screen's KWin reads it before anybody types, and startplasma hands
   it to every session. `/etc/xdg/kxkbrc` carries the same layout as the Keyboard page of System
@@ -808,7 +885,7 @@ login is refused.
 `/etc/plasma-setup-done` is left absent, and the boot step `/etc/init.d/62_plasma-setup.sh`, which
 runs before SDDM starts, arms plasma-setup's first-boot wizard while the file is missing: it
 prepares the wizard's account and home and runs plasma-setup's boot utility, which has SDDM log
-that account in. The wizard asks for the language, keyboard, time zone and network, makes the
+that account in. The wizard asks for the keyboard, time zone and network, makes the
 first real account, an administrator, writes `/etc/plasma-setup-done` and removes its automatic
 login, so the next boot shows the login screen and the step does nothing.
 
@@ -826,7 +903,7 @@ unless the install is OEM, a malformed user name or one of the accounts the imag
 character, a missing or mismatched password, a non-administrator with root locked, and automatic
 login on an unencrypted root. A second check, `ki_target_check()`, then holds the answers against the
 machine as the probe saw it: the disk is one the probe found, by `ki_disk_check()` not the boot
-medium, not read-only and at least the install size plus 768 MiB; the tools the plan needs
+medium, not read-only and at least the payload plus 768 MiB plus 2 GiB; the tools the plan needs
 (`cryptsetup` for an encrypted root, `lvm` for the erase plan on LVM) are on the image; no volume
 group named `kdos` has a physical volume or an active volume on another disk; on the erase plan
 with one root the swap fits beside the install; and on the reuse plan the ESP and root pass the
@@ -852,12 +929,14 @@ return, and refusing there would leave nothing installed over a spelling mistake
 A terminal unattended run ends by itself whichever way it went. When the install finishes or fails,
 the last screen stays up for five seconds, then:
 
-- with `reboot = 1` (the default) the machine reboots, after a failure as well as after success;
-- with `reboot = 0` the installer exits, with status 1 if the install failed and 0 if it succeeded.
+- an install that worked reboots the machine with `reboot = 1` (the default) and exits with status
+  0 with `reboot = 0`;
+- an install that failed exits with status 1 whatever `reboot` says, and once the terminal is
+  restored prints `kinstall: <reason>` and `kinstall: the log is /var/log/kinstall.log` on
+  standard error. A reboot would take the reason and the live session's log with it.
 
-Set `reboot = 0` when a script needs the exit status. A failed run ends too because a run that
-waited for success alone would sit on its error screen indefinitely, and that is the run somebody
-most needs an answer from. An `--events json` run never reboots: it exits with the install's status
+A failed run ends too because a run that waited for success alone would sit on its error screen
+indefinitely, and that is the run somebody most needs an answer from. An `--events json` run never reboots: it exits with the install's status
 and leaves the reboot to the front end that started it.
 
 ## Checking before installing: the dumps
@@ -873,19 +952,34 @@ None needs a terminal, none writes to a disk, and each prints to standard output
 graphical installer reads all four, with `--config -` for the answers so far.
 
 - **`probe`** is the machine as the installer sees it: firmware (with Secure Boot, and in the text
-  form its width when it is 32-bit), processor, memory, whether the session is live, the size of
+  form its width when it is 32-bit), processor with its thread count (the text form's `(8
+  threads)`; the JSON keeps the key `cores`, which the window reads), memory, whether the session is live, the size of
   the system it would copy and of the container library within it, the disks (whether each is
   removable, read-only or the boot medium) and their partitions (filesystem, label, and whether
-  each is an ESP, a BIOS boot partition or mounted), and the logical volumes. For each disk it
+  each is an ESP, a BIOS boot partition or mounted; an ESP is typed as one in GPT, or 0xef in an
+  MBR, as on a written stick), and the logical volumes. For each disk it
   also says whether the install fits (`fits`, and the reason in `problem`, by `ki_disk_check()`)
   and whether two slots do (`ab_fits`, by `ki_ab()` on that disk erased onto LVM), and at the top
-  what the copy takes (`install_bytes`), what a disk must hold (`need_bytes`) and what two slots
-  need (`ab_need_bytes`); the text form prints a refused disk's reason and `one slot` under it. A
-  disk with no partitions also carries the signature written on the whole device, `fstype` as
-  blkid names it (`LVM2_member` for a physical volume) and, for a physical volume, its group in
-  `vg`, read from the `slaves` of an active volume in `/sys/block`, or from `lvm pvs` as root, and
-  empty where neither knows it; the text form prints them as `whole disk: LVM2_member, volume
-  group kdos`. The sizes follow the answers given with `--config`: the swap, and whether the box store is copied. It
+  what the copy takes (`install_bytes`), what the copy writes (`copy_system_bytes` and
+  `copy_store_bytes`, the payload less every hard-link name after a file's first, which the
+  copy makes a link at no cost: the totals its progress line counts to, and the text form's
+  `copies` line; null when the payload was given), what a reused root must hold (`root_need_bytes`, the
+  copy and the 2 GiB of `KI_ROOT_FREE_MB`), what a disk must hold (`need_bytes`) and what two
+  slots need (`ab_need_bytes`); the text form prints a refused disk's reason and `one slot` under it. Each
+  disk also carries the signature written on the whole device, with or without partitions:
+  `fstype` as blkid names it (`LVM2_member` for a physical volume, `iso9660` for a written
+  stick), its `label` (an ISO 9660 image's volume id), for a physical volume its group in `vg`,
+  read from the `slaves` of an active volume in `/sys/block`, or from `lvm pvs` as root, and
+  empty where neither knows it, and for an ISO 9660 image its size in `fs_bytes`, from its
+  primary volume descriptor, or where its last partition ends when the device cannot be read (0
+  when neither is known). `iso_image` is true when that image is what the disk holds: every
+  partition is one of its hybrid windows, holding FAT, ISO 9660 or no filesystem, and ends inside
+  the descriptor's size, or, with the descriptor unread, some partition starts inside the first
+  MiB, where an image's windows do and no partitioning tool puts one. A stick repartitioned after
+  it was written keeps the stale descriptor, and so its `iso9660` `fstype`, but not `iso_image`,
+  and every front end lists its partitions as what an erase destroys. The text form prints the
+  signature as `whole disk: LVM2_member, volume group kdos` or `whole disk: iso9660 KDOS_LIVE`. A partition that is a physical volume carries its group in its own `vg`, read the
+  same way. The sizes follow the answers given with `--config`: the swap, and whether the box store is copied. It
   is what to paste into a bug report. Run as root it first activates every LVM volume group, as the
   wizard does, so the logical volumes it lists are the ones the reuse plan would offer; run as an
   ordinary user it lists only those already active. A device it may not open, which is every disk
@@ -900,11 +994,17 @@ graphical installer reads all four, with `--config -` for the answers so far.
   an unattended run ends](#fallbacks-and-how-an-unattended-run-ends)) as `refused`; the JSON also
   carries `swap_problem`, the target check's swap rule alone (a swap that does not fit beside the
   install on a disk that gets one system), or null, whatever else is refused first, which the
-  graphical installer's Disk page shows where the swap is chosen. It also prints the `mkfs` command and the
+  graphical installer's Disk page shows where the swap is chosen, and `root_free_bytes`, what one
+  root keeps free after the copy and a swap file in it (null on the A/B layout), beside
+  `root_low_bytes`, the 4 GiB under which a front end warns of it; the text form prints it as
+  `root free`. It also prints the `mkfs` command and the
   root's `fstab` line that the filesystem choice becomes, the services turned off, and for the
   boxed applications the selection, the route and an estimated size, and the native groups chosen
   (`groups` in the text form, a `"groups"` array of ids in the JSON, beside `"binhost"`, true when
-  `kdos update` has a binhost to fetch them from and false when they would only be recorded). It probes the firmware and the disks
+  `kdos update` has a binhost to fetch them from and false when they would only be recorded, and
+  `"network"`, true when the machine has a default route, IPv4 or IPv6, on an interface that is
+  up with a carrier; with a binhost and no network the groups are recorded too, and the Packs
+  step's line says so). The probe's text form prints the same as its `network` line. It probes the firmware and the disks
   as the wizard does, so it names the partitions the install will use: the erase plan's ESP, BIOS
   boot partition and root by their device names, and on the reuse plan the disk's own BIOS boot
   partition, the MBR gap, or `none: the disk starts on UEFI only`. Whenever the answers name a
@@ -1114,7 +1214,9 @@ filesystem's UUID does not exist until the container is open, which is why the i
 first and looks second. The container's UUID is also recorded as `crypt_a` in the boot state, and
 on the A/B layout as `crypt_b` too, because both slots are volumes of the one group inside the one
 container (see [What the bootloader step writes](#what-the-bootloader-step-writes)). The passphrase
-is asked for at every boot; there is no recovery key.
+is asked for at every boot; there is no recovery key. It is typed with the console keymap the
+install chose, which the bootloader step writes to the ESP as `EFI/kdos/keymap` for the initramfs;
+a character that map has no key for cannot be typed at the prompt.
 
 ## The applications step
 
@@ -1204,9 +1306,14 @@ place. When the fetch fails, every chosen group, and otherwise each group that d
 is written to the target's `/var/lib/kdos/groups-pending` with a warning, never a failure: the
 system is installed and boots without them, and
 [`sudo kdos update install --pending`](kdos-command.md#install-routes-and-groups) installs them
-later; the file's header comment names the same command. A failed fetch's warning reads "the
+later; the file's header comment names the same command. Each of these warnings, and the header,
+names the root command in the form the new account can run (`ki_root_cmd`): `sudo <command>` for
+an administrator, and `su -c '<command>'` (root's password) for an account with Administrator
+unticked, which is outside `wheel` and which `sudo` refuses. A failed fetch's warning reads "the
 release's binary host index could not be fetched (/var/log/kinstall.log says why); the chosen
-groups are recorded and install later with `sudo kdos update install --pending`", and the log holds the fetch's own reason. A medium that names no binary
+groups are recorded and install later with `sudo kdos update install --pending`", and the log holds the fetch's own reason. When the fetch found no network ("the network could not be
+reached"), the warning begins "no network was found, so the release's binary host index could
+not be fetched" instead, and names no log. A medium that names no binary
 host at all, whose `/ports/TREE` names no release and whose `/etc/kdos/update.conf` has no
 `binhost =` line, is no failed fetch: `kdos update fetch` says "no binhost is named", and the
 warning then begins "this image names no binary host" instead.
@@ -1225,8 +1332,10 @@ machine's devices name`. When the index cannot be had, when the command fails, o
 `kdos` has no `firmware` command, the step ends with a warning saying to run `sudo kdos firmware
 sync` after the first boot, listed on the Install and Done pages (for the index: "the release's
 binary host index could not be fetched (/var/log/kinstall.log says why), so no firmware beyond the
-medium's was installed; run `sudo kdos firmware sync` after the first boot", or, on a medium that
-names no binary host, the same beginning "this image names no binary host"); it never fails the install,
+medium's was installed; run `sudo kdos firmware sync` after the first boot", with no network the
+same beginning "no network was found, so the release's binary host index could not be fetched",
+or, on a medium that names no binary host, the same beginning "this image names no binary host"; for an account
+outside `wheel` the command reads `su -c 'kdos firmware sync'` (root's password)); it never fails the install,
 because the machine boots on the medium's firmware.
 
 ### How the applications arrive
@@ -1273,6 +1382,7 @@ fails.
 | `EFI/kdos/a/initramfs.cpio.gz` | The target's `/boot/initramfs-kdos.cpio.gz`, else `/boot/initramfs.cpio.gz` |
 | `EFI/kdos/a/release` | What slot A holds, from the target's `/etc/kdos-release` (below) |
 | `EFI/kdos/bootstate` | The initial boot state |
+| `EFI/kdos/keymap` | The console keymap of `/etc/keymap`, one line, which the initramfs loads before the disk passphrase prompt; `kdos-settingsd` keeps it equal to `/etc/keymap` |
 | `EFI/kdos/font.bin` | The menu typeface, from the boot medium's `/mnt/iso/boot/limine/font.bin`, else the running system's own `/boot/efi/EFI/kdos/font.bin`, when present. Neither is in a root filesystem, and the medium stays readable because the target is mounted beside it at `/mnt/kinstall` |
 | `EFI/kdos/wallpaper.png` | `/usr/share/kdos/boot/kdos-backdrop.png`, else `kdos-banner.png`, when present |
 | `EFI/kdos/memtest.efi` | `/usr/share/kdos/memtest86plus/memtest.efi`, when present |
@@ -1305,7 +1415,7 @@ each booting slot A's kernel with `kdos_slot=a`:
 The common part is `kdos_slot=a bootstate=UUID=<ESP> [cryptdevice=UUID=<container>:kdosroot]
 root=UUID=<root>`. The `KDOS` entry's three quiet words keep the kernel's messages and the
 console's cursor off the boot splash; they are the same words `kdos-bootctl` writes when it
-regenerates the menu. On the A/B layout a fourth entry, **KDOS (slot b)**, boots slot B's kernel
+regenerates the menu. On the A/B layout a fourth entry, **KDOS <version> (slot B)**, boots slot B's kernel
 with `kdos_slot=b`, slot B's root and the quiet words, for one boot with nothing confirmed, in the
 shape `kdos-bootctl` gives the other slot. When the memtest86+ payload is present a further entry,
 **Memory Test (memtest86+)**, boots it on UEFI only. The ten-second countdown matches the medium's: the menu is
@@ -1382,9 +1492,9 @@ bios-install`, or no `limine` on the `PATH`, fails the Bootloader step. Booted f
 path is complete and each of these is a warning on the Install and Done pages; Limine's own
 `error:` lines are in `kinstall.log`.
 
-A disk laid out by the erase plan, with `limine bios-install <disk> 2` run on it, has started
-Limine (`Limine 12.9.0 (x86-64, BIOS)`) and then its kernel on SeaBIOS in the rig. No whole
-installed system has been booted on legacy BIOS.
+A whole system installed by the erase plan, with `limine bios-install <disk> 2` run on it, boots
+on SeaBIOS in the rig through Limine to the greeter and a session, from slot A and from slot B
+picked in the menu. A trial boot through `kdos-bootctl` has not been run on BIOS.
 
 ### The NVRAM boot entry
 
@@ -1496,16 +1606,16 @@ already answered can be returned to by clicking it, and a step ahead cannot:
 
 | Step | Asks for |
 |---|---|
-| Welcome | The time zone, from `/usr/share/zoneinfo/zone1970.tab` with UTC first, narrowed by a typed filter (one match is chosen; a filter that matches nothing keeps the chosen zone, shown as "<zone> (no zone matches the filter)"), with the local time there; beside it the processor, memory, firmware, how many of the disks found can take the install, and the install size. With Secure Boot on, the firmware row adds ", Secure Boot on" and a warning says the installed computer will not start until Secure Boot is turned off in the firmware setup, because Limine's EFI loader is unsigned and KDOS enrols no keys |
-| Keyboard | The XKB layout and variant, from `xkeyboard-config`'s `evdev.lst`, with a search field; a layout with no file under `xkb/symbols` (such as `custom`) is not listed. The layout's name and the variant list sit in a form of one fixed width, so the labels do not move as the layout changes. The console keymap is the one nearest the layout |
-| Disk | Which disk, and how. Under each disk a line names what it holds, partition by partition with its type, label and size ("Holds: …"); for a disk with no partitions, the probe's whole-device `fstype` and `vg` ("LVM physical volume (volume group kdos)", "Holds: ext4 on the whole disk"); or "Empty", so two disks of one size are told apart; the rows take keyboard focus, Tab reaching them, Space choosing one, and the focused row framed in `Kirigami.Theme.focusColor` round both its lines. Choosing a disk with no partitions sets the erase plan, as the reuse plan has nothing there to use; erasing a physical volume adds a warning naming its group. Each disk that cannot take the install says why on its row, from the probe's `problem`, except that a disk too small says so in the page's own units, from the probe's `need_bytes`, with as many decimals as keep the two sizes apart. The page probes the disks again on every visit and, after a pause, whenever the swap or the box-images answer changes, since both move what a disk must hold; **Look Again** probes them at once, for a disk attached since (below). **Erase the disk and install KDOS** lays it out with `kinstall`, with **Two system slots** ticked and, on a disk that holds two, a line saying how an update uses them and that this disk holds two; on a disk that does not, the box stays and a warning says that two slots need more, that this disk gets one, that an update then cannot be undone, and that the box left ticked still puts the system on an LVM volume group, so a second slot can be added later; **Use partitions that already exist** offers an ESP (partitions typed as one or holding FAT, never the BIOS boot partition) and a root (never an ESP, the BIOS boot partition or an LVM physical volume; logical volumes too), with **Format it** for the ESP. A root list with nothing in it says why: no partition a root can go on (make one with Partition Manager), or LVM volumes not active yet (Look Again activates them on the live medium; elsewhere `vgchange -aay` as root, then Look Again). **Partition Manager…** opens Partition Manager; when it has run and closed the disks are probed again, and the page turns to the existing partitions if the chosen disk then holds partitions, and to the erase plan if it holds none. If it fails to start, the page says so and the plan is left as it was. Then the filesystem (ext4, btrfs, xfs or f2fs), the swap (none, a file, or a partition; the reuse plan offers none or a file) and its size. After a pause on each change of an answer the page asks `--dump plan` as the session's user and shows its `swap_problem`, the target check's swap rule alone, under the size; on the erase plan with a swap, Next waits for the plan made for the answers as they stand ("Checking that the swap fits…") and then until the swap fits |
-| Encryption | LUKS2 under the system and its passphrase twice, with a strength hint, Tab and Shift+Tab moving between the two fields as on the Account page. The hint rates by length alone, the tiers the terminal installer's meter uses: under 8 characters the short advice, 8 to 15 "Fair", 16 and over "Long, good". The strength hint is at least as wide as its short advice on one line, so the form's field column is laid out wide enough for "Short: a passphrase of several words is far harder to guess" not to wrap, up to the page's width; on a page too narrow for the labels and that column side by side, as at the window's minimum width, the form takes Kirigami's one-column layout inside the page and the advice wraps. With the two system slots the whole volume group is inside the one container, so one passphrase at every boot opens all of it; the page says there is no recovery key before anyone types one |
-| Account | Your account (full name, user name, password twice with a strength hint, administrator), or an OEM install; automatic login on an encrypted root; the hostname, and whether root is locked or its password, twice, with the same strength hint. A strength hint takes room only once something is typed, and each second field's placeholder is "Password, again". Tab from a first password field goes to its second, past the first's reveal button, which Shift+Tab from the second field reaches; Space there shows or hides the first field's text. The page holds the core's name rules: a user name is lowercase letters, digits, `-` and `_`, starting with a letter or `_`; a hostname is letters, digits and dashes, not starting or ending with a dash, and an empty one reads "Give the computer a name." A user name of the image's own accounts is refused on the page |
+| Welcome | The time zone, from `/usr/share/zoneinfo/zone1970.tab` with UTC first, narrowed by a typed filter (one match is chosen; a filter that matches nothing keeps the chosen zone, shown as "<zone> (no zone matches the filter)"), with the local time there; beside it the processor, memory, firmware, how many of the disks found can take the install, and the install size: what the copy writes, the probe's `copy_system_bytes`, and with a box store "<whole> — <system> system and <store> boxed-app store" (`Backend::installSize`), the totals the Install page's copy line counts to. With Secure Boot on, which reaches the installer only past a boot manager that skips the firmware's verification (an enforcing firmware refuses the medium), the firmware row adds ", Secure Boot on" and a warning says the installed computer will not start until Secure Boot is turned off in the firmware setup, because Limine's EFI loader is unsigned and KDOS enrols no keys. Next waits for a disk that can take the install: with none found the page says "No disk was found to install on.", and with disks of which none can take it, as when the stick it runs from is the only disk in sight, "No disk here can take the install: " and the first refused disk's `problem` as a sentence ("/dev/sda is the medium this runs from.") |
+| Keyboard | The XKB layout and variant, from `xkeyboard-config`'s `evdev.lst`, with a search field; a layout with no file under `xkb/symbols` (such as `custom`) is not listed. The layout's name and the variant list sit in a form of one fixed width, so the labels do not move as the layout changes. The console keymap is the one nearest the layout. On the live medium each choice of layout or variant is also the live session's from that moment: the window writes `~/.config/kxkbrc`'s `[Layout]` (`LayoutList=<layout>,us`, or `us` alone; `VariantList` to match; `Use=true`) through KConfig and sends KConfig's change notice for it (`ConfigChanged` on `/kxkbrc`, interface `org.kde.kconfig.notify`), the one signal on which KWin's `KConfigWatcher` loads the layout list again. fcitx5 follows without a change of its own: its XKB override is off, so it decodes keys with the keymap KWin hands it. The Encryption and Account pages' passwords therefore hold the characters the same keys type at the installed greeter. A **Test** field under the form ("Type here to try the layout") tries the keys and is never stored. On an installed machine the layout is the install's answer only |
+| Disk | Which disk, and how. Under each disk a line names what it holds, partition by partition with its type, label and size ("Holds: …"); for a disk with no partitions, the probe's whole-device `fstype` and `vg` ("LVM physical volume (volume group kdos)", "Holds: ext4 on the whole disk"); for a disk the probe marks `iso_image`, a written stick, the image by its `label` and `fs_bytes` in place of its hybrid partitions ("Holds: ISO 9660 image “KDOS_LIVE” on the whole disk, 1.7 GiB"), while a stick repartitioned since lists its partitions; or "Empty", so two disks of one size are told apart; the rows take keyboard focus, Tab reaching them, Space choosing one, and the focused row framed in `Kirigami.Theme.focusColor` round both its lines. A partition that is an LVM physical volume is named by the probe's `vg` for it, as a whole disk is. Choosing a disk with no partitions sets the erase plan, as the reuse plan has nothing there to use; when exactly one disk can take the install and none is chosen, the page chooses it on arrival as its row would. Erasing a disk with partitions adds a warning naming each by type, label and size ("Erasing this disk destroys: …"), and erasing a physical volume a warning naming its group. Each disk that cannot take the install says why on its row, from the probe's `problem`, except that a disk too small says so in the page's own units, from the probe's `need_bytes`, with as many decimals as keep the two sizes apart. The page probes the disks again on every visit and, after a pause, whenever the swap or the box-images answer changes, since both move what a disk must hold; **Look Again** probes them at once, for a disk attached since (below). **Erase the disk and install KDOS** lays it out with `kinstall`, with **Two system slots** ticked and, on a disk that holds two, a line saying how an update uses them and that this disk holds two; on a disk that does not, the box stays and a warning says that two slots need more, that this disk gets one, that an update then cannot be undone, and that the box left ticked still puts the system on an LVM volume group, so a second slot can be added later; **Use partitions that already exist** offers an ESP (partitions typed as one or holding FAT, never the BIOS boot partition) and a root (never an ESP, the BIOS boot partition or an LVM physical volume; logical volumes too), with **Format it** for the ESP; each partition is listed by device, size, filesystem and label, and a disk's only ESP candidate is chosen for it when it is typed as an ESP (`Backend::soleEsp`), never a lone FAT partition, which **Format it**, on by default, would wipe. A disk with no ESP disables the ESP list ("No EFI system partition on this disk") and holds Next with "This disk has no EFI system partition: make one with Partition Manager, or erase the disk." A root list with nothing in it says why: no partition a root can go on (make one with Partition Manager), or LVM volumes not active yet (Look Again activates them on the live medium; elsewhere `vgchange -aay` as root, then Look Again). **Partition Manager…** opens Partition Manager; when it has run and closed the disks are probed again, and the page turns to the existing partitions if the chosen disk then holds partitions, and to the erase plan if it holds none. If it fails to start, the page says so and the plan is left as it was. Then the filesystem (ext4, btrfs, xfs or f2fs), the swap (none, a file, or a partition; the reuse plan offers none or a file, and a disk that gets two slots none or a volume, the A/B layout's swap whatever kind was asked for) and its size. After a pause on each change of an answer the page asks `--dump plan` as the session's user and shows its `swap_problem`, the target check's swap rule alone, under the size; on the erase plan with a swap, Next waits for the plan made for the answers as they stand ("Checking that the swap fits…") and then until the swap fits |
+| Encryption | LUKS2 under the system and its passphrase twice, with a strength hint, Tab and Shift+Tab moving between the two fields as on the Account page. The hint rates by length alone, the tiers the terminal installer's meter uses: under 8 characters the short advice, 8 to 15 "Fair", 16 and over "Long, good". The strength hint is at least as wide as its short advice on one line, so the form's field column is laid out wide enough for "Short: a passphrase of several words is far harder to guess" not to wrap, up to the page's width; on a page too narrow for the labels and that column side by side, as at the window's minimum width, the form takes Kirigami's one-column layout inside the page and the advice wraps. With the two system slots the whole volume group is inside the one container, so one passphrase at every boot opens all of it; the page says there is no recovery key before anyone types one. It also says the boot prompt types with the console keymap nearest the Keyboard page's layout, so a character that keymap has no key for cannot be typed there, and that a layout with no console keymap of its own types with the US map |
+| Account | Your account (full name, user name, password twice with a strength hint, administrator), or an OEM install; automatic login on an encrypted root; the hostname, and whether root is locked or its password, twice, with the same strength hint. A strength hint takes room only once something is typed, and each second field's placeholder is "Password, again". Tab from a first password field goes to its second, past the first's reveal button, which Shift+Tab from the second field reaches; Space there shows or hides the first field's text. The page holds the core's name rules: a user name is lowercase letters, digits, `-` and `_`, starting with a letter or `_`; a hostname is letters a–z, digits and dashes, not starting or ending with a dash, and an empty one reads "Give the computer a name." A user name of the image's own accounts is refused on the page |
 | Look | The accent and the desk; each desk is drawn as a small screen in the colour scheme's roles: KDOS's panel along the bottom, Dock's top bar and floating dock, Tiling's top bar and three tiled windows |
-| Applications | From `kinstall --dump apps`, read once without the answers for the boxed preselection and then with them: under **KDOS applications**, the native groups as checkboxes, downloaded during the install, or on a medium that names no binary host only recorded, which the line above them says with `sudo kdos update install --pending` on a line of its own, so the label's wrapping never splits the command, the language group the keyboard or time zone points at ticked and labelled "Ticked for the Japanese keyboard" (the page applies only what changed in that answer since its last dump, as the terminal wizard does); under **Boxed applications**, the catalogue's groups, recorded for the first login; and whether the live session's box images are kept. Each native group names how many ports it installs, a meta-port member counted as the ports it depends on |
-| Summary | `kinstall --dump plan` for these answers, so what it shows is what runs (the native groups as **KDOS applications**, "downloaded during the install" when the plan's `binhost` is true and otherwise "recorded; this installs it once a binary host answers:" with `sudo kdos update install --pending` on a line of its own), and answers the core would refuse (the answers check, then the target check) are refused here. Its labels sit beside their values: every value fills its column, wraps, and asks for at most 34 grid units, because Kirigami's form stacks every label above its value as soon as one value is wider than the room beside its label |
+| Applications | From `kinstall --dump apps`, read once without the answers for the boxed preselection and then with them: under **KDOS applications**, the native groups as checkboxes, downloaded during the install, or only recorded on a medium that names no binary host or when the plan's `network` is false (the line above them then says "No network was found" and that they are installed after the first boot once there is a network), which the line above them says with `sudo kdos update install --pending` on a line of its own, so the label's wrapping never splits the command, the language group the keyboard or time zone points at ticked and labelled "Ticked for the Japanese keyboard" (the page applies only what changed in that answer since its last dump, as the terminal wizard does); under **Boxed applications**, the catalogue's groups, recorded for the first login; and whether the live session's box images are kept. Each native group names how many ports it installs, a meta-port member counted as the ports it depends on |
+| Summary | `kinstall --dump plan` for these answers, so what it shows is what runs. The disk is named by model, size and device, and on the erase plan the banner reads "Everything on <model>, <size> (<device>) is erased when the install starts: <contents>.", the contents in the Disk page's words; on the reuse plan it names the root and, when the plan's `format_esp` is on, the ESP as formatted, each as "<device> (<contents>)" (`Backend::partitionNamed`), and says the other partitions are kept; the confirmation before the install names the same. Its swap row gives the plan's `swap_mb` and the kind made: "a volume in the group" when the plan's `lvm.swap_mb` is set (the A/B layout), else "a partition" or "a file in the root" by its `swap` (`Backend::swapText`). It shows the native groups as **KDOS applications**, "downloaded during the install" when the plan's `binhost` is true and its `network` is not false, "recorded; installed after the first boot once there is a network" when the binhost is named and the network is false, and otherwise "recorded; this installs it once a binary host answers:" with `sudo kdos update install --pending` on a line of its own, and answers the core would refuse (the answers check, then the target check) are refused here. When the plan's `root_free_bytes` is under its `root_low_bytes`, a warning reads "The system will have <size> free after the install: too little for application groups or boxed apps". Its labels sit beside their values: every value fills its column, wraps, and asks for at most 34 grid units, because Kirigami's form stacks every label above its value as soon as one value is wider than the room beside its label |
 | Install | The steps and their progress, from the event stream, and a bar over the whole install: the weights of the steps done, and the running step's fraction of its own, over the weights of the steps not skipped. The warnings so far are listed as the Done page lists them |
-| Done | How it ended, the warnings, one bullet each, a repeated one once, each starting with a capital and its commands set as code, and **Restart Now**; on a failure `kinstall`'s reason, the end of the log when `kinstall` sent any, and **Back to the Summary**; **Open the Log** whenever `kinstall` ran and the session may read the log, which opens it as `text/plain` through KIO in the default text editor, with no application chooser |
+| Done | How it ended (on success, "Restart into KDOS, and take the install medium out when the screen goes dark."), the warnings, one bullet each, a repeated one once, each starting with a capital and its commands set as code, and **Restart Now**; on a failure `kinstall`'s reason, the end of the log when `kinstall` sent any, and **Back to the Summary**; **Open the Log** whenever `kinstall` ran and the session may read the log, which opens it as `text/plain` through KIO in the default text editor, with no application chooser |
 
 A page taller than the window scrolls, and moving the focus with Tab scrolls the focused control
 into view, with a spacing to spare.
@@ -1526,7 +1636,9 @@ smaller system than root's, and the Disk page's swap check, a plan run as the us
 largest swap a mebibyte above the one the Summary's root plan accepts. So the front end keeps the
 `payload_kb` and `appbox_kb` of the last probe that ran as root and passes them, with
 `--payload-kb` and `--appbox-kb`, to every plan, root's or the user's, and to every probe run as
-the user, and both pages decide on the same number; the install measures its own. A root probe is
+the user, and both pages decide on the same number; the install measures its own. A probe given
+the payload walks nothing, so its `copy_system_bytes` and `copy_store_bytes` are null and the
+window puts the root probe's in their place (`Backend::withCopyBytes`). A root probe is
 given none and measures again, so **Look Again** takes in a tree that has grown since. A probe
 asked for while the first root probe still runs (the Disk page asks on every visit) waits for it
 and runs once it has answered, so its figures are kept; until a root probe's figures are kept, the
@@ -1534,9 +1646,11 @@ Disk page's swap check runs as root too, the Summary's way. A newer dump otherwi
 older one of its kind, and a superseded user dump is killed; a root dump cannot be signalled by the
 session's user, so it is left to run to its end and its answer is dropped, and neither the window
 nor quitting waits for it. The erase confirmation names the disk by
-model, size and device node ("Everything on <model>, <size> (<device>) will be erased.") and, for
-a disk that is an LVM physical volume, says it is one and names the group whose volumes are
-destroyed. The
+model, size and device node and what is on it ("Everything on <model>, <size> (<device>) will be
+erased: <contents>."), in the words of the Disk page's rows and the Summary's banner, which
+`Backend` makes for all three: each partition by type, label and size, an LVM physical volume
+partition or whole disk by its group (`LVM physical volume (volume group kdos)`), or the
+filesystem on a whole disk with none. The
 install is `pkexec /usr/bin/kinstall --config - --unattended --events json`, with
 the answers, the passwords among them, written to `kinstall`'s standard input. Every program it
 starts is an argument vector given to `QProcess`, never a shell.
@@ -1552,9 +1666,14 @@ closes the window. Return belongs to the field being typed in.
 
 **Closing during an install** asks first. While `pkexec` still waits for permission nothing has
 been written, and the dialog says so and offers **Close Anyway**, which ends `pkexec` and the
-request with it; once `kinstall` has sent its first event, closing does not stop it, the disk is
-still being written, and the log is `/var/log/kinstall.log`. The dialog closes by itself when the
-install ends.
+request with it; once `kinstall` has sent its first event, the window cannot be closed: the dialog
+says it stays open until the install ends, that the disk is still being written and that the log
+is `/var/log/kinstall.log`, and offers only **Keep Watching**. It closes by itself when the
+install ends. Before the install, once any page past Welcome has been reached, **Quit** or the
+close button asks *Leave the installer?*, Back on Welcome included, opening on **Keep Going**; its
+**Quit** closes the window and loses the answers. A window that has shown only Welcome, which
+holds the time zone alone, and Done close at once. The Quit button has no
+`Alt+Q` mnemonic, which would fire from inside a text field.
 
 **How a failure is named.** The window checks that `/usr/bin/kinstall` exists and that `pkexec` is
 installed before it starts the install, and says which is missing. After that, a `pkexec` that
@@ -1649,7 +1768,7 @@ return, which is what makes **Back** safe to press on any page before it. The on
 real run, is the partition editor of the manual plan, `cfdisk` in the wizard or Partition Manager in
 the graphical installer, which writes whatever partition table you save in it; the wizard's dry run
 disables it, so a rehearsal writes nothing at all. The Keyboard page's `loadkeys` changes only the
-live console.
+live console, and the graphical Keyboard page changes only the live session's layout.
 
 ### The whole interface is eight colours
 

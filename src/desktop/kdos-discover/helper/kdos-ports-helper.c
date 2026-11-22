@@ -35,7 +35,9 @@
  * THE REMOVAL IS `kdos update remove`'S. It refuses a port that is not in
  * /var/lib/kdos/world (part of the system) and one an installed package
  * depends on, and runs `kpkg remove`, which takes the port off the world set
- * and the origin record too.
+ * and the origin record too, on the port and on each package it brought that
+ * nothing else installed needs, then drops their files from the binhost
+ * cache.
  *
  * THE INSTALL IS `kdos update install`'S, never a second copy of it. That
  * command owns everything the route decides: the signed index `kdos update
@@ -48,6 +50,25 @@
  * builder passes --build-deps only when asked; without it, `build-deps =` in
  * /etc/kdos/update.conf decides.
  *
+ * CANCEL IS STDIN CLOSING. Once pkexec has run this program it is root, and
+ * Discover, the user, may not signal it or anything it starts; what Discover
+ * can still do is close the write end of the pipe on this program's standard
+ * input, which no root process can stop it doing. So the caller holds stdin
+ * open for as long as it wants the step to go on, and anything it writes
+ * there is read and dropped. `kdos update` runs in a process group of its
+ * own, with /dev/null for its input; this program watches stdin and the
+ * child together, and end of file or a hang-up on stdin, or SIGTERM, SIGINT
+ * or SIGHUP to this program, sends SIGTERM to that whole group, so kpkg, the
+ * recipe's build and its compilers stop with it, then SIGKILL to the group
+ * if anything is left after 60 seconds. A package whose install was under
+ * way is left as far as it got, and the packages before it stay installed;
+ * the port joins the world set only once everything installed. A cancelled
+ * run says `==> <port>: cancelled`, writes no catalogue and exits 130, and
+ * it exits only once the group is gone, so Discover's refresh after it never
+ * meets a run still holding the package lock. Run from a terminal, the
+ * helper takes Ctrl-D or Ctrl-C as the same cancel; run with stdin on
+ * /dev/null it cancels at once.
+ *
  * THE CATALOGUE IS WRITTEN AGAIN after an install or a removal, so
  * Discover's next refresh lists the program as it now is. A catalogue that
  * could not be written leaves the port as the step left it and is said, not
@@ -59,9 +80,16 @@
  * ---------------------------------
  */
 
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/signalfd.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -90,6 +118,142 @@ static int kph_name_ok(const char *s)
 #define KPH_NAME "kdos-ports-helper"
 #define KPH_USAGE "install|remove <port>"
 #endif
+
+/* How long the group has after SIGTERM before SIGKILL: long enough for kpkg
+ * to finish writing the file it is on, short of leaving a build running
+ * minutes after somebody pressed Cancel. */
+#define KPH_STOP_MS 60000
+
+/* Milliseconds left until `end` on the monotonic clock, never below 0. */
+static int kph_ms_left(const struct timespec *end)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	long ms = (end->tv_sec - now.tv_sec) * 1000L +
+		  (end->tv_nsec - now.tv_nsec) / 1000000L;
+	return ms < 0 ? 0 : (int)ms;
+}
+
+/*
+ * `a` in a process group of its own, stopped with its group when stdin
+ * closes (CANCEL IS STDIN CLOSING above). The child's exit status, 128 plus
+ * the signal that ended it, -1 when it could not be started or watched, or
+ * -2 when the run was cancelled before it finished; in every case the child
+ * has been reaped.
+ */
+static int kph_run(const KbArgv *a)
+{
+	sigset_t set, old;
+	sigemptyset(&set);
+	sigaddset(&set, SIGCHLD);
+	sigaddset(&set, SIGTERM);
+	sigaddset(&set, SIGINT);
+	sigaddset(&set, SIGHUP);
+	sigprocmask(SIG_BLOCK, &set, &old);
+	int sfd = signalfd(-1, &set, SFD_CLOEXEC);
+	if (sfd < 0) {
+		sigprocmask(SIG_SETMASK, &old, NULL);
+		fprintf(stderr, KPH_NAME ": signalfd: %s\n", strerror(errno));
+		return -1;
+	}
+	/* A caller gone away closes stdout too; the next line written must
+	 * not end this program before its group is stopped. */
+	signal(SIGPIPE, SIG_IGN);
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		fprintf(stderr, KPH_NAME ": fork: %s\n", strerror(errno));
+		close(sfd);
+		sigprocmask(SIG_SETMASK, &old, NULL);
+		return -1;
+	}
+	if (pid == 0) {
+		setpgid(0, 0);
+		int null = open("/dev/null", O_RDONLY);
+		if (null >= 0) {
+			dup2(null, STDIN_FILENO);
+			if (null != STDIN_FILENO)
+				close(null);
+		}
+		kb_child_reset_signals();
+		execvp(a->v[0], (char *const *)a->v);
+		_exit(127);
+	}
+	/* Both sides set the group, so no signal sent before the child ran
+	 * its own setpgid can miss it. */
+	setpgid(pid, pid);
+
+	int in = fcntl(STDIN_FILENO, F_GETFD) >= 0 ? STDIN_FILENO : -1;
+	int stopping = 0, killed = 0, st = 0;
+	struct timespec end = {0, 0};
+	for (;;) {
+		pid_t r = waitpid(pid, &st, WNOHANG);
+		if (r == pid || (r < 0 && errno == ECHILD))
+			break;
+		struct pollfd p[2] = {
+			{.fd = sfd, .events = POLLIN},
+			{.fd = stopping ? -1 : in, .events = POLLIN},
+		};
+		int n = poll(p, 2, stopping && !killed ? kph_ms_left(&end) : -1);
+		if (n < 0 && errno == EINTR)
+			continue;
+		if (n < 0) {
+			fprintf(stderr, KPH_NAME ": poll: %s\n", strerror(errno));
+			kill(-pid, SIGKILL);
+			while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
+				;
+			close(sfd);
+			sigprocmask(SIG_SETMASK, &old, NULL);
+			return -1;
+		}
+		int stop = 0;
+		if (n == 0 && stopping && !killed) {
+			kill(-pid, SIGKILL);
+			killed = 1;
+			continue;
+		}
+		if (n > 0 && (p[0].revents & POLLIN)) {
+			struct signalfd_siginfo si;
+			if (read(sfd, &si, sizeof(si)) == (ssize_t)sizeof(si) &&
+			    si.ssi_signo != SIGCHLD)
+				stop = 1;
+		}
+		if (n > 0 && (p[1].revents & POLLNVAL)) {
+			in = -1;
+		} else if (n > 0 && p[1].revents) {
+			char drop[512];
+			ssize_t got = read(in, drop, sizeof(drop));
+			if (got == 0 ||
+			    (got < 0 && errno != EINTR && errno != EAGAIN))
+				stop = 1;
+		}
+		if (stop && !stopping) {
+			stopping = 1;
+			kill(-pid, SIGTERM);
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			end.tv_sec += KPH_STOP_MS / 1000;
+		}
+	}
+	close(sfd);
+	sigprocmask(SIG_SETMASK, &old, NULL);
+	/* A run that finished before the stop reached it is a run that
+	 * finished. */
+	if (!stopping || (WIFEXITED(st) && WEXITSTATUS(st) == 0))
+		return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
+	/* `kdos update` gone is not its group gone: kpkg or a compiler may
+	 * outlive it by a moment, and the lock is not free until they do. */
+	struct timespec last;
+	clock_gettime(CLOCK_MONOTONIC, &last);
+	last.tv_sec += KPH_STOP_MS / 1000 + 5;
+	while (kill(-pid, 0) == 0 && kph_ms_left(&last) > 0) {
+		if (!killed && kph_ms_left(&end) == 0) {
+			kill(-pid, SIGKILL);
+			killed = 1;
+		}
+		usleep(100000);
+	}
+	return -2;
+}
 
 int main(int argc, char **argv)
 {
@@ -140,7 +304,12 @@ int main(int argc, char **argv)
 #endif
 	kb_argv_add(&install, port);
 	kb_argv_end(&install);
-	if (kb_run_tty(&install) != 0)
+	int rc = kph_run(&install);
+	if (rc == -2) {
+		printf("==> %s: cancelled\n", port);
+		return 130;
+	}
+	if (rc != 0)
 		return 1;
 
 	kb_argv_add(&cat, "kdos-discover-catalog");

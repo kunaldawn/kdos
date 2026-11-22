@@ -450,8 +450,8 @@ root built from packages; the reasons are in
 
 The next boot tries the new slot. The initramfs, the small early-boot filesystem that finds and
 mounts the root, counts attempts, and the slot is kept only when a boot of it has finished `rcS`
-and had a Plasma session (or, where nobody logs in, the login screen) up and answering for a
-minute; a trial that never gets that far falls back to the slot known to work. This is the ChromeOS
+and had a Plasma session (or, where SDDM does not log in automatically, the login screen) up and
+answering for a minute; a trial that never gets that far falls back to the slot known to work. This is the ChromeOS
 and Silverblue idea of an update that cannot break the running system.
 
 Nothing installs updates automatically, and nothing checks the network on its own: the nightly

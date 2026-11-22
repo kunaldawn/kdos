@@ -13,7 +13,8 @@ assumes it.
 
 `kpkg` packages `postinstall.sh` into the package as a hook, with the recipe's metadata in front of
 it, so the script can read `$version`. kpkgadd runs the hook once the package's files are
-installed, with `PKG_ROOT` set to the root it installed into. A hook that fails is reported as a
+installed, with `PKG_ROOT` set to the root it installed into and `PKG_OLD_VERSION` to the
+`<version>-<release>` it replaced, empty on a first install. A hook that fails is reported as a
 warning and does not undo the install.
 
 `$version` is also the name of the module directory, `/lib/modules/$version`, which `uname -r`
@@ -98,6 +99,22 @@ the new kernel's tree survives.
 and no other index. `depmod -b` writes them for the new version, in the root the package went
 into rather than in `/`. Without the index [`modprobe`]{.idx} finds no module by name, and udev loads
 nothing.
+
+## A kernel already on the ESP
+
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=78-95 -->
+
+A source build restores the kernel package's development files by installing the same version
+again, and a forced reinstall does the same. When the package went into the running system, the
+version it replaced is its own, and the directory this boot came from on the ESP (the menu
+entry's `kdos_slot=`, or the flat `EFI/kdos/`) holds a `vmlinuz` byte-identical to
+`/boot/vmlinuz-kdos` beside an initramfs byte-identical to the one `kdos-bootctl deploy` would take
+(`/boot/initramfs-kdos.cpio.gz` where the root has one, else the image's `/boot/initramfs.cpio.gz`,
+which is all a freshly installed root has, and what the installer copied to the ESP), the script
+prints `linux <version> is already on the ESP` and stops. The prune and `depmod` above have run;
+the initramfs build and the deploy below would only write the same files to the ESP again. A
+kernel rebuilt at the same version, or an `initramfs-kdos` built and never deployed, differs from
+the ESP's copy and goes through both.
 
 ## The new kernel's initramfs
 

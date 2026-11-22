@@ -135,6 +135,12 @@ KNotification shows nothing for an event its component does not declare, so the 
 appears only with both halves. It applies after `notifier-reboot-clears.patch` and is to be offered
 upstream.
 
+`notifier-restart-labels.patch` labels the two buttons of that notification "Restart" and "Shut
+Down" where upstream reads "Update and Restart" and "Update and Shut Down". They open the logout
+prompt's restart and shut-down pages and start nothing else, and KDOS has staged the update in the
+other slot before the notification is posted. It applies after `notifyrc-update-restart.patch` and
+is to be offered upstream.
+
 `ratings-need-reviews.patch` shows the application page's rating row and its Reviews section,
 with "Write a Review", only when the resource's backend has a reviews backend, and leaves the Home
 page's "Highest-Rated Games" and "Highest-Rated Developer Tools" rows empty when the current

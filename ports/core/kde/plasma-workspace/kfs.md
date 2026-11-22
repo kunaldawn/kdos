@@ -33,6 +33,15 @@ and the other session modules link. It runs under [kwin](#port-kwin) and needs
   module runs to add a locale to `/etc/locale.gen` and run `locale-gen`. musl has neither; its
   locales are the files [musl-locales](#port-musl-locales) installs. Without the switch the module
   offers an action that fails, and the configure requires polkit-qt6 for it.
+- `-D GLIBC_LOCALE=OFF` — Offer every locale Qt's CLDR data carries in the Region & Language
+  module's format lists. On, `localelistmodel.cpp` keeps only the locales with a definition file
+  in the module's locale directory: the seventeen musl-locales installs, with no Japanese, Chinese,
+  Korean, Arabic, Hebrew, Polish, Turkish or Greek. That directory holds no `C` file either, so the
+  filter drops the C locale, and the row the model labels "ISO C Standard" by position becomes
+  `cs_CZ`. A KDE program formats from Qt's CLDR data and the `LC_*` names in `plasma-localerc`,
+  and musl accepts any locale name, so every listed region's formats apply. Off, the Language page
+  writes the selected language as a `<locale>.UTF-8` name instead of matching it to a definition
+  file, and the module hands AccountsService no definition-file name for the languages.
 - `-D BUILD_GEOTIMEZONED=OFF` — Build no `geotimezoned`, the kded module that, once started from
   Background Services, sends the machine's public address to `geoip.kde.org` whenever the primary
   network connection changes and sets the system time zone to the answer through
@@ -75,9 +84,22 @@ and the other session modules link. It runs under [kwin](#port-kwin) and needs
 
 `locales.patch` points the Region & Language module's locale search at
 `/usr/share/i18n/locales/musl`, where [musl-locales](#port-musl-locales) installs its definition
-files. Upstream reads `/usr/share/i18n/locales` and has no option for the directory; there the
-module finds no file, lists no format locale and reports that it could not list them. Chimera Linux
-carries the same one-line change (cports `main/plasma-workspace/patches/locales.patch`).
+files. The module's `GlibcLocaleConstructor` scans that directory every time the module starts,
+whatever `GLIBC_LOCALE` says. Upstream reads `/usr/share/i18n/locales` and has no option for the
+directory; there the scan finds the `musl/` subdirectory and no file, and the module shows a red
+error that it could not find the system's locales. Chimera Linux carries the same one-line change
+(cports `main/plasma-workspace/patches/locales.patch`).
+
+`region-no-generation.patch` makes an Apply in Region & Language end on the blue "Changes will
+take effect the next time you log in" message alone. With `GLIBC_LOCALE_GEN=OFF` the module's
+generator is `LocaleGeneratorBase`, whose only answer to a save is `userHasToGenerateManually`
+with a fixed text telling the user to install fonts and generate locales from the distribution's
+manual. Upstream's `kcmregionandlang.cpp` counts that signal as success for this generator, but
+also shows the text as a red error, beside a "don't turn off the computer" warning, raised before
+the call, that nothing takes down. The patch connects the signal, for `LocaleGeneratorBase`, to
+`saveToConfigFile` and `takeEffectNextTime` only, and `save()` raises the warning only for a
+generator that generates. musl needs no generation step: it takes any locale name. It is to be
+offered upstream.
 
 `kdos-bootctl-entry.patch` is KDOS's own. The program it runs instead of `bootctl` is
 `kdos-bootctl` from [kdos-tools](#port-kdos-tools), whose `list --json=short` prints the slots in

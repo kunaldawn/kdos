@@ -59,7 +59,10 @@ boxed selections and "3 KDOS application groups wait." alone, since the summary 
 software was chosen during the install and is not installed yet. One group's sentence and the
 count alone say the groups chosen during the install "are not installed yet", true both when a medium with no binary host only recorded them and when the binary
 host did not answer, with `sudo kdos update install --pending`, "once a binary host answers", as
-the way to install them. With no boxed selection waiting there is no Open Discover, since Discover does not
+the way to install them, or `su -c 'kdos update install --pending'` for an account outside `wheel`,
+which sudo refuses: the installer leaves the account out of `wheel` when Administrator is unticked.
+Membership is read from the group database with `getgrouplist` at every decision, as sudo reads it,
+and `KDOS_NOTICE_ADMIN_GROUP` names another group in place of `wheel` for the tests. With no boxed selection waiting there is no Open Discover, since Discover does not
 list a group, and the icon is `system-software-install` rather than Discover's. The body is plain
 text: Plasma's notification body is a small subset of HTML, so Markdown backticks would be drawn as
 backticks, and a title's `&`, `<` and `>` go as entities. Qt wraps a line after a hyphen, so the
@@ -85,7 +88,7 @@ exactly the groups that command would install. `KDOS_APPS_PENDING`, `KDOS_GROUPS
 `KDOS_NOTICE_GROUPS` move the three files for the tests.
 
 The actions are fixed argument vectors: Details opens Konsole on `kdos cve`, or System Settings at
-System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`; Install opens Konsole on `sudo kdos firmware sync`;
+System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`; Install opens Konsole on `sudo kdos firmware sync`, or on `su -c 'kdos firmware sync'`, which asks for root's password there, for an account outside `wheel`, and the firmware notice's body names the same command;
 Open Discover opens Discover at "Selected during install"; and Log Out asks Plasma's logout prompt
 over D-Bus. A signal
 that claims to be the notification server's is acted on only when its sender owns

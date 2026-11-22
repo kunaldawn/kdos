@@ -26,3 +26,5 @@ ${CC:-cc} $CFLAGS $LDFLAGS -funsigned-char -include string.h -include ctype.h -i
 	../lib/*.o -ltommath
 
 install -Dm755 clit $PKG/usr/bin/clit
+
+install -Dm644 "$SRC/clit$_ver/COPYING" "$PKG/usr/share/licenses/$name/COPYING"

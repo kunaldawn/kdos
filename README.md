@@ -68,8 +68,8 @@ marked **Latest**. Each release carries:
 
 | File | What it is |
 |---|---|
-| `kdos-<version>.iso`, or `kdos-<version>.iso.part01`, `.part02`, … | The live ISO. GitHub holds no file over 2 GiB, so a larger ISO is cut into parts |
-| `SHA256SUMS`, `SHA256SUMS.sig` | The checksum of the whole ISO and of every other file, and its signature |
+| `kdos-<tag>.iso` (for example `kdos-v0.2.1.iso`), or `kdos-<tag>.iso.part01`, `.part02`, … | The live ISO, named by the release's tag. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
+| `SHA256SUMS`, `SHA256SUMS.sig` | The checksums of the whole ISO and each of its parts, `sources.sha256`, the recipe tree, the update index, their two signatures and the release key, and the list's signature by the release key. The list does not cover its own signature or the book files below, which are attached after it is made |
 | `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
 | `kdos-ports.tar.xz`, `kdos-ports.tar.xz.sig` | The recipe tree of the release, signed: what `kdos update fetch` installs as `/ports` |
 | `kdos-update.idx`, `kdos-update.idx.sig` | The signed index of the release's prebuilt packages and update image |
@@ -81,12 +81,12 @@ The prebuilt packages and the update images sit in pre-releases beside it (`binh
 release's signed index.
 
 When the release carries the ISO in parts (`.part01`, `.part02` and on, and no whole
-`kdos-<version>.iso`), join them first. Run this only then: the shell empties
-`kdos-<version>.iso` before `cat` reads anything, so on a release with one whole ISO it destroys
+`kdos-<tag>.iso`), join them first. Run this only then: the shell empties
+`kdos-<tag>.iso` before `cat` reads anything, so on a release with one whole ISO it destroys
 the download.
 
 ```sh
-cat kdos-<version>.iso.part?? > kdos-<version>.iso
+cat kdos-<tag>.iso.part?? > kdos-<tag>.iso
 ```
 
 Then check the ISO:
@@ -95,7 +95,7 @@ Then check the ISO:
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-It must print `kdos-<version>.iso: OK`. A checksum list downloaded beside the file proves only that
+It must print `kdos-<tag>.iso: OK`, with the tag, for example `kdos-v0.2.1.iso: OK`. A checksum list downloaded beside the file proves only that
 the two agree. To check the list's signature on a machine that does not run KDOS, download
 `SHA256SUMS.sig` and `kdos-release.pub` too, and use OpenSSL 3 and `xxd`:
 
@@ -108,7 +108,7 @@ openssl pkeyutl -verify -pubin -keyform DER -inkey kdos-release.der -rawin \
 ```
 
 The first line prints the key's id, which must match the one above; the last prints
-`Signature Verified Successfully`. On a KDOS machine, `kdos verify kdos-<version>.iso` checks the
+`Signature Verified Successfully`. On a KDOS machine, `kdos verify kdos-<tag>.iso` checks the
 list and its signature against the release key the system already trusts.
 
 ### Try it in a virtual machine
@@ -119,7 +119,7 @@ OVMF firmware (Debian and Ubuntu's path is shown):
 ```sh
 qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
 qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4G \
-    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<version>.iso \
+    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<tag>.iso \
     -drive file=kdos.qcow2,format=qcow2 -device virtio-vga -device virtio-net-pci,netdev=n \
     -netdev user,id=n -usb -device usb-tablet
 ```
@@ -137,15 +137,20 @@ Use a stick at least as large as the ISO; this erases all of it. On Linux, with 
 stick:
 
 ```sh
-sudo dd if=kdos-<version>.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=kdos-<tag>.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 On Windows or macOS, use any tool that writes a raw disk image (Rufus in DD mode, balenaEtcher).
+On a KDOS machine, ISO Image Writer does it from a window; it knows no KDOS key and says "Could
+not find the key to verify the ISO image", so check the image with `kdos verify` as above.
+A Ventoy stick boots the ISO copied onto it, in Ventoy's normal mode. A stick holding copies of
+the ISO's files (Rufus in ISO mode, or files copied onto a FAT stick) does not boot: the boot
+stops at "Failed to find KDOS installation media."
 The ISO boots from UEFI and from legacy BIOS. **Turn Secure Boot off** in the firmware first:
 KDOS's boot loader is not signed for it.
 
 The ISO also fits a DVD. Burn it as a disc image, not as a file on a data disc: on Linux
-`growisofs -dvd-compat -Z /dev/sr0=kdos-<version>.iso`, on Windows the ISO's **Burn disc image**
+`growisofs -dvd-compat -Z /dev/sr0=kdos-<tag>.iso`, on Windows the ISO's **Burn disc image**
 menu entry. A live session started from a disc cannot keep its changes.
 
 ### The live session
@@ -213,6 +218,29 @@ installed follows it into that slot. The next restart starts the new slot on tri
 reached a working desktop it becomes the system, and if it does not, the computer goes back to the
 old slot by itself. Nothing is downloaded until you ask: the nightly check reads only what is
 already on the machine.
+
+A machine installed from v0.2 takes the v0.2.1 slot image from **Updates**, or in a terminal
+with `sudo kdos update fetch` and then `sudo kdos update apply --mount`, and once it runs 0.2.1
+deletes the `binhost = …/v0.2` line from `/etc/kdos/update.conf` if it added one
+([Known gaps](docs/kdos/06-reference/known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release)).
+
+An account made on v0.2 keeps the `~/.config/kxkbrc` that v0.2's input method wrote, naming the
+US layout, and the system's layout never reaches an account whose `kxkbrc` names one. After taking
+v0.2.1, set your layout once on System Settings → Keyboard, or delete `~/.config/kxkbrc` and log in
+again ([Known gaps](docs/kdos/06-reference/known-gaps.md#an-account-made-on-v02-keeps-the-us-keyboard-layout)).
+
+A machine installed from v0.2 with a German, French, Danish, Norwegian, Swiss or Portuguese
+keyboard keeps the console keymap v0.2 chose, kbd's 7-bit `de`, `fr`, `dk`, `no`, `sg`, `fr_CH`
+or `pt`, on which the text consoles cannot type ü, é or ø. After taking v0.2.1, run
+`sudo kdos keymap de-latin1` once (or `fr-latin1`, `dk-latin1`, `no-latin1`, `sg-latin1`,
+`fr_CH-latin1`, `pt-latin1`); it sets the consoles and the disk passphrase prompt. On an encrypted
+v0.2 machine the first start of the new slot still asks for the passphrase with the US keymap
+([Known gaps](docs/kdos/06-reference/known-gaps.md#a-v02-machine-keeps-a-7-bit-console-keymap)).
+
+A machine installed from v0.2 keeps printing off, because v0.2's installer disabled CUPS and the
+update carries that choice. After taking v0.2.1, run `sudo service enable cups`, then `sudo
+service start` with `cups`, `cups-browsed` and `ipp-usb` in turn, once
+([Known gaps](docs/kdos/06-reference/known-gaps.md#a-v02-machine-has-printing-off)).
 
 ## What it looks like
 
@@ -289,7 +317,18 @@ real hardware is the integrator.
 
 Some things you may expect are not there. Secure Boot must be off. The login screen runs on a
 Wayland greeter its upstream calls experimental. Phosphor mode needs hardware OpenGL. The system
-speaks English only. Every such gap is listed in [Known gaps](docs/kdos/06-reference/known-gaps.md),
+speaks English only. The medium carries only Intel, AMD, MediaTek and Realtek firmware, so other
+Wi-Fi cards and a recent NVIDIA GPU need a network first (Ethernet or a USB-tethered phone),
+then `sudo kdos firmware sync`
+([firmware](docs/kdos/06-reference/known-gaps.md#the-installation-medium-carries-four-vendors-firmware)).
+A program that crashes shows no crash dialog
+([crashes](docs/kdos/06-reference/known-gaps.md#a-crashed-program-shows-no-crash-dialog)).
+Twelve applications run on Qt 5, which has no 2026 security fixes
+([Qt 5](docs/kdos/06-reference/known-gaps.md#twelve-applications-run-on-qt-5-which-has-no-2026-security-fixes)).
+Session restore reopens applications but not their documents
+([session restore](docs/kdos/06-reference/known-gaps.md#session-restore-reopens-applications-not-their-documents)).
+On the live image `root` and `kdos` both have the password `kdos`, so do not open `ssh` there
+([security](docs/kdos/06-reference/known-gaps.md#security)). Every such gap is listed in [Known gaps](docs/kdos/06-reference/known-gaps.md),
 and the maturity of each subsystem, with the evidence behind each verdict, is in
 [Status](docs/kdos/06-reference/status.md).
 
@@ -449,3 +488,8 @@ keeps that licence along with its upstream copyright headers. `kdos-sddm-theme` 
 of Breeze's SDDM theme and keeps its LGPL-2.0-or-later licence. KWin's `kdos-crt.patch` adds files
 under GPL-2.0-only. Every port under `ports/core/` is upstream's own code under upstream's own
 terms.
+
+On an installed or live system, `/usr/share/licenses/<port>/` holds each package's licence texts,
+with KDOS's own MIT text in `/usr/share/licenses/kdos/LICENSE`, and `kpkg info <port>` prints the
+package's SPDX licence. `/usr/share/kdos/SOURCES` names the commit the image was built from and
+the archive releases that hold every upstream source.

@@ -1,0 +1,44 @@
+Subject: Page: frame the description label while it has keyboard focus
+
+The description label takes focus so a screen reader reads it, and it is
+the first Tab stop of every page, but it draws no focus indicator: the
+first Tab seems to do nothing. Draw a frame in the focus colour round it
+while a Tab or Backtab has put the focus there.
+
+--- a/src/public/qml/Page.qml
++++ b/src/public/qml/Page.qml
+@@ -34,10 +34,34 @@
+             anchors.centerIn: parent
+ 
+             QQC2.Label {
++                id: descriptionLabel
++
++                // Focusable so a screen reader reads the description; the
++                // frame shows where a Tab or Backtab put the focus, and a
++                // click, which focuses it too, draws none.
++                property bool pointerFocus: false
++
+                 focusPolicy: Qt.StrongFocus
+                 Layout.fillWidth: true
+                 text: page.description
+                 wrapMode: Text.WordWrap
++
++                onActiveFocusChanged: pointerFocus = activeFocus && descriptionPress.pressed
++
++                TapHandler {
++                    id: descriptionPress
++                    acceptedButtons: Qt.AllButtons
++                }
++
++                Rectangle {
++                    anchors.fill: parent
++                    anchors.margins: -Kirigami.Units.smallSpacing
++                    visible: descriptionLabel.activeFocus && !descriptionLabel.pointerFocus
++                    color: "transparent"
++                    border.width: 2
++                    border.color: Kirigami.Theme.focusColor
++                    radius: Kirigami.Units.cornerRadius
++                }
+             }
+ 
+             ColumnLayout {

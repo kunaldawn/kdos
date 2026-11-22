@@ -1,8 +1,9 @@
 ## About
 
 `kwin-script-kdos-window-memory` makes a program's window open where its last window closed, at the
-same size and, when it closed maximized, maximized, and centres again a new window that KWin placed
-while its size was a placeholder. On Wayland a program cannot place its own
+same size and, when it closed maximized, maximized, centres again a new window that KWin placed
+while its size was a placeholder, and grows a program's first window that opens at its widgets'
+minimum. On Wayland a program cannot place its own
 window, so without it every window opens wherever KWin's placement puts it, at the size its program
 picked.
 
@@ -61,6 +62,24 @@ KWin does not shrink a window a program sizes larger than the usable area either
 window, with no record, maps taller than the screen), so any other new window with no record that
 runs past the area is moved and shrunk into it. Both are tried when the window opens and on each
 frame change for two seconds, until one fires once or the window is moved by hand.
+
+A KXmlGui program with no saved size opens its first window at its widgets' minimum, and on Wayland
+nothing makes it larger: Kate maps at about 640x510 with its status bar cut, Dolphin at 760x580 with
+its Places labels cut. A window with no record whose first real size (not a placeholder) is under
+half the usable area in either direction is grown to at least 60% of the area's width and 70% of its
+height, never smaller than it opened and never past the area, and centred in the usable area of the
+screen it opened on (`firstSize()` in `memory.js`); 1920x1080 gives 1152x756. It is asked in the
+same two seconds as the recentre, only for a window `eligible()` passes, floating and with no
+record, so a dialog, a transient, a window that cannot be resized and a maximised window keep their
+size. `growable()` skips a window with no server-side border, read when its size is: a splash, a
+frameless first-run notice or a program drawing its own title bar, which picks its own first size.
+On a first launch nothing else tells a splash from the window after it, so a splash that does carry
+a border is grown; its record is dropped as a prelude's when it closes. The programs whose small
+window is their design are in `keepOwnSize`: KCalc, Kalk, Qalculate, KColorChooser, KCharSelect,
+KTeaTime and KTimer, each by the application id its desktop file names. The grown rectangle is
+recorded when the window closes, like any other, so a size the person gives it wins from the next
+launch. The window size does not reach Dolphin's Places panel, which opens at its own width and
+cuts *Recent Locations* and *Removable Devices* even maximised.
 
 Two settings, in `kwinrc` under `[Script-kdos_window_memory]`: `Exclude`, a comma-separated list of
 application ids that replaces the built-in one, and `RememberDesktop`, off by default, which also

@@ -22,11 +22,12 @@
 
 /*
  * `[ -f "$PKGDB_DIR/$1" ]` and nothing more. In particular the DIRECTORY is
- * never stat'ed: `PKGDB_DIR=/dev/null` is how three callers ask for "resolve
+ * never stat'ed: `PKGDB_DIR=/dev/null` is how a caller asks for "resolve
  * against an empty database", and it works precisely because
  * `/dev/null/<name>` cannot be a regular file. Checking that the directory
  * exists first would answer "yes, it is a character device" and quietly break
- * `kpkg install -f`, the build system's phase resolution and mini_build.
+ * the build system's phase resolution and testing/mini_build.py, which both
+ * run kpkgdepends with PKGDB_DIR=/dev/null.
  *
  * A stat, never a read: the manifest is the whole `tar -tf` listing and runs
  * to megabytes, the solver asks this once per dependency edge, and the answer
@@ -258,7 +259,20 @@ typedef struct {
 	int nseen;
 	KpOrder *out;
 	const KpConf *c;
+	char **forced;		/* kp_resolve_forced()'s names; NULL otherwise */
+	int nforced;
 } Walk;
+
+/* A name the caller forced is walked whatever its installed state, also when
+ * another forced name reaches it as a dependency: skipping it there would
+ * emit it after the package that needs it. */
+static int is_forced(const Walk *w, const char *name)
+{
+	for (int i = 0; i < w->nforced; i++)
+		if (!strcmp(w->forced[i], name))
+			return 1;
+	return 0;
+}
 
 static int contains(char list[][128], int n, const char *want)
 {
@@ -301,7 +315,8 @@ static void walk(Walk *w, const char *name)
 	for (int i = 0; i < n; i++) {
 		if (contains(w->seen, w->nseen, deps[i]))
 			continue;
-		if (kp_installed_current(w->c, deps[i]))
+		if (!is_forced(w, deps[i]) &&
+		    kp_installed_current(w->c, deps[i]))
 			continue;
 		/* Marked BEFORE the recursion, which is what makes a cycle
 		 * terminate instead of overflowing the stack. */
@@ -312,21 +327,37 @@ static void walk(Walk *w, const char *name)
 	free(deps);
 }
 
-void kp_resolve(const KpConf *c, char **names, int nnames, KpOrder *out)
+static void resolve(const KpConf *c, char **names, int nnames, int force,
+		    KpOrder *out)
 {
 	Walk w;
 	memset(&w, 0, sizeof(w));
 	w.out = out;
 	w.c = c;
+	if (force) {
+		w.forced = names;
+		w.nforced = nnames;
+	}
 	out->n = 0;
 
 	for (int i = 0; i < nnames; i++) {
 		if (contains(w.seen, w.nseen, names[i]))
 			continue;
-		if (kp_installed_current(c, names[i]))
+		if (!force && kp_installed_current(c, names[i]))
 			continue;
 		mark(&w, names[i]);
 		walk(&w, names[i]);
 		emit(&w, names[i]);
 	}
+}
+
+void kp_resolve(const KpConf *c, char **names, int nnames, KpOrder *out)
+{
+	resolve(c, names, nnames, 0, out);
+}
+
+void kp_resolve_forced(const KpConf *c, char **names, int nnames,
+		       KpOrder *out)
+{
+	resolve(c, names, nnames, 1, out);
 }

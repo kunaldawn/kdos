@@ -53,10 +53,27 @@ WizardPage {
         }
     }
     property string clock: Backend.localTime(Backend.answers.timezone)
-    complete: disks.length > 0 && Backend.answers.timezone.length > 0
+    /* kinstall's refusal of the first disk it refuses, as a sentence: its
+     * clauses start in lower case to follow a front end's own words. */
+    readonly property string firstRefusal: {
+        for (let i = 0; i < disks.length; i++) {
+            const t = disks[i].problem || "";
+            if (t.length > 0) {
+                return t.charAt(0).toUpperCase() + t.slice(1) + ".";
+            }
+        }
+        return "";
+    }
+    /* Welcome stops when no disk can take the install, as on a laptop
+     * whose only disk in sight is the stick it runs from: the Disk page
+     * would offer nothing to choose. */
+    complete: usableDisks > 0 && Backend.answers.timezone.length > 0
     problem: Backend.busy && disks.length === 0
         ? i18n("Looking at this computer's disks…")
-        : disks.length === 0 ? i18n("No disk was found to install on.") : ""
+        : disks.length === 0 ? i18n("No disk was found to install on.")
+        : usableDisks === 0 && firstRefusal.length > 0
+        ? i18nc("@info %1 why the first disk is refused", "No disk here can take the install: %1", firstRefusal)
+        : usableDisks === 0 ? i18n("No disk here can take the install.") : ""
 
     QQC2.Label {
         Layout.fillWidth: true
@@ -166,7 +183,7 @@ WizardPage {
         }
         QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Install size:")
-            text: Backend.probe.payload_kb ? Backend.formatSize(Backend.probe.payload_kb * 1024) : "—"
+            text: Backend.installSizeText(Backend.probe)
             Accessible.name: i18nc("@info:whatsthis", "Install size: %1", text)
         }
     }

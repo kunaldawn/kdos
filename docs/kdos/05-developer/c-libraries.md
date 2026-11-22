@@ -394,6 +394,12 @@ The Linux VT sends F1 to F5 in a form of its own, `ESC [ [ A` to `ESC [ [ E`, an
 reads it as those keys. Read as an ordinary CSI, the second `[` would end the sequence and the
 letter after it would be typed into the field with the focus.
 
+The console keymap sends a plain Tab for `Shift+Tab`: keycode 15 has no shifted string, so the
+`ESC [ Z` a terminal emulator or an ssh session sends never arrives on a VT. When a Tab arrives
+and standard input is a VT (`KDGKBTYPE` succeeds), the decoder asks the kernel which modifiers are
+held (`TIOCLINUX`, `TIOCL_GETSHIFTSTATE`) and reports `KT_K_BTAB` while Shift is down. Anywhere
+else a Tab is a Tab.
+
 On the Linux VT the library sets the console's colour map to the theme's eight slots for as long as
 it owns the screen, and puts back the map it found (the `/etc/vtrgb` palette `kdos-getty` loaded)
 when it hands the screen back. The map is set through a VT descriptor, and `/dev/tty` is not one
@@ -439,6 +445,16 @@ cannot be drawn in this library: it links nothing but musl, and an arrow needs a
 hook is called on every flush, with a negative `x` for no pointer, because that call is the only
 thing that tells a backend to take the last arrow off the screen.
 
+A program run on the real terminal leaves the screen and comes back through
+`ktui_run_console(argv)`: the terminal and the input layer are suspended, the program runs on the
+terminal as a shell would run it, `-- press Enter to return --` waits for Enter, and the screen is
+restored. `ktui_run_console_note(note, argv)` does the same and prints `note` on the restored
+terminal before the program starts, so a shell opened from a TUI says how to come back (the
+installer's failed-step **Shell** prints "A root shell. Type exit to return to the installer.").
+It starts the program with `SHLVL=2`: `bash.bashrc` draws its banner only in a terminal's first
+shell, and a banner taller than the console would scroll the note away before the prompt. Both
+return the program's wait status.
+
 Offscreen rendering takes a fixed size and writes the cell buffer out as plain text, with no
 terminal at all. A geometry defect is invisible to the compiler and to a test suite that cannot
 draw, so this is how one gets looked at; `kdosbuild --dump` draws one screen this way.
@@ -465,7 +481,12 @@ and a focus the frame did not draw goes to whatever now stands where it last sto
 `ktui_id_base() + k` names the k-th control of a group only at depth 0, since inside a scope the
 next id is a hash. `ktui_state(id, n)` keeps a zeroed record of up to `KTUI_STATE_MAX` (64) bytes per
 id in a fixed 256-slot table; a record unasked-for in 600 frames can be reclaimed, and a full table
-answers NULL rather than growing, so a caller keeps a fallback. `ktui_input` keeps its caret there.
+answers NULL rather than growing, so a caller keeps a fallback. `ktui_input` keeps its caret there,
+with the frame it was last drawn with the focus: a field focused now that was not drawn focused in
+the frame before (reached by Tab, or on a page drawn again after it was left) puts its caret at the
+end of its text before the key is applied, so typing into a prefilled field appends to it and a
+reused id hands over no other field's caret. A click then places the caret where it pressed, and
+while the field keeps the focus from frame to frame the caret stays where the keys moved it.
 
 The text field is a `KtuiField`: the caller's buffer and capacity, a byte caret, a secret flag and
 a placeholder. `ktui_field_key` owns Left and Right (by word with Ctrl), Home, End, Backspace,
@@ -545,6 +566,15 @@ the arrows along its axis and `Home` move. `ktui_fold_begin()` draws a section h
 marker and returns whether it is open; while it is open its body is drawn inside an id scope the
 fold pushed, closed by `ktui_fold_end()`, so the body's controls come and go without moving an id
 after the fold.
+
+A modal takes the focus ring over and hands it back on close. `ktui_modal_alert()` has one
+button; `ktui_modal_confirm(title, msg, yes, no, on_yes)` has two and opens with `no` selected,
+because every confirm guards something that cannot be taken back, so the Enter that arrives with
+the dialog, or a doubled one, answers no. `←`, `Tab` or `Shift+Tab` selects `yes`, `Enter` or
+`Space` then runs `on_yes`, and `Esc` always answers no. `ktui_modal_event()` answers the keys
+for a surface that runs no immediate-mode frame. The message breaks only at `\n`; its column is
+the dialog's width less six, at most 50 cells, and each button is wide enough for the longer label and its
+two focus markers.
 
 Three rules hold about the library's own state, each guarding a link or focus failure:
 
@@ -643,7 +673,9 @@ colour it never got. There is one bit per colour rather than one for the pair, b
 would freeze the theme's background into a cell as a literal, after which a change of accent leaves
 a rectangle of the old scheme behind.
 
-A caller's own literal reaches a frame only through `ktui_draw_put()`, which copies whole cells.
+A caller's own literal reaches a frame only through `ktui_draw_put()`, which copies whole cells,
+and `ktui_draw_swatch()`, one full block in a colour of another scheme (the installer's preview of
+an accent not chosen yet), which falls back to a slot where the terminal has only slots.
 `ktui_draw_blend()` and `ktui_draw_shadow()` compute their literals by mixing colours already in
 the frame rather than taking a colour of the caller's choosing. Every other draw call takes slots
 and clears the literals, because a frame that stopped following the scheme would be a second

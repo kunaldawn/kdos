@@ -20,7 +20,14 @@
  * filesystem), or "Empty". The rows take keyboard focus: Tab reaches them,
  * Space chooses one, and the focused row is framed in the focus colour
  * round both its lines. Choosing a disk with no partitions turns to the
- * erase plan, since the reuse plan has nothing on it to use.
+ * erase plan, since the reuse plan has nothing on it to use. The one disk
+ * that can take the install is chosen on arrival, and on the reuse plan the
+ * one EFI system partition; a choice already made is never replaced.
+ *
+ * The erase plan on a disk with partitions warns, naming each by type,
+ * label and size, in the words the Summary's banner and the prompt before
+ * the install use. The reuse plan on a disk with no EFI system partition
+ * says so and names the two ways on: Partition Manager, or the erase.
  *
  * Look Again on the live medium probes as root, through the same pkexec
  * action as the install, which the live rule grants without a password:
@@ -63,8 +70,9 @@ WizardPage {
         }
         return null;
     }
-    /* What the copy takes: the least a reused root may hold. */
-    readonly property double installBytes: Backend.probe.install_bytes || 0
+    /* The least a reused root may hold: the copy and the room kinstall
+     * keeps free beside it. */
+    readonly property double rootNeedBytes: Backend.probe.root_need_bytes || 0
     readonly property bool anyUsable: {
         for (let i = 0; i < disks.length; i++) {
             if (usable(disks[i])) {
@@ -110,38 +118,28 @@ WizardPage {
     function sentence(t) {
         return t.length > 0 ? t.charAt(0).toUpperCase() + t.slice(1) + "." : t;
     }
-    /* What a disk holds, by partition, for its row; a disk with none by
-     * the signature on the whole device. */
+    /* What a disk holds, by partition, for its row; a disk with none, or
+     * a written stick's ISO 9660 image, by the signature on the whole
+     * device: Backend's words, which the Summary and the erase prompt use
+     * too. */
     function holds(d) {
-        const ps = d.partitions || [];
-        if (ps.length === 0) {
-            if (d.fstype === "LVM2_member") {
-                return d.vg ? i18nc("@info %1 volume group", "LVM physical volume (volume group %1)", d.vg)
-                            : i18nc("@info", "LVM physical volume");
-            }
-            if (d.fstype) {
-                return i18nc("@info %1 filesystem type", "Holds: %1 on the whole disk", d.fstype);
-            }
-            return i18nc("@info a disk with no partitions", "Empty");
-        }
-        const out = [];
-        for (let i = 0; i < ps.length; i++) {
-            const p = ps[i];
-            const kind = p.esp ? i18nc("@item a partition type", "EFI system")
-                       : p.bios_boot ? i18nc("@item a partition type", "BIOS boot")
-                       : p.fstype || i18nc("@item no filesystem", "empty");
-            out.push(p.label ? i18nc("@item %1 type %2 label %3 size", "%1 “%2” %3", kind, p.label, Backend.formatSize(p.sectors * 512))
-                             : i18nc("@item %1 type %2 size", "%1 %2", kind, Backend.formatSize(p.sectors * 512)));
-        }
-        return i18nc("@info %1 the partitions of a disk", "Holds: %1", out.join(", "));
+        return Backend.holds(d);
     }
+    /* A partition in a list by node, size, type and label, so the one
+     * formatting would wipe is named as the row above names it. */
     function partLabel(p) {
         const kind = p.esp ? " — " + i18nc("@item a partition type", "EFI system")
                    : p.bios_boot ? " — " + i18nc("@item a partition type", "BIOS boot") : "";
-        return i18nc("@item:inlistbox %1 device %2 size %3 filesystem", "%1 — %2 %3",
-                     p.path, Backend.formatSize(p.sectors * 512), p.fstype || i18nc("@item no filesystem", "empty")) + kind;
+        const fs = p.fstype || i18nc("@item no filesystem", "empty");
+        return (p.label ? i18nc("@item:inlistbox %1 device %2 size %3 filesystem %4 label", "%1 — %2 %3 “%4”",
+                                p.path, Backend.formatSize(p.sectors * 512), fs, p.label)
+                        : i18nc("@item:inlistbox %1 device %2 size %3 filesystem", "%1 — %2 %3",
+                                p.path, Backend.formatSize(p.sectors * 512), fs)) + kind;
     }
     readonly property var parts: disk ? disk.partitions : []
+    /* The erase plan's A/B layout, ki_ab()'s answer for this disk, which
+     * makes the swap a volume in the group whatever kind was asked for. */
+    readonly property bool twoSlots: answers.plan === "wipe" && answers.lvm && disk !== null && disk.ab_fits === true
     /* An ESP is a partition typed as one or holding FAT; never the BIOS
      * boot partition, which holds Limine's raw stage. */
     readonly property var esps: {
@@ -181,14 +179,17 @@ WizardPage {
         if (answers.plan === "wipe") {
             return "";
         }
+        if (esps.length === 0) {
+            return i18n("This disk has no EFI system partition: make one with Partition Manager, or erase the disk.");
+        }
         if (!espPart || !rootPart) {
             return i18n("Choose an EFI system partition and a root.");
         }
         if (espPart.path === rootPart.path) {
             return i18n("The EFI system partition and the root must differ.");
         }
-        if (rootPart.sectors * 512 < installBytes) {
-            const s = apart(rootPart.sectors * 512, installBytes);
+        if (rootPart.sectors * 512 < rootNeedBytes) {
+            const s = apart(rootPart.sectors * 512, rootNeedBytes);
             return i18n("%1 holds %2; the install needs %3.", rootPart.path, s[0], s[1]);
         }
         if (rootPart.held) {
@@ -232,6 +233,42 @@ WizardPage {
      * next decides the plan. One that failed to start sets nothing. */
     property bool partitionManagerUsed: false
 
+    /* The obvious choice made for the user: the one disk that can take
+     * the install, chosen as its row's radio chooses it, and on the reuse
+     * plan the one ESP candidate when it is typed as an EFI system
+     * partition (Backend.onlyEsp), never a lone FAT partition that may
+     * hold data, which Format it would wipe. Asked on each visit, each
+     * probe and each change of an answer; it never replaces a choice made. */
+    function preselect() {
+        if (!answers.disk) {
+            let only = null;
+            for (let i = 0; i < disks.length; i++) {
+                if (usable(disks[i])) {
+                    if (only !== null) {
+                        only = null;
+                        break;
+                    }
+                    only = disks[i];
+                }
+            }
+            if (only !== null) {
+                chooseDisk(only);
+            }
+        }
+        if (answers.plan === "reuse" && !answers.esp) {
+            const only = Backend.onlyEsp(esps);
+            if (only) {
+                answers.esp = only;
+            }
+        }
+    }
+    function chooseDisk(d) {
+        answers.disk = d.path;
+        answers.esp = "";
+        answers.root = "";
+        answers.plan = Backend.planForDisk(answers.plan, (d.partitions || []).length);
+    }
+
     function useReuse() {
         answers.plan = "reuse";
         /* The reuse plan makes no partition, so a swap partition would be
@@ -245,6 +282,7 @@ WizardPage {
      * listed. */
     onEntered: {
         Backend.refreshProbe();
+        preselect();
         planTimer.restart();
     }
 
@@ -264,6 +302,7 @@ WizardPage {
         target: page.answers
         function onChanged() {
             if (page.visible) {
+                page.preselect();
                 planTimer.restart();
             }
         }
@@ -276,6 +315,7 @@ WizardPage {
         }
         function onProbeChanged() {
             if (page.visible) {
+                page.preselect();
                 planTimer.restart();
             }
             if (!page.partitionManagerUsed || Backend.partitionManagerRunning) {
@@ -363,12 +403,7 @@ WizardPage {
                                         Backend.formatSize(page.diskBytes(row.modelData)), row.modelData.path)
                             Accessible.name: enabled ? text : i18nc("@info:whatsthis %1 disk %2 reason", "%1, not offered: %2", text, page.why(row.modelData))
                             Accessible.description: page.holds(row.modelData)
-                            onToggled: {
-                                page.answers.disk = row.modelData.path;
-                                page.answers.esp = "";
-                                page.answers.root = "";
-                                page.answers.plan = Backend.planForDisk(page.answers.plan, (row.modelData.partitions || []).length);
-                            }
+                            onToggled: page.chooseDisk(row.modelData)
                         }
                         QQC2.Label {
                             Layout.fillWidth: true
@@ -451,6 +486,13 @@ WizardPage {
             text: i18n("This disk holds two slots.")
         }
         Kirigami.InlineMessage {
+            visible: page.answers.plan === "wipe" && page.parts.length > 0
+            Layout.fillWidth: true
+            Layout.maximumWidth: page.noteWidth
+            type: Kirigami.MessageType.Warning
+            text: page.disk ? i18n("Erasing this disk destroys: %1.", Backend.diskErased(page.disk.path)) : ""
+        }
+        Kirigami.InlineMessage {
             visible: page.answers.plan === "wipe" && page.disk !== null && page.disk.fstype === "LVM2_member"
             Layout.fillWidth: true
             Layout.maximumWidth: page.noteWidth
@@ -479,7 +521,10 @@ WizardPage {
             Layout.fillWidth: true
             model: page.esps
             textRole: "path"
-            displayText: currentIndex >= 0 ? page.partLabel(page.esps[currentIndex]) : i18nc("@item:inlistbox", "Choose…")
+            enabled: page.esps.length > 0
+            displayText: currentIndex >= 0 ? page.partLabel(page.esps[currentIndex])
+                       : page.esps.length === 0 ? i18nc("@item:inlistbox", "No EFI system partition on this disk")
+                       : i18nc("@item:inlistbox", "Choose…")
             currentIndex: {
                 for (let i = 0; i < page.esps.length; i++) {
                     if (page.esps[i].path === page.answers.esp) {
@@ -555,20 +600,33 @@ WizardPage {
             Accessible.name: i18nc("@label:listbox", "Filesystem")
             onActivated: index => page.answers.fstype = model[index]
         }
-        /* A swap partition is made by the erase plan alone, so the reuse
-         * plan has a list of its own with none or a file. Two lists rather
-         * than one whose model changes: a ComboBox given a new model resets
-         * its index and drops the binding to the answer. */
+        /* Each list names the swap its layout makes. A swap partition is
+         * made by the erase plan alone, so the reuse plan has a list of its
+         * own with none or a file; two slots make the swap a volume in the
+         * group whatever kind was asked for, so their list is none or a
+         * volume, and any swap answer shows as the volume. Several lists
+         * rather than one whose model changes: a ComboBox given a new model
+         * resets its index and drops the binding to the answer. */
         QQC2.ComboBox {
+            objectName: "swapOneSlot"
             Kirigami.FormData.label: i18nc("@label:listbox", "Swap:")
-            visible: page.answers.plan !== "reuse"
+            visible: page.answers.plan !== "reuse" && !page.twoSlots
             readonly property var values: ["none", "file", "partition"]
             model: [i18nc("@item:inlistbox swap", "None"),
-                    i18nc("@item:inlistbox swap", "A file, or a volume with two slots"),
+                    i18nc("@item:inlistbox swap", "A file"),
                     i18nc("@item:inlistbox swap", "A partition")]
             currentIndex: Math.max(0, values.indexOf(page.answers.swap))
             Accessible.name: i18nc("@label:listbox", "Swap")
             onActivated: index => page.answers.swap = values[index]
+        }
+        QQC2.ComboBox {
+            objectName: "swapTwoSlots"
+            Kirigami.FormData.label: i18nc("@label:listbox", "Swap:")
+            visible: page.answers.plan !== "reuse" && page.twoSlots
+            model: [i18nc("@item:inlistbox swap", "None"), i18nc("@item:inlistbox swap", "A volume")]
+            currentIndex: page.answers.swap === "none" ? 0 : 1
+            Accessible.name: i18nc("@label:listbox", "Swap")
+            onActivated: index => page.answers.swap = index === 0 ? "none" : "file"
         }
         QQC2.ComboBox {
             Kirigami.FormData.label: i18nc("@label:listbox", "Swap:")

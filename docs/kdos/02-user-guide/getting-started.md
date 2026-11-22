@@ -32,7 +32,8 @@ everyday programs beside them (Haruna, the video player, KolourPaint, Skanpage, 
 KCharSelect, KClock and KWalletManager), VLC, which Elisa plays through, Firefox ESR, Discover, the
 Orca screen reader and BRLTTY for braille displays, networking, printing and scanning, the box
 stack, Python and Perl, every KDOS tool and the KDOS book. It carries no compiler: the toolchain is
-the `build-tools` group, and the Chinese, Japanese and Korean input methods are the `lang-zh`,
+the `build-tools` group, and `sudo kdos update install build-tools` leaves a working `cc` with the C
+library's and the kernel's headers, and the Chinese, Japanese and Korean input methods are the `lang-zh`,
 `lang-ja` and `lang-ko` groups. Everything else is one download away, three ways, described in full
 in [Applications](applications.md#where-applications-come-from):
 
@@ -54,8 +55,8 @@ of `kunaldawn/kdos`, marked **Latest**. It carries:
 
 | File | What it is |
 |---|---|
-| `kdos-<version>.iso`, or `kdos-<version>.iso.part01`, `.part02`, … | The live ISO. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
-| `SHA256SUMS`, `SHA256SUMS.sig` | The checksum of the whole ISO and of every other file, and its signature by the release key |
+| `kdos-<tag>.iso` (for example `kdos-v0.2.1.iso`), or `kdos-<tag>.iso.part01`, `.part02`, … | The live ISO, named by the release's tag. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
+| `SHA256SUMS`, `SHA256SUMS.sig` | The checksums of the whole ISO and each of its parts, `sources.sha256`, the recipe tree, the update index, their two signatures and the release key, and the list's signature by the release key. The list does not cover its own signature or the book files below, which are attached after it is made |
 | `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
 | `kdos-ports.tar.xz`, `kdos-ports.tar.xz.sig` | The release's recipe tree and its signature: what `kdos update fetch` installs as `/ports` |
 | `kdos-update.idx`, `kdos-update.idx.sig` | The signed index of where the release's prebuilt packages and update image are |
@@ -68,12 +69,12 @@ through the release's signed index. The `sources-<N>` pre-releases are the archi
 sources the build uses.
 
 When the release carries the ISO in parts (`.part01`, `.part02` and on, and no whole
-`kdos-<version>.iso`), join them first. Run this only then: the shell empties
-`kdos-<version>.iso` before `cat` reads anything, so on a release with one whole ISO it destroys
+`kdos-<tag>.iso`), join them first. Run this only then: the shell empties
+`kdos-<tag>.iso` before `cat` reads anything, so on a release with one whole ISO it destroys
 the download.
 
 ```sh
-cat kdos-<version>.iso.part?? > kdos-<version>.iso
+cat kdos-<tag>.iso.part?? > kdos-<tag>.iso
 ```
 
 Then check the ISO:
@@ -82,7 +83,7 @@ Then check the ISO:
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-It must print `kdos-<version>.iso: OK`. A checksum list downloaded beside the file proves only that
+It must print `kdos-<tag>.iso: OK`, with the tag, for example `kdos-v0.2.1.iso: OK`. A checksum list downloaded beside the file proves only that
 the two agree; its signature, `SHA256SUMS.sig`, proves the release key made it. On a machine that
 does not run KDOS, download `SHA256SUMS.sig` and `kdos-release.pub` too and check it with OpenSSL 3
 and `xxd`:
@@ -99,7 +100,7 @@ The first line prints the id of the key in `kdos-release.pub`, which must be the
 above. The rest wraps the raw Ed25519 key in the header OpenSSL reads, takes that key's signature
 out of `SHA256SUMS.sig`, and prints `Signature Verified Successfully` when it matches. On a machine
 already running KDOS, [`kdos verify`](../04-programs/kdos-command.md#kdos-verify)
-`kdos-<version>.iso` checks the list and its signature against the release key the system trusts.
+`kdos-<tag>.iso` checks the list and its signature against the release key the system trusts.
 
 What you need to use it:
 
@@ -119,7 +120,7 @@ OVMF firmware, at the path Debian and Ubuntu install it to:
 ```sh
 qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
 qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4G \
-    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<version>.iso \
+    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<tag>.iso \
     -drive file=kdos.qcow2,format=qcow2 -device virtio-vga -device virtio-net-pci,netdev=n \
     -netdev user,id=n -usb -device usb-tablet
 ```
@@ -149,21 +150,28 @@ The ISO is a hybrid image. Write it to a USB stick as a raw byte stream, replaci
 your stick. Everything on that device is lost:
 
 ```sh
-sudo dd if=kdos-<version>.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=kdos-<tag>.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 On Windows or macOS, any tool that writes a raw disk image does the same (Rufus in DD mode,
-balenaEtcher). Turn Secure Boot off in the firmware before booting the stick.
+balenaEtcher). Turn Secure Boot off in the firmware before booting the stick. A Ventoy stick boots
+the ISO copied onto its data partition: choose **Boot in normal mode** in Ventoy's menu. A stick
+that holds copies of the ISO's files, as Rufus's ISO mode or a copy onto a FAT stick makes, does
+not boot: Limine and the kernel start, and the boot stops at "Failed to find KDOS installation
+media." with a line saying to write the whole ISO.
 
 The stick must be at least as large as the ISO. The same image boots four ways: BIOS and UEFI, from
 an optical drive and from a stick. It carries two El Torito
 boot records for optical drives, one for each firmware, and for a stick a partition table with an
 EFI System Partition plus BIOS boot code in its first sector, so the `dd` above is the whole job and
 there is no separate step to make the stick bootable. ISO Image Writer, on any KDOS machine, does
-the same from a window.
+the same from a window; it does not list a stick the image was written to when a live session runs
+from it (a Ventoy stick is listed, and writing to it is refused because it is in use), and it says "Could not
+find the key to verify the ISO image" for a KDOS image, which `kdos verify kdos-<tag>.iso`
+checks against the release's signed `SHA256SUMS` instead.
 
 The ISO fits a DVD too. Burn it as a disc image, not as a file on a data disc: on Linux,
-`growisofs -dvd-compat -Z /dev/sr0=kdos-<version>.iso`; on Windows, the ISO's **Burn disc image**
+`growisofs -dvd-compat -Z /dev/sr0=kdos-<tag>.iso`; on Windows, the ISO's **Burn disc image**
 menu entry.
 
 Once you have one working stick, a running KDOS system can copy itself to another without a second
@@ -243,8 +251,9 @@ When the service scripts have finished, the splash fades to black and hands the 
 login screen, SDDM, in the KDOS look. The live medium logs in by itself; an installed machine
 shows the login screen and asks for a password, except on the one kind of installation that asks
 for automatic login (see [6. Accounts](installation.md#6-accounts)). After the login the KDOS
-splash for the session, KSplash, shows the same penguin in the same place while Plasma starts, so
-the boot, the login and the desktop read as one continuous start.
+splash for the session, KSplash, shows the same penguin in the same place while Plasma starts, its
+bar picking up where the boot splash's stopped, at 99% and one segment short, rather than starting
+again, so the boot, the login and the desktop read as one continuous start.
 
 The image ships one human account:
 
@@ -310,17 +319,30 @@ group can be installed ready-made, with a button to Discover, which can build pr
 computer, and its opening line offers only Discover. Make It Yours is the last KDOS page; Plasma's own **Enjoy
 It!** page follows it and ends the tour. Every choice there takes effect at once and can be
 changed later. On the live medium the tour opens at every login, on a page with a large **Install
-KDOS** button, and a second page offers to keep the session's changes on the stick.
+KDOS** button, and a second page offers to keep the session's changes on the stick. Welcome
+Center started again from the application launcher opens the same live tour, with both pages, and
+its Privacy page says the live session keeps no wallet.
 
-**What's New** is not part of the tour. It opens once at the first login on a version other than
-the last one it was shown for, with the notes of the release now running, read from the slot
-itself. After an update it says which version KDOS was updated from. After a rollback, when the
-newer version in the other slot did not start or you went back from it by hand, it says `KDOS went
-back to <version>; <newer>, in the other slot, did not start or was not kept.` On a fresh install
-it names the version running and points at System Settings → System Versions, which shows the
-versions on this computer. On the live medium it names only the version running and says it is
-running from the live medium; there is no System Versions button, since the live medium has no
-slots.
+**What's New** is not part of the tour. It opens by itself only after an update, or after going
+back by hand from a newer version this account used, once per version, with the notes of the release now running, read from the slot itself: when a
+login is confirmed, about a minute in, once the desktop has stayed up, the running version is
+compared with the one this account was last shown, and a different one opens the page. At any
+other time **Release Notes** in the application menu (type `release notes` in it or in KRunner)
+or `kdos update notes` shows the notes of the version running. Welcome Center runs once: while the
+tour is open, Release Notes brings the tour forward instead, so close the tour first, or run
+`kdos update notes`. A boot that is not confirmed shows nothing, since
+the next boot may roll it back. After an update it says which version KDOS was updated from. An
+account's first login, a fresh install's included, records the version running and opens
+nothing, since nothing was updated; the live medium never opens it. After going back by hand from
+a newer version this account had used, it opens and says `KDOS went back to <version>; <newer>,
+in the other slot, did not start or was not kept.` After an update that did not start, it does
+not open: this account was never shown the newer version, so the version running is the one it
+already recorded. `kdos update notes` then begins `KDOS <version>, went back from <newer>`, and
+the page shows the same sentence when opened by hand. Release Notes opens the same page, as
+`plasma-welcome --pages 90-WhatsNew.qml`: on a fresh install it names the version running
+and points at System Settings → System Versions, which shows the versions on this computer, and
+on the live medium it names only the version running and says it is running from the live
+medium, with no System Versions button, since the live medium has no slots.
 
 ## Adding software to the live session
 
@@ -359,8 +381,10 @@ when one is plugged in. `kdos persist create` adds one partition in the free spa
 partition on the device, by default the stick you booted from. Nothing already on the device is
 moved or rewritten; a blank stick is given a partition table first. It asks you to type `yes`
 before it writes; `--yes` skips the question. It refuses to make a second store when one already
-exists. A DVD cannot hold changes: started from a disc, `kdos persist create` and the Welcome page
-both need a USB stick or a disk to put the store on.
+exists. A DVD cannot hold changes, and neither can a Ventoy stick, whose KDOS is a file inside
+Ventoy's own partition: started from either, `kdos persist` says so, and `kdos persist create` and
+the Welcome page both need another USB stick or a disk to put the store on, named as
+`sudo kdos persist create /dev/sdX`.
 
 The store is found by its label rather than by a device name, so it can equally live on a second
 stick or an internal disk, and it keeps working when USB devices come up in a different order.

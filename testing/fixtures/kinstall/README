@@ -17,6 +17,18 @@ the Time page's choosing; zoneinfo-long/ holds zone names wider than the
 Time page's zone list, for the section that draws every page at 80x33 with
 the longest values and refuses any `# cuts` but 0.
 
+net/ holds three machines' routes for $KDOS_NET_ROOT, which kinstall-core
+reads in place of / for proc/net/route, proc/net/ipv6_route and
+sys/class/net: up/ an IPv4 default route on an eth0 that is up, down/ the
+same route on an eth0 with no carrier (a pulled cable leaves the route), and
+v6/ only an IPv6 default route on eth0 beside the kernel's unreachable ::/0
+on lo.
+
+udev/ holds three disks' records as udev writes them under /run/udev/data:
+a SATA SSD whose ID_MODEL_ENC is longer than libata's 16-byte sysfs model,
+an ATA name with \x20 escapes, and a QEMU disk. `harness udevmodel` reads one
+with a sysfs model given on its command line.
+
 copy-progress.txt is a real rsync --info=progress2 --no-inc-recursive stream,
 each line prefixed with the seconds since rsync started, thinned to a line
 each 50 ms and keeping every line without file counts. The selftest feeds it

@@ -175,6 +175,10 @@ pref("media.gmp-gmpopenh264.visible", false);
 pref("browser.newtabpage.activity-stream.telemetry", false);
 pref("datareporting.healthreport.uploadEnabled", false);
 pref("datareporting.usage.uploadEnabled", false);
+pref("browser.region.network.url", "");
+pref("browser.region.update.enabled", false);
+pref("geo.provider.network.url", "");
+pref("geo.provider.use_geoclue", false);
 EOF
 
 for _png in browser/branding/official/default*.png; do

@@ -12,7 +12,12 @@ the Offline Library, Keys, Privacy and Network, Help, Getting Started, and Make 
 installs groups of programs prebuilt; Plasma's own Enjoy It! page follows it and ends the tour.
 Two more are not part of every tour: on
 the live medium a page that keeps the session's changes on the stick, and a What's New page opened
-after an update.
+after an update, or after going back by hand from a newer version this account used. The port
+also installs `io.kdos.releasenotes.desktop`, the Release Notes entry in the application menu,
+which Kickoff and KRunner find under "release notes", "what's new" and "changelog". It opens What's
+New whenever Welcome Center is not already running: Welcome Center is a unique D-Bus application,
+and a second start only raises the open window, ignoring `--pages`, so with the tour open the
+entry brings the tour forward.
 
 ## Flags
 
@@ -49,7 +54,10 @@ anything that does not parse as the command's "nothing to report" answer.
 **Freshness.** The Accessibility and Look pages read their settings again, and the Keys page its
 chords, whenever the page is shown and whenever the Welcome Center window comes back to the front,
 so a setting changed in System Settings, by a chord or by `kdos theme` while the tour is open is
-shown as it is. The Keys page also needs it at a first login, where the clipboard history's action
+shown as it is. The Accessibility page also reads them every 1.5 seconds while it is shown, skipping
+a tick while one of its own writes is pending: `Meta+Alt+S` and KWin's accessibility chords change
+a setting without moving the window, and a page that can only start processes cannot subscribe to
+the signal that says so. The Keys page also needs it at a first login, where the clipboard history's action
 is registered only after Welcome Center has made the page.
 
 **Colours.** The accent swatches are each accent's colour scheme, read with `kreadconfig6` from the
@@ -120,6 +128,17 @@ version and its System Versions button: the other two cases have no previous ver
 **Modes.** The live-medium page, `35-Persist.qml`, sits after Your System and shows only when
 Welcome Center was started with `--live-environment`, which its kded module passes whenever
 `plasma-welcomerc` says `LiveEnvironment=true`; `show` is read the moment a page is made, so the
-page reads the argument rather than waiting on a command. What's New sets `show: false`, so it is
+page reads the argument rather than waiting on a command. The launcher entry passes it too on the
+live medium alone: `/usr/share/kdos/data-live/applications/org.kde.plasma-welcome.desktop`
+(from the `fs/` tree) is upstream's entry with that `Exec`, and `kdos_session_live_data` puts
+the directory in front of `XDG_DATA_DIRS` only when the root is the live overlay, so a tour
+reopened from Kickoff keeps the Install and Keep Your Changes pages and an installed machine's
+launcher opens the ordinary tour. The Privacy page reads the same argument: on the live medium,
+whose `xdg-live/kwalletrc` turns the wallet off, its wallet paragraph says the live session keeps
+no wallet and an installed system's asks for its own password, and it offers no Wallet Settings
+button, which would open on the switched-off subsystem; elsewhere the paragraph shows only on a
+machine that logs in automatically. What's New sets `show: false`, so it is
 never in the tour, and is opened as `plasma-welcome --pages 90-WhatsNew.qml`, which shows a page
-whatever `show` says.
+whatever `show` says: by [kdos-notice](#port-kdos-notice) after an update or after going back by hand from a
+newer version this account used, and by the Release Notes entry. `tests/launcher.cmake` checks that the entry's `Exec` names a page in
+`extra-pages` that reads `kdos update notes`, and its name and keywords.

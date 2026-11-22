@@ -10,8 +10,9 @@
  * Typing "photosynthesis" finds it wherever this machine holds it, with no
  * network:
  *
- *   the KDOS and KFS books   headings of /usr/share/doc/{kdos,kfs}, opened
- *                            in the browser at that heading
+ *   the KDOS and KFS books   headings of /usr/share/doc/{kdos,kfs}, each
+ *                            under its page's title, opened in the browser
+ *                            at that heading
  *   manual pages             `kdos*` pages, opened by man(1) in Konsole
  *   Zeal docsets             entries whose name starts with the query, from
  *                            each docset's own SQLite index (zeal.c)
@@ -80,6 +81,7 @@ typedef struct {
 	char *text;		/* the heading, as plain text      */
 	char *file;		/* absolute path of the page       */
 	char *id;		/* the heading's anchor, or ""     */
+	char *page;		/* its page's title, or "" on that title itself */
 	int level;		/* 1..3                            */
 	int book;		/* index into books[]              */
 } Heading;
@@ -111,6 +113,7 @@ static void heads_free(void)
 		free(g_heads[i].text);
 		free(g_heads[i].file);
 		free(g_heads[i].id);
+		free(g_heads[i].page);
 	}
 	free(g_heads);
 	g_heads = NULL;
@@ -118,7 +121,7 @@ static void heads_free(void)
 }
 
 static void head_add(const char *text, const char *file, const char *id,
-		     int level, int book)
+		     const char *page, int level, int book)
 {
 	if (g_nheads >= 50000 || !*text)
 		return;
@@ -126,16 +129,24 @@ static void head_add(const char *text, const char *file, const char *id,
 	g_heads[g_nheads].text = kb_strdup(text);
 	g_heads[g_nheads].file = kb_strdup(file);
 	g_heads[g_nheads].id = kb_strdup(id);
+	g_heads[g_nheads].page = kb_strdup(page);
 	g_heads[g_nheads].level = level;
 	g_heads[g_nheads].book = book;
 	g_nheads++;
 }
 
 /* Every <h1>..<h3> of one page, with its id. Pandoc and lowdown both write
- * `<hN id="x">text</hN>`, with spans for section numbers inside. */
+ * `<hN id="x">text</hN>`, with spans for section numbers inside. The page's
+ * first non-empty <h1>..<h3> is its title, whatever its level: a KDOS
+ * chapter's h1, a KFS part's h1, chapter's h2 or port page's h3. Every later
+ * heading carries it: the books repeat a heading across
+ * chapters (`The firewall` is in four), and the row's subtext is all that
+ * tells them apart. */
 static void page_headings(const char *file, int book)
 {
 	char *html = kb_read_whole(file, NULL);
+	char page[512] = "";
+	int first = 1;
 
 	if (!html)
 		return;
@@ -170,8 +181,13 @@ static void page_headings(const char *file, int book)
 		for (char *c = text; *c; c++)
 			if (*c == '\n' || *c == '\t')
 				*c = ' ';
-		head_add(text, file, id, level, book);
 		p = end + 3;
+		if (!*text)
+			continue;
+		head_add(text, file, id, first ? "" : page, level, book);
+		if (first)
+			kb_strlcpy(page, text, sizeof(page));
+		first = 0;
 	}
 	free(html);
 }
@@ -248,10 +264,10 @@ static int cache_load(const char *sig)
 		return 0;
 	}
 	while ((l = strtok_r(NULL, "\n", &save))) {
-		char *f[5];
+		char *f[6];
 		int nf = 0;
 
-		for (char *p = l; nf < 5; nf++) {
+		for (char *p = l; nf < 6; nf++) {
 			f[nf] = p;
 			p = strchr(p, '\t');
 			if (!p) {
@@ -260,9 +276,9 @@ static int cache_load(const char *sig)
 			}
 			*p++ = '\0';
 		}
-		if (nf != 5)
+		if (nf != 6)
 			continue;
-		head_add(f[4], f[2], f[3], atoi(f[1]), atoi(f[0]) % NBOOKS);
+		head_add(f[5], f[2], f[3], f[4], atoi(f[1]), atoi(f[0]) % NBOOKS);
 	}
 	free(text);
 	return 1;
@@ -281,16 +297,18 @@ static void cache_save(const char *sig)
 	kb_buf_printf(&b, "%s\n", sig);
 	for (int i = 0; i < g_nheads; i++)
 		if (!strchr(g_heads[i].file, '\t') && !strchr(g_heads[i].file, '\n'))
-			kb_buf_printf(&b, "%d\t%d\t%s\t%s\t%s\n", g_heads[i].book,
+			kb_buf_printf(&b, "%d\t%d\t%s\t%s\t%s\t%s\n", g_heads[i].book,
 				      g_heads[i].level, g_heads[i].file,
-				      g_heads[i].id, g_heads[i].text);
+				      g_heads[i].id, g_heads[i].page, g_heads[i].text);
 	kb_write_file_atomic(path, b.p ? b.p : "");
 	kb_buf_free(&b);
 }
 
 static void books_load(void)
 {
-	char sig[2048] = "v1", one[160], two[160], dir[1024], pkg[1024];
+	/* The signature opens with the line format: a cache written in
+	 * another one is rebuilt, not read as headings. */
+	char sig[2048] = "v2", one[160], two[160], dir[1024], pkg[1024];
 
 	for (int i = 0; i < NBOOKS; i++) {
 		size_t l = strlen(sig);
@@ -390,7 +408,11 @@ static void match_books(const RnQuery *q, RnList *out)
 		if (!m)
 			return;
 		kb_strlcpy(m->text, h->text, sizeof(m->text));
-		kb_strlcpy(m->subtext, books[h->book].name, sizeof(m->subtext));
+		if (*h->page)
+			snprintf(m->subtext, sizeof(m->subtext), "%s · %s", h->page,
+				 books[h->book].name);
+		else
+			kb_strlcpy(m->subtext, books[h->book].name, sizeof(m->subtext));
 		kb_strlcpy(m->icon, "help-contents", sizeof(m->icon));
 		kb_strlcpy(m->category, "Offline library", sizeof(m->category));
 		m->catrel = RN_CAT_LOW;
@@ -503,7 +525,8 @@ static void match_places(const RnQuery *q, RnList *out)
 
 /* Rows `from` on, beside the KDOS settings pages. A row whose text is a
  * page's Name, whatever was typed, is titled `<name> in <its source>` (the
- * subtext up to its ` · `): System Settings' own runner lists that page under
+ * subtext up to its ` · `: a heading's chapter, a page title's book, or
+ * Kolibri): System Settings' own runner lists that page under
  * its bare Name for a part of it as for the whole, and two rows of one title
  * read as one answer shown twice. When the query is a page's whole title the
  * rows are also scaled under the palette's row for it; scaling, not

@@ -31,7 +31,7 @@ Which services start at boot differs between the live medium and an installed sy
 
 | | Live medium | Installed system |
 |:--|:--|:--|
-| Markers in `/etc/service.disabled` | `sshd`, from the image | The [live session]{.idx term="live system"}'s markers, copied with the rest of the root, after which the installer writes or removes one for each of its five service choices. CUPS and the SSH server are off unless chosen |
+| Markers in `/etc/service.disabled` | `sshd`, from the image | The [live session]{.idx term="live system"}'s markers, copied with the rest of the root, after which the installer writes or removes one for each of its five service choices. The SSH server is off unless chosen; CUPS is on unless unticked |
 | Where a change is kept | In memory, gone at power-off, unless a persistence store exists; see [Live persistence](live-persistence.md) | On the root filesystem |
 
 The installer's five choices, and the `services` key of an answer file, are in
@@ -48,7 +48,7 @@ removing it. Nothing else records whether a service starts at boot. The image sh
 
 The installer writes or removes the markers for the services in its table:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 -->
 
 The last field is whether the service is on by default.
 

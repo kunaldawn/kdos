@@ -166,6 +166,9 @@ private Q_SLOTS:
         put(r + u"/fake/podman.state"_s, u"container app.gimp running\ncontainer dev exited\n"_s);
         put(r + u"/home/.config/kdos/boxes/app.gimp.conf"_s, u"base=pack:app.gimp\naccent=amber\ngrant=window-list\nwayland=no\n"_s);
         put(r + u"/home/.config/kdos/boxes/dev.conf"_s, u"base=image:docker.io/library/debian:trixie\n"_s);
+        /* A development box `kdos-box remove` took the container of and
+         * kept the profile of, with the line it marks such a profile by. */
+        put(r + u"/home/.config/kdos/boxes/ubu.conf"_s, u"# kept by kdos-box remove; remove --purge deletes it\nbase=image:ubuntu:24.04\n"_s);
         put(r + u"/run/kdos/boxes/app.gimp.state"_s, u"confinement = tagged\nreason      = its bus is not filtered\n"_s);
         /* A pending recreate, so the banner and its action are on the page. */
         put(r + u"/state/kcm_kdos_boxesstaterc"_s, u"[app.gimp]\nPendingKeys=network\nSince=1\n"_s);
@@ -273,6 +276,10 @@ private Q_SLOTS:
         QTRY_VERIFY(profile->property("notesLoaded").toBool());
         QTest::qWait(300);
 
+        /* A box with a container offers a terminal inside it. */
+        QVERIFY(named(window.contentItem(), u"Open Terminal"_s));
+        QVERIFY(!named(window.contentItem(), u"Create"_s));
+
         /* The honest indicator: the verdict and the launch's own reason,
          * set as a sentence of its own after the verdict's. */
         QVERIFY(shows(window.contentItem(), u"Tagged. KWin limits"_s));
@@ -335,6 +342,47 @@ private Q_SLOTS:
         const QPointF centre = hostItem->mapToScene(QPointF(hostItem->width() / 2, hostItem->height() / 2));
         QTest::mouseClick(&window, Qt::LeftButton, {}, centre.toPoint());
         QTRY_COMPARE(values->property("network").toString(), u"private"_s);
+    }
+
+    /* A kept profile with no container says it was removed, and offers
+     * Create, never a Start that `kdos-box start` would refuse. */
+    void keptBoxOffersCreate()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"ubu"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QTRY_COMPARE(kcm->property("currentBox").toString(), u"ubu"_s);
+
+        QQuickWindow window;
+        window.resize(1600, 2000);
+        ui->setParentItem(window.contentItem());
+        ui->setSize(QSizeF(500, window.height()));
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE(kcm->depth(), 2);
+        QQuickItem *page = kcm->subPage(0);
+        QVERIFY(page);
+        page->setParentItem(window.contentItem());
+        page->setPosition(QPointF(500, 0));
+        page->setSize(QSizeF(1100, window.height()));
+
+        QTRY_VERIFY(kcm->property("current").toMap().value(u"listed"_s).toBool());
+        QVERIFY(kcm->property("current").toMap().value(u"kept"_s).toBool());
+        QTRY_VERIFY(shows(page, u"Removed — settings kept"_s));
+        /* The list row too, under the box's own name. */
+        QVERIFY(shows(ui, u"Removed — settings kept"_s));
+        QTRY_VERIFY(named(page, u"Create"_s));
+        QVERIFY(!named(page, u"Start"_s));
+        QVERIFY(!named(page, u"Open Terminal"_s));
+        QVERIFY(named(page, u"Delete Settings…"_s));
     }
 };
 

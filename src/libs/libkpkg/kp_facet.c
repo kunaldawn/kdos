@@ -37,7 +37,9 @@
  *   doc  everything under usr/share/doc/ except HTML/ (KDE's handbooks,
  *        which help:/ and the applications' Help menus open) and kdos/ and
  *        kfs/ (the two books, which the desktop links into); everything
- *        under usr/share/info/ and usr/share/gtk-doc/
+ *        under usr/share/info/ and usr/share/gtk-doc/html/ (the generated
+ *        API references; the rest of gtk-doc/ is gtk-doc's own python/ and
+ *        data/, which its programs import and copy)
  *   run  everything else, the man sections a terminal user reads (1, 4-8)
  *        among it
  *
@@ -94,7 +96,13 @@ int kp_facet_of(const char *path, const char *link)
 			return KP_FACET_RUN;
 		return KP_FACET_DOC;
 	}
-	if (under(p, "usr/share/info/") || under(p, "usr/share/gtk-doc/"))
+	if (under(p, "usr/share/gtk-doc/")) {
+		const char *s = p + strlen("usr/share/gtk-doc/");
+		if (under(s, "html/") || !strcmp(s, "html"))
+			return KP_FACET_DOC;
+		return KP_FACET_RUN;
+	}
+	if (under(p, "usr/share/info/"))
 		return KP_FACET_DOC;
 	if (under(p, "usr/share/man/man")) {
 		char sec = p[strlen("usr/share/man/man")];

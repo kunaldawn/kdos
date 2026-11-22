@@ -12,8 +12,10 @@ procedures.
 
 The initramfs is not a package. `script/phases/70_image/090_initramfs.sh` generates it in the
 image phase (see [Part XV — The image](../15-image/intro.md)) from programs other ports installed,
-and `110_iso.sh` copies the result to the medium's `boot/` and to [`/boot/initramfs.cpio.gz`]{.idx} in the
-image, so every installed system carries it. No package owns that file.
+and `110_iso.sh` copies the result to the medium's `boot/initrd.img` and to [`/boot/initramfs.cpio.gz`]{.idx} in the
+image, so every installed system carries it. The medium's copy is named `initrd.img` because that is
+a path Ventoy recognises: Ventoy never reads `limine.conf`, and puts its hook only into an initrd at
+a path it knows. No package owns that file.
 
 What it carries comes from these ports:
 
@@ -69,7 +71,7 @@ The new kernel's initramfs and its deploy, in the `linux` postinstall:
 
 | Machine | File |
 |---|---|
-| Live medium | `boot/initramfs.cpio.gz` on the medium, which the running live system sees as `/mnt/iso/boot/initramfs.cpio.gz` |
+| Live medium | `boot/initrd.img` on the medium, which the running live system sees as `/mnt/iso/boot/initrd.img` |
 | Installed, booted | `/boot/efi/EFI/kdos/<slot>/initramfs.cpio.gz`, where `<slot>` is the `kdos_slot=` in `/proc/cmdline` |
 | Installed, in the root | `/boot/initramfs.cpio.gz` (the image's) and, after a kernel update, `/boot/initramfs-kdos.cpio.gz`; the kernel beside them is `/boot/vmlinuz-kdos` |
 
@@ -123,25 +125,28 @@ When `init` cannot finish, the splash shows the reason and quits, and a shell op
 `/dev/console` with the reason printed above it. On an installed machine `/dev/console` is `tty1`,
 the screen. When it is the serial line, as on the live entries or on any command line whose last
 `console=` is `ttyS0`, a second shell opens on `tty1` with the same reason, and the serial line
-prints `A rescue shell is also open on tty1.` above its own prompt. The shell on the screen ends
-its banner with `Ctrl+Alt+Del restarts the computer at once; run sync first if you changed a disk.`
+prints `A rescue shell is also open on tty1.` above its own prompt. The screen's banner says that
+the boot menu's `(verbose)` entry shows the boot log on this screen, and ends with
+`Ctrl+Alt+Del restarts at once; run sync first if you changed a disk.` Every line of it fits 80
+columns, the console's width before the framebuffer console takes over.
 
 1. Read the reason. The table in [Troubleshooting](#troubleshooting) says what each one means.
 2. Look around. `PATH` is `/bin`. `blkid`, `mount`, `umount`, `dmesg`, `modprobe` and the
    coreutils `init` uses (`ls`, `cat`, `cp`, `dd`, `mkdir` and the like) are always there;
    `cryptsetup`, `e2fsck`, `mdadm` and `lvm` are there when the image carried them, as the shipped
-   image does. There is no editor, no `tty` and no network tool. The shell on `/dev/console` has
-   no controlling terminal, so it has no job control and says so when it starts; `Ctrl+C` does not
-   reach a program it runs.
+   image does. There is no editor, no `tty` and no network tool. The shell on `tty1` has `tty1` as
+   its controlling terminal, so job control works and `Ctrl+C` stops the program it runs. The
+   shell on a serial `/dev/console` has no controlling terminal, so it has no job control and says
+   so when it starts; `Ctrl+C` does not reach a program it runs.
 3. Repair what you can: run `e2fsck` on an unmounted ext root, open a container with
    `cryptsetup open`, assemble an array with `mdadm --assemble --scan`.
 4. Restart the machine: `Ctrl+Alt+Del`, or `sync; echo b > /proc/sysrq-trigger`. The initramfs
    carries no `reboot`, and `Ctrl+Alt+Del` there restarts at once with no `sync` of its own, so run
    `sync` first after changing a disk.
 
-Do not leave the shell on `/dev/console` with `exit`: it is process 1, and the kernel panics with
-`Attempted to kill init`. On an installed machine that is the shell on `tty1`; on the live medium,
-the one on the serial line.
+On an installed machine `exit` opens a fresh shell on `tty1`. On the live medium, do not leave the
+shell on the serial line with `exit`: it is process 1, and the kernel panics with
+`Attempted to kill init`.
 
 ## Tips
 
@@ -164,10 +169,11 @@ the one on the serial line.
 | `cryptdevice: no device for …` or `Failed to unlock …` | `blkid -t TYPE=crypto_LUKS` | A wrong container UUID on the command line or in the boot state |
 | `Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again.` | The keyboard layout: the prompt reads US key positions | `Ctrl+Alt+Del` gives three more tries; see [Encrypted root](encrypted-root.md#troubleshooting) |
 | `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` on the splash, and the boot goes on | `e2fsck -p` left errors on an ext root | Run `e2fsck -f` on the root while it is not mounted, from the live medium |
-| `Failed to find KDOS installation media.` (live) | Is the stick still in? Did it enumerate within the scan's ten seconds? | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
+| `Failed to find KDOS installation media.` (live) | Is the stick still in? Did it enumerate within the scan's ten seconds? The serial line's `No KDOS media; tried:` line names every device and what it was | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
+| `Failed to find KDOS installation media.`, then `Write the whole ISO with dd, Rufus DD mode or Ventoy; copied files cannot boot.`, from a stick written as files (Rufus in ISO mode, or the ISO's files copied onto a FAT stick) (live) | `No KDOS media; tried:` names the stick's disk and partitions as `not ISO 9660` | The scan finds the medium only as an ISO 9660 filesystem. Write the whole ISO: `dd`, Rufus in DD mode, ISO Image Writer, or a Ventoy stick in normal mode |
 | `Failed to find KDOS installation media.`, with `Cannot release /mnt/iso after <dev> — stopping the scan` before it on the serial line (live) | The scan's one mount point stayed busy | Reboot; report the device |
 | `Failed to set up a loop device for system.sfs`, `Failed to mount system.sfs` or `Error: /sbin/init not found in new root!` (live) | `dmesg` in the rescue shell, for read errors on the medium | The medium was found but its system image cannot be read: write the ISO to the stick again, or use another stick |
-| `Attempted to kill init` | The kernel panicked | After leaving the rescue shell, that was the shell exiting. Otherwise `init` itself died: boot the `KDOS (verbose)` entry and read the messages above the panic |
+| `Attempted to kill init` | The kernel panicked | After leaving the serial line's rescue shell, that was the shell exiting. Otherwise `init` itself died: boot the `KDOS (verbose)` entry and read the messages above the panic |
 
 The stage the splash stopped on narrows it down; see
 [When a boot stops](../../kdos/03-architecture/boot-and-init.md#when-a-boot-stops).

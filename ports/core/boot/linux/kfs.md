@@ -90,5 +90,13 @@ lists the image's initramfs and writes the archive of this kernel's modules it a
   initramfs with this kernel's modules appended, and, when it was installed into the running
   system with the ESP mounted, runs `kdos-bootctl deploy /`. Each step and the reason for it is in
   [A new kernel](../../../../docs/kdos/03-architecture/boot-and-init.md#a-new-kernel).
+- **A same-version reinstall into the running system stops after `depmod`.** When
+  `PKG_OLD_VERSION` (set by kpkgadd) is this `$version-$release` and this boot's ESP
+  directory holds a `vmlinuz` identical to `/boot/vmlinuz-kdos` beside an initramfs identical to
+  the one `kdos-bootctl deploy` would take (`/boot/initramfs-kdos.cpio.gz`, else the image's
+  `/boot/initramfs.cpio.gz` on a root that has none, as a fresh install has), the hook prints `linux <version> is already on the
+  ESP` and builds and deploys nothing. That is what a source build's restore of the kernel's
+  development files does to it; a kernel rebuilt at the same version differs from the ESP's copy
+  and is deployed.
 - **The package is not byte-identical between builds.** An ECDSA signature uses a fresh random
   number each time, so every module's appended signature differs even with the same key.

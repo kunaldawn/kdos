@@ -58,10 +58,18 @@
  * The variable goes through env because sudo clears the caller's. A box with
  * none of the three managers exits NO_PKG_MANAGER, which the caller tells from
  * a package that failed to install.
+ *
+ * A box without sudo exits BOX_UNSET before anything else: distrobox-init
+ * installs sudo with the rest of its dependencies on the box's first start,
+ * and prints "Container Setup Complete!" even when that install failed for
+ * want of a network. A box without sudo is a box whose first setup never
+ * finished, and every install in it would end in "sudo: not found".
  */
 #define NO_PKG_MANAGER 69
+#define BOX_UNSET      70
 
 static const char INSTALL_SH[] =
+	"command -v sudo >/dev/null || exit 70\n"
 	"set -e\n"
 	"if command -v apt-get >/dev/null; then\n"
 	"  sudo env DEBIAN_FRONTEND=noninteractive apt-get update\n"
@@ -615,6 +623,41 @@ static int box_exists_named(const char *box)
 	return 0;
 }
 
+static void box_create(const char *box, const char *image)
+{
+	printf("==> Creating distrobox '%s' (image: %s)\n", box, image);
+	KbArgv a = {0};
+	kb_argv_add(&a, "distrobox");
+	kb_argv_add(&a, "create");
+	kb_argv_add(&a, "--name");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, "--image");
+	kb_argv_add(&a, image);
+	kb_argv_add(&a, "--yes");
+	kb_argv_add(&a, "--no-entry");
+	kb_argv_end(&a);
+	if (run_box_create(&a) != 0)
+		kb_die("could not create the box");
+}
+
+/* `distrobox rm --force <box>`; a failure is a warning, since the caller is
+ * already on its way to an error of its own. */
+static void box_remove(const char *box)
+{
+	printf("==> Removing distrobox '%s'\n", box);
+	KbArgv r = {0};
+	kb_argv_add(&r, "distrobox");
+	kb_argv_add(&r, "rm");
+	kb_argv_add(&r, "--force");
+	kb_argv_add(&r, box);
+	kb_argv_end(&r);
+	int verbose = kb_proc_verbose;
+	kb_proc_verbose = 0;
+	if (kb_run(&r) != 0)
+		kb_warn("could not remove the box '%s'", box);
+	kb_proc_verbose = verbose;
+}
+
 static void fetch_app_usage(void)
 {
 	printf("Usage: kdos-fetch-app [--box <name>] [--image <image>] <app>\n"
@@ -671,19 +714,7 @@ int fetch_app_main(int argc, char **argv)
 	if (!box_exists_named(box)) {
 		if (remove)
 			kb_die("box '%s' does not exist", box);
-		printf("==> Creating distrobox '%s' (image: %s)\n", box, image);
-		KbArgv a = {0};
-		kb_argv_add(&a, "distrobox");
-		kb_argv_add(&a, "create");
-		kb_argv_add(&a, "--name");
-		kb_argv_add(&a, box);
-		kb_argv_add(&a, "--image");
-		kb_argv_add(&a, image);
-		kb_argv_add(&a, "--yes");
-		kb_argv_add(&a, "--no-entry");
-		kb_argv_end(&a);
-		if (run_box_create(&a) != 0)
-			kb_die("could not create the box");
+		box_create(box, image);
 		created = 1;
 	}
 	kb_proc_verbose = 1;
@@ -742,22 +773,43 @@ int fetch_app_main(int argc, char **argv)
 	KbArgv ins = {0};
 	box_sh(&ins, box, INSTALL_SH, app);
 	int rc = kb_run(&ins);
+	/*
+	 * A box whose first setup never finished is removed when this run
+	 * made it, so the next run online starts it afresh. The default box
+	 * found in that state is recreated once: it holds nothing of the
+	 * user's, since no install in it can have succeeded. A box named
+	 * with --box is the user's, and is left for them to remove.
+	 */
+	if (rc == BOX_UNSET && !created) {
+		if (strcmp(box, BOX_DEFAULT))
+			kb_die("'%s' never finished its first setup and has no "
+			       "sudo; remove it with `distrobox rm %s` and run "
+			       "again when online", box, box);
+		printf("==> '%s' never finished its first setup\n", box);
+		box_remove(box);
+		/* A box the remove could not take would make the create
+		 * below fail with nothing to say how to get out. */
+		if (box_exists_named(box))
+			kb_die("'%s' never finished its first setup and could "
+			       "not be removed; remove it with `distrobox rm "
+			       "%s` and run again when online", box, box);
+		box_create(box, image);
+		created = 1;
+		printf("==> Installing '%s' inside '%s'\n", app, box);
+		rc = kb_run(&ins);
+	}
+	if (rc == BOX_UNSET) {
+		box_remove(box);
+		kb_die("'%s's first setup did not finish — the network is "
+		       "needed the first time; run again when online", box);
+	}
 	if (rc == NO_PKG_MANAGER) {
 		/* A box this run made for an image it cannot drive is of no
 		 * use to anyone and would otherwise stay running. A box that
 		 * was already there is the user's, and stays. */
 		if (!created)
 			kb_die("'%s' has none of apt-get, dnf or pacman", box);
-		printf("==> Removing distrobox '%s' again\n", box);
-		KbArgv r = {0};
-		kb_argv_add(&r, "distrobox");
-		kb_argv_add(&r, "rm");
-		kb_argv_add(&r, "--force");
-		kb_argv_add(&r, box);
-		kb_argv_end(&r);
-		kb_proc_verbose = 0;
-		if (kb_run(&r) != 0)
-			kb_warn("could not remove the box '%s'", box);
+		box_remove(box);
 		kb_die("%s has none of apt-get, dnf or pacman", image);
 	}
 	if (rc != 0)

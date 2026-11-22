@@ -17,6 +17,7 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +25,8 @@
 #include <strings.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <sys/reboot.h>
 #include <sys/wait.h>
 
 #include "kinstall.h"
@@ -91,6 +94,79 @@ static const char *KDOS_MARK[] = {
 	"╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝",
 };
 
+/*
+ * THE PREFLIGHT, one line each on the Welcome page and checked again by the
+ * Summary, which refuses BEGIN INSTALL while any line fails: every one of
+ * them is something the install needs after the disk has been erased, so a
+ * run started past a failing line wipes the target and then stops with no
+ * system on it. A failing line says what is wrong and what it costs, never
+ * the requirement in its passing words.
+ *
+ * ki_preflight_fail stands in for this machine in the page harness: -1
+ * measures it, an index fails that one line and passes the rest, and
+ * KI_PREFLIGHT_N or more passes every line.
+ */
+#define KI_PREFLIGHT_N 5
+
+typedef struct {
+	int ok;
+	const char *msg;
+} Preflight;
+
+int ki_preflight_fail = -1;
+
+static int preflight(Preflight *c)
+{
+	/* probe_disks lists read-only disks too, so the count of visible
+	 * disks is not the count of disks an install can write. */
+	int nwritable = 0;
+	for (int i = 0; i < ki_ndisk; i++)
+		if (!ki_disk[i].readonly)
+			nwritable++;
+
+	int ok[KI_PREFLIGHT_N] = {
+		geteuid() == 0,
+		nwritable > 0,
+		kb_have_prog("rsync"),
+		kb_have_prog("mkfs.ext4") && kb_have_prog("mkfs.vfat"),
+		kb_path_exists("/usr/share/limine"),
+	};
+	static const char *const pass[KI_PREFLIGHT_N] = {
+		"running as root",
+		"at least one writable disk",
+		"rsync present",
+		"mkfs.ext4 and mkfs.vfat present",
+		"Limine payload present",
+	};
+	static const char *const fail[KI_PREFLIGHT_N] = {
+		"not running as root — start it with sudo kinstall",
+		"no writable disk — nothing to install to",
+		"rsync missing — nothing can be copied",
+		"mkfs.ext4 or mkfs.vfat missing — the target cannot be formatted",
+		"no Limine payload at /usr/share/limine — the disk would not start",
+	};
+
+	for (int i = 0; i < KI_PREFLIGHT_N; i++) {
+		if (ki_preflight_fail >= 0)
+			ok[i] = i != ki_preflight_fail;
+		c[i].ok = ok[i];
+		c[i].msg = ok[i] ? pass[i] : fail[i];
+	}
+	return KI_PREFLIGHT_N;
+}
+
+/* The first failing preflight line, or NULL when every one passes. */
+static const char *preflight_failing(void)
+{
+	Preflight c[KI_PREFLIGHT_N];
+	int nc = preflight(c);
+
+	for (int i = 0; i < nc; i++)
+		if (!c[i].ok)
+			return c[i].msg;
+	return NULL;
+}
+
 static void welcome_draw(KRect b)
 {
 	int y = b.y;
@@ -126,9 +202,17 @@ static void welcome_draw(KRect b)
 	snprintf(v, sizeof(v), "%d disk%s visible", ki_ndisk,
 		 ki_ndisk == 1 ? "" : "s");
 	y += kv_wrap(b, y, "storage", v, ki_ndisk ? KT_TEXT : KT_ERR);
-	y += kv_wrap(b, y, "install size",
-		     kb_human_size((unsigned long long)ki_sys.payload_kb * 1024),
-		     KT_TEXT);
+	/* What the copy writes, the total its progress line counts to. */
+	if (ki_copy_bytes(1) > 0)
+		snprintf(v, sizeof(v), "%s: %s system, %s box store",
+			 kb_human_size((unsigned long long)(ki_copy_bytes(0) +
+							    ki_copy_bytes(1))),
+			 kb_human_size((unsigned long long)ki_copy_bytes(0)),
+			 kb_human_size((unsigned long long)ki_copy_bytes(1)));
+	else
+		snprintf(v, sizeof(v), "%s",
+			 kb_human_size((unsigned long long)ki_copy_bytes(0)));
+	y += kv_wrap(b, y, "install size", v, KT_TEXT);
 
 	/*
 	 * THE WIDTH IS SHOWN ONLY WHERE IT IS THE UNUSUAL ONE. "UEFI (32-bit)"
@@ -147,34 +231,16 @@ static void welcome_draw(KRect b)
 	ktui_section(b.x, y, b.w, "PREFLIGHT");
 	y++;
 
-	/* probe_disks lists read-only disks too, so the count of visible
-	 * disks is not the count of disks an install can write. */
-	int nwritable = 0;
-	for (int i = 0; i < ki_ndisk; i++)
-		if (!ki_disk[i].readonly)
-			nwritable++;
+	/* A failing line is longer than the 54 cells of an 80-column body and
+	 * wraps under itself; a cut one would lose what it costs. */
+	Preflight c[KI_PREFLIGHT_N];
+	int nc = preflight(c);
 
-	struct {
-		int ok;
-		const char *msg;
-	} checks[] = {
-		/* The failing line says what to do, not the requirement. */
-		{ geteuid() == 0,
-		  geteuid() == 0 ? "running as root"
-				 : "not running as root — start it with sudo kinstall" },
-		{ nwritable > 0, "at least one writable disk" },
-		{ kb_have_prog("rsync"), "rsync present" },
-		{ kb_have_prog("mkfs.ext4") && kb_have_prog("mkfs.vfat"),
-		  "mkfs.ext4 and mkfs.vfat present" },
-		{ kb_path_exists("/usr/share/limine"), "Limine payload present" },
-	};
-
-	for (size_t i = 0; i < sizeof(checks) / sizeof(checks[0]); i++) {
-		ktui_draw_text(b.x, y, 3, checks[i].ok ? ktui_glyph[KT_G_SQUARE] : "!",
-			  checks[i].ok ? KT_ACCENT : KT_ERR, KT_BG, 0);
-		ktui_draw_text(b.x + 2, y, b.w - 2, checks[i].msg,
-			  checks[i].ok ? KT_TEXT : KT_ERR, KT_BG, 0);
-		y++;
+	for (int i = 0; i < nc; i++) {
+		ktui_draw_text(b.x, y, 3, c[i].ok ? ktui_glyph[KT_G_SQUARE] : "!",
+			  c[i].ok ? KT_ACCENT : KT_ERR, KT_BG, 0);
+		y += ktui_para(b.x + 2, y, b.w - 2, c[i].msg,
+			       c[i].ok ? KT_TEXT : KT_ERR);
 	}
 
 }
@@ -360,8 +426,14 @@ static void keyboard_draw(KRect b)
 		lh = 3;
 
 	int lid = ktui_id();
-	if (ktui_list(krect(b.x, y, listw, lh), &kmlist, nkmfilter, keymap_row, NULL,
-		    lid)) {
+	int km_hit = ktui_list(krect(b.x, y, listw, lh), &kmlist, nkmfilter,
+			       keymap_row, NULL, lid);
+	/* An empty list says why: a blank box after a filter reads as a
+	 * keymap list that failed to load. */
+	if (!nkmfilter)
+		ktui_para(b.x + 1, y, listw - 1,
+			  "(no keymap matches the filter)", KT_MID);
+	if (km_hit) {
 		if (kmlist.sel < nkmfilter) {
 			kb_strlcpy(cfg.keymap, keymaps[kmfilter_idx[kmlist.sel]],
 				 sizeof(cfg.keymap));
@@ -409,17 +481,18 @@ static Page page_keyboard = {
 /*
  * THE ZONE LIST IS READ FROM `zone1970.tab`, which tzdata ships here.
  *
- * A hand-written table of labels and POSIX TZ strings went stale the first
- * time a country changed its rules, and it cannot be right for long: the
- * canonical list is maintained upstream and is on the image already. `TZ` is
- * written as `:/etc/localtime` rather than as a rules string, because musl
- * reads a zone FILE when the value starts with a colon — so the two halves of
- * the setting, the symlink and the environment, cannot disagree about the
- * rules for a zone.
+ * A table kept here could not follow upstream rule changes; tzdata's list is
+ * maintained with the rules and is on the image already. The file is in
+ * country-code order, which nobody scrolls by, so the list is sorted by
+ * the zone's name. `TZ` is written as `:/etc/localtime` rather than as a
+ * rules string, because musl reads a zone FILE when the value starts with a
+ * colon — so the two halves of the setting, the symlink and the environment,
+ * cannot disagree about the rules for a zone. Neither is shown: the person
+ * chooses a zone, and the mechanism is this comment's business.
  */
 #define TZ_MAX_ZONES 800
 
-static struct {
+static struct tz_zone {
 	char label[64];
 	char cc[40];		/* the country-code column, as it stands */
 } zones[TZ_MAX_ZONES];
@@ -430,6 +503,12 @@ static const char *tz_dir(void)
 	const char *d = getenv("KDOS_ZONEINFO");
 
 	return d && *d ? d : "/usr/share/zoneinfo";
+}
+
+static int tz_cmp(const void *a, const void *b)
+{
+	return strcmp(((const struct tz_zone *)a)->label,
+		      ((const struct tz_zone *)b)->label);
 }
 
 static void tz_load(void)
@@ -452,6 +531,7 @@ static void tz_load(void)
 			nzones++;
 		}
 		fclose(f);
+		qsort(zones, (size_t)nzones, sizeof(zones[0]), tz_cmp);
 	}
 	/* An image with no zoneinfo tree still has to offer something, and UTC
 	 * is the one zone that needs no data to be right. */
@@ -544,8 +624,8 @@ static void time_draw(KRect b)
 	ktui_section(b.x, y, b.w, "TIME ZONE");
 	y++;
 	y += ktui_para(b.x, y, b.w,
-		  "/etc/localtime is linked to the zone's tzdata file, and TZ "
-		  "points musl at that same file — DST rules included.", KT_MID);
+		  "The zone the installed system's clock shows. It can be "
+		  "changed later in System Settings > Date & Time.", KT_MID);
 	y++;
 
 	ktui_draw_text(b.x, y, 8, "filter", KT_MID, KT_BG, 0);
@@ -564,6 +644,9 @@ static void time_draw(KRect b)
 	int lid = ktui_id();
 	int hit = ktui_list(krect(b.x, y, listw, lh), &tzlist, ntzidx, tz_row,
 			    NULL, lid);
+	if (!ntzidx)
+		ktui_para(b.x + 1, y, listw - 1,
+			  "(no zone matches the filter)", KT_MID);
 	if (tzlist.sel >= 0 && tzlist.sel < ntzidx &&
 	    (hit || (ktui_focused(lid) && tzlist.sel != tz_cur)))
 		tz_commit(tzlist.sel);
@@ -578,9 +661,6 @@ static void time_draw(KRect b)
 		ktui_section(rx, ry, rw, "SELECTED");
 		ry += 2;
 		ry += ktui_para(rx, ry, rw, cfg.tz_label, KT_ACCENT);
-		ry++;
-		ktui_draw_text(rx, ry++, rw, "TZ string", KT_MID, KT_BG, 0);
-		ry += ktui_para(rx, ry, rw, cfg.tz, KT_TEXT);
 		ry++;
 
 		/* The PREVIEW reads the zone file directly: `cfg.tz` names
@@ -731,7 +811,7 @@ static void disk_draw(KRect b)
 	draw_parttable(krect(b.x, y, b.w, 1), d);
 	y += 2;
 
-	unsigned long long need = ki_need_bytes();
+	unsigned long long need = ki_disk_need_bytes();
 	unsigned long long have = ki_disk_bytes(d);
 
 	if (d->nparts) {
@@ -772,6 +852,15 @@ static void disk_draw(KRect b)
 	} else {
 		ktui_note(b.x + 2, y++, b.w - 2, "no partition table");
 	}
+	/* A written stick's partitions are windows into the image on the
+	 * whole device: the line under them names what the disk holds, in
+	 * the words the window's Disk page and the Summary use. */
+	if (d->iso_image) {
+		char what[256];
+
+		ki_disk_contents(d, 0, what, sizeof(what));
+		y += ktui_para(b.x + 2, y, b.w - 2, what, KT_MID);
+	}
 	y++;
 
 	{
@@ -779,7 +868,7 @@ static void disk_draw(KRect b)
 		char v[64];
 		snprintf(v, sizeof(v), "%s", kb_human_size(need));
 		y += kv_wrap(b, y, "install needs", v,
-		      have >= need + KI_DISK_MARGIN ? KT_TEXT : KT_ERR);
+		      have >= need ? KT_TEXT : KT_ERR);
 	}
 
 	if (d->is_boot_media)
@@ -1142,6 +1231,14 @@ static void layout_draw(KRect b)
 				       "asked for at every boot; there is no "
 				       "recovery key and no way back in "
 				       "without it", KT_MID);
+		/* The initramfs loads cfg.keymap (EFI/kdos/keymap) for the
+		 * prompt; a map with no key for a character cannot type it. */
+		char km[sizeof(cfg.keymap) + 128];
+		snprintf(km, sizeof(km),
+			 "typed at boot with the console keymap %s, from "
+			 "the Keyboard step; a character it has no key for "
+			 "cannot be typed there", cfg.keymap);
+		y += ktui_para(b.x + 17, y, b.w - 17, km, KT_MID);
 		y++;
 	}
 	ktui_id_pop();
@@ -1357,8 +1454,8 @@ static void accounts_draw(KRect b)
 	ktui_input(f, cfg.hostname, sizeof(cfg.hostname), 0, "kdos");
 	acct_complaint(&l, f, fw,
 		       ki_host_ok(cfg.hostname) ? NULL
-						: "letters, digits, inner -",
-		       "letters, digits, inner -");
+						: "letters a–z, digits, inner -",
+		       "letters a–z, digits, inner -");
 	ktui_lay_gap(&l, 1);
 
 	/*
@@ -1500,7 +1597,7 @@ static void accounts_draw(KRect b)
 static int accounts_validate(char *err, size_t n)
 {
 	if (!ki_host_ok(cfg.hostname)) {
-		snprintf(err, n, "a host name is letters, digits and dashes, "
+		snprintf(err, n, "a host name is letters a–z, digits and dashes, "
 				 "and does not start or end with a dash");
 		return 1;
 	}
@@ -1597,16 +1694,10 @@ static void system_draw(KRect b)
 		 * in that accent, which is the preview. */
 		if (!(ktui_caps & (KT_CAP_TRUECOLOR | KT_CAP_256)))
 			continue;
-		uint32_t full;
-		ktui_utf8_next(ktui_glyph[KT_G_FULL], &full);
 		for (int k = 0; k < 6; k++) {
 			int sl = k < 2 ? KT_ACCENT : k < 4 ? KT_MID : KT_WARN;
-			KRgb c = ktui_themes[i].slot[sl];
-			KtuiCell cell = { .ch = full, .fg = (uint8_t)sl,
-					  .bg = KT_BG, .attr = KT_A_FGRGB,
-					  .fgc = (uint32_t)c.r << 16 |
-						 (uint32_t)c.g << 8 | c.b };
-			ktui_draw_put(x + 4 + k, yy + 1, &cell);
+			ktui_draw_swatch(x + 4 + k, yy + 1, sl,
+					 ktui_themes[i].slot[sl]);
 		}
 	}
 	y += ((ktui_ntheme + 3) / 4) * 2 + 1;
@@ -1654,8 +1745,13 @@ static void system_draw(KRect b)
 	y++;
 	for (int i = 0; i < ki_nservices; i++) {
 		int on = !(cfg.svc_off & (1u << i));
+		char label[96];
 
-		if (ktui_check(b.x, y++, b.w, ki_services[i].label, &on)) {
+		/* The name `service` takes, beside the one people know: the note
+		 * below points at it, and nothing else on screen shows it. */
+		snprintf(label, sizeof(label), "%s (%s)", ki_services[i].label,
+			 ki_services[i].name);
+		if (ktui_check(b.x, y++, b.w, label, &on)) {
 			if (on)
 				cfg.svc_off &= ~(1u << i);
 			else
@@ -1665,8 +1761,9 @@ static void system_draw(KRect b)
 	}
 	y++;
 	ktui_para(b.x, y, b.w,
-		  "anything here can be flipped later by touching or removing "
-		  "/etc/service.disabled/<name>", KT_MID);
+		  "Each can be changed later with `sudo service enable <name>` "
+		  "or `sudo service disable <name>`, <name> being the one in "
+		  "brackets.", KT_MID);
 }
 
 static Page page_system = {
@@ -1776,12 +1873,12 @@ static void apps_draw(KRect b)
 		return;
 	}
 
-	/* With no binary host named nothing is downloaded during the
-	 * install, so the paragraph says the groups are only recorded and
-	 * names the command that installs them. The command stands on a
-	 * line of its own: the paragraph wraps at a space, and a wrap
-	 * inside it splits the command a reader types. */
-	if (ki_binhost_named) {
+	/* With no binary host named, or no network, nothing is downloaded
+	 * during the install, so the paragraph says the groups are only
+	 * recorded, and why, and names the command that installs them. The
+	 * command stands on a line of its own: the paragraph wraps at a
+	 * space, and a wrap inside it splits the command a reader types. */
+	if (ki_binhost_named && ki_sys.network) {
 		y += ktui_para(b.x, y, b.w,
 			  "A native group is downloaded prebuilt into the new "
 			  "system during the install, when the network "
@@ -1789,10 +1886,13 @@ static void apps_draw(KRect b)
 			  "catalogue after the first login. Space toggles a "
 			  "group.", KT_MID);
 	} else {
-		y += ktui_para(b.x, y, b.w,
-			  "This system names no binary host, so a native group "
-			  "is only recorded; this installs it once a binary "
-			  "host answers:", KT_MID);
+		y += ktui_para(b.x, y, b.w, ki_binhost_named
+			  ? "No network was found, so a native group is only "
+			    "recorded; this installs it after the first boot "
+			    "once there is a network:"
+			  : "This system names no binary host, so a native group "
+			    "is only recorded; this installs it once a binary "
+			    "host answers:", KT_MID);
 		ktui_draw_text(b.x + 2, y++, b.w - 2,
 			       "sudo kdos update install --pending",
 			       KT_MID, KT_BG, 0);
@@ -1826,12 +1926,18 @@ static void apps_draw(KRect b)
 		 kb_human_size(ki_apps_bytes()),
 		 nchosen, nchosen == 1 ? "" : "s");
 	int nn = ki_groups_chosen();
-	/* With no binary host named the install records the groups and
-	 * the Packs step's warning says so; this line says it first. The
-	 * command that installs them is on its own line above. */
-	if (nn && ki_binhost_named)
+	/* With no binary host named, or no network, the install records
+	 * the groups and the Packs step's warning says so; this line says
+	 * it first. The command that installs them is on its own line
+	 * above. */
+	if (nn && ki_binhost_named && ki_sys.network)
 		snprintf(native, sizeof(native),
 			 "%d group%s, downloaded during the install",
+			 nn, nn == 1 ? "" : "s");
+	else if (nn && ki_binhost_named)
+		snprintf(native, sizeof(native),
+			 "%d group%s, recorded; installed after the first "
+			 "boot once there is a network",
 			 nn, nn == 1 ? "" : "s");
 	else if (nn)
 		snprintf(native, sizeof(native),
@@ -1894,6 +2000,7 @@ static void apps_draw(KRect b)
 
 static void apps_enter(void)
 {
+	ki_probe_network();
 	ki_apps_enter();
 	ki_groups_enter();
 }
@@ -1907,6 +2014,107 @@ static Page page_apps = {
  * 9 · SUMMARY
  * ════════════════════════════════════════════════════════════════════════ */
 
+/* Whether the Summary drew BEGIN INSTALL refused, -1 before its first
+ * frame of a visit (FOCUS STAYS ON ITS CONTROL). */
+static int summary_refused = -1;
+
+static void summary_go(void)
+{
+	if (!cfg.dry_run && preflight_failing())
+		return;
+	install_plan();
+	install_start(0);
+	page_goto(page_index("install"));
+}
+
+/* ktui_modal_draw breaks lines only at '\n', and its text column is 50
+ * cells wide at every size the installer draws at (a 56-cell dialog with
+ * three cells of margin each side; below MIN_W the installer draws no
+ * page). Breaking at the last space that fits keeps a long disk model or
+ * partition list from being clipped at the dialog's edge. */
+#define CONFIRM_COLS 50
+
+static void confirm_wrap(const char *src, char *dst, size_t n)
+{
+	kb_strlcpy(dst, src, n);
+	size_t len = strlen(dst);
+
+	size_t start = 0, brk = 0;
+	int cols = 0;
+
+	for (size_t i = 0; i < len; i++) {
+		unsigned char c = (unsigned char)dst[i];
+
+		if (c == '\n') {
+			start = i + 1;
+			brk = 0;
+			cols = 0;
+			continue;
+		}
+		if (c == ' ')
+			brk = i;
+		if ((c & 0xc0) != 0x80)
+			cols++;
+		if (cols > CONFIRM_COLS && brk > start) {
+			dst[brk] = '\n';
+			start = brk + 1;
+			brk = 0;
+			cols = 0;
+			for (size_t j = start; j <= i; j++)
+				if (((unsigned char)dst[j] & 0xc0) != 0x80)
+					cols++;
+		}
+	}
+}
+
+/* BEGIN INSTALL asks once more, naming the disk by model, size and node and
+ * what is on it, and the dialog opens on Back: the Enter that reached this
+ * page, or a doubled one, must not be the consent that erases a disk. */
+static void summary_confirm(void)
+{
+	Disk *d = disk_by_path(cfg.disk);
+	char title[176], msg[512], gone[384] = "";
+
+	if (cfg.plan == PLAN_WIPE) {
+		char disk[192];
+
+		if (d) {
+			snprintf(disk, sizeof(disk), "%s, %s (%s)",
+				 d->model[0] ? d->model : "Disk",
+				 kb_human_size(ki_disk_bytes(d)), d->path);
+			ki_disk_contents(d, 3, gone, sizeof(gone));
+		} else {
+			kb_strlcpy(disk, cfg.disk, sizeof(disk));
+		}
+		kb_strlcpy(title, "Erase the disk?", sizeof(title));
+		if (gone[0])
+			snprintf(msg, sizeof(msg), "Everything on %s is erased: "
+				 "%s. There is no undo.", disk, gone);
+		else
+			snprintf(msg, sizeof(msg), "Everything on %s is erased. "
+				 "There is no undo.", disk);
+	} else {
+		snprintf(title, sizeof(title), "Format %s?", cfg.part_root);
+		if (cfg.format_esp)
+			snprintf(msg, sizeof(msg), "The root partition %s and the "
+				 "EFI system partition %s are reformatted. Other "
+				 "partitions are left alone. There is no undo.",
+				 cfg.part_root, cfg.part_esp);
+		else
+			snprintf(msg, sizeof(msg), "The root partition %s is "
+				 "reformatted. Other partitions are left alone. "
+				 "There is no undo.", cfg.part_root);
+	}
+
+	char wrapped[512];
+
+	confirm_wrap(msg, wrapped, sizeof(wrapped));
+	ktui_modal_confirm(title, wrapped,
+			   cfg.plan == PLAN_WIPE ? "Erase and install"
+						 : "Format and install",
+			   "Back", summary_go);
+}
+
 static void summary_draw(KRect b)
 {
 	int y = b.y;
@@ -1917,8 +2125,7 @@ static void summary_draw(KRect b)
 	y++;
 
 	y += kv_wrap(b, y, "keymap", cfg.keymap, KT_TEXT);
-	snprintf(v, sizeof(v), "%s  (%s)", cfg.tz_label, cfg.tz);
-	y += kv_wrap(b, y, "time zone", v, KT_TEXT);
+	y += kv_wrap(b, y, "time zone", cfg.tz_label, KT_TEXT);
 	y += kv_wrap(b, y, "hostname", cfg.hostname, KT_TEXT);
 	if (cfg.oem) {
 		y += kv_wrap(b, y, "user",
@@ -1992,9 +2199,9 @@ static void summary_draw(KRect b)
 	ktui_section(b.x, y, b.w, "DISK");
 	y++;
 	if (d) {
-		snprintf(v, sizeof(v), "%s  %s  %s", d->path,
-			 kb_human_size(ki_disk_bytes(d)),
-			 d->model);
+		snprintf(v, sizeof(v), "%s, %s (%s)",
+			 d->model[0] ? d->model : "Disk",
+			 kb_human_size(ki_disk_bytes(d)), d->path);
 		y += kv_wrap(b, y, "target", v, KT_TEXT);
 	}
 	y += kv_wrap(b, y, "mode",
@@ -2044,6 +2251,17 @@ static void summary_draw(KRect b)
 		snprintf(v + strlen(v), sizeof(v) - strlen(v), ", %ld MiB",
 			 cfg.swap_mb);
 	y += kv_wrap(b, y, abswap ? "swap volume" : "swap", v, KT_TEXT);
+	/* A one-slot root left with less than KI_ROOT_LOW_BYTES installs and
+	 * starts, and then has no room for what the first login offers to
+	 * add; the row is drawn only then, so an ample root costs the page
+	 * no line. */
+	if (ki_root_free_bytes() >= 0 &&
+	    (unsigned long long)ki_root_free_bytes() < KI_ROOT_LOW_BYTES) {
+		snprintf(v, sizeof(v), "%s free after the install: too little "
+			 "for application groups or boxed apps",
+			 kb_human_size((unsigned long long)ki_root_free_bytes()));
+		y += kv_wrap(b, y, "root space", v, KT_WARN);
+	}
 
 	/*
 	 * THE BUTTONS STAY ON THE SCREEN. Under the review come the line, the
@@ -2053,14 +2271,66 @@ static void summary_draw(KRect b)
 	 * above the dry-run note, the one above the buttons and last the one
 	 * above the line, so BEGIN INSTALL is drawn inside the body.
 	 */
-	const char *what = cfg.plan == PLAN_WIPE && d
-		? "Starting the install destroys every partition on the "
-		  "target and everything on them. There is no undo and "
-		  "no confirmation after this page."
-		: "Starting the install reformats the root partition. "
-		  "Other partitions on the disk are left alone.";
-	int nwhat = ktui_para(b.x, MEASURE_Y, b.w - 2, what, KT_ERR);
-	int need = 1 + nwhat + (cfg.dry_run ? 1 : 0) + 1;
+	char gone[384] = "", whatbuf[512];
+	const char *what = whatbuf;
+	int nwhat;
+
+	/* A failing preflight line stands above the buttons and BEGIN INSTALL
+	 * is refused while it fails (THE PREFLIGHT); a rehearsal writes
+	 * nothing and still runs. The status line names the way out. */
+	const char *pf = preflight_failing();
+	char pfbuf[160] = "";
+	int npf = 0;
+
+	if (pf) {
+		snprintf(pfbuf, sizeof(pfbuf), "! %s", pf);
+		npf = ktui_para(b.x, MEASURE_Y, b.w - 2, pfbuf, KT_ERR);
+	}
+	ki_pages[ki_page]->subtitle = pf && !cfg.dry_run
+		? "fix the marked Welcome line first" : "the point of no return";
+
+	/* The erase names what it destroys, partition by partition, so the
+	 * disk holding another system is told from an empty one here: three
+	 * of them and a count of the rest, or fewer, down to none, until the
+	 * line, the warning, the dry-run note and the buttons fit under the
+	 * review with no blank rows. */
+	if (cfg.plan == PLAN_WIPE && d) {
+		int room = b.y + b.h - y - 1 - (cfg.dry_run ? 1 : 0) - npf - 1;
+		/* A rehearsal has no confirm to promise: it writes nothing. */
+		const char *then = cfg.dry_run
+			? "REHEARSE INSTALL writes nothing."
+			: "BEGIN INSTALL asks once more, naming the disk; "
+			  "after that there is no undo.";
+
+		for (int max = 3; ; max--) {
+			if (max > 0)
+				ki_disk_contents(d, max, gone, sizeof(gone));
+			if (max > 0 && gone[0])
+				snprintf(whatbuf, sizeof(whatbuf), "Starting the "
+					 "install destroys everything on the "
+					 "target: %s. %s", gone, then);
+			else
+				snprintf(whatbuf, sizeof(whatbuf), "Starting the "
+					 "install erases the target. %s", then);
+			nwhat = ktui_para(b.x, MEASURE_Y, b.w - 2, what, KT_ERR);
+			if (max <= 0 || !gone[0] || nwhat <= room)
+				break;
+		}
+	} else {
+		if (cfg.format_esp)
+			snprintf(whatbuf, sizeof(whatbuf), "Starting the install "
+				 "reformats the root partition %s and the EFI "
+				 "system partition %s. Other partitions on the "
+				 "disk are left alone.", cfg.part_root,
+				 cfg.part_esp);
+		else
+			snprintf(whatbuf, sizeof(whatbuf), "Starting the install "
+				 "reformats the root partition %s. Other "
+				 "partitions on the disk are left alone.",
+				 cfg.part_root);
+		nwhat = ktui_para(b.x, MEASURE_Y, b.w - 2, what, KT_ERR);
+	}
+	int need = 1 + nwhat + (cfg.dry_run ? 1 : 0) + npf + 1;
 	int slack = b.y + b.h - y - need;
 	int g_above = slack-- > 0;
 	int g_button = slack-- > 0;
@@ -2083,13 +2353,35 @@ static void summary_draw(KRect b)
 			  KT_WARN, KT_BG, 0);
 	}
 	y += g_button;
+	if (pf)
+		y += ktui_para(b.x, y, b.w - 2, pfbuf, KT_ERR);
+
+	/*
+	 * FOCUS STAYS ON ITS CONTROL WHEN THE VERDICT FLIPS. A disabled button
+	 * claims no focus id, so a preflight line that starts or stops failing
+	 * while the page is up (fixed on another console) moves every later id
+	 * by one; unadjusted, the caret would jump from Save answer file onto
+	 * BEGIN INSTALL with nothing pressed. A focus on BEGIN INSTALL as it is
+	 * refused lands on the control that takes its id.
+	 */
+	int refused = pf && !cfg.dry_run;
+	int base = ktui_id_base();
+	if (summary_refused >= 0 && refused != summary_refused) {
+		int f = ktui_focus_get();
+		if (f < KTUI_ID_CHROME && (refused ? f > base : f >= base))
+			ktui_focus_set(f + (refused ? -1 : 1));
+	}
+	summary_refused = refused;
 
 	/* Both buttons inside the 54 cells of an 80-column body. */
 	if (ktui_button(krect(b.x, y, 28, 1),
-		      cfg.dry_run ? "REHEARSE INSTALL" : "BEGIN INSTALL", 1, 1)) {
-		install_plan();
-		install_start(0);
-		page_goto(page_index("install"));
+		      cfg.dry_run ? "REHEARSE INSTALL" : "BEGIN INSTALL",
+		      !refused, 1)) {
+		/* A rehearsal executes nothing, so it starts at once. */
+		if (cfg.dry_run)
+			summary_go();
+		else
+			summary_confirm();
 	}
 	if (ktui_button(krect(b.x + 30, y, 20, 1), "Save answer file", 1, 0)) {
 		if (conf_save("/tmp/kinstall.conf") == 0)
@@ -2107,13 +2399,25 @@ static void summary_draw(KRect b)
  * disk, and Alt+N is one keystroke away from Alt+B. */
 static int summary_validate(char *err, size_t n)
 {
-	snprintf(err, n, "press BEGIN INSTALL to start — Next does not");
+	/* A refused BEGIN INSTALL is not a button to send anyone to. */
+	if (!cfg.dry_run && preflight_failing())
+		snprintf(err, n, "fix the marked Welcome line first");
+	else
+		snprintf(err, n, "press %s to start — Next does not",
+			 cfg.dry_run ? "REHEARSE INSTALL" : "BEGIN INSTALL");
 	return 1;
+}
+
+/* A visit starts with no verdict to compare against: page_goto has reset
+ * focus already. */
+static void summary_enter(void)
+{
+	summary_refused = -1;
 }
 
 static Page page_summary = {
 	"summary", "Summary", "the point of no return",
-	NULL, summary_draw, summary_validate, NULL, 0
+	summary_enter, summary_draw, summary_validate, NULL, 0
 };
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -2180,6 +2484,9 @@ static int warning_list(KRect b, int y, int gap)
 	}
 	return y - y0;
 }
+
+/* Set by main.c for `kinstall --unattended`. */
+int ki_unattended;
 
 static void install_draw(KRect b)
 {
@@ -2322,6 +2629,17 @@ static void install_draw(KRect b)
 		y += tail;
 	}
 
+	/* An unattended run has nobody to press a button and ends by itself
+	 * (main.c), so it draws none; its last line says where it goes. */
+	if (ki_unattended && (inst.failed || inst.done)) {
+		ktui_draw_text(b.x, b.y + b.h - 1, b.w,
+			       inst.failed ? "unattended: exiting, the reason "
+					     "to standard error"
+					   : "unattended: ending by itself",
+			       KT_MID, KT_BG, 0);
+		return;
+	}
+
 	/* The four buttons sized to their labels, inside the 54 cells of an
 	 * 80-column body. */
 	if (inst.failed) {
@@ -2332,7 +2650,8 @@ static void install_draw(KRect b)
 			log_full = 1;
 		if (ktui_button(krect(b.x + 30, by, 9, 1), "Shell", 1, 0)) {
 			char *a[] = { "/bin/bash", "-l", NULL };
-			ktui_run_console(a);
+			ktui_run_console_note("A root shell. Type exit to return "
+					      "to the installer.", a);
 		}
 		if (ktui_button(krect(b.x + 41, by, 9, 1), "Abort", 1, 0))
 			ki_quit = 1;
@@ -2373,11 +2692,39 @@ static Page page_install = {
  * 11 · DONE
  * ════════════════════════════════════════════════════════════════════════ */
 
+/* The live root is a squashfs read from the boot medium, so with the medium
+ * out no program can page in, `reboot` and init's own shutdown among them,
+ * and neither can a page of kinstall or its libraries that was dropped.
+ * Entering this page locks what kinstall has mapped into memory while the
+ * medium is still in, so the fallback below can run without it. */
+static void done_enter(void)
+{
+	(void)mlockall(MCL_CURRENT);
+}
+
+/* Sync first, while the disks are reachable; then run `reboot`, and when it
+ * cannot run or does not succeed, try the system call, which reads no file.
+ * The system call fails without CAP_SYS_BOOT; say so on the restored
+ * terminal rather than end without a word. */
 static void reboot_now(void)
 {
+	sync();
 	ktui_term_shutdown();
-	execlp("reboot", "reboot", NULL);
-	_exit(0);
+	pid_t pid = fork();
+
+	if (pid == 0) {
+		execlp("reboot", "reboot", (char *)NULL);
+		_exit(127);
+	}
+	int st = 0;
+
+	if (pid > 0 && waitpid(pid, &st, 0) == pid && WIFEXITED(st) &&
+	    WEXITSTATUS(st) == 0)
+		_exit(0);
+	sync();
+	reboot(RB_AUTOBOOT);
+	fprintf(stderr, "kinstall: could not restart: %s\n", strerror(errno));
+	_exit(1);
 }
 
 static void done_view_log(void)
@@ -2418,8 +2765,9 @@ static void done_draw(KRect b)
 	y++;
 
 	y += ktui_para(b.x, y, b.w,
-		  "Remove the boot medium before restarting, or the firmware "
-		  "will hand control back to the live image.", KT_MID);
+		  "Choose Reboot now, and take the boot medium out when the "
+		  "screen goes dark, before the firmware starts it again.",
+		  KT_MID);
 	y++;
 
 	/* Two rows, so every button and its whole label sit inside the 54
@@ -2448,7 +2796,7 @@ static int done_event(KtuiEvent *ev)
 
 static Page page_done = {
 	"done", "Done", "reboot into KDOS",
-	NULL, done_draw, NULL, done_event, 1
+	done_enter, done_draw, NULL, done_event, 1
 };
 
 /* ──────────────────────────────────────────────────────────────────────── */
