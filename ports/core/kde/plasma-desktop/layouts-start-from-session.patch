@@ -1,0 +1,102 @@
+Subject: Keyboard KCM: turning on layouts starts from the layouts the session runs
+
+An account whose kxkbrc names no layout opens the Layouts page with an
+empty list. Turning on "Configure layouts" kept it empty, so the first
+layout added became the only one and replaced the layout the session
+was running. When the list is empty as the option is turned on, fill it
+with the layouts KWin runs (org.kde.keyboard /Layouts getLayoutsList),
+their variants from XKB_DEFAULT_VARIANT when XKB_DEFAULT_LAYOUT names
+the same layouts; from the XKB_DEFAULT_* variables alone without KWin;
+and with "us" without either. The rows are added through the model, so
+the page asks for Apply.
+
+diff -ruN a/kcms/keyboard/kcm_keyboard.cpp b/kcms/keyboard/kcm_keyboard.cpp
+--- a/kcms/keyboard/kcm_keyboard.cpp
++++ b/kcms/keyboard/kcm_keyboard.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "kcm_keyboard.h"
+ 
++#include <QDBusArgument>
+ #include <QDBusConnection>
+ #include <QDBusMessage>
+ 
+@@ -29,6 +30,62 @@
+ 
+ #include "debug.h"
+ 
++namespace
++{
++// The layouts the session runs, as (layout, variant) pairs. KWin's
++// getLayoutsList names each layout and no variant; the variants are taken
++// from XKB_DEFAULT_VARIANT when XKB_DEFAULT_LAYOUT names the same layouts,
++// which is how startplasma hands the system layout to a session whose
++// kxkbrc names none. Without KWin on the bus the environment alone answers,
++// and without either the answer is "us", the layout xkbcommon falls back to.
++QList<QPair<QString, QString>> sessionLayouts()
++{
++    const QStringList envLayouts = qEnvironmentVariable("XKB_DEFAULT_LAYOUT").split(QLatin1Char(','));
++    const QStringList envVariants = qEnvironmentVariable("XKB_DEFAULT_VARIANT").split(QLatin1Char(','));
++
++    QStringList layouts;
++    QDBusMessage message = QDBusMessage::createMethodCall(QStringLiteral("org.kde.keyboard"),
++                                                          QStringLiteral("/Layouts"),
++                                                          QStringLiteral("org.kde.KeyboardLayouts"),
++                                                          QStringLiteral("getLayoutsList"));
++    const QDBusMessage reply = QDBusConnection::sessionBus().call(message, QDBus::Block, 2000);
++    if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()
++        && reply.arguments().constFirst().canConvert<QDBusArgument>()) {
++        const QDBusArgument argument = reply.arguments().constFirst().value<QDBusArgument>();
++        argument.beginArray();
++        while (!argument.atEnd()) {
++            QString shortName;
++            QString displayName;
++            QString longName;
++            argument.beginStructure();
++            argument >> shortName >> displayName >> longName;
++            argument.endStructure();
++            if (!shortName.isEmpty()) {
++                layouts.append(shortName);
++            }
++        }
++        argument.endArray();
++    }
++
++    const bool variantsMatch = layouts.isEmpty() || layouts == envLayouts;
++    if (layouts.isEmpty()) {
++        layouts = envLayouts;
++    }
++
++    QList<QPair<QString, QString>> result;
++    for (int i = 0; i < layouts.size(); ++i) {
++        if (layouts.at(i).isEmpty()) {
++            continue;
++        }
++        result.append({layouts.at(i), variantsMatch ? envVariants.value(i) : QString()});
++    }
++    if (result.isEmpty()) {
++        result.append({QStringLiteral("us"), QString()});
++    }
++    return result;
++}
++}
++
+ KCMKeyboard::KCMKeyboard(QObject *parent, const KPluginMetaData &data)
+     : KQuickManagedConfigModule(parent, data)
+     , m_data(new KeyboardSettingsData(this))
+@@ -46,6 +103,15 @@
+     connect(m_data->keyboardSettings(), &KeyboardSettings::configureLayoutsChanged, this, [this]() -> void {
+         if (m_data->keyboardSettings()->configureLayouts()) {
+             m_userLayoutModel->reset();
++            // An empty list would replace the session's layout with the first
++            // one added; start it from the layouts the session runs, so the
++            // first one added joins them.
++            if (m_userLayoutModel->rowCount() == 0) {
++                const auto layouts = sessionLayouts();
++                for (const auto &[layout, variant] : layouts) {
++                    m_userLayoutModel->addLayout(layout, variant, QKeySequence());
++                }
++            }
+         } else {
+             m_userLayoutModel->clear();
+         }

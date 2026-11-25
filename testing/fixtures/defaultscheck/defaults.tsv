@@ -126,9 +126,12 @@ kde-mimeapps.list	Default Applications	x-scheme-handler/https	firefox-esr.deskto
 kde-mimeapps.list	Default Applications	text/html	firefox-esr.desktop	kdos	Web: Firefox ESR
 kde-mimeapps.list	Default Applications	x-scheme-handler/mailto	thunderbird.desktop	kdos	Mail: Thunderbird
 kde-mimeapps.list	Default Applications	text/calendar	thunderbird.desktop	kdos	Calendar: Thunderbird
+mimeapps.list	Removed Associations	text/calendar	org.kde.kate.desktop;okularApplication_txt.desktop;	kdos	Calendar: never Kate or Okular, which claim it as plain text
 kde-mimeapps.list	Default Applications	text/vcard	thunderbird.desktop	kdos	Contacts: Thunderbird
 kde-mimeapps.list	Default Applications	application/vnd.oasis.opendocument.text	libreoffice-writer.desktop	kdos	Office: LibreOffice
 kde-mimeapps.list	Default Applications	application/vnd.openxmlformats-officedocument.spreadsheetml.sheet	libreoffice-calc.desktop	kdos	Office: LibreOffice
+mimeapps.list	Removed Associations	application/vnd.oasis.opendocument.text	org.kde.ark.desktop;	kdos	Office on the base: the chooser, not Ark
+mimeapps.list	Removed Associations	application/vnd.openxmlformats-officedocument.wordprocessingml.document	org.kde.ark.desktop;	kdos	Office on the base: the chooser, not Ark
 kde-mimeapps.list	Default Applications	inode/directory	org.kde.dolphin.desktop	kdos	Files: Dolphin
 kde-mimeapps.list	Default Applications	application/zip	org.kde.ark.desktop	kdos	Archives: Ark
 kde-mimeapps.list	Default Applications	text/plain	org.kde.kate.desktop	kdos	Text: Kate

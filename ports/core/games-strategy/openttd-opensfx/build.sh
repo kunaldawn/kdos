@@ -15,3 +15,4 @@ cd opensfx-$version
 install -d "$PKG/usr/share/games/openttd/baseset/opensfx"
 install -m644 *.cat opensfx.obs license.txt readme.txt changelog.txt \
 	"$PKG/usr/share/games/openttd/baseset/opensfx/"
+install -Dm644 license.txt "$PKG/usr/share/licenses/$name/license.txt"

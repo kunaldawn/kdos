@@ -20,3 +20,4 @@ cmake .. -G Ninja \
 	-DWITH_UNIT_TESTS=OFF
 ninja
 DESTDIR=$PKG ninja install
+install -Dm644 "$SRC/docs/COPYING" "$PKG/usr/share/licenses/$name/COPYING"

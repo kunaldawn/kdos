@@ -2154,44 +2154,28 @@ static int cmd_doctor(int argc, char **argv)
 	return doctor_warns ? 1 : 0;
 }
 
+/* kdos-bootctl's reading of a root's identity (bootctl.c). */
+void bootctl_root_version(const char *root, char *out, size_t n);
+
 static int cmd_version(void)
 {
 	struct utsname u;
-	char rel[128] = "", build[128] = "";
-	char *os = kb_read_all("/etc/os-release", NULL);
+	char rel[128] = "";
+	const char *root = getenv("KDOS_UPDATE_SYSROOT");
 
 	uname(&u);
-	/* VERSION_ID is what the update machinery compares, so it is what is
-	 * printed: a second notion of "the version" would be one that drifts.
-	 * BUILD_ID goes beside it, or a `-dirty` development image and the
-	 * release it is not would print the same line. */
-	for (char *l = os; l && *l;) {
-		char *nl = strchr(l, '\n');
-		char *dst = NULL;
-		const char *v = NULL;
-
-		if (nl)
-			*nl = '\0';
-		if (!strncmp(l, "VERSION_ID=", 11)) {
-			v = l + 11;
-			dst = rel;
-		} else if (!strncmp(l, "BUILD_ID=", 9)) {
-			v = l + 9;
-			dst = build;
-		}
-		if (dst) {
-			if (*v == '"')
-				v++;
-			kb_strlcpy(dst, v, sizeof(rel));
-			dst[strcspn(dst, "\"")] = '\0';
-		}
-		l = nl ? nl + 1 : NULL;
-	}
-	free(os);
+	/* The release in the one form every surface gives it, the boot menu,
+	 * the splash, the installer, the greeter and What's New: VERSION from
+	 * /etc/kdos-release, `0.2.1` on a release build and `0.2.1+<BUILD_ID>`
+	 * on any other, or os-release's VERSION_ID and `+BUILD_ID` on a root
+	 * with no record. A second form would name one machine two ways, and a
+	 * form without the build would print a `-dirty` development image as
+	 * the release it is not. KDOS_UPDATE_SYSROOT stands in for the root, as
+	 * it does for `kdos update notes`; the line is left out when neither
+	 * file names a release. */
+	bootctl_root_version(root && *root ? root : "/", rel, sizeof(rel));
 	printf("%sKDOS%s — Kool Desktop Operating System\n", C_A, C_0);
-	if (*rel && *build)
-		printf("  release  %s (build %s)\n", rel, build);
-	else if (*rel)
+	if (*rel)
 		printf("  release  %s\n", rel);
 	printf("  kernel   %s\n", u.release);
 	printf("  libc     musl\n");

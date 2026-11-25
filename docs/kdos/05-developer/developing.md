@@ -690,7 +690,10 @@ writes one manual page for every `kdos-*` command in [the command index](../06-r
 and for the commands of ours named without the prefix (`kpkg`, `kpkgadd`, `kpkgdel`, `kpkgbuild`,
 `kpkgdepends`, `ksvc`, `service`, `kinstall`, `xdg-terminal-exec`, listed in `mkbook.py`), whose
 DESCRIPTION is the book section that command's row links to, with the section's "this chapter"
-read as "this page". Its NAME line, which `whatis` and
+read as "this page" and each link to another page of the book printed as its text and the
+`kdos-doc` command that opens it, `Installation (kdos-doc 02-user-guide/installation)`. A
+preformatted line of a section a manual page is made from stays within 72 columns, because man
+sets it 7 columns in and never wraps it; selftest fails one that does not. A page's NAME line, which `whatis` and
 `apropos` print, is that row's description cell as plain ASCII text: lowdown renders every manual
 page with smart typography off (`--out-no-smarty`), the markdown specials in the cell are escaped,
 and typographic dashes, quotes and ellipses become their ASCII forms, so `--json` and
@@ -823,9 +826,9 @@ that every recipe parses, that the phase scripts are valid shell, and similar. `
 compiles `kdosbuild`, `kinstall` and the other C programs it tests into a temporary directory, which
 it deletes when it exits, and runs their assertions. Among other things it resolves the installer's
 plan over the shipped catalogue (`kinstall --dump plan`), and runs the root daemons against
-recorded `/proc` trees and on a private bus with stand-ins for their peers. It needs a short
-`TMPDIR`, because some of its blocks make Unix sockets under it; see
-[A short TMPDIR](testing.md#a-short-tmpdir). On one development machine each script took about two and a
+recorded `/proc` trees and on a private bus with stand-ins for their peers. Its Unix sockets and
+pack store live in a short directory of their own under `/tmp`, so a `TMPDIR` of up to 172
+characters serves; see [TMPDIR](testing.md#tmpdir). On one development machine each script took about two and a
 half minutes. `testing/plasmatest.sh` is the Qt half: no bare host has Qt 6, KDE Frameworks 6 and
 Plasma's development files, so it runs in the development image and refuses anywhere else. What
 each harness proves is in [Testing](testing.md#what-each-tool-proves).
@@ -996,14 +999,15 @@ above. Under `KDOS_IMAGE=full` that root is `build/fs`.
    About this release, the tag's `ports/RELEASE` with each of its headings one level down; the live
    ISO `kdos-<tag>.iso`, which starts logged in as `kdos` (password `kdos`, also root's), and the
    joining of its parts when there are several; what a machine needs: x86-64, UEFI or BIOS, 4 GB
-   of memory and Secure Boot off; the medium the ISO fits; the disk two slots
+   of memory and Secure Boot off; what the image carries, left out when the tag has a
+   `ports/RELEASE`, whose opening paragraph says it; the medium the ISO fits; the disk two slots
    need, worked out from the ISO's `system.sfs` and the tag's `src/system/kinstall-core` (the
    limits, `KI_DISK_MARGIN` and `KI_ROOT_FREE_MB` of `kinstall-core.h`, and `KI_VOLUME_META_MB`
    and the default `cfg.swap_mb` of `conf.c`), for the current base about 24.5 GiB with the
    default 4 GiB swap, 20.5 GiB with none and 7.5 GiB for one root, and left out, with a `FAILED` line, when a figure
    cannot be read. When `ports/RELEASE` has a `What it needs` section of its own, that section is
    the release's requirements and names the live account: the machine sentence, the disk sentence
-   and the password clause are left out, and only the medium line stays, under Download; links to the tag's Getting started and Installation guides; the check; and the
+   and the live account clause are left out, and only the medium line stays, under Download; links to the tag's Getting started and Installation guides; the check; and the
    signature check with OpenSSL 3, below.
 10. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
    `kdos-update.idx` and its `.sig`, `SHA256SUMS`, `SHA256SUMS.sig` and `kdos-release.pub`, hashing each again immediately before its upload. An asset already there

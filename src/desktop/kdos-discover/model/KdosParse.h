@@ -15,8 +15,9 @@
  *
  * The one file read directly is the catalogue itself, for what no command
  * prints: each row's parent chain (how many images an install builds, which is
- * the install's progress) and its Debian packages (which AppStream component
- * describes it).
+ * the install's progress), its Debian packages (which AppStream component
+ * describes it), and for an application no component describes, its `deb`
+ * and `about` rows.
  * ---------------------------------
  */
 
@@ -44,6 +45,15 @@ struct CatalogueRow {
     QString category;
     QString tagline;
     quint64 bytes = 0;
+    // A `deb` row names this id: the application is its publisher's own .deb
+    // release, which no Debian component describes.
+    bool vendorDeb = false;
+    // An `about` row's fields, for a row no Debian component describes; a
+    // component fills only what these leave empty.
+    QString license;
+    QString author;
+    QString homepage;
+    QString description; // plain text
 };
 
 struct CatalogueGroup {

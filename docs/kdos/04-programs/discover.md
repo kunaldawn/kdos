@@ -34,7 +34,12 @@ Every resource in Discover carries an origin, which names the source it comes fr
 | firmware | Firmware updates for this machine's devices | fwupd |
 
 The origin is also what an application's Install button names: "Install from KDOS packs", "Install
-from KDOS medium" or "Install from Debian, built in a box".
+from KDOS medium" or "Install from Debian, built in a box". A `kdos-store` application the catalogue
+builds from its publisher's own `.deb` (a `deb` row; VSCodium is the one shipped) keeps that origin
+for the filter and the sidebar, and its button names the row's publisher, the `about` row's author
+or else the application's name: "Install from VSCodium's own package, built in a box". No Debian
+component describes such an application, so its page takes its licence, author, homepage and
+description from the catalogue's `about` row for it.
 
 The KDOS backend is Discover's default for an application install when more than one source could
 take it (`[ResourcesModel] currentApplicationBackend=kdos-backend` in
@@ -44,31 +49,75 @@ reviews. A search lists by relevance whatever that key says, because Discover se
 every search and never stores it, and the Installed page sorts by `installedPageSorting`, which
 Discover's own default leaves at name.
 
-The KDOS backend scores each result, a result takes the best rank it earns, and Discover breaks a
-tie by name. Highest first: the name is the whole term; a keyword or a component name of the
-package is the whole term; the application's category is the one the term stands for (`browser`
-and `web` for WebBrowser, `mail` and `email` for Email, `office` for Office, and a few more in
-`searchQuery`), raised when its summary says a word for that category and again when its name
-holds the term; the name starts with the term; the name holds it as a whole word; the name holds it
-at all; the package name; a keyword holds it; the summary holds it. A search for "browser"
-therefore lists the web browsers before AT-SPI Browser, "chrome" lists Chromium, whose keyword it
-is, before mkchromecast, and "mail" lists the mail clients (KMail, Thunderbird, Claws Mail) ahead
-of the tools that only file themselves under Email, such as Account Wizard and KTnef. A catalogue
-row or a pack names one main category, Network rather than WebBrowser, so for one of those a
-summary that says a word for the category counts as the category: Surf's "Simple web browser"
-lists it with the web browsers. A program that runs only in a terminal (category `ConsoleOnly`, or
-an AppStream console application) takes the keyword and category ranks below every name match, so
-"mail" lists the mail clients that draw a window ahead of aerc, which "aerc" still lists first. A
-terminal program reaches that rank only through `ConsoleOnly`: a desktop entry that sets
-`Terminal=true` without it, as w3m's and Lagrange's do, ranks for "browser" with the graphical
-browsers.
+The KDOS backend ranks each result, and a result takes the best rank it earns. Discover sorts a
+search by its own relevance, which adds a term for how close the name is to the search and one for
+a name that holds it; the backend scales its rank so that the rank decides the order, and
+Discover's name terms, then the name itself, only order the results of one rank. Within one rank
+the binary host's ports and packs list before a Debian build: the backend adds half a rank step to
+every result but a Debian package's, more than Discover's name terms and less than a step. Highest first:
+the name is the whole term; for a term that names no category, a keyword or a component name of
+the package is the whole term; the application's category is the one the term stands for
+(`browser` and `web` for WebBrowser, `mail` and `email` for Email, `office` for Office, `video`
+for Video, and a few more in `searchQuery`), raised when its summary says a word for that category
+and again when its name holds the term; for a term that names a category, a keyword that is the
+whole term on a program outside the category; the name starts with the term; the name holds it as
+a whole word; the name holds it at all; the package name; a keyword holds it; the summary holds
+it. A search for "browser" therefore lists the web browsers before AT-SPI Browser, "chrome" lists
+Chromium, whose keyword it is, before mkchromecast, "mail" lists the mail clients (KMail,
+Thunderbird, Claws Mail) ahead of the tools that only file themselves under Email, such as Account
+Wizard and KTnef, and "video" lists the video players and editors ahead of Qt V4L2 test Utility,
+which carries the keyword but files itself under AudioVideo alone. A catalogue row or a pack names
+one main category, Network rather than WebBrowser, so for one of those a summary that says a word
+for the category counts as the category, raise and all: Surf's "Simple web browser" lists it with
+the web browsers. An application filed under AudioVideo with a narrower category the term does not
+name (AudioVideoEditing, Player, Recorder) counts as a Video or Music application, raise and all,
+when the head of its summary, the words before its first "for", "with" or "to", says the word:
+Kdenlive's "Video editor" and Dragon Player's "Play video files" list them with the video
+players. Any other application that does not file itself there takes the category's base rank
+when the head of its summary says a word for what the category's programs handle (mail, chat,
+music, games): level with the members that do not say it, below the ones that both file themselves
+there and say it, and above every name, keyword or summary match. Kontact, filed under Office
+alone, "Handle all your emails", lists with the mail applications, ahead of KMail Import Wizard
+(its name) and gLabels (its "mail merge" keyword); SieveEditor, "Editor for email filter Sieve
+scripts", does not. The words for browsers, editors, terminals, video and office also describe
+other programs, so they take no such stand-in: "browser" does not list CUPS's "CUPS Web Interface"
+among the browsers, nor "video" Chocolate Doom Setup's "Controls, sound, video and network
+settings". A Debian build in a box takes the category's base rank, with neither raise, so every
+native application of the category that says the word lists above Light Video or OpenShot. A program
+that runs only in a terminal (category `ConsoleOnly`, or an AppStream console application) takes the
+keyword and category ranks below every name match, so "mail" lists the mail clients that draw a
+window ahead of aerc, which "aerc" still lists first. An accessory, a program whose summary calls it
+a notifier, tray icon, daemon, applet, indicator, gateway, plugin, thumbnailer or thumbnail
+generator before any "for", "with" or "to" (so Ymuse, a "client for Music Player Daemon", is not
+one), takes the keyword and category ranks below every application of the category and above a name
+that starts with the term, so "mail" lists Evolution, Geary and Thunderbird ahead of Mailnag and
+Birdtray, "video" lists FFmpeg Thumbnailer after the video applications, and "mailnag" still lists
+Mailnag first. Media plumbing takes the same place for "video" and "music", the terms whose
+categories belong under AudioVideo, and for no other: an application filed under both Audio and
+Video names no medium, so the head of its summary has to say the term's word, media or player, or it
+lists after every application of the category, Debian builds included. "video" lists qpwgraph, "A
+PipeWire Graph Qt GUI Interface", after the video applications, and "music" after the music players,
+while mpv and SMPlayer, each a "media player", stay with the players. kdos-discover-catalog writes
+`ConsoleOnly` into the component of any entry that sets `Terminal=true`, so w3m and Lagrange list
+after the graphical browsers.
 
 No source on KDOS has ratings or reviews, and the `discover` port's `ratings-need-reviews.patch`
 shows an application's rating row and its Reviews section, with Write a Review, only for a
 resource whose backend has a reviews backend. The same patch leaves the Home page's Highest-Rated
 Games and Highest-Rated Developer Tools rows empty when the current application backend has none,
 so on KDOS the Home page is Editor's Choice: the entries of `featured.json`, seven catalogue
-applications (Scribus, Hugin, Xournal++, KStars, MeshLab, VSCodium and GNOME Chess). The build of the `discover` port fails unless
+applications (KStars, Xournal++, GNU PSPP, Okteta, HexChat, Meld and GNOME Chess). A catalogue
+application not yet installed is drawn with the stock icon its Debian component names when the
+host's icon theme has it, else with its category's icon (Graphics' is `kcolorchooser`). A catalogue
+application's page takes its author, licence and description from its package's Debian
+component; the author is the component's developer, else its project group, so KStars and Okteta
+read "KDE". A package with several components, as paraview has, takes the one with a licence,
+then a developer or project group, then a description, and of equals the first. The featured
+entries are applications whose Debian data gives them an icon of their own or their category's,
+an author, a licence and a description, and the colour wheel, KColorChooser's own icon, is not
+one a featured card borrows: the backend test `featuredIcons` fails when an entry is not a
+catalogue application or would draw `kcolorchooser` or `applications-other`, and
+`featuredComplete` when its page would lack an author, a licence or a description. The build of the `discover` port fails unless
 `/usr/lib/qt6/plugins/discover/` holds exactly the fwupd and sysupdate1 backends, so a stock
 backend that appears or goes missing stops the build instead of changing what Discover offers.
 
@@ -80,7 +129,7 @@ backend that appears or goes missing stops the build instead of changing what Di
 |---|---|
 | `/usr/lib/qt6/plugins/discover/kdos-backend.so` | The backend: the origins above |
 | `/usr/lib/qt6/plugins/discover-notifier/KdosNotifier.so` | The tray notifier for system updates ([below](#the-update-notifier)) |
-| `/usr/bin/kdos-discover-catalog` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports, from kpkg's manifests; and, at the image build, `kdos-debian-exclude.xml`, which takes the Debian applications `debian-exclude` names out of the AppStream pool |
+| `/usr/bin/kdos-discover-catalog` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports, from kpkg's manifests, a component with no summary taking its desktop entry's `Comment`, a `GenericName` that is not its name, or the port's `description =`; and, at the image build, `kdos-debian-exclude.xml`, which takes the Debian applications `debian-exclude` names out of the AppStream pool |
 | `/usr/libexec/kdos-discover/kdos-ports-helper` | The root step of installing host software prebuilt ([below](#host-software)) |
 | `/usr/libexec/kdos-discover/kdos-ports-builder` | The root step of building host software on this computer and installing it |
 
@@ -165,7 +214,15 @@ When an install or a removal fails, the application's page shows an error notice
 installed: <reason>" or "<Name> was not removed: <reason>", which stays through the refresh after
 it until the next install or removal of that resource starts. Discover's own dialog says only
 "Please try again later", with the same reason behind See Technical Details. The reason is the
-failed tool's last standard-error lines, each a clause, joined with "; ". A step that downloads is
+failed tool's last standard-error lines, each a clause, joined with "; ". The helpers run `kdos
+update` under `KDOS_UPDATE_FRONT=discover`, so a download that is cut off ends "nothing was
+installed — pressing Install again continues the download", and pressing Install again asks the
+server for the rest. `kdos-ports-builder` copies every line the run prints, on the stream it came
+on, into `/var/log/kdos-build/<port>.log` (mode 0644, under a 0755 directory, so the session user
+can read it) and names it under `KDOS_UPDATE_LOG`; a failed build's reason ends "the build's log is
+in /var/log/kdos-build/<port>.log", since the build's own output is shown nowhere and its work
+directory is removed. The next build of the port replaces the file, and a build that succeeds
+removes it. A step that downloads is
 refused before it starts whenever Qt's network information says anything but online, the same test
 as Discover's own "Discover is Offline" sheet (a network with no route out, or NetworkManager with
 networking switched off, counts as offline), and gives the reason "it needs a network connection,
@@ -203,8 +260,17 @@ A Debian application whose component id or desktop-id launchable matches any com
 installed ports' catalogue `kdos-ports.xml` or of the binary host's
 `/var/lib/kdos/binhost/swcatalog/xml/kdos-binhost.xml`, compared without a trailing `.desktop`, is
 never offered in a box, by a search, a category or an `appstream://` link, so with the binary-host
-index fetched LibreOffice and Filelight are offered only natively; and
-neither is one whose package `/usr/share/kdos/discover/debian-exclude` names: one package a line,
+index fetched LibreOffice and Filelight are offered only natively. Nor is one that has the name of a
+desktop application of either catalogue, case-folded, in the session's language (a pair whose
+name only one catalogue translates is not caught and is offered twice), and either the same
+homepage host (without `www.`; on a code-hosting site or an application directory such as
+`github.com`, `sourceforge.net` or `apps.kde.org`, the host and the first two segments of the
+path, so two programs called Notes on `github.com` stay apart) or a package stem, the package name's leading run of ASCII letters, of four letters or more
+that begins the other's or is begun by it: Debian's Schism Tracker (`schism`) is the
+`schismtracker` port and Debian's MuseScore 3 (`musescore3`) the `musescore` port, and an
+`appstream://` link to either opens the port. The same name alone is not enough, so GNOME
+Calculator is still offered in a box beside Kalk; the cost is that a Debian build of another major
+version of a port's program is not offered while the port is. Nor, finally, is one whose package `/usr/share/kdos/discover/debian-exclude` names: one package a line,
 each a program that cannot do its job from a box on KWin's Wayland session, such as KMag and
 KMouseTool, which work only on an X server's own screen, and firewall front ends such as Firewall
 Configuration and Gufw, which configure a firewall daemon the host does not run (the host's packet
@@ -217,13 +283,18 @@ stays listed, so it can be removed. The image build also writes
 `/usr/share/swcatalog/xml/kdos-debian-exclude.xml`, a `remove-component` merge for each of them
 whose id no host port has (a merge removes every component of its id, so Discover, GParted and
 Disks, which the host ships, keep theirs), which takes them out of every AppStream pool: KRunner's software results read the pool directly,
-and without it would offer, as "Get …", an application this lane refuses. Debian's icons and screenshots are not installed, so a Debian application
+and without it would offer, as "Get …", an application this lane refuses. A Debian application's
+name, summary and description are libappstream's pick for the session's locale: its own locale
+(`en_US`, then `en`), else the catalogue's untagged `C` text, which is whatever language the
+application's desktop entry or metainfo gave its untagged key, so MystiQ Video Converter's summary
+reads in Spanish in an English session ([known gaps](../06-reference/known-gaps.md#a-debian-applications-summary-can-be-in-another-language)). Debian's icons and screenshots are not installed, so a Debian application
 shows its stock icon when the host's icon theme has it, otherwise the icon of its category, and no
-screenshot; KRunner's and Kickoff's "Get …" results, which take the pool's cached icon, show none.
-Those results come from Plasma's own Software Center runner, which searches the pool's summaries
-and descriptions as well as its names, so it offers a Debian application for a query that only its
-description contains, even `12*7`, where Discover's own search needs every word of the query in
-the name, id, package or keywords.
+screenshot; KRunner's and Kickoff's "Get …" results show the same stock or category icon.
+Those results come from Plasma's own Software Center runner, which offers an application only
+when every word of the query, case-folded, occurs in its name, id, package or keywords, the rule
+Discover's own search follows, and offers none when an installed application or command is named
+exactly what was typed (KCalc for `kcalc`, the `htop` command for `htop`); a fuzzy application
+match (KCalc for `galculator`) does not hold it back.
 A catalogue application with no AppStream icon shows its category's icon too: every catalogue
 category is a main desktop-entry category (AudioVideo, Development, Education, Game, Graphics,
 Network, Office, Science, Settings, System or Utility), and each has one.
@@ -244,12 +315,12 @@ two origins:
 **What is part of the system is decided by the world set.** `/var/lib/kdos/world` lists the packages
 somebody installed on purpose, and a package of the image has no line there unless `kdos update
 install` named it. An installed port is part of the system when it has no world line, or when an
-installed package's recipe depends on it; it is updated with the system, its page says "Part of the
+installed package depends on it (as `kdos update removable` reads the edges); it is updated with the system, its page says "Part of the
 KDOS system: it is updated with the system and is not removed on its own", or "Needed by <package>"
 for a world port something needs, and it has no Remove button. A world port nothing installed
 depends on is removable, whatever brought it: LibreWolf installed from the binary host, a port built
 here, or a package of the image that `kdos update install` named. Its page says "Installed on
-request. Removing it takes out this package alone; what it brought with it stays." The backend
+request. Removing it also takes out what it brought that nothing else installed needs." The backend
 learns which at each refresh from `kdos update removable --json`, beside `kpkg list --json`; an
 answer that does not come leaves every port part of the system. Remove runs `kdos update remove
 --dry-run <port>` as the user, which refuses without a password when the machine changed since the
@@ -284,16 +355,24 @@ not as one of its applications; any other bare entry leaves the chosen component
 package's minor tool never names it. An `appstream://` link to another of its components, such as
 LibreOffice Writer, opens the same port, and a search finds the port by the name or a keyword of any
 of its package's components, so "writer" lists LibreOffice. The catalogue writer,
-`kdos-discover-catalog`, takes a metainfo component with no desktop-id launchable to launch
-`usr/share/applications/<id>` (or `<id>.desktop`) when its package owns that entry, and writes it
-with that launchable and, where the metainfo names none, the entry's icon and categories; the entry
-is not written again as a component of its own. A component with no `<project_license>` takes its
+`kdos-discover-catalog`, takes a metainfo component with no desktop-id launchable, or one naming
+only entries its package does not install (Audacity's `audacity.desktop`), to launch
+`usr/share/applications/<id>` (or `<id>.desktop`), or an entry it names in another case
+(Stellarium's), when its package owns that entry, or the package's one desktop entry when the
+package has one metainfo (Viking's), and writes it with that entry added to its launchable and, where the metainfo names none, the entry's icon and
+categories; the entry is not written again as a component of its own. Discover launches the first
+of a component's entries that is installed. A component with no `<project_license>` takes its
 recipe's `license =` as written, an SPDX expression, and one with no homepage `<url>` its `homepage
 =`, read from the first `kpkgbuild` of the port under `/ports/core`, `/ports/src` or `/kdos/src` in
 the root it describes (the 70_image chroot binds the build's ports tree at `/ports` and the
-repository at `/kdos`), so LibreWolf, which installs a desktop entry and no metainfo, shows
-"Licenses: MPL-2.0", and so does every other bare desktop entry, Audacity's and Stellarium's among
-them. The writer marks each component read from a bare desktop entry with the custom value
+repository at `/kdos`), so every bare desktop entry, Audacity's and Stellarium's among them,
+shows its recipe's licence, "Licenses: GPL-2.0-or-later" and the like. A component with no
+untranslated name takes its desktop entry's `Name` (the bare entry itself, or the first entry a
+metainfo component launches), and one with no summary takes that entry's `Comment`, else a
+`GenericName` that is not its name compared without case, else the recipe's `description =`, so
+every row of a Discover list has a summary line under its name: Contact Theme Editor reads "Theme
+editors for KMail message headers and KAddressBook contact views and printouts" and QMapShack "GPS
+device mapping utility". The writer marks each component read from a bare desktop entry with the custom value
 `KDOS::BareEntry=1` and gives no other component the key, and in a catalogue with any such value
 the mark alone is how the backend tells a suite's face from the package's metainfo applications;
 a licence tells nothing, since every component carries its recipe's. A catalogue with no mark
@@ -301,20 +380,32 @@ anywhere (the published v0.2 binhost's, which a fresh machine reads until its ow
 catalogue is fetched) is read by what a desktop entry lacks: a desktop application whose id is a
 `.desktop` name and which has no description is a bare entry, since the desktop-entry reader
 writes none, so such a catalogue still lists LibreOffice as the suite and names each of its
-metainfo applications once, beside the bare entries of the same ids it also holds. The developer
-comes only from a metainfo file the package installs; a recipe names no author, and a port without
-one shows "Unknown author". The component's AppStream kind sets where Discover lists the port:
+metainfo applications once, beside the bare entries of the same ids it also holds. The author
+comes only from a metainfo file the package installs, its developer's name, else its project
+group (a KDE module's `<project_group>KDE</project_group>` reads "KDE"); a recipe names no author,
+and a port without either shows "Unknown author". A port whose source carries no metainfo writes its own in `build.sh`
+when Discover should name its developer, as LibreWolf's does with
+`usr/share/metainfo/librewolf.metainfo.xml` under the id `librewolf.desktop`. The component's AppStream kind sets where Discover lists the port:
 `addon` under Add-ons, `desktop-application` (or no kind) under Applications, and a console
 application or any other kind under Application Support, as a technical package. A desktop
 application with no category at all is filed under Other, so the All Applications page, which
-matches by category, lists it and finds it in a search. A port whose icon the theme does not have,
-as for one whose only copy of its icon is in its own uninstalled package, shows `utilities-terminal`
+matches by category, lists it and finds it in a search. A port the binary host offers carries its icon in the binhost's catalogue, base64 in the
+custom value `KDOS::IconData`: the icon its metainfo names, else the `Icon=` of the desktop entry it
+launches, whichever package installs that entry, from the hicolor theme at 64x64, else 48x48, else scalable, else a larger PNG scaled to
+64x64, else a smaller one, else `/usr/share/pixmaps`, and never over 32 KiB. Discover writes it to
+`~/.cache/kdos-discover/icons` and draws it, so an application not yet installed shows its own icon.
+An installed application whose stock icon the loaded icon theme does not find, as for one Discover
+has just installed, is drawn from that icon's file in hicolor or `/usr/share/pixmaps`.
+A port whose icon the theme does not have and that carries none, as for one whose only icon is an
+SVG over 32 KiB in its own uninstalled package, shows `utilities-terminal`
 for a console application, `preferences-plugin` for an add-on, its first category's icon for an
 application, and for any other kind its category's icon or, with no category, one of its kind:
 `application-x-sharedlib` for a generic component such as libfprint or pcscd,
 `preferences-system-services` for a service, `hwinfo` for a driver or firmware,
-`preferences-desktop-font` for a font. The Graphics category's icon is `image-x-generic`, not
-Breeze's `applications-graphics`, whose blue sphere reads as a missing icon in a list.
+`preferences-desktop-font` for a font. The Graphics category's icon is `kcolorchooser`,
+KColorChooser's colour wheel, in breeze and breeze-dark alike: Breeze's `applications-graphics` is
+a plain sphere and `image-x-generic` a file-type placeholder, and either reads as a missing icon
+in a list.
 
 Each port the binary host holds is two resources with one AppStream id, installed or not,
 `kdos-backend://port/<id>` and `kdos-backend://port-source/<id>`, so Discover lists one application
@@ -354,8 +445,8 @@ root, and its `total` line becomes the question of Discover's confirmation dialo
 "Install?", and every confirmation text opens with the program's name in bold, "**<Name>**: ",
 since the dialog is narrow and elides a long title where its text wraps. The line counts every
 prebuilt package and, in bytes, only the files not already in the binhost cache
-`/var/lib/kdos/binhost`, which keeps every package it downloaded until a removal clears those not
-installed, so after the name the prebuilt route reads "Installs N packages; downloads (size).", or
+`/var/lib/kdos/binhost` (and of a cut download only the rest), which keeps every package it
+downloaded until a removal clears those not installed, so after the name the prebuilt route reads "Installs N packages; downloads (size).", or
 "Installs N packages, already downloaded." when the total has no bytes, the number and unit of the
 size never split across lines; the built one reads "Builds N packages here and installs M
 prebuilt, downloading (size); building can take hours." (or "and installs M prebuilt, already
@@ -462,7 +553,8 @@ Before its first write into the slot, every lane runs `kdos-bootctl unfill <slot
 arm's `deploy` clears that mark. A slot an acquire stopped writing, cancelled or failed, is
 therefore incomplete in the boot state: `kdos-bootctl try` refuses it ("slot <x> is incomplete — an
 update stopped while writing it; `kdos update apply` writes it again"), and the boot menu has no
-entry for it until an update writes it again. `kdos-sysupdated`'s `ListSlots` reports it as
+entry for it until an update writes it again; with nothing behind, `kdos update apply --mount`
+writes it again and deploys it without a trial. `kdos-sysupdated`'s `ListSlots` reports it as
 `incomplete`, and [System Versions](kdos-settings.md#system-versions) shows it as incomplete with
 no Start This Version Next Time button.
 

@@ -348,6 +348,34 @@ if python3 script/lib/imageset.py --check > "$SP/imageset" 2>&1; then
 else
     bad "image base" "$(head -3 "$SP/imageset" | tr '\n' ' ')"
 fi
+# ports/buildheaders names the build-only ports a build here installs
+# prebuilt because an installed package's headers include them. A word that
+# is no port is never installed and the build fails on the missing header; a
+# word outside ports/buildonly is on the image already, and naming it there
+# hides that the list and buildonly have drifted apart. 70_image/105_ports.sh
+# must stage the file into /ports: a machine without /ports/buildheaders
+# installs no header port, and every source build that finds X11 fails on
+# X11/X.h.
+bh_bad=""
+bh_n=0
+if [ -f ports/buildheaders ]; then
+    grep -Eq '^for f in .*[[:space:]]buildheaders([[:space:];]|$)' \
+        script/phases/70_image/105_ports.sh \
+        || bh_bad="$bh_bad (70_image/105_ports.sh does not stage it into /ports)"
+    bo_words=" $(sed 's/#.*//' ports/buildonly | tr -s ' \t\r\n' '   ') "
+    for w in $(sed 's/#.*//' ports/buildheaders); do
+        bh_n=$((bh_n + 1))
+        has_port "$w" || { bh_bad="$bh_bad $w(no port)"; continue; }
+        case "$bo_words" in *" $w "*) ;; *) bh_bad="$bh_bad $w(not in ports/buildonly)" ;; esac
+    done
+fi
+if [ ! -f ports/buildheaders ]; then
+    bad "build headers" "ports/buildheaders is missing"
+elif [ -n "$bh_bad" ]; then
+    bad "build headers" "ports/buildheaders:$bh_bad"
+else
+    note "build headers" "$bh_n port(s), each a ports/buildonly port"
+fi
 
 echo
 echo "==> every package named in a phase list has a port"
@@ -2449,9 +2477,11 @@ echo "==> every desktop id the default-applications list names is installed"
 # file. testing/mimecheck.py traces each id to a port, or, once a build tree
 # carries plasma-desktop, to the image itself. It proves both readings on
 # testing/fixtures/mimecheck first: an id no port installs fails, a list with
-# a duplicate key or a misspelt group does not parse, and a fixture tree has
-# the ids it installs (one in the specification's subdirectory form) and
-# lacks the rest.
+# a duplicate key or a misspelt group does not parse, a desktop-named list
+# carrying a removed association does not parse, a fixture tree has the ids
+# it installs (one in the specification's subdirectory form) and lacks the
+# rest, and a tree that ships /etc/xdg/mimeapps.list but no kde-mimeapps.list
+# is reported as shipping no list.
 _mcf=testing/fixtures/mimecheck
 while read -r _want _args; do
     # shellcheck disable=SC2086
@@ -2461,8 +2491,10 @@ done <<EOF
 0 --list $_mcf/good.list
 1 --list $_mcf/dangling.list
 2 --list $_mcf/malformed.list
+2 --list $_mcf/desktop/kde-mimeapps.list
 0 --root $_mcf/root --list $_mcf/root.list
 1 --root $_mcf/root --list $_mcf/good.list
+3 --root $_mcf/systemonly
 EOF
 _mroot=""
 [ -f build/fs/var/lib/kpkg/db/plasma-desktop ] && _mroot="--root build/fs"

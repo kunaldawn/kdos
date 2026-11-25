@@ -356,14 +356,14 @@ int kn_decide_rollback(const KnBoot *b, const KnState *s, KnPost *out)
 		   sizeof(out->summary));
 	if (now && fv)
 		snprintf(out->body, sizeof(out->body),
-			 "KDOS %s did not start properly, so KDOS went back to "
-			 "%s.", fv, now);
+			 "KDOS %s did not start properly, so the computer went "
+			 "back to KDOS %s.", fv, now);
 	else if (now)
 		snprintf(out->body, sizeof(out->body),
-			 "So KDOS went back to %s.", now);
+			 "So the computer went back to KDOS %s.", now);
 	else
-		kb_strlcpy(out->body, "So KDOS went back to the version "
-				      "before it.", sizeof(out->body));
+		kb_strlcpy(out->body, "So the computer went back to the "
+				      "version before it.", sizeof(out->body));
 	out->actions[0] = KN_ACT_DETAILS;
 	out->actions[1] = "Details";
 	return 1;

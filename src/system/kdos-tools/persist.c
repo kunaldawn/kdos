@@ -42,6 +42,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -176,10 +177,35 @@ static void boot_medium(char *out, size_t cap)
  */
 enum { DISK_OK, DISK_DISC, DISK_VENTOY, DISK_MAPPED };
 
+/*
+ * The kernel name of the device a node opens, read from its device number:
+ * /sys/dev/block/<major>:<minor> links to the device's sysfs directory.
+ * THE NODE'S NAME IS NOT THE DEVICE. Ventoy's BIOS hook points the stick's
+ * second-partition node at its mapping (253:0), so /dev/sda2 opens dm-0;
+ * read by name it would pass as an ordinary partition of a writable stick.
+ * A node that is not a block device falls back to the name its path
+ * resolves to.
+ */
+static void node_base(const char *dev, char *out, size_t cap)
+{
+	char path[64], real[PATH_MAX];
+	struct stat st;
+
+	if (stat(dev, &st) == 0 && S_ISBLK(st.st_mode)) {
+		snprintf(path, sizeof(path), "/sys/dev/block/%u:%u",
+			 major(st.st_rdev), minor(st.st_rdev));
+		if (realpath(path, real)) {
+			kb_strlcpy(out, bname(real), cap);
+			return;
+		}
+	}
+	kb_strlcpy(out, bname(realpath(dev, real) ? real : dev), cap);
+}
+
 /* Is the device-mapper disk `base` (dm-N) the one Ventoy boots from? */
 static int dm_ventoy(const char *base)
 {
-	char medium[128], mreal[PATH_MAX], name[64];
+	char medium[128], mbase[64], name[64];
 	char path[PATH_MAX + 32];
 
 	snprintf(path, sizeof(path), "/sys/class/block/%s/dm/name", base);
@@ -187,8 +213,10 @@ static int dm_ventoy(const char *base)
 	    !strcmp(name, "ventoy"))
 		return 1;
 	boot_medium(medium, sizeof(medium));
-	return medium[0] && realpath(medium, mreal) &&
-	       !strcmp(bname(mreal), base);
+	if (!medium[0])
+		return 0;
+	node_base(medium, mbase, sizeof(mbase));
+	return !strcmp(mbase, base);
 }
 
 /* Does a Ventoy mapping sit on `node` (a disk or a partition of one)? */
@@ -223,9 +251,9 @@ static int ventoy_under(const char *disk)
 
 static int disk_kind(const char *dev)
 {
-	char real[PATH_MAX], base[64];
+	char base[64];
 
-	kb_strlcpy(base, bname(realpath(dev, real) ? real : dev), sizeof(base));
+	node_base(dev, base, sizeof(base));
 	if (!strncmp(base, "dm-", 3))
 		return dm_ventoy(base) ? DISK_VENTOY : DISK_MAPPED;
 	if (ventoy_under(base))
@@ -791,16 +819,19 @@ static int cmd_create(const char *want, int assume_yes)
 		fprintf(stderr, "kdos persist: %s is not a block device\n", disk);
 		return 1;
 	}
+	/* The kind before the partition test: a Ventoy BIOS boot's medium
+	 * is named as the stick's second partition, and naming the stick
+	 * it is on would send somebody to a disk refused as Ventoy anyway. */
+	int kind = disk_kind(disk);
+	if (kind != DISK_OK) {
+		disk_refusal(disk, kind);
+		return 1;
+	}
 	if (is_partition(disk)) {
 		char whole[64];
 		parent_disk(disk, whole, sizeof(whole));
 		fprintf(stderr, "kdos persist: %s is a partition — name the disk "
 				"it is on: /dev/%s\n", disk, whole);
-		return 1;
-	}
-	int kind = disk_kind(disk);
-	if (kind != DISK_OK) {
-		disk_refusal(disk, kind);
 		return 1;
 	}
 

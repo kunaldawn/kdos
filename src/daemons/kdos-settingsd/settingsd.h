@@ -173,6 +173,9 @@ void ks_xkb_stored(KsXkb *x);
  * filled in from the console keymap through the conversion table. */
 void ks_xkb_effective(KsXkb *x);
 int ks_set_xkb(const KsXkb *x);
+/* /etc/xdg/kxkbrc from the stored fields, written whole; an empty layout
+ * removes it. The session reads it before xkb.conf's environment. */
+int ks_set_kxkbrc(const KsXkb *x);
 /* NULL when the four fields are acceptable, else why not. Checked against
  * xkeyboard-config's rules list where it is installed. */
 const char *ks_xkb_check(const KsXkb *x);

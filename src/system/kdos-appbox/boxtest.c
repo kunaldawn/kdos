@@ -94,8 +94,81 @@ static void grants(void)
 	profile_set(&p, "x11 = false");
 	cat_chk(!strcmp(p.x11, "no"), "x11 = false reads as no");
 	cat_chk(profile_x11(&p) == 0, "x11 = no hands over no display");
-	profile_set(&p, "x11 = maybe");
-	cat_chk(!strcmp(p.x11, "yes"), "any other word is yes");
+	cat_chk(profile_set(&p, "x11 = maybe") == -2,
+		"x11 = maybe is refused");
+	cat_chk(!strcmp(p.x11, "no"), "and leaves x11 as it was");
+}
+
+/* A value its key does not take is refused (-2), recorded, and changes
+ * nothing; it is never read as the key's default. */
+static void values(void)
+{
+	Profile p;
+
+	profile_defaults(&p, "v");
+	cat_chk(profile_set(&p, "network=none") == 0 && p.netnone && p.netns,
+		"network=none is set");
+	cat_chk(profile_set(&p, "network=maybe") == -2,
+		"network=maybe is refused");
+	cat_chk(p.netnone && p.netns, "and the network stays none");
+	cat_chk(p.nbad == 1 && !strcmp(p.badvalue[0], "network=maybe"),
+		"and is recorded as key=value");
+	cat_chk(profile_set(&p, "network=no") == -2 && p.netnone,
+		"network=no is refused: host or none is a guess");
+	cat_chk(profile_set(&p, "network=") == -2, "an empty network is refused");
+	cat_chk(profile_set(&p, "network=yes") == 0 && p.netns && !p.netnone,
+		"network=yes is private");
+	cat_chk(profile_set(&p, "network=shared") == 0 && !p.netns,
+		"network=shared is host");
+	cat_chk(profile_set(&p, "persistence=forever") == -2 &&
+		p.persist == PERSIST_PERSISTENT, "persistence=forever is refused");
+	cat_chk(profile_set(&p, "persistence=frozen") == 0 &&
+		p.persist == PERSIST_FROZEN, "persistence=frozen is set");
+	cat_chk(profile_set(&p, "pids=abc") == -2 && p.pids == 0,
+		"pids=abc is refused");
+	cat_chk(profile_set(&p, "pids=-1") == -2, "a negative pids is refused");
+	cat_chk(profile_set(&p, "pids=512") == 0 && p.pids == 512,
+		"pids=512 is set");
+	cat_chk(profile_set(&p, "memory=4G") == 0 && !strcmp(p.memory, "4G"),
+		"memory=4G is set");
+	cat_chk(profile_set(&p, "memory=1.5gb") == 0 && profile_set(&p, "memory=512m") == 0 &&
+		profile_set(&p, "memory=6m") == 0 && profile_set(&p, "memory=8388608") == 0,
+		"a fractional size, a lowercase unit, the 6 MiB floor and plain bytes are set");
+	cat_chk(profile_set(&p, "memory=Unlimited") == 0 && !p.memory[0],
+		"memory=Unlimited is stored empty");
+	cat_chk(profile_set(&p, "memory=bogus") == -2 && profile_set(&p, "memory=-1") == -2 &&
+		profile_set(&p, "memory=4x") == -2 && profile_set(&p, "memory=0") == -2 &&
+		profile_set(&p, "memory=2048") == -2 && profile_set(&p, "memory=1.5b") == -2 &&
+		profile_set(&p, "memory=5m") == -2 &&
+		!p.memory[0], "a size podman cannot read is refused");
+	cat_chk(profile_set(&p, "cpus=1.5") == 0 && !strcmp(p.cpus, "1.5"), "cpus=1.5 is set");
+	cat_chk(profile_set(&p, "cpus=ALL") == 0 && !p.cpus[0], "cpus=ALL is stored empty");
+	cat_chk(profile_set(&p, "cpus=two") == -2 && profile_set(&p, "cpus=0") == -2,
+		"a core count that is no number above zero is refused");
+	cat_chk(profile_set(&p, "autostop=30m") == 0 && p.autostop_s == 1800,
+		"autostop=30m is set");
+	cat_chk(profile_set(&p, "autostop=0s") == 0 && p.autostop_s == 0,
+		"autostop=0s, as the profile writes it, is set");
+	cat_chk(profile_set(&p, "autostop=soon") == -2 &&
+		profile_set(&p, "autostop=30x") == -2, "a bad autostop is refused");
+	cat_chk(profile_set(&p, "ipc=sometimes") == -2 && !p.ipc,
+		"ipc=sometimes is refused");
+	cat_chk(profile_set(&p, "ipc=shared") == 0 && profile_set(&p, "home=private") == 0
+		&& p.privhome, "the sharing words are set");
+	cat_chk(profile_set(&p, "gpu=shared") == 0 && p.gpu, "gpu=shared is yes");
+	cat_chk(profile_set(&p, "export=always") == -2 && !p.autoexport,
+		"export=always is refused");
+	cat_chk(profile_set(&p, "accent=anything") == 0,
+		"a free-text key takes any value");
+	cat_chk(profile_set(&p, "accent=none") == 0 &&
+		!strcmp(p.accent, "session"),
+		"accent=none, the word printed, is stored as session");
+	cat_chk(!strcmp(accent_shown(p.accent), "none"),
+		"accent=none prints back as none");
+	cat_chk(accent_known("none"), "accent none is a known accent");
+	cat_chk(profile_set(&p, "colour=red") == -1, "an unknown key is -1");
+	cat_chk(!strcmp(profile_value_rule("network"), "host, private or none"),
+		"network's rule names its three values");
 }
 
 static void lanes(void)
@@ -371,6 +444,7 @@ int boxes_selftest(void)
 	names();
 	launcher_ids();
 	grants();
+	values();
 	lanes();
 	policy();
 	states();

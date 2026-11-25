@@ -36,14 +36,22 @@ this repository does not compile and that runs in a box; the `alien-apps` table 
 ## Quick start
 
 ```sh
-kdos app install app.hugin            # the everyday command; runs kdos-appbox install
-kdos-appbox catalogue                 # everything the catalogue offers, and what is installed
-kdos-appbox install app.hugin         # build and install one application
-hugin shots.pto                       # every installed application is also a command
-kdos-appbox open report.pdf           # open a file in whatever handles its type
-kdos-box clone app.hugin work         # a second box on Hugin's base; a pack box's work is copied too
-kdos-box enter work                   # a shell inside it
-kdos-box profile work                 # what the box is allowed, and how that is enforced
+# the everyday command; it runs kdos-appbox install
+kdos app install app.hugin
+# everything the catalogue offers, and what is installed
+kdos-appbox catalogue
+# build and install one application
+kdos-appbox install app.hugin
+# every installed application is also a command
+hugin shots.pto
+# open a file in whatever handles its type
+kdos-appbox open report.pdf
+# a second box on Hugin's base; a pack box's work is copied too
+kdos-box clone app.hugin work
+# a shell inside it
+kdos-box enter work
+# what the box is allowed, and how that is enforced
+kdos-box profile work
 ```
 
 ## Synopsis
@@ -66,7 +74,8 @@ kdos-appbox genlaunchers --packs-dir <dir> <fs-root>
 kdos-appbox genlaunchers <desktop-dir> <fs-root>
 
 kdos-box list | ls [--json]
-kdos-box create <name> [base=pack:<id>|image:<ref>|box:<name>] [key=value ...]
+kdos-box create <name> [base=pack:<id>|image:<ref>|box:<name>]
+                [key=value ...]
 kdos-box enter <name> [command ...] | --window
 kdos-box run [-l <launcher-id>] <name> <app> [args ...]
 kdos-box apps <name>
@@ -159,6 +168,12 @@ The port is `src/system/kdos-appbox`.
 `shared-mime-info` and `xdg-utils`; the container ports are on the
 [`containers` shelf](../06-reference/ports-catalogue.md#containers) in the ports catalogue.
 
+Tab completion for both names comes from the base system's files
+`/usr/share/bash-completion/completions/kdos-appbox` and `kdos-box`, shipped from `fs/`: the
+commands and options, the commands `kdos-appbox apps` lists after `run`, store ids and groups after
+`install`, and box names wherever a box is named
+([what each completes](kdos-command.md#finding-a-subcommand)).
+
 ## Commands
 
 ### run
@@ -183,8 +198,8 @@ installed application carries is refused with a sentence naming it and suggestin
 
 ```sh
 kdos-appbox open report.pdf
-kdos-appbox open --print report.pdf     # resolve and print; do not run anything
-kdos-appbox open --choose report.pdf    # always ask which application
+kdos-appbox open --print report.pdf   # resolve and print, run nothing
+kdos-appbox open --choose report.pdf  # always ask which application
 ```
 
 Resolves a file or a URI to the application that handles it and runs that application. See
@@ -222,7 +237,7 @@ kdos-appbox catalogue --selftest
 With no option it prints one tab-separated line for each `app` and `data` row:
 
 ```text
-<id>  <name>  <category>  <bytes>  <parent>  <installed|available>  <tagline>
+<id> <name> <category> <bytes> <parent> <installed|available> <tagline>
 ```
 
 The separator is a tab because a tagline contains spaces and every other table in this tree splits
@@ -334,9 +349,16 @@ When the stop leaves the box up or the remove refuses, the uninstall stops there
 image is touched. Then it removes the application's own image, then each
 runtime above the base, top down, stopping at the first one that a remaining container's chain still
 names. It then regenerates the launchers from what remains. The base image is never removed: it is
-every chain's floor. Which runtimes are still wanted is asked of the catalogue rather than of the
-engine, because a dangling-image sweep cannot tell a runtime nothing uses from one whose only
-application is mid-install.
+every chain's floor, and the next install would build it again. When no remaining box stands on it
+(a `deb.<package>` box counts, being built on the `base` row), the uninstall, a `deb:<package>`
+one too, which removes the box and `kdos/deb.<package>`, says so in one line,
+``kept kdos/base and the debian:trixie-slim it is built on (about <size> together), the floor of
+every store application; `podman rmi kdos/base debian:trixie-slim` gives the space back``,
+naming the image the catalogue's `base` row is built `FROM` and the size podman gives the base
+image, which counts the layers below it; the size is left out when podman cannot say. Which
+runtimes are still wanted is asked of the catalogue rather than of the engine, because a
+dangling-image sweep cannot tell a runtime nothing uses from one whose only application is
+mid-install.
 
 #### The Debian snapshot
 
@@ -378,7 +400,8 @@ The file is a plain tar archive:
 ```text
 apps.ktar
   SELECTION        what was picked, as text
-  PACKAGES         the pack index: id, version, kind, size, sha256 and file name per pack
+  PACKAGES         the pack index: id, version, kind, size, sha256
+                   and file name per pack
   PACKAGES.sig     present when a signing key was readable
   app.hugin.kpack
   app.scribus.kpack
@@ -477,17 +500,18 @@ tagline may contain one.
 | Row | Form | Meaning |
 |---|---|---|
 | Pack row | `<kind> <id> <parent> <apt packages …>` | `kind` is `base`, `runtime`, `app` or `data`. `parent` is the row this one is built on, `-` for a base. A package list of `-` means none |
-| `meta` | `meta <id> <name>\|<category>\|<bytes>\|<tagline>` | What Discover and `kdos app` show. Optional: a row with none presents as its own id, category `Other`, size 0 and no tagline. A category written as `A;B;` shows as `A`. A category the catalogue writes is one main desktop-entry category, `AudioVideo`, `Development`, `Education`, `Game`, `Graphics`, `Network`, `Office`, `Science`, `Settings`, `System` or `Utility`, so Discover can show its icon for an application with none of its own; `testing/selftest.sh` refuses any other |
+| `meta` | `meta <id> <name>\|<category>\|<bytes>\|<tagline>` | What Discover and `kdos app` show. Optional: a row with none presents as its own id, category `Other`, size 0 and no tagline. A category written as `A;B;` shows as `A`. A category the catalogue writes is one main desktop-entry category, `AudioVideo`, `Development`, `Education`, `Game`, `Graphics`, `Network`, `Office`, `Science`, `Settings`, `System` or `Utility`, so Discover can show its icon for an application with none of its own; `testing/selftest.sh` refuses any other. The tagline is the card's second line and the page's heading, under the name, so an application's or data row's tagline says what it does without repeating its name: `testing/selftest.sh` refuses one that holds the name anywhere or opens with the name's first word, each as a whole word, and one whose parenthesised aside spells the one to three words before it again (`VS Code (vscode)`) |
 | `group` | `group <id> <description>`, then `group <id> <member ids …>` | The first line for a group is its description; later lines list members, recognised by the `app.` or `data.` prefix |
 | `snapshot` | `snapshot = auto` \| `<date>` \| `off` | Which Debian archive the packages come from. See [The Debian snapshot](#the-debian-snapshot) |
 | `image` | `image <base-id> <ref>` | A base built `FROM` that image instead of `debian:trixie-slim`. `alpine` is `alpine:3.24.1` |
 | `env` | `env <id> NAME=VALUE` | A variable for every launch of a store box whose chain contains this row, and an `env =` line in an exported pack's metadata. See [The environment a box gets](#the-environment-a-box-gets) |
 | `needs` | `needs <app-id> <data-id> …` | Data rows installed together with the application |
 | `deb` | `deb <id> <releases-api-url> <asset-pattern>` | A package Debian does not carry: the first download URL in the API's answer that matches the pattern is fetched and handed to apt. The shipped row, `app.vscodium`, asks the API for the latest release |
+| `about` | `about <id> <licence>\|<author>\|<homepage>\|<description>` | What Discover shows on the page of an application no Debian component describes, such as a `deb` row's; a component fills only the fields it leaves empty. The description is the rest of the line, as plain text. Read by Discover alone, in any position; kdos-appbox, `kinstall` and `kdos app` skip it |
 | `cmd` | `cmd <id> <name>` | A command the application provides. Each becomes a shim and a table row when your launchers are regenerated from the store boxes, and a `command =` line in an exported pack |
 | `graft`, `boxgraft` | `graft <id> <from> <to>`, `boxgraft <id> <from> <to>` | Where a data row's files land, on the host and inside a box. They travel as `graft =` and `boxgraft =` lines in the data row's exported pack, and `kdos-packd` lands them when `import` installs that pack; a data row the store builds is an image and is grafted nowhere |
 
-Pack rows, `group`, `image`, `env`, `cmd`, `needs`, `deb`, `graft` and `boxgraft` rows may appear
+Pack rows, `group`, `image`, `env`, `cmd`, `needs`, `deb`, `about`, `graft` and `boxgraft` rows may appear
 in any order: the whole file is read before any chain is resolved, and a parent or a base is looked
 up by id wherever it stands. A `meta` row is the exception. It is applied as it is read, so it must
 come after the pack row it describes; one placed above that row is dropped without a message, and
@@ -872,10 +896,14 @@ know your user name.
 ## Launcher generation
 
 ```sh
-kdos-appbox genlaunchers --packs <fs-root>             # every installed pack, into the system tree
-kdos-appbox genlaunchers --packs --user                # every installed pack and store box, into your tree
-kdos-appbox genlaunchers --packs-dir <dir> <fs-root>   # extracted packs, one per subdirectory
-kdos-appbox genlaunchers <desktop-dir> <fs-root>       # one applications directory
+# every installed pack, into the system tree
+kdos-appbox genlaunchers --packs <fs-root>
+# every installed pack and store box, into your tree
+kdos-appbox genlaunchers --packs --user
+# extracted packs, one per subdirectory
+kdos-appbox genlaunchers --packs-dir <dir> <fs-root>
+# one applications directory
+kdos-appbox genlaunchers <desktop-dir> <fs-root>
 ```
 
 `genlaunchers` reads applications' own desktop entries and writes everything the host needs to
@@ -1110,8 +1138,10 @@ a file.
 
 The shipped defaults are in two files. `/usr/share/kdos/xdg/kde-mimeapps.list` names the desktop
 application for each role, and `/etc/xdg/mimeapps.list` holds the few handlers that are not a
-desktop application's; a type is named in one of them and never both, because the first directory
-read would win. A new home's `~/.config/mimeapps.list` is copied from the skeleton with an empty
+desktop application's; a type's default is named in one of them and never both, because the first
+directory read would win. `/etc/xdg/mimeapps.list` also carries the removed associations, which
+KService and GLib read only from a list of that name: Ark off the OpenDocument and Office Open XML
+types, and Kate and Okular's text viewer off `text/calendar`. A new home's `~/.config/mimeapps.list` is copied from the skeleton with an empty
 `[Default Applications]` section, so every default comes from those two until you choose one. Your own choice in `~/.config`, which System Settings and Open
 With write, is searched before it, so what they show as current is what the opener would run.
 
@@ -1167,13 +1197,13 @@ lets one manager serve both.
 | `init` | `yes`, `no` | `no` | `--init` on a development box. A pack box and a store box always run `kdos-boxinit` as their init |
 | `wayland` | `yes`, `no` | `yes` | No tagged socket in the box's private runtime directory, and an empty `WAYLAND_DISPLAY`. Not enforced on a development box, which shares the session's runtime directory |
 | `audio` | `yes`, `no` | `yes` | No PipeWire or PulseAudio socket linked into the private runtime directory. Not enforced on a development box |
-| `x11` | `yes`, `no` | `yes` | Whether the box is handed the X11 display and the session's cookie. `yes` lets a program written for X11 alone (Tk, Java's AWT and Swing, Motif, FLTK, GTK 2, Xt) open its window; `no` withholds the display, and such a program finds none and exits while the box stays running. Any word other than a refusal reads as `yes`. A box handed X11 is at most `tagged`. See below |
+| `x11` | `yes`, `no` | `yes` | Whether the box is handed the X11 display and the session's cookie. `yes` lets a program written for X11 alone (Tk, Java's AWT and Swing, Motif, FLTK, GTK 2, Xt) open its window; `no` withholds the display, and such a program finds none and exits while the box stays running. A box handed X11 is at most `tagged`. See below |
 | `gpu` | `yes`, `no` | `yes` | With private devices, binds `/dev/dri` back into the box |
 | `render` | `auto`, `gpu`, `software` | `auto` | Which renderer the box's applications use. See [render](#render) |
-| `memory` | a size, such as `4G` | unlimited | `--memory` on both lanes; a cgroup limit for a pack box created in a login with a delegated cgroup subtree, and a victim preference for `kdos-oomd` everywhere. See [Memory and grants](#memory-and-grants) |
-| `cpus` | a number | every core | `--cpus` on both lanes |
+| `memory` | a size in podman's spelling of at least 6 MiB, podman's floor, such as `512m`, `1.5g` or `4G` (a number, then `b`, `k`, `m`, `g` or `t` with an optional `b`, in either case; a number with no unit is bytes), or `unlimited` in any case for none; any other value is refused | unlimited (stored empty) | `--memory` on both lanes; a cgroup limit for a pack box created in a login with a delegated cgroup subtree, and a victim preference for `kdos-oomd` everywhere. See [Memory and grants](#memory-and-grants) |
+| `cpus` | a number of cores above zero, such as `2` or `1.5`, or `all` in any case for every core; any other value is refused | every core (stored empty) | `--cpus` on both lanes |
 | `pids` | a number | unlimited | `--pids-limit` on both lanes |
-| `accent` | an accent name, or `session` for none | none (stored as `session`, printed `none`) | The box's colour: its windows' title bars, through a KWin window rule (see [Window rules](#window-rules)), and the Konsole profile `kdos-box enter` opens |
+| `accent` | an accent name, or `none` (also `session`) for none | none (stored as `session`, printed `none`) | The box's colour: its windows' title bars, through a KWin window rule (see [Window rules](#window-rules)), and the Konsole profile `kdos-box enter` opens |
 | `autostop` | `90s`, `30m`, `2h`, or seconds | `0` (never) | `kdos-box gc` stops the box once it has been running this long, counted from when it started, and has no window open |
 | `grant` | comma- or space-separated names | none | KWin lets this box's clients bind the protocols those names open, and `secrets` adds the password store to its bus. See [Memory and grants](#memory-and-grants) |
 | `export` | `auto`, `manual` | `manual` | Nothing: recorded only. See below |
@@ -1185,10 +1215,17 @@ evaluates the command it builds through a shell, so a `memory` or `cpus` value m
 letters, digits and dots is refused with a warning naming it and is not applied. `kdos-box profile`
 prints the podman flag for each of these keys, which is the same on every lane.
 
-For the sharing keys, `private`, `yes`, `on`, `1` and `true` all mean private (or yes); anything else
-means shared (or no). For `wayland`, `audio` and `gpu`, `shared` also means yes. An unknown key is
-reported by name on a `!` line under the profile; it is not written back when the profile is
-rewritten.
+For the sharing keys, `private`, `yes`, `on`, `1` and `true` all mean private (or yes), and
+`shared`, `no`, `off`, `0` and `false` mean shared (or no); for `wayland`, `audio` and `gpu`,
+`shared` means yes. `network` takes `host` or `shared` for the host's, `none`, and `private` or
+`yes`, `on`, `1` and `true` for a namespace of its own; it refuses `no`, `off`, `0` and `false`,
+which could mean the host's or none. `x11` takes the four yes and the four no spellings,
+`persistence` its three words, `export` `auto` or `manual`, `pids` a whole number and `autostop`
+`0` or a number with an optional `s`, `m` or `h`. A value outside these is never read as the key's
+default: `kdos-box create` and `kdos-box profile <name> key=value` refuse it with one line such as
+`'network=maybe': network takes host, private or none — nothing was written`, exit 1 and write
+nothing. In a hand-edited file the line is ignored, so the key keeps the value an earlier line gave
+it or its default, and the line is named on a `!` line under the profile, as is an unknown key. Neither is written back when the profile is rewritten.
 
 ### How the profile reports itself
 
@@ -1227,10 +1264,13 @@ delivered depends on the lane too: a pack box and a store box see their own runt
   memory overlay and end with it — a `kdos persist` store keeps them from its next boot``; a
   session whose persistence store is in use (mounted at `/mnt/persist`) keeps that storage, and
   gets no line.
-- A box whose container was made from other create-time keys than the profile now holds gets
+- A box with a container gets a `created` line, right after `base` or `image`, saying what the
+  container was made from: `created = matches` when its label holds the profile's create-time
+  values, `created = differs` when it does not, and `created = unrecorded` for a container with
+  no label. A box with no container gets no `created` line. Under `created = differs`,
   ``! the profile was written after this box was created: <keys> differ — they apply once
   `kdos-box remove <box>` has run and the box is made again`` (`differs — it applies` for one
-  key), naming the keys, so a namespace or `home` change is never shown as in force when the
+  key) names the keys, so a namespace or `home` change is never shown as in force when the
   container predates it. Every create labels the container `io.kdos.profile=<digest>`: `v1.`
   and eight hexadecimal digits of a SHA-256 of `<key>=<value>` for each create-time key, in the
   order `base`, `image`, `persistence`, `network`, `ipc`, `devices`, `processes`, `home`, `init`,
@@ -1238,7 +1278,8 @@ delivered depends on the lane too: a pack box and a store box see their own runt
   keys a launch reads (`accent`, `grant`, `x11`, `autostop`, `wayland`, `audio`, `render`,
   `display`, `export`) are not in it, so changing one raises no line. A box with no container,
   and a container with no such label, such as one `distrobox create` made by itself, never gets
-  the line.
+  the `!` line; the settings page reads `matches` and `differs` as the whole account of a
+  labelled container, and keeps its own memory of a change only for an `unrecorded` one.
 - `export = auto` triggers nothing. `genlaunchers` writes launchers for every installed pack and
   every store box at once, and `kdos-box export <box> <app>` is the per-application route.
 - `audio = no` or `gpu = no` with `devices = shared` cannot be enforced through the device nodes. A
@@ -1253,12 +1294,26 @@ than no setting.
 
 Namespaces and volumes apply at create time. A namespace or a volume cannot be changed on a running
 container, so `kdos-box profile <name> key=value` writes the file and, for a box that has a
-container, names the create-time keys that changed and tells you to `kdos-box remove <name>` and
-create it again for them to take effect. For a box with no container yet it says the profile
-applies when the box is created: `remove` would delete the profile just written. A change only to
-keys a launch reads prints `<name>: written — it applies at the box's next launch.` `accent` is a
+container, names the create-time keys that differ from what the container was created with (the
+digest in its `io.kdos.profile` label, the comparison `kdos-box profile <name>` and the settings
+page make) and tells you to `kdos-box remove <name>` and create it again for them to take effect.
+A key an earlier write changed is still named, even by a write that touched only launch-time keys.
+A key this write set back to its created value is in effect now:
+` <keys> is what the box was created with, so it is in effect now.` (`are` and `they are` for
+several) follows the CREATE-time sentence, or stands alone after `<name>: written —` when no
+create-time key differs. Either way the line ends with ` The rest applies at the box's next launch.`
+when the write also changed a key a launch reads, so one line accounts for every key written. A
+container with no `v1.` label, one distrobox made by itself, records nothing to compare with, so the
+keys named are those the write changed. For a box with no container yet it says the profile applies
+when the box is created: `remove` would delete the profile just written. A change only to keys a
+launch reads, on a box whose create-time keys all match its container, prints
+`<name>: written — it applies at the box's next launch.` `accent` is a
 KWin rule, written again at once, and a change of the accent alone prints
-`<name>: written — the title-bar colour changes now.`
+`<name>: written — the title-bar colour changes now.` A write whose every value is one the profile
+already holds (`accent=none` over a stored `session` among them) writes nothing, prints
+`<name>: unchanged — it already holds those values.` and then the profile. A profile file with a
+value its load refused or a key it did not know is written all the same, since the rewrite drops
+them, and so is a box with no profile file yet.
 
 ### render
 
@@ -1288,10 +1343,12 @@ software without probing: the host's node is a path that does not exist in the b
 
 ```text
 render      = auto        /dev/dri/renderD128
-render      = software    LIBGL_ALWAYS_SOFTWARE=1 (advisory) — the profile refuses the card
-render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no render node on this machine
-render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — no /dev/dri inside this box
+render      = software    LIBGL_ALWAYS_SOFTWARE=1 (advisory) — <why>
+render      = auto        LIBGL_ALWAYS_SOFTWARE=1 (advisory) — <why>
 ```
+
+`<why>` is `the profile refuses the card` after `software`, and after `auto` either `no render
+node on this machine` or `no /dev/dri inside this box`.
 
 ### Memory and grants
 
@@ -1340,18 +1397,19 @@ in KWin's carried `sandbox-policy.patch`, described in
 `kdos-box` is the same binary under a second name, managing boxes directly. A box name, and a
 snapshot tag, is 1 to 63 characters from `A-Z a-z 0-9 . _ -` and starts with a letter or a digit;
 any other name is refused with that rule in one line. `kdos-box --help` (or `-h`, or `help`)
-prints the usage on standard output and exits 0; no verb, or an unknown one, prints it on standard
-error and exits 2. A verb of the launch path given a name that is no box (`enter`, `run`,
+prints the usage on standard output and exits 0, and so does `kdos-box <verb> --help` (or `-h`)
+whatever the first word, a verb or not, since no box name starts with `-`; no verb, or an unknown
+one without `--help` or `-h` after it, prints it on standard error and exits 2. A verb of the launch path given a name that is no box (`enter`, `run`,
 `export`, `clone`'s source, `start`, `stop`) is refused with `there is no box named <name>` before
 anything is written, so a typo leaves no profile behind.
 
 | Command | Does |
 |---|---|
-| `list`, `ls` | Every box with its base, state, persistence, disk use and accent. The disk use is what `~/.local/share/kdos/boxes/<name>` holds (a pack box's writable layer, snapshots and private home) plus, for a box whose base is not `pack:`, what the container itself has written, read from one `podman ps --all --size` per listing (`{{.ListContainer.Size.RwSize}}`), which is where a store box and a development box keep what they install. A pack box is a `--rootfs` container, whose figure podman takes by walking the whole composed stack, so its row counts only its directory, where its writable layer is; a podman that cannot say leaves the directory's figure. Any option but `--json` is a usage error (exit 2). The accent reads `none` for a box with none (`--json` carries the stored token, `session`), and the list includes boxes that have a profile but no container (state `not created`). `--json` prints the same as one JSON document, each box also carrying `confinement` (what its last launch recorded) and `manager` (the container's `manager` label, `distrobox` for any container distrobox made), which the Boxes settings page and Discover's KDOS backend read. The containers come from one `podman ps --all` whose format reads the label with `{{.Label "manager"}}`: `podman ps` formats a row through a reporter whose `Labels` is one comma-joined string, so `index .Labels` fails the template. When `podman ps` fails, the whole rows it printed before the failure are still listed and the row it stopped inside is not, podman's error goes to stderr, a last line says the list is incomplete (a box with no profile is missing and a state may be wrong), and the exit is 1. The Boxes settings page reads a non-zero exit as an error and does not use its rows: with no listing yet it shows that last line as the error, and after a good listing it keeps the last one on screen under an error banner that names that line |
-| `create <name> [key=value ...]` | Writes the profile and creates the box, then prints `<name> created — enter it with: kdos-box enter <name>` and the profile; distrobox's own closing instruction is not printed. A base is required: `base=pack:<id>`, `base=image:<ref>` or `base=box:<name>` (see [create with a box base](#create-with-a-box-base)). Fails if a container of that name exists. Nothing is written until the command line is known good: a word with no `=`, an unknown key, no base, a base that is not one word, `base=image:` with no reference, `base=pack:` with no id and `base=box:` of a box with no pack or image base are each refused with one line ending `nothing was written`, before podman is asked anything. A create that fails after the profile is written puts the profile back as it found it, deleted, or the text of a profile `remove` kept, so neither a refusal nor a failure leaves a `not created` box behind. A create that succeeds labels the container with its create-time keys (see [How the profile reports itself](#how-the-profile-reports-itself)) and writes the boxes' [window rules](#window-rules) again |
+| `list`, `ls` | Every box with its base, state, persistence, disk use and accent. The disk use is what `~/.local/share/kdos/boxes/<name>` holds (a pack box's writable layer, snapshots and private home) plus, for a box whose base is not `pack:`, what the container itself has written, read from one `podman ps --all --size` per listing (`{{.ListContainer.Size.RwSize}}`), which is where a store box and a development box keep what they install. A pack box is a `--rootfs` container, whose figure podman takes by walking the whole composed stack, so its row counts only its directory, where its writable layer is; a podman that cannot say leaves the directory's figure. Any option but `--json` is a usage error (exit 2). The accent reads `none` for a box with none (`--json` carries the stored token, `session`), and the list includes boxes that have a profile but no container (state `not created`). `--json` prints the same as one JSON document, each box also carrying `confinement` (what its last launch recorded) and `manager` (the container's `manager` label, `distrobox` for any container distrobox made), and a store box (base `image:kdos/<id>`) also carrying `image`, `present` when its image is in the local store and `absent` when its application's uninstall released it, read from one `podman images --format {{.Repository}}` per listing and left out of every row when that call fails. The Boxes settings page and Discover's KDOS backend read these fields. The containers come from one `podman ps --all` whose format reads the label with `{{.Label "manager"}}`: `podman ps` formats a row through a reporter whose `Labels` is one comma-joined string, so `index .Labels` fails the template. When `podman ps` fails, the whole rows it printed before the failure are still listed and the row it stopped inside is not, podman's error goes to stderr, a last line says the list is incomplete (a box with no profile is missing and a state may be wrong), and the exit is 1. The Boxes settings page reads a non-zero exit as an error and does not use its rows: with no listing yet it shows that last line as the error, and after a good listing it keeps the last one on screen under an error banner that names that line |
+| `create <name> [key=value ...]` | Writes the profile and creates the box, then prints `<name> created — enter it with: kdos-box enter <name>` and the profile; distrobox's own closing instruction is not printed. A base is required: `base=pack:<id>`, `base=image:<ref>` or `base=box:<name>` (see [create with a box base](#create-with-a-box-base)). Fails if a container of that name exists. Nothing is written until the command line is known good: a word with no `=`, an unknown key, a value its key does not take (see [Box profiles](#box-profiles)), no base, a base that is not one word, `base=image:` with no reference, `base=pack:` with no id and `base=box:` of a box with no pack or image base are each refused with one line ending `nothing was written`, before podman is asked anything. A store base, `base=image:kdos/<id>`, whose image is not in the local store is refused the same way after one `podman image exists`. When `<name>` is `<id>`, the application's own box, the line is `<name>: its application is not installed — \`kdos app install <id>\` builds its image and makes the box — nothing was written`; for a box of any other name it is `<name>: its image kdos/<id> is not installed — \`kdos app install <id>\` builds it, then this create can run — nothing was written`, since the install makes only `<id>` and the named box is created afterwards from the image it built (`deb:<package>` for a `deb.` box, each `_` of its name written back as the package's `+`); a `podman image exists` that fails rather than answering absent is refused with `podman could not look for kdos/<id> in the local store (exit <n>)` instead. A `kdos/` image is only ever built on the machine by that install, so no registry is asked and nothing reaches the network. A create that fails after the profile is written puts the profile back as it found it, deleted, or the text of a profile `remove` kept, so neither a refusal nor a failure leaves a `not created` box behind. A create that succeeds labels the container with its create-time keys (see [How the profile reports itself](#how-the-profile-reports-itself)) and writes the boxes' [window rules](#window-rules) again |
 | `enter <name> [command ...]` | Starts the box and runs a login shell (`/bin/bash -l`) or the command inside it. `--window` opens the Konsole window even with no terminal, which is how KRunner opens a box's shell. When `enter` opens a window it does so at once, and the wait for a box not yet set up happens inside it; run in place, `enter` titles the terminal (as a terminal's own program) and waits up to 120 seconds for the box's init, silently for the first 3 seconds, well within which a restart of a box set up before is ready (about half a second); past them it prints, on standard error, `kdos-box: setting up <name> for its first use; this can take a minute` when no start of the box ever finished a setup and `kdos-box: waiting for <name> to start` when one did. A window `enter` waits for its window to close, and when the wait inside it was stopped or ran out it prints that line too and exits 1. See below for when it opens a window and how the wait ends |
 | `run [-l <launcher-id>] <name> <app> [args ...]` | The launch path, in this box, with its windows under the launcher id `-l` names. A name that is neither a container, a profile nor an installed pack's id is refused with `there is no box named <name>` before the launch path composes, creates or records anything |
-| `apps <name>` | Starts the box and lists the desktop ids in its `/usr/share/applications` |
+| `apps <name>` | Refuses a name that is no box, as `export` does (`there is no box named <name>`, exit 1, nothing started); otherwise starts the box and lists the desktop ids in its `/usr/share/applications` |
 | `export <name> <app>` | Refuses a name that is neither a container, a profile nor an installed pack's id, the names `run` accepts (`there is no box named <name>`, exit 1, nothing written), and an `<app>` the box has no entry or command for. A launcher `$XDG_DATA_HOME/applications/<name>.<stem>.desktop` (`~/.local/share/applications` when the variable is unset) whose command is `kdos-box run -l <name>.<stem> <name> <command> %U`, and a shim `~/.local/bin/<command>@<name>`. `<app>` is a desktop id that `kdos-box apps` lists, or a command. See [kdos-box export](#kdos-box-export) |
 | `unexport <name> <app>` | Removes the launcher, the icons `export` copied for it, and the shim, both `<app>@<name>` and `<command>@<name>` |
 | `freeze <name> [out.kpack]` | The writable layer as one pack. See below |

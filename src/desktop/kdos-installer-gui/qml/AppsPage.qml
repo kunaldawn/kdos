@@ -45,6 +45,13 @@ WizardPage {
     /* A binary host named, and no network to reach it over: the groups
      * are recorded and installed after the first boot. */
     readonly property bool offline: binhost === true && Backend.plan.network === false
+    /* The command that installs recorded groups, in the form the new
+     * system's first account can run: the Account page comes before this
+     * one, so its answer stands; sudo for an administrator, which the
+     * setup wizard's account always is, root's password otherwise. */
+    readonly property string pendingCommand: answers.admin || answers.oem
+        ? "sudo kdos update install --pending"
+        : "su -c 'kdos update install --pending'"
 
     onEntered: {
         Backend.refreshApps();
@@ -66,12 +73,12 @@ WizardPage {
          * before the choice. The command stands on a line of its own, so the label's
          * wrapping never splits it at a space. */
         text: page.offline
-            ? i18n("Native programs. No network was found, so the install only records the groups chosen here, and this installs them after the first boot once there is a network:\nsudo kdos update install --pending")
+            ? i18n("Native programs. No network was found, so the install only records the groups chosen here, and this installs them after the first boot once there is a network:\n%1", page.pendingCommand)
             : page.binhost === true
-            ? i18n("Native programs, downloaded prebuilt into the new system during the install. This needs a network; without one the choice is kept, and this installs it later:\nsudo kdos update install --pending")
+            ? i18n("Native programs, downloaded prebuilt into the new system during the install. This needs a network; without one the choice is kept, and this installs it later:\n%1", page.pendingCommand)
             : page.binhost === false
-            ? i18n("Native programs. This system names no binary host, so the install only records the groups chosen here, and this installs them once a binary host answers:\nsudo kdos update install --pending")
-            : i18n("Native programs, downloaded prebuilt into the new system during the install when this system names a binary host and the network answers; otherwise the choice is kept, and this installs it later:\nsudo kdos update install --pending")
+            ? i18n("Native programs. This system names no binary host, so the install only records the groups chosen here, and this installs them once a binary host answers:\n%1", page.pendingCommand)
+            : i18n("Native programs, downloaded prebuilt into the new system during the install when this system names a binary host and the network answers; otherwise the choice is kept, and this installs it later:\n%1", page.pendingCommand)
     }
 
     Repeater {
@@ -109,7 +116,7 @@ WizardPage {
                 : page.binhost === true
                 ? i18n("downloaded during the install")
                 : page.binhost === false
-                ? i18n("recorded; sudo kdos update install --pending installs it once a binary host answers")
+                ? i18n("recorded; %1 installs it once a binary host answers", page.pendingCommand)
                 : i18n("downloaded during the install when a binary host answers, recorded otherwise")
             Accessible.name: why
                 ? i18ncp("@info:whatsthis %2 group %1 count %3 fate %4 reason", "%2, %1 port, %3; %4",
@@ -177,8 +184,8 @@ WizardPage {
             }
             text: modelData.desc || modelData.id
             checked: page.answers.apps.indexOf(modelData.id) >= 0
-            Accessible.name: i18nc("@info:whatsthis %1 group %2 count %3 size", "%1, %2 applications, about %3",
-                                   text, modelData.apps, Backend.formatSize(modelData.bytes))
+            Accessible.name: i18ncp("@info:whatsthis %1 count %2 group %3 size", "%2, %1 application, about %3",
+                                    "%2, %1 applications, about %3", modelData.apps, text, Backend.formatSize(modelData.bytes))
             onToggled: {
                 page.answers.setAppChosen(modelData.id, checked);
                 Backend.refreshApps();

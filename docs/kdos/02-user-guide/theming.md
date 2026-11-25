@@ -255,7 +255,7 @@ Two programs cannot take an exact colour:
 
 Three files are merged rather than replaced: `~/.config/starship.toml` (only the block between its
 markers), `~/.config/mc/ini` (only the `skin` key) and `~/.config/qt5ct/qt5ct.conf` (only the
-palette, style, icon theme and font keys, and only while the palette is a KDOS one; the rest is
+palette, style, dialog, icon theme and font keys, and only while the palette is a KDOS one; the rest is
 what qt5ct saved for you).
 
 ## Konsole and the terminal programs
@@ -508,7 +508,7 @@ Applications on the host take the accent by one of three routes:
 |---|---|
 | Qt 6, KDE Frameworks | KDE's platform theme (`QT_QPA_PLATFORMTHEME=kde`, set for every login) reads the colours, fonts and icons of the global theme from `kdeglobals`, and repaints a running application on a switch |
 | GTK 3, GTK 4 and libadwaita | Plasma's GTK bridge sets the Breeze GTK theme, the icons, fonts and window buttons, and writes the scheme's colours under `~/.config/gtk-3.0` and `~/.config/gtk-4.0` from the first login; a running GTK 3 application repaints on a switch, a GTK 4 one at its next start. GTK 4 opens the KDE file dialog through the portal; a GTK 3 application does when it uses GTK's native file chooser, which `GTK_USE_PORTAL=1` sends to the portal, and keeps GTK's own dialog when it builds that itself, as GIMP, Inkscape and AbiWord do |
-| Qt 5 | qt5ct, under the same `kde` platform-theme name, reads `~/.config/qt5ct/qt5ct.conf`, which `kdos theme` points at the accent's palette, with the Fusion style and the KDOS icons |
+| Qt 5 | qt5ct, under the same `kde` platform-theme name, reads `~/.config/qt5ct/qt5ct.conf`, which `kdos theme` points at the accent's palette, with the Fusion style and the KDOS icons; its Open and Save dialogs are KDE's, through the file-chooser portal |
 
 KDE's platform theme is built for Qt 6 only, and there are no KDE Frameworks for Qt 5, so qt5ct is
 the only way the accent reaches VLC, KeePassXC, LMMS and the other Qt 5 programs. qt5ct's own
@@ -620,7 +620,8 @@ itself from the same table, because no package can ship a file into a home.
 ### Auditing what is installed
 
 ```sh
-kdos theme --audit          # does this machine match what the palette makes for the accent in force?
+# does the machine match what the palette makes for the accent in force?
+kdos theme --audit
 kdos theme --audit amber    # the same, for amber
 ```
 

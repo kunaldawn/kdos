@@ -79,6 +79,22 @@ void ModelTest::catalogueFile()
     // A meta line above its row describes nothing.
     QCOMPARE(cat.rows.value(u"app.early"_s).name, QString());
 
+    // `deb` and `about` rows apply wherever they stand: the shipped file puts
+    // `deb` above its pack row, and an `about` may come before or after it.
+    const CatalogueRow maxima = cat.rows.value(u"app.maxima"_s);
+    QVERIFY(maxima.vendorDeb);
+    QCOMPARE(maxima.license, u"MIT"_s);
+    QCOMPARE(maxima.author, u"Maxima Team"_s);
+    QCOMPARE(maxima.homepage, u"https://maxima.example/"_s);
+    QCOMPARE(maxima.description, u"A computer algebra system|with a pipe"_s);
+    const CatalogueRow early = cat.rows.value(u"app.early"_s);
+    QVERIFY(!early.vendorDeb);
+    QCOMPARE(early.license, u"GPL-2.0-or-later"_s);
+    QCOMPARE(early.author, u"Early Ltd"_s);
+    QCOMPARE(early.description, u"kept: an about row may stand above its row"_s);
+    QVERIFY(!kcalc.vendorDeb);
+    QVERIFY(kcalc.license.isEmpty() && kcalc.description.isEmpty());
+
     QCOMPARE(cat.groups.size(), 2);
     const CatalogueGroup *office = cat.group(u"office"_s);
     QVERIFY(office);

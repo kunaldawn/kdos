@@ -10,7 +10,7 @@
 
 name        = routino
 version     = 3.4.4
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://www.routino.org/download/$name-$version.tgz
 sha256      = a7017ff04313fa4fb53b995de50feda39ea5e7867bb40a3f9c886187af702830  routino-3.4.4.tar.gz
 description = Offline route planning over an OSM extract

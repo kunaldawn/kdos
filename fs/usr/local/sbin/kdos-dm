@@ -2,10 +2,11 @@
 # kdos-dm — the display manager on tty1, or a password prompt there when it
 # cannot run.
 #
-# Reached from /etc/inittab, which starts it only once rcS has returned: rcS
-# collapses the splash to black and lets go of the framebuffer synchronously
-# (`kdos-splash handoff`), so SDDM's greeter compositor never races the splash
-# for the DRM master. SDDM is never started from an rcS script for that reason.
+# Reached from /etc/inittab, which starts it only once rcS has returned: the
+# splash stops drawing synchronously at the end of rcS, its settled frame left
+# on screen until the greeter compositor's first frame (`kdos-splash handoff`),
+# so SDDM's greeter compositor never races the splash for the DRM master. SDDM
+# is never started from an rcS script for that reason.
 #
 # A MISSING OR FAILING SDDM STILL GIVES A CONSOLE. sddm is a daemon that stays
 # up across every login and logout, so every start of this script after the

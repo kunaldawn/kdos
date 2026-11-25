@@ -19,7 +19,8 @@ and the Wi-Fi country in `/etc/modprobe.d/kdos-regdom.conf`, network time as the
 `/etc/service.disabled/chrony` marker, the locale in `/etc/locale.conf` (which SDDM puts into
 every session), the console keymap in `/etc/keymap` (loaded by `kdos-getty`, with a copy in
 `/boot/efi/EFI/kdos/keymap` for the initramfs's passphrase prompt) and the graphical
-layout in `/etc/kdos/xkb.conf`, never under `/etc/X11`. Every method checks its arguments, then
+layout in `/etc/kdos/xkb.conf`, never under `/etc/X11`, with the same layout in
+`/etc/xdg/kxkbrc`. Every method checks its arguments, then
 asks polkit under systemd's own action ids, then writes; the pattern the root daemons share is in
 [The shape they share](../../../docs/kdos/04-programs/daemons.md#the-shape-they-share).
 
@@ -65,6 +66,17 @@ a root daemon links is code running as root.
   their XKB layout, and the login screen has the installed keyboard from the first boot. A
   derived layout is given only when xkeyboard-config carries it: KWin falls back to US for a
   layout it cannot compile and says so only in its log.
+- **Every layout change rewrites `/etc/xdg/kxkbrc`.** KWin and the lock screen read the kxkbrc
+  cascade before the `XKB_DEFAULT_*` environment startplasma builds from `xkb.conf`, so a system
+  `kxkbrc` naming a layout outranks locale1 in every session of an account with no `kxkbrc` of
+  its own. The installer writes the file from its Keyboard page; on an OEM machine that is the
+  preparer's layout, and plasma-setup's Keyboard page sets the owner's through
+  `SetX11Keyboard`. So `SetX11Keyboard`, and `SetVConsoleKeyboard` when `convert` changes the
+  layout, write the file whole in the installer's shape (`[Layout]`, `LayoutList`,
+  `VariantList`, `Model` and `Options` with `ResetOldOptions=true` when set, `Use=true`), and an
+  empty layout removes it, as the installer does when no layout was named. Without it the
+  session and the lock screen type the installer's layout while the login screen types the
+  owner's, and a password with keys the two lay out differently cannot unlock the screen.
 - **The console keymap is copied to the ESP.** The initramfs types the disk passphrase before any
   root is open, so it loads the map named in `/boot/efi/EFI/kdos/keymap`. Every keymap the daemon
   writes is written there too, an empty one removes it, and at start the copy is rewritten from

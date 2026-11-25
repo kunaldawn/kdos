@@ -19,7 +19,7 @@ decorations Plasma's button set and colours.
 
 ## Patches
 
-Each patch is offered upstream; the merge requests are to be opened against
+Each patch is to be offered upstream; the merge requests are to be opened against
 `plasma/kde-gtk-config`, and each entry names its own once it exists.
 
 `libadwaita-colors.patch` — libadwaita draws only from its own named colours and, from 1.6, from

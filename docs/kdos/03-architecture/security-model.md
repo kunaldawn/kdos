@@ -1122,7 +1122,7 @@ not there is worse off than one who knows it is missing.
   with no serial port), so anyone with a serial connection to a machine running the live medium is
   root, with no password. The installer removes `--autologin root` from the installed copy, where
   `ttyS0` asks for a login.
-- **Single-user mode asks for root's password.** The installed menu's `KDOS (single user)` entry
+- **Single-user mode asks for root's password.** The installed menu's `KDOS <version> (single user)` entry
   and `telinit S` reach `sulogin`, which opens a root shell only for root's password. With root
   locked, as the installer leaves it by default, it opens no shell at all and the boot continues to
   the login screen. Anyone who can edit the kernel command line at the boot menu still gets a root

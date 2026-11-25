@@ -16,6 +16,9 @@
  *
  * The firmware row says when Secure Boot is on, and a warning says what it
  * costs: the installed machine does not start until it is off.
+ *
+ * A line names the release this medium installs (Backend.release), in
+ * the form the splash, `kdos version` and the greeter give it.
  */
 
 import QtQuick
@@ -96,6 +99,15 @@ WizardPage {
         type: Kirigami.MessageType.Warning
         visible: Backend.probe.secure_boot === true
         text: i18n("Secure Boot is on. KDOS installs, but the installed computer will not start until Secure Boot is turned off in the firmware setup.")
+    }
+
+    /* The release in the form `kdos version`, the splash and the greeter
+     * give, so a person knows which KDOS goes on the disk. */
+    QQC2.Label {
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
+        visible: Backend.release.length > 0
+        text: i18nc("@info %1 the release, such as 0.2.1", "This installs KDOS %1.", Backend.release)
     }
 
     Kirigami.FormLayout {

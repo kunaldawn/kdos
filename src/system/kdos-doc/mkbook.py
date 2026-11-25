@@ -26,7 +26,8 @@
 # chapters; and every
 # `kdos-*` row of the command index, and the row of each command in OURS,
 # becomes a manual page whose DESCRIPTION is the book section that row links
-# to. A manual page written by hand beside
+# to, each link in it to another page of the book printed as the `kdos-doc`
+# command that opens that page. A manual page written by hand beside
 # the book would be a second description going stale; this one is the book's
 # own words. --html writes the first output alone, straight into DEST, which
 # is how the published site is made.
@@ -248,11 +249,44 @@ def render_book(docs, root):
 
 # ── the manual pages ──────────────────────────────────────────────────────
 
-def section_text(path, frag):
+def doc_ref(target, path, book):
+    """The `kdos-doc` argument that opens a link's target, when the target is
+    a page of the book: the page's path under BOOK without `.md`, and its
+    fragment when it names one. None for anything else, a same-page fragment,
+    a file outside the book or a page that is not markdown."""
+    page, _, frag = target.partition("#")
+    if not page.endswith(".md"):
+        return None
+    dest = os.path.normpath(os.path.join(os.path.dirname(path), page))
+    rel = os.path.relpath(dest, book)
+    if rel.startswith(".."):
+        return None
+    return rel[:-3].replace(os.sep, "/") + ("#" + frag if frag else "")
+
+
+def man_link(m, path, book):
+    """A link as a manual page prints it. A man reader has nothing to click
+    and no book page open, so a link to another page of the book becomes its
+    text and the `kdos-doc` command that opens that page; a URL with a
+    scheme stays a link, which lowdown prints with its address; any other
+    target, a same-page fragment or a file outside the book, leaves its text
+    alone."""
+    text, target = m.group(1), m.group(2)
+    if SCHEME_RE.match(target):
+        return m.group(0)
+    ref = doc_ref(target, path, book)
+    return f"{text} (kdos-doc {ref})" if ref else text
+
+
+def section_text(path, frag, book=None):
     """The markdown of one book section: from the heading the fragment names
     to the next heading at its level or above, or the whole page after its
     title when there is no fragment. Headings inside become the manual's
-    subsections."""
+    subsections, pictures are dropped and links are as man_link prints them.
+    BOOK is the book's directory, the kdos/ that holds the page's part; it
+    defaults to the directory above the page's own."""
+    if book is None:
+        book = os.path.dirname(os.path.dirname(os.path.abspath(path)))
     with open(path, encoding="utf-8") as f:
         lines = f.read().split("\n")
     heads = headings(lines)
@@ -279,8 +313,7 @@ def section_text(path, frag):
         body.append(line)
     text = "\n".join(body)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', "", text)
-    text = LINK_RE.sub(lambda m: m.group(1)
-                       if not SCHEME_RE.match(m.group(2)) else m.group(0),
+    text = LINK_RE.sub(lambda m: man_link(m, os.path.abspath(path), book),
                        text)
     return text.strip() + "\n"
 
@@ -413,7 +446,7 @@ def main():
         if name in skip:
             made.append((name, sec))
             continue
-        body = section_text(page, frag)
+        body = section_text(page, frag, os.path.join(docs, "kdos"))
         if body is None:
             missing.append(f"{name}: no section #{frag} in "
                            f"{os.path.relpath(page, docs)}")

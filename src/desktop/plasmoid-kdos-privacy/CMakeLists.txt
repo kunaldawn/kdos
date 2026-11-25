@@ -42,6 +42,8 @@ plasma_add_applet(org.kdos.privacy
         qml/FullRepresentation.qml
     CPP_SOURCES
         src/privacyapplet.cpp
+    QML_ARGS
+        DEPENDENCIES org.kde.plasma.plasmoid
 )
 target_link_libraries(org.kdos.privacy PRIVATE kdosprivacy Qt6::Gui Qt6::Qml KF6::CoreAddons KF6::I18n Plasma::Plasma)
 

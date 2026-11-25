@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos oracle — one recorded lesson, at every login
+ *   kdos oracle — one recorded lesson, picked for today
  *
  * The corpus is the SAME one `kdos why` and `kdos explain` read: every file in
  * it is a debug cycle somebody already paid for, and preflight fails the build
@@ -16,8 +16,8 @@
  * The pick is (day XOR boot), not random: the same aphorism all day, so it can
  * be quoted at somebody an hour later, and a different one after a reboot, so
  * a machine that is up for a month is not showing one line for a month. NOT
- * the pid — that varies per PROCESS, so every login and every `kdos oracle`
- * draws a fresh line and neither half of the claim above holds.
+ * the pid — that varies per PROCESS, so every `kdos oracle` would draw a
+ * fresh line and neither half of the claim above would hold.
  * ---------------------------------
  */
 
@@ -69,13 +69,11 @@ static char *pick_file(void)
 }
 
 /*
- * "the aphorism · the scar". `cite:` is the file's own attribution and the
- * first `port:` is the fallback — a reason always claims something, so there
- * is always an attribution to print. The attribution names source files and
- * symbols, which is what `kdos oracle` is asked for and noise to somebody
- * logging in, so the login banner asks without it (cite 0).
+ * "the aphorism · the scar". `cite:` is the file's own attribution, then the
+ * first `port:`, then the first `path:` — a reason always claims something,
+ * so there is always an attribution to print. NULL when nothing is installed.
  */
-char *kdt_oracle_line(int with_cite)
+static char *oracle_line(void)
 {
 	char *path = pick_file();
 	if (!path)
@@ -86,10 +84,10 @@ char *kdt_oracle_line(int with_cite)
 		return NULL;
 
 	char *title = kdt_reason_header(text, "title", 0);
-	char *cite = with_cite ? kdt_reason_header(text, "cite", 0) : NULL;
-	if (with_cite && !cite)
+	char *cite = kdt_reason_header(text, "cite", 0);
+	if (!cite)
 		cite = kdt_reason_header(text, "port", 0);
-	if (with_cite && !cite)
+	if (!cite)
 		cite = kdt_reason_header(text, "path", 0);
 
 	char *out = NULL;
@@ -111,7 +109,7 @@ int oracle_main(int argc, char **argv)
 {
 	int plain = argc > 1 && !strcmp(argv[1], "--plain");
 
-	char *line = kdt_oracle_line(1);
+	char *line = oracle_line();
 	if (!line) {
 		fprintf(stderr, "kdos oracle: no reasons installed (%s)\n",
 			kdt_reason_dir());

@@ -2734,11 +2734,11 @@ static int carry_etc(const char *run, const char *slot, const char *rel,
 /*
  * Every absolute mount point the slot's fstab names, as a directory in the
  * slot: rcS's `mount -a` mounts nothing on a path that is not there, and an
- * image root holds only what its manifest names, which is no /boot/efi. A
- * missing component is made 0755 and owned by root; one that exists is left
- * as it is, and the walk stops at a symbolic link or a file on the way, so
- * it never follows one out of the slot. 0, or -1 when a mount point could
- * not be made.
+ * image root holds only what its manifest names, and a manifest need not
+ * name every mount point the machine's fstab adds. A missing component is
+ * made 0755 and owned by root; one that exists is left as it is, and the
+ * walk stops at a symbolic link or a file on the way, so it never follows
+ * one out of the slot. 0, or -1 when a mount point could not be made.
  */
 static int fstab_mountpoints(const char *slot)
 {

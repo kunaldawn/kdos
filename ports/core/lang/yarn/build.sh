@@ -20,3 +20,4 @@ exec node /usr/lib/node_modules/yarn/bin/yarn.js "$@"
 KDOS_SH
 chmod 755 "$PKG/usr/bin/yarn"
 ln -s yarn "$PKG/usr/bin/yarnpkg"
+install -Dm644 "$PORT_SRC/LICENSE.md" "$PKG/usr/share/licenses/$name/LICENSE.md"

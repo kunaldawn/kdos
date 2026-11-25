@@ -48,7 +48,7 @@ toolkit in the tree it is for applications only, and no part of the KDOS desktop
 
 ## Patches
 
-The patch is offered upstream; the merge request is to be opened against `GNOME/gtk`'s
+The patch is to be offered upstream; the merge request is to be opened against `GNOME/gtk`'s
 `gtk-3-24` branch, and this entry names it once it exists.
 
 `settings-portal-gtk-modules.patch` — On Wayland GDK reads `gtk-modules` and

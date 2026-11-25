@@ -30,3 +30,4 @@ for d in */; do
 	install -d "$PKG/usr/include/spooles/$d"
 	install -m644 "$d"/*.h "$PKG/usr/include/spooles/$d/"
 done
+install -Dm644 spooles.$version.html "$PKG/usr/share/licenses/$name/spooles.$version.html"

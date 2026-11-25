@@ -496,9 +496,10 @@ kdos-powerd --file-sharing
 settings change is refused, because a refusal otherwise shows up only in the daemon's log. It asks
 `libkbase` the same question the socket asks, needs no privilege, and prints one line, for example:
 
-```text
-alice: uid 1001, primary gid 1001, not in wheel — permitted ping, the firewall list and its knocks; `firewall` only where polkit grants io.kdos.firewall.set and `accent` and `splash` only where it grants io.kdos.accent.set, each without a prompt (the shipped policy: the accent and the splash from an active session at the machine), otherwise refused
-```
+> alice: uid 1001, primary gid 1001, not in wheel — permitted ping, the firewall list and its
+> knocks; \`firewall\` only where polkit grants io.kdos.firewall.set and \`accent\` and \`splash\`
+> only where it grants io.kdos.accent.set, each without a prompt (the shipped policy: the accent
+> and the splash from an active session at the machine), otherwise refused
 
 polkit's half is named and not asked: polkit answers about a process, and there is no process to
 ask it about. It exits 0 when the group rule admits the three changes and 1 otherwise.
@@ -545,26 +546,32 @@ recorded samples) when replayed with the fixture's own application table, as the
 it:
 
 ```sh
-KDOS_ALIEN_APPS=testing/fixtures/energy/alien-apps kdos-energyd --fixture testing/fixtures/energy
+KDOS_ALIEN_APPS=testing/fixtures/energy/alien-apps \
+    kdos-energyd --fixture testing/fixtures/energy
 ```
 
 Without that table the host's `/usr/share/kdos/alien-apps` names the processes instead, and the
-rows differ.
+rows differ. Its rows, with the 20-cell bar each prints between the share and the `gpu` column
+left out here:
 
 ```text
 KDOS energy  —  30 s of samples, RAPL package-0
 
-  firefox-esr (appbox kdos-apps)          75.5%  ███████████████       gpu 75.0%
-  kwin_wayland                            15.4%  ███                   gpu 25.0%
-  gimp (appbox kdos-apps)                  0.4%                        gpu  0.0%
+  firefox-esr (appbox kdos-apps)          75.5%  gpu 75.0%
+  kwin_wayland                            15.4%  gpu 25.0%
+  gimp (appbox kdos-apps)                  0.4%  gpu  0.0%
   short-lived and exited processes         8.7%
-
-  shares are of ATTRIBUTABLE energy — 57% of the package total; the rest is the idle floor
-  idle floor 15.00 W, the lowest average power seen in 3 samples (still falling — early shares read low)
-  an uncore domain is present, so the integrated GPU's energy is already counted
-  the gpu column is engine TIME from drm fdinfo, never energy
-  relative only. RAPL cannot see the panel, the radio or the disk, so there are no watt-hours here.
 ```
+
+and the notes it prints under them, one line each:
+
+- `shares are of ATTRIBUTABLE energy — 57% of the package total; the rest is the idle floor`
+- `idle floor 15.00 W, the lowest average power seen in 3 samples (still falling — early shares
+  read low)`
+- `an uncore domain is present, so the integrated GPU's energy is already counted`
+- `the gpu column is engine TIME from drm fdinfo, never energy`
+- `relative only. RAPL cannot see the panel, the radio or the disk, so there are no watt-hours
+  here.`
 
 Answers go to root and `wheel` only: on a multi-user machine this list is what everyone else is
 running.
@@ -921,9 +928,10 @@ Time page of System Settings saves through timedate1 and nothing else; plasma-se
 on an OEM first boot; the login screen's compositor runs `kwin_wayland --locale1` and takes its
 keyboard layout from locale1, following it when it changes; startplasma puts locale1's layout
 into each session's environment (`XKB_DEFAULT_*`), and KWin uses it only when the account's
-`kxkbrc`, its own or the `/etc/xdg/kxkbrc` the installer writes, names no layout, so an account
-whose `kxkbrc` names one keeps it and a later change through locale1 reaches the login screen and
-not that session; System Monitor's OS sensors read hostname1. KDOS has no systemd, so this daemon
+`kxkbrc` cascade names no layout. The system `/etc/xdg/kxkbrc` is written by the installer and
+rewritten by this daemon on every locale1 layout change, so a change through locale1, plasma-setup's
+on an OEM first boot included, reaches the login screen, the session and the lock screen of every
+account with no `~/.config/kxkbrc`; an account whose own `kxkbrc` names a layout keeps it; System Monitor's OS sensors read hostname1. KDOS has no systemd, so this daemon
 answers for them, with every method and property systemd's three interfaces have except
 hostname1's `Describe`, which nothing on the system calls. It is C on `basu` and `libkbase` and
 links no glib and no Qt. What a person sees of it, page by page, is in
@@ -944,7 +952,7 @@ next caller sees.
 | Network time | Whether `/etc/service.disabled/chrony` exists |
 | Locale | `/etc/locale.conf`, bare `NAME=value` lines, which SDDM puts into every session; `SetLocale` refuses with `InvalidArgs` a value that is not `C`, `C.UTF-8`, `POSIX` or `ll[_CC][.UTF-8\|.utf8][@modifier]` whose language has a file in `/usr/share/i18n/locales/musl` or a directory in `/usr/share/locale`, and a `LANGUAGE` element of any other shape (no codeset) or language, so a typo never reaches every session. The territory is not checked, because plasma-setup's language page sends `LANG=<ll_CC>.UTF-8` for every language Plasma is translated into and most have no musl-locales file. A value already in the file is read as written |
 | Console keymap | `/etc/keymap`, which `kdos-getty` loads on every console, and its copy `/boot/efi/EFI/kdos/keymap` (below) |
-| Graphical keyboard | `/etc/kdos/xkb.conf` (`XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT`, `XKBOPTIONS`), never under `/etc/X11` |
+| Graphical keyboard | `/etc/kdos/xkb.conf` (`XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT`, `XKBOPTIONS`), never under `/etc/X11`; and the same layout in `/etc/xdg/kxkbrc` (`[Layout]` `LayoutList`, `VariantList`, `Model` and `Options` with `ResetOldOptions=true` when set, `Use=true`), written whole on every layout change and removed for an empty layout, because KWin and the lock screen read the kxkbrc cascade before the environment `xkb.conf` reaches them through |
 
 Both halves of a time zone are written or the call fails. musl reads `TZ` where it is set, and
 every login sets it once the installer or the daemon has chosen a zone, so writing only the link
@@ -1146,7 +1154,11 @@ The System Versions page and `kdos-notice` read the slots through `io.kdos.Slots
 `Configured`, `Live` (the live medium, from `kdos-bootctl status --json`), `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel`,
 `InstallRoute`, `BuildDeps` and `State`, the methods `ListSlots`, `Try`, `CancelTry`, `SetChannel`,
 `SetInstallRoute` and `Bless`, and the signal `SlotsChanged`. Its contract is the page's own
-`io.kdos.Slots1.xml`.
+`io.kdos.Slots1.xml`. Each `ListSlots` entry's `state` is the first of `trial`, `visiting`,
+`incomplete`, `failed`, `abandoned`, `confirmed`, `installed` and `empty` that holds: `visiting`
+and `abandoned` are `kdos-bootctl status --json`'s own word for the slot (one boot of a root picked
+at the boot menu; a trial set aside there, which is not a failure), and the entry carries the
+booleans `failed`, `abandoned` and `incomplete` beside it.
 
 `InstallRoute` and `BuildDeps` are the `install =` and `build-deps =` lines of
 `/etc/kdos/update.conf`, the route [`kdos update install`](kdos-command.md#install-routes-and-groups)
@@ -1253,15 +1265,21 @@ simple-protocol socket, `/run/avahi-daemon/socket`, and sends `RESOLVE-HOSTNAME-
 | Any other type under `.local` | The same empty answer |
 | A name outside `.local`, the bare `local`, or a name holding a byte other than a letter, digit, `-`, `_` or UTF-8 | `REFUSED` |
 | A truncated question, a compression pointer that does not point back before the last one followed, more than one question | `FORMERR` |
-| Avahi's socket cannot be reached, Avahi ends the connection before a reply line, or 48 questions are already open (under Avahi's own limit of 50 simple-protocol clients, past which it closes the connection) | `SERVFAIL`, which dnsmasq does not cache |
+| Avahi's socket cannot be reached, Avahi ends the connection before a reply line, or 48 clients' questions are already open (under Avahi's own limit of 50 simple-protocol clients, past which it closes the connection) | `SERVFAIL`, which dnsmasq does not cache |
 | A packet shorter than a header, or a response | Nothing |
 
 A miss is never `NXDOMAIN`: musl's `getaddrinfo()` asks `A` and `AAAA` together and fails the
 whole lookup on an `NXDOMAIN` to either, so an IPv4-only host would resolve to nothing. Once one
 family has answered, the other family's question for the same name gets half a second more rather
 than the rest of its three, because Avahi already holds every address record the responder sent.
-An IPv6 link-local address is left out because a DNS record cannot carry the interface it
-belongs to. Each question has its own non-blocking connection to Avahi, and `poll()` waits on all
+A question for one family also asks Avahi for the other, with no client waiting on it, and the
+last 48 answers and misses are kept for ten seconds: a later question for a name and family in
+that table is answered at once, and one whose family is still being asked joins that question.
+musl's `getent hosts` asks `AAAA` and only after its miss `A`, so a name nothing answers fails
+in one three-second wait, not two. The other family's question takes one of the 48 slots, is not
+asked when none is free, and is closed to free its slot for a client's question that finds none,
+so it never costs a client a `SERVFAIL`. An IPv6 link-local address is left out because a DNS
+record cannot carry the interface it belongs to. Each question has its own non-blocking connection to Avahi, and `poll()` waits on all
 of them, so a name that never answers delays no other.
 
 It is the one daemon here that does not keep root: `45_mdns.sh` starts it, it binds the port and

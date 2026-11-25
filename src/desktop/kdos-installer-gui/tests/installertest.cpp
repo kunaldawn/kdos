@@ -7,7 +7,8 @@
  * ---------------------------------
  *   installertest — the answer file, the event stream, the layout list, the
  *   live session's layout files, the password pairs' keyboard path, the
- *   application groups' keyboard path and the window's Quit
+ *   application groups' keyboard path and names, the accent cards' radio
+ *   group, the window's Quit and when it announces why Next is disabled
  *
  * The fixtures under fixtures/ are kinstall's own output: two streams a real
  * `kinstall --events json` wrote (refused answers; a dry run stopped for not
@@ -15,7 +16,7 @@
  * an XKB symbols directory holding `us` and `de` only, a zone1970.tab, and
  * two mounts tables, the live medium's and an installed machine's.
  *
- * The Encryption, Account and Applications pages, and the wizard window
+ * The Encryption, Account, Look and Applications pages, and the wizard window
  * with stand-ins for its pages, are loaded from the source tree's qml/, with
  * a Backend that holds what each reads and nothing else, under the style the
  * installer ships with, and driven with keys; the pages in a window of the
@@ -33,8 +34,10 @@
 #include <KFormat>
 #include <KSharedConfig>
 
+#include <QAccessible>
 #include <QDBusConnection>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QQmlApplicationEngine>
@@ -105,6 +108,74 @@ private:
         if (!f.open(QIODevice::WriteOnly) || f.write(text) != text.size()) {
             qFatal("cannot write %s", qPrintable(path));
         }
+    }
+
+    /* The wizard window, Main.qml from the source tree, with stand-ins for
+     * its pages, each named by its objectName, and a Backend holding what
+     * the window reads. */
+    static void writeWizard(const QTemporaryDir &dir)
+    {
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        if (!QDir().mkpath(mod)) {
+            qFatal("cannot make %s", qPrintable(mod));
+        }
+        if (!QFile::copy(QStringLiteral(FIXTURES_DIR "/../../qml/Main.qml"), mod + QStringLiteral("/Main.qml"))) {
+            qFatal("cannot copy Main.qml");
+        }
+        QByteArray qmldir = "module org.kdos.installer\nMain 1.0 Main.qml\nsingleton Backend 1.0 Backend.qml\n";
+        for (const char *p : {"WelcomePage", "KeyboardPage", "DiskPage", "EncryptionPage", "AccountPage", "LookPage", "AppsPage", "SummaryPage",
+                              "InstallPage", "DonePage"}) {
+            const QByteArray name(p);
+            write(mod + QLatin1Char('/') + QLatin1String(p) + QStringLiteral(".qml"),
+                  "import QtQuick\n"
+                  "import QtQuick.Controls as QQC2\n"
+                  "Item {\n"
+                  "    objectName: \""
+                      + name + "\"\n"
+                  "    property string heading\n"
+                  "    property bool complete: true\n"
+                  "    property string problem\n"
+                  "    signal entered()\n"
+                  "    signal retry()\n"
+                      + QByteArray(name == "KeyboardPage" ? "    QQC2.TextField { objectName: \"search\" }\n" : "") + "}\n");
+            qmldir += name + " 1.0 " + name + ".qml\n";
+        }
+        write(mod + QStringLiteral("/qmldir"), qmldir);
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    signal installFinished(bool ok)\n"
+              "    property var probe: ({ disks: [] })\n"
+              "    property bool installing: false\n"
+              "    property bool busy: false\n"
+              "    property string error\n"
+              "    property string logPath: \"/var/log/kinstall.log\"\n"
+              "    property QtObject events: QtObject { property bool started: false }\n"
+              "    property QtObject answers: QtObject {\n"
+              "        property string plan: \"wipe\"\n"
+              "        property string disk\n"
+              "        property string root\n"
+              "    }\n"
+              "    function refreshProbe() {}\n"
+              "    function refreshLook() {}\n"
+              "    function refreshApps() {}\n"
+              "    function formatSize(b) { return b + \" B\"; }\n"
+              "    function diskName(p) { return p; }\n"
+              "    function diskErased(p) { return \"\"; }\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")), "import org.kdos.installer\nMain {}\n");
+    }
+
+    /* An item's Accessible attached object, where QML set one. */
+    static QObject *accessible(QObject *item)
+    {
+        for (QObject *c : item->children()) {
+            if (qstrcmp(c->metaObject()->className(), "QQuickAccessibleAttached") == 0) {
+                return c;
+            }
+        }
+        return nullptr;
     }
 
     static QMap<QString, QString> parse(const QString &text)
@@ -424,6 +495,28 @@ private Q_SLOTS:
         QCOMPARE(Backend::readZones(QStringLiteral(FIXTURES_DIR "/absent.tab")), QStringList{QStringLiteral("UTC")});
     }
 
+    /* The release is the record's VERSION; a root with no record gives
+     * os-release's VERSION_ID, with "+BUILD_ID" when it has one; a root
+     * with neither gives "". */
+    void release()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("etc"))));
+        auto write = [&](const QString &name, const QByteArray &data) {
+            QFile f(dir.filePath(QStringLiteral("etc/") + name));
+            QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            f.write(data);
+        };
+        QCOMPARE(Backend::readRelease(dir.path()), QString());
+        write(QStringLiteral("os-release"), "NAME=\"KDOS\"\nVERSION_ID=0.2.1\n");
+        QCOMPARE(Backend::readRelease(dir.path()), QStringLiteral("0.2.1"));
+        write(QStringLiteral("os-release"), "NAME=\"KDOS\"\nVERSION_ID=0.2.1\nBUILD_ID=\"047d4b99779b-dirty\"\n");
+        QCOMPARE(Backend::readRelease(dir.path()), QStringLiteral("0.2.1+047d4b99779b-dirty"));
+        write(QStringLiteral("kdos-release"), "# record\nVERSION=\"0.2.1\"\nBUILD_ID=\"047d4b99779b-dirty\"\n");
+        QCOMPARE(Backend::readRelease(dir.path()), QStringLiteral("0.2.1"));
+    }
+
     void live()
     {
         /* An overlay at `/` is the live medium; one under a container's
@@ -573,6 +666,18 @@ private Q_SLOTS:
         repartitioned.insert(QStringLiteral("partitions"), QVariantList{part("ext4", "data", 62912512, false, false, "")});
         QCOMPARE(Backend::diskHolds(repartitioned), QStringLiteral("Holds: ext4 “data” %1").arg(size(62912512)));
 
+        /* A Ventoy stick: the boot partition's node is remapped to the
+         * ISO, so the partition is named as Ventoy's, never by what the
+         * node reads; another mapping by its dm name. */
+        QVariantMap vtoyefi = part("vfat", "VTOYEFI", 65536, true, false, "");
+        vtoyefi.insert(QStringLiteral("remap"), QStringLiteral("ventoy"));
+        const QVariantMap ventoy{{QStringLiteral("path"), QStringLiteral("/dev/sda")},
+                                 {QStringLiteral("partitions"), QVariantList{part("exfat", "Ventoy", 16777216, false, false, ""), vtoyefi}}};
+        QCOMPARE(Backend::diskHolds(ventoy),
+                 QStringLiteral("Holds: exfat “Ventoy” %1, Ventoy's boot partition %2").arg(size(16777216), size(65536)));
+        vtoyefi.insert(QStringLiteral("remap"), QStringLiteral("isodata"));
+        QCOMPARE(Backend::partitionText(vtoyefi), QStringLiteral("mapped to isodata %1").arg(size(65536)));
+
         const QVariantMap empty{{QStringLiteral("path"), QStringLiteral("/dev/sdc")}, {QStringLiteral("partitions"), QVariantList{}}};
         QCOMPARE(Backend::diskContents(empty), QString());
         QCOMPARE(Backend::diskHolds(empty), QStringLiteral("Empty"));
@@ -599,7 +704,8 @@ private Q_SLOTS:
     }
 
     /* The install size is what the copy writes, the total the copy line
-     * counts to, split when there is a box store; a probe handed root's
+     * counts to, split when there is a box store of 1 MiB or more (below
+     * that it is the store's empty directories); a probe handed root's
      * payload takes root's figures. */
     void installSize()
     {
@@ -608,6 +714,10 @@ private Q_SLOTS:
         QCOMPARE(Backend::installSize({{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), 0.0}}), size(sys));
         QCOMPARE(Backend::installSize({{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), store}}),
                  QStringLiteral("%1 — %2 system and %3 boxed-app store").arg(size(sys + store), size(sys), size(store)));
+        const double empty = 120 * 1024.0, big = 1.9 * 1073741824;
+        QCOMPARE(Backend::installSize({{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), empty}}), size(sys + empty));
+        QCOMPARE(Backend::installSize({{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), big}}),
+                 QStringLiteral("%1 — %2 system and %3 boxed-app store").arg(size(sys + big), size(sys), size(big)));
         QCOMPARE(Backend::installSize({{QStringLiteral("payload_kb"), 5345280.0}}), QStringLiteral("—"));
 
         const QVariantMap root{{QStringLiteral("copy_system_bytes"), sys}, {QStringLiteral("copy_store_bytes"), store}};
@@ -701,7 +811,9 @@ private Q_SLOTS:
         QTest::newRow("account, narrowest window") << QStringLiteral("AccountPage") << 0 << 40;
     }
 
-    /* Type, Tab, type, Shift+Tab, Space: what is typed after the Tab lands
+    /* Type, Tab, type, Shift+Tab, Space: while only the first field holds
+     * text the page asks for the second, and neither the first's strength
+     * line nor the second field moves; what is typed after the Tab lands
      * in the second field, Shift+Tab from it stops on the first field's
      * reveal button, and Space there shows the first field's text and types
      * nothing into it. The page sits beside an 11-grid-unit step list, as
@@ -767,7 +879,9 @@ private Q_SLOTS:
                     "    height: 752\n"
                     "    visible: true\n"
                     "    function rightEdge(item) { return item.mapToItem(pageItem, item.width, 0).x; }\n"
+                    "    function topOf(item) { return item.mapToItem(null, 0, 0).y; }\n"
                     "    property real pageWidth: pageItem.width\n"
+                    "    property string problem: pageItem.problem\n"
                     "    "
                   + page.toUtf8()
                   + " { id: pageItem; x: Kirigami.Units.gridUnit * 11; width: parent.width - x; height: parent.height }\n"
@@ -796,11 +910,51 @@ private Q_SLOTS:
         QVERIFY(fields.size() >= 2 * pair + 2);
         QObject *first = fields.at(2 * pair);
         QObject *second = fields.at(2 * pair + 1);
+        /* On the account's pair, the name and root's pair are answered, so
+         * the reason shown is the pair's own. */
+        if (page == QStringLiteral("AccountPage") && pair == 0) {
+            QObject *name = window->findChild<QObject *>(QStringLiteral("fullname"));
+            QVERIFY(name && fields.size() >= 4);
+            name->setProperty("text", QStringLiteral("Ann"));
+            fields.at(2)->setProperty("text", QStringLiteral("rootroot"));
+            fields.at(3)->setProperty("text", QStringLiteral("rootroot"));
+        }
+
+        /* The first field's strength line, and where the second field sits
+         * with nothing typed. */
+        QObject *hint = nullptr;
+        for (QObject *o : all) {
+            if (o->metaObject()->indexOfProperty("shortAdvice") >= 0 && o->property("field").value<QObject *>() == first) {
+                hint = o;
+            }
+        }
+        QVERIFY(hint);
+        QVERIFY(hint->property("visible").toBool());
+        const auto topOf = [window](QObject *o) {
+            QVariant y;
+            if (!QMetaObject::invokeMethod(window, "topOf", Q_RETURN_ARG(QVariant, y), Q_ARG(QVariant, QVariant::fromValue(o)))) {
+                qFatal("topOf failed");
+            }
+            return y.toReal();
+        };
+        QTest::qWait(100);
+        const qreal emptyHeight = hint->property("height").toReal();
+        const qreal emptyTop = topOf(second);
+        QVERIFY(emptyHeight > 0);
 
         QVERIFY(QMetaObject::invokeMethod(first, "forceActiveFocus"));
         for (char c : {'a', 'b', 'c', 'd'}) {
             QTest::keyClick(window, c);
         }
+        /* The first field typed in, the second empty: the page asks for the
+         * second, never a mismatch, and nothing below the first moved. */
+        QCOMPARE(window->property("problem").toString(),
+                 page == QStringLiteral("EncryptionPage") ? QStringLiteral("Type the passphrase again.")
+                 : pair == 1                              ? QStringLiteral("Type root's password again.")
+                                                          : QStringLiteral("Type the password again."));
+        QTest::qWait(100);
+        QCOMPARE(hint->property("height").toReal(), emptyHeight);
+        QCOMPARE(topOf(second), emptyTop);
         QTest::keyClick(window, Qt::Key_Tab);
         for (char c : {'a', 'b', 'c', 'd'}) {
             QTest::keyClick(window, c);
@@ -808,14 +962,7 @@ private Q_SLOTS:
         QCOMPARE(first->property("text").toString(), QStringLiteral("abcd"));
         QCOMPARE(second->property("text").toString(), QStringLiteral("abcd"));
 
-        QObject *hint = nullptr;
-        for (QObject *o : all) {
-            if (o->metaObject()->indexOfProperty("shortAdvice") >= 0 && o->property("secret").toString() == QStringLiteral("abcd")
-                && o->property("visible").toBool()) {
-                hint = o;
-            }
-        }
-        QVERIFY(hint);
+        QCOMPARE(hint->property("secret").toString(), QStringLiteral("abcd"));
         QCOMPARE(hint->property("text").toString(), hint->property("shortAdvice").toString());
         if (units == 58) {
             QTRY_COMPARE(hint->property("lineCount").toInt(), 1);
@@ -849,6 +996,96 @@ private Q_SLOTS:
         QCOMPARE(first->property("text").toString(), QStringLiteral("abcd"));
     }
 
+    /* The Keyboard page's search: Alt with a letter types nothing into
+     * it, and a search that matches no layout says so where the list was. */
+    void keyboardSearch()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        QVERIFY(QDir().mkpath(mod));
+        const QString src = QStringLiteral(FIXTURES_DIR "/../../qml/");
+        for (const char *f : {"WizardPage.qml", "KeyboardPage.qml"}) {
+            QVERIFY(QFile::copy(src + QLatin1String(f), mod + QLatin1Char('/') + QLatin1String(f)));
+        }
+        write(mod + QStringLiteral("/qmldir"),
+              "module org.kdos.installer\n"
+              "WizardPage 1.0 WizardPage.qml\n"
+              "KeyboardPage 1.0 KeyboardPage.qml\n"
+              "singleton Backend 1.0 Backend.qml\n");
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    property var keyboards: testKeyboards\n"
+              "    property QtObject answers: QtObject {\n"
+              "        property string xkbLayout: \"us\"\n"
+              "        property string xkbVariant\n"
+              "    }\n"
+              "    function applyLiveLayout(l, v) {}\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")),
+              "import QtQuick\n"
+              "import QtQuick.Window\n"
+              "import org.kdos.installer\n"
+              "Window {\n"
+              "    width: 800\n"
+              "    height: 752\n"
+              "    visible: true\n"
+              "    KeyboardPage { anchors.fill: parent }\n"
+              "}\n");
+
+        KeyboardModel keyboards;
+        keyboards.parse(fixture("evdev.lst"));
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.rootContext()->setContextProperty(QStringLiteral("testKeyboards"), &keyboards);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+
+        QObject *search = nullptr;
+        for (QObject *o : window->findChildren<QObject *>()) {
+            if (o->property("placeholderText").toString() == QStringLiteral("Search layouts…")) {
+                search = o;
+            }
+        }
+        QObject *list = window->findChild<QObject *>(QStringLiteral("layouts"));
+        QObject *noMatch = window->findChild<QObject *>(QStringLiteral("noMatch"));
+        QVERIFY(search && list && noMatch);
+        QTRY_COMPARE(list->property("count").toInt(), 3);
+        QVERIFY(!noMatch->property("visible").toBool());
+
+        QVERIFY(QMetaObject::invokeMethod(search, "forceActiveFocus"));
+        for (char c : {'g', 'e', 'r'}) {
+            QTest::keyClick(window, c);
+        }
+        QTRY_COMPARE(list->property("count").toInt(), 1);
+        QTest::keyClick(window, 'q', Qt::AltModifier);
+        QTest::qWait(100);
+        QCOMPARE(search->property("text").toString(), QStringLiteral("ger"));
+        QCOMPARE(list->property("count").toInt(), 1);
+        QVERIFY(!noMatch->property("visible").toBool());
+        QTest::keyClick(window, 'Q', Qt::ShiftModifier);
+        QCOMPARE(search->property("text").toString(), QStringLiteral("gerQ"));
+        QTest::keyClick(window, Qt::Key_Backspace);
+        QTest::keyClick(window, 'q');
+        QCOMPARE(search->property("text").toString(), QStringLiteral("gerq"));
+        QTRY_COMPARE(list->property("count").toInt(), 0);
+        QTRY_VERIFY(noMatch->property("visible").toBool());
+        QCOMPARE(noMatch->property("text").toString(), QStringLiteral("No layout matches “gerq”"));
+
+        search->setProperty("text", QString());
+        QTRY_COMPARE(list->property("count").toInt(), 3);
+        QTRY_VERIFY(!noMatch->property("visible").toBool());
+    }
+
     /* Tab reaches every group row of the Applications page, native and
      * boxed, framed in the focus colour while it holds the keyboard, and
      * Space there ticks the group. */
@@ -875,7 +1112,7 @@ private Q_SLOTS:
               "    property var plan: ({ binhost: true })\n"
               "    property var apps: ({ route: \"\",\n"
               "        native: [{ id: \"games\", title: \"Games\", ports: 3 }, { id: \"office\", title: \"Office\", ports: 1 }],\n"
-              "        groups: [{ id: \"science\", desc: \"Science\", apps: 2, bytes: 100 }] })\n"
+              "        groups: [{ id: \"science\", desc: \"Science\", apps: 1, bytes: 100 }] })\n"
               "    property string ticked\n"
               "    property QtObject answers: QtObject {\n"
               "        property var groups: []\n"
@@ -932,11 +1169,158 @@ private Q_SLOTS:
                 framed |= border && border->property("width").toInt() == 2 && c->property("visible").toBool();
             }
             QVERIFY2(framed, qPrintable(QStringLiteral("%1 has the keyboard and no focus frame").arg(text)));
+            if (text == QStringLiteral("Science")) {
+                QObject *a = accessible(focus);
+                QVERIFY(a);
+                QCOMPARE(a->property("name").toString(), QStringLiteral("Science, 1 application, about 100 B"));
+            }
             QTest::keyClick(window, Qt::Key_Space);
             QVERIFY(focus->property("checked").toBool());
         }
         QCOMPARE(reached.size(), names.size());
         QCOMPARE(window->property("ticked").toString(), QStringLiteral("native:games native:office boxed:science "));
+    }
+
+    /* The Look page's accent cards: one radio group under one Tab stop, the
+     * chosen card; the arrow keys move between the cards and leave the
+     * answer alone, Space and Enter choose the focused one, and the next
+     * Tab leaves the group. */
+    void lookByKeyboard()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
+        QVERIFY(QDir().mkpath(mod));
+        const QString src = QStringLiteral(FIXTURES_DIR "/../../qml/");
+        for (const char *f : {"WizardPage.qml", "LookPage.qml"}) {
+            QVERIFY(QFile::copy(src + QLatin1String(f), mod + QLatin1Char('/') + QLatin1String(f)));
+        }
+        write(mod + QStringLiteral("/qmldir"),
+              "module org.kdos.installer\n"
+              "WizardPage 1.0 WizardPage.qml\n"
+              "LookPage 1.0 LookPage.qml\n"
+              "singleton Backend 1.0 Backend.qml\n");
+        write(mod + QStringLiteral("/Backend.qml"),
+              "pragma Singleton\n"
+              "import QtQuick\n"
+              "QtObject {\n"
+              "    property var look: ({ accents: [{ name: \"bone\", lookandfeel: \"\", default: true },\n"
+              "        { name: \"phosphor\", lookandfeel: \"\" }, { name: \"amber\", lookandfeel: \"\" }] })\n"
+              "    property QtObject answers: QtObject {\n"
+              "        property string theme: \"bone\"\n"
+              "        property string desk: \"kdos\"\n"
+              "    }\n"
+              "    function refreshLook() {}\n"
+              "    function accentColors(n) { return ({}); }\n"
+              "    function accentPreview(l) { return \"\"; }\n"
+              "    function accentLabel(n) { return n.charAt(0).toUpperCase() + n.slice(1); }\n"
+              "    function deskTitle(n) { return n; }\n"
+              "}\n");
+        write(dir.filePath(QStringLiteral("main.qml")),
+              "import QtQuick\n"
+              "import QtQuick.Window\n"
+              "import org.kde.kirigami as Kirigami\n"
+              "import org.kdos.installer\n"
+              "Window {\n"
+              "    width: Kirigami.Units.gridUnit * 58\n"
+              "    height: 752\n"
+              "    visible: true\n"
+              "    property string theme: Backend.answers.theme\n"
+              "    LookPage { x: Kirigami.Units.gridUnit * 11; width: parent.width - x; height: parent.height }\n"
+              "}\n");
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+
+        const auto focused = [window]() {
+            return window->property("activeFocusItem").value<QObject *>();
+        };
+        const auto name = [](QObject *item) {
+            QObject *a = item ? accessible(item) : nullptr;
+            return a ? a->property("name").toString() : QString();
+        };
+        const auto isCard = [](QObject *item) {
+            QObject *a = item ? accessible(item) : nullptr;
+            return a && a->property("role").toInt() == QAccessible::RadioButton;
+        };
+
+        /* Every Tab stop before the desk rows: exactly one is a card. */
+        QStringList cards;
+        QObject *card = nullptr;
+        for (int i = 0; i < 8; ++i) {
+            QTest::keyClick(window, Qt::Key_Tab);
+            QObject *f = focused();
+            QVERIFY(f);
+            if (f->property("text").toString().startsWith(QStringLiteral("kdos"))) {
+                break;
+            }
+            if (isCard(f)) {
+                QVERIFY(f->property("visualFocus").toBool());
+                cards << name(f);
+                card = card ? card : f;
+            }
+        }
+        QCOMPARE(cards, QStringList{QStringLiteral("Bone accent")});
+        QVERIFY(card->property("checked").toBool());
+        QObject *grid = card->property("parent").value<QObject *>();
+        QVERIFY(grid && accessible(grid));
+        QCOMPARE(accessible(grid)->property("role").toInt(), int(QAccessible::Grouping));
+        QCOMPARE(name(grid), QStringLiteral("Accents"));
+
+        /* Back onto the group from the desk rows, then across it. */
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QCOMPARE(name(focused()), QStringLiteral("Bone accent"));
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(name(focused()), QStringLiteral("Phosphor accent"));
+        QVERIFY(!focused()->property("checked").toBool());
+        QCOMPARE(window->property("theme").toString(), QStringLiteral("bone"));
+        QTest::keyClick(window, Qt::Key_Space);
+        QCOMPARE(window->property("theme").toString(), QStringLiteral("phosphor"));
+        QVERIFY(focused()->property("checked").toBool());
+        QVERIFY(!card->property("checked").toBool());
+
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(name(focused()), QStringLiteral("Amber accent"));
+        QTest::keyClick(window, Qt::Key_Return);
+        QCOMPARE(window->property("theme").toString(), QStringLiteral("amber"));
+        QVERIFY(focused()->property("checked").toBool());
+
+        /* Enter on a card a click unchecked before: it is checked again. */
+        QTest::keyClick(window, Qt::Key_Left);
+        QTest::keyClick(window, Qt::Key_Return);
+        QCOMPARE(window->property("theme").toString(), QStringLiteral("phosphor"));
+        QVERIFY(focused()->property("checked").toBool());
+        QTest::keyClick(window, Qt::Key_Right);
+        QVERIFY(!focused()->property("checked").toBool());
+
+        /* The next Tab leaves the group, from the chosen card and from one
+         * the arrows reached, Right from the last card wrapping to the
+         * first, which lies before the chosen one. */
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(name(focused()), QStringLiteral("Phosphor accent"));
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(!isCard(focused()));
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QCOMPARE(name(focused()), QStringLiteral("Phosphor accent"));
+        QTest::keyClick(window, Qt::Key_Right);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(name(focused()), QStringLiteral("Bone accent"));
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(!isCard(focused()));
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QCOMPARE(name(focused()), QStringLiteral("Phosphor accent"));
+        QTest::keyClick(window, Qt::Key_Left);
+        QTest::keyClick(window, Qt::Key_Backtab, Qt::ShiftModifier);
+        QVERIFY(!isCard(focused()));
     }
 
     /* The wizard window, with stand-in pages: Alt+Q in a text field leaves
@@ -948,50 +1332,7 @@ private Q_SLOTS:
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
-        const QString mod = dir.filePath(QStringLiteral("org/kdos/installer"));
-        QVERIFY(QDir().mkpath(mod));
-        QVERIFY(QFile::copy(QStringLiteral(FIXTURES_DIR "/../../qml/Main.qml"), mod + QStringLiteral("/Main.qml")));
-        QByteArray qmldir = "module org.kdos.installer\nMain 1.0 Main.qml\nsingleton Backend 1.0 Backend.qml\n";
-        for (const char *p : {"WelcomePage", "KeyboardPage", "DiskPage", "EncryptionPage", "AccountPage", "LookPage", "AppsPage", "SummaryPage",
-                              "InstallPage", "DonePage"}) {
-            const QByteArray name(p);
-            write(mod + QLatin1Char('/') + QLatin1String(p) + QStringLiteral(".qml"),
-                  "import QtQuick\n"
-                  "import QtQuick.Controls as QQC2\n"
-                  "Item {\n"
-                  "    property string heading\n"
-                  "    property bool complete: true\n"
-                  "    property string problem\n"
-                  "    signal entered()\n"
-                  "    signal retry()\n"
-                      + QByteArray(name == "KeyboardPage" ? "    QQC2.TextField { objectName: \"search\" }\n" : "") + "}\n");
-            qmldir += name + " 1.0 " + name + ".qml\n";
-        }
-        write(mod + QStringLiteral("/qmldir"), qmldir);
-        write(mod + QStringLiteral("/Backend.qml"),
-              "pragma Singleton\n"
-              "import QtQuick\n"
-              "QtObject {\n"
-              "    signal installFinished(bool ok)\n"
-              "    property var probe: ({ disks: [] })\n"
-              "    property bool installing: false\n"
-              "    property bool busy: false\n"
-              "    property string error\n"
-              "    property string logPath: \"/var/log/kinstall.log\"\n"
-              "    property QtObject events: QtObject { property bool started: false }\n"
-              "    property QtObject answers: QtObject {\n"
-              "        property string plan: \"wipe\"\n"
-              "        property string disk\n"
-              "        property string root\n"
-              "    }\n"
-              "    function refreshProbe() {}\n"
-              "    function refreshLook() {}\n"
-              "    function refreshApps() {}\n"
-              "    function formatSize(b) { return b + \" B\"; }\n"
-              "    function diskName(p) { return p; }\n"
-              "    function diskErased(p) { return \"\"; }\n"
-              "}\n");
-        write(dir.filePath(QStringLiteral("main.qml")), "import org.kdos.installer\nMain {}\n");
+        writeWizard(dir);
 
         QQmlApplicationEngine engine;
         PageStrings strings;
@@ -1077,6 +1418,114 @@ private Q_SLOTS:
         QVERIFY(!leave->property("visible").toBool());
         QCOMPARE(quit->property("subtitle").toString(),
                  QStringLiteral("The window stays open until the install ends: the disk is still being written, and its log is /var/log/kinstall.log."));
+    }
+
+    /* The reason beside Quit is announced only once settled: not while the
+     * Backend is busy, so a probe's passing text is never spoken and the
+     * reason it ends on is, within 800 ms of the probe ending; never within
+     * 1500 ms of the last announcement, where Orca would drop it; and not
+     * twice in a row on one page. */
+    void problemAnnounced()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        writeWizard(dir);
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        window->show();
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        QObject *backend = engine.singletonInstance<QObject *>("org.kdos.installer", "Backend");
+        QObject *welcome = window->findChild<QObject *>(QStringLiteral("WelcomePage"));
+        QObject *problem = window->findChild<QObject *>(QStringLiteral("problem"));
+        QVERIFY(backend && welcome && problem);
+        const auto spoken = [problem] {
+            return problem->property("spokenText").toString();
+        };
+
+        const QString looking = QStringLiteral("Looking at this computer's disks…");
+        const QString nodisk = QStringLiteral("No disk was found to install on.");
+        backend->setProperty("busy", true);
+        welcome->setProperty("problem", looking);
+        welcome->setProperty("complete", false);
+        QTest::qWait(1200);
+        QCOMPARE(problem->property("text").toString(), looking);
+        QCOMPARE(spoken(), QString());
+
+        QElapsedTimer clock;
+        clock.start();
+        welcome->setProperty("problem", nodisk);
+        QTest::qWait(50);
+        backend->setProperty("busy", false);
+        QTRY_COMPARE_WITH_TIMEOUT(spoken(), nodisk, 2000);
+        QVERIFY(clock.elapsed() >= 800);
+        const qreal first = problem->property("lastSpoken").toReal();
+
+        /* A second reason soon after waits out the gap. */
+        clock.restart();
+        welcome->setProperty("problem", QStringLiteral("Other reason."));
+        QTRY_COMPARE_WITH_TIMEOUT(spoken(), QStringLiteral("Other reason."), 3000);
+        QVERIFY2(problem->property("lastSpoken").toReal() - first >= 1500, "two announcements within 1500 ms");
+
+        /* Away and back to the reason just spoken: not spoken again. */
+        const qreal second = problem->property("lastSpoken").toReal();
+        welcome->setProperty("problem", QStringLiteral("Passing."));
+        QTest::qWait(100);
+        welcome->setProperty("problem", QStringLiteral("Other reason."));
+        QTest::qWait(2500);
+        QCOMPARE(problem->property("lastSpoken").toReal(), second);
+    }
+
+    /* A reason that holds while the focused field is typed in is announced
+     * only once typing pauses: each edit restarts the 800 ms settle. */
+    void problemWaitsForTyping()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        writeWizard(dir);
+
+        QQmlApplicationEngine engine;
+        PageStrings strings;
+        engine.rootContext()->setContextObject(&strings);
+        engine.addImportPath(dir.path());
+        engine.load(QUrl::fromLocalFile(dir.filePath(QStringLiteral("main.qml"))));
+        QCOMPARE(engine.rootObjects().size(), 1);
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        QVERIFY(window);
+        window->show();
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        QObject *keyboard = window->findChild<QObject *>(QStringLiteral("KeyboardPage"));
+        QObject *search = window->findChild<QObject *>(QStringLiteral("search"));
+        QObject *problem = window->findChild<QObject *>(QStringLiteral("problem"));
+        QVERIFY(keyboard && search && problem);
+
+        const QString mismatch = QStringLiteral("The two passwords do not match.");
+        keyboard->setProperty("problem", mismatch);
+        keyboard->setProperty("complete", false);
+        QVERIFY(QMetaObject::invokeMethod(window, "go", Q_ARG(QVariant, 1)));
+        QVERIFY(QMetaObject::invokeMethod(search, "forceActiveFocus"));
+        QTRY_VERIFY(search->property("activeFocus").toBool());
+        QCOMPARE(problem->property("text").toString(), mismatch);
+
+        QString typed;
+        for (int i = 0; i < 8; ++i) {
+            typed += QLatin1Char('a' + i);
+            search->setProperty("text", typed);
+            QTest::qWait(400);
+            QCOMPARE(problem->property("spokenText").toString(), QString());
+        }
+        QElapsedTimer clock;
+        clock.start();
+        QTRY_COMPARE_WITH_TIMEOUT(problem->property("spokenText").toString(), mismatch, 800 + 1500 + 500);
+        QVERIFY(clock.elapsed() >= 350);
     }
 };
 

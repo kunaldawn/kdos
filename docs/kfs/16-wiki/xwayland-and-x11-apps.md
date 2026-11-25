@@ -84,7 +84,7 @@ to open a window, and nothing in a package says which toolkit a program draws wi
 is at most `tagged`, and `x11 = no` is what confines one. [`kdos-appbox`]{.idx} sets `DISPLAY` and
 the cookie itself (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=560-569 pin=bd6bddc350ab -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=561-570 pin=bd6bddc350ab -->
 
 It also exports `QT_QPA_PLATFORM=wayland;xcb` and `SDL_VIDEODRIVER=wayland,x11` into every box,
 because Qt 5 and SDL 2 would otherwise take `DISPLAY` over the tagged Wayland socket; a catalogue

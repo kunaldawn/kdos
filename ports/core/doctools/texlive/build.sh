@@ -60,6 +60,12 @@ make
 make DESTDIR="$PKG" install
 cd ..
 
+install -Dm644 "$ITL_SRC/LICENSE.TL" "$PKG/usr/share/licenses/$name/LICENSE.TL"
+install -Dm644 "$ITL_SRC/LICENSE.CTAN" "$PKG/usr/share/licenses/$name/LICENSE.CTAN"
+install -Dm644 texk/dvipdfm-x/COPYING "$PKG/usr/share/licenses/$name/COPYING"
+install -Dm644 "$TEXMF_SRC/texmf-dist/doc/latex/base/lppl.txt" "$PKG/usr/share/licenses/$name/lppl.txt"
+head -n 9 "$TEXMF_SRC/texmf-dist/tex/plain/base/plain.tex" > "$PKG/usr/share/licenses/$name/knuth.txt"
+
 rm -f "$PKG/usr/bin/tlmgr" "$PKG/usr/share/man/man1/tlmgr.1"
 rm -rf "$PKG/usr/share/texmf-dist/doc"
 

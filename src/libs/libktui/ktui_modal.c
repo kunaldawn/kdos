@@ -122,8 +122,11 @@ void ktui_modal_draw(void)
 	}
 
 	/* Buttons stay inside the dialog rect at every width: a fixed
-	 * x + w - 40 walks off the left edge below 46 columns. */
-	int by = y + h - 2;
+	 * x + w - 40 walks off the left edge below 46 columns. And at every
+	 * height: a button draws its shade on the row below it, so the row is
+	 * two above the bottom border, and a button on the last inner row
+	 * would shade the border away. */
+	int by = y + h - 3;
 	int bw = 18;
 
 	/* The highlight is pointed at `sel` here, at draw time, rather than

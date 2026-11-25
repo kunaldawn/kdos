@@ -225,6 +225,10 @@ void kp_source_file(const char *name, const char *version, const char *src,
 int kp_fetch_port(const KpConf *c, const char *portdir);
 /* KPKG_FETCH=1: the build fetches before it verifies. */
 int kp_fetch_wanted(void);
+/* `kpkg fetch <pkg>...`, and `kpkg fetch --size <pkg>...`: the bytes each
+ * file a fetch would download measures at those same URLs, one `<file>
+ * <bytes>` or `<file> ?` line each, nothing downloaded. 0, 1 or 3 as
+ * kp_fetch_port. */
 int kp_cmd_fetch(const KpConf *c, int argc, char **argv);
 
 /* ────────────────────────────────────────────────────────────────────────

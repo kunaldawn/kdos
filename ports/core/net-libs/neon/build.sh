@@ -28,3 +28,5 @@ grep -q '^#define NE_HAVE_SSL 1' config.h
 grep -q '^#define NE_HAVE_DAV 1' config.h
 make
 make DESTDIR=$PKG install-lib install-headers install-config install-man
+install -Dm644 src/COPYING.LIB "$PKG/usr/share/licenses/$name/COPYING.LIB"
+install -Dm644 test/COPYING "$PKG/usr/share/licenses/$name/COPYING"

@@ -840,6 +840,11 @@ int ki_disk_check(const Disk *d, char *err, size_t n)
 		snprintf(err, n, "%s is the medium this runs from", d->path);
 		return 1;
 	}
+	if (d->is_boot_copy) {
+		snprintf(err, n, "%s holds a copy of the medium this runs from",
+			 d->path);
+		return 1;
+	}
 	if (d->readonly) {
 		snprintf(err, n, "%s is read-only", d->path);
 		return 1;
@@ -872,8 +877,9 @@ static const Part *part_by_path(const char *path)
  * break after the point of no return: mkfs on the BIOS boot partition leaves
  * a disk that no longer starts on legacy BIOS, mkfs on a physical volume or
  * on a held device fails (or, on a PV it did not fail on, destroys a volume
- * group), and a root smaller than the install fails part way through the
- * copy.
+ * group), a partition whose node is remapped (Ventoy's boot partition, whose
+ * node is the ISO's mapping) is formatted or mounted as the device behind
+ * it, and a root smaller than the install fails part way through the copy.
  */
 static int reuse_check(char *err, size_t n)
 {
@@ -904,6 +910,11 @@ static int reuse_check(char *err, size_t n)
 				 "group — it cannot be the ESP", esp->path);
 		return 1;
 	}
+	if (esp->remap[0]) {
+		snprintf(err, n, "%s is mapped to %s — it cannot be written",
+			 esp->path, esp->remap);
+		return 1;
+	}
 	if (!cfg.format_esp && strcmp(esp->fstype, "vfat")) {
 		snprintf(err, n, "%s holds no FAT filesystem — format it, or "
 				 "pick the EFI system partition", esp->path);
@@ -925,6 +936,11 @@ static int reuse_check(char *err, size_t n)
 		if (rp->is_esp) {
 			snprintf(err, n, "%s is an EFI system partition — pick "
 					 "another root", rp->path);
+			return 1;
+		}
+		if (rp->remap[0]) {
+			snprintf(err, n, "%s is mapped to %s — it cannot be "
+					 "written", rp->path, rp->remap);
 			return 1;
 		}
 		sectors = rp->sectors;
@@ -982,8 +998,10 @@ static int reuse_check(char *err, size_t n)
  * ki_disk_check() never counted, and a disk that holds the install alone is
  * erased and then runs out of space. The rule is ki_disk_check()'s with the
  * swap added, and the volume metadata when the root is on LVM or inside
- * LUKS; the refusal names the largest swap that fits, which is one that
- * still leaves the root KI_ROOT_FREE_MB free.
+ * LUKS. The refusal names the largest multiple of KI_SWAP_MIN_MB that fits,
+ * which still leaves the root KI_ROOT_FREE_MB free, so the size it advises is
+ * one the graphical field can hold; with less room than KI_SWAP_MIN_MB it
+ * says to choose no swap.
  */
 static int swap_fit_check(const Disk *d, char *err, size_t n)
 {
@@ -998,6 +1016,7 @@ static int swap_fit_check(const Disk *d, char *err, size_t n)
 	if (disk >= need + swp)
 		return 0;
 	room = disk > need ? (disk - need) >> 20 : 0;
+	room -= room % KI_SWAP_MIN_MB;
 	if (room)
 		snprintf(err, n, "a %ld MiB swap does not fit beside the install "
 				 "on %s: make it at most %llu MiB, or none",

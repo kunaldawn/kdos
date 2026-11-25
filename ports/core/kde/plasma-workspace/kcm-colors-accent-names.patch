@@ -1,0 +1,57 @@
+Subject: kcm_colors: name each accent colour swatch and the colour picker for screen readers
+
+The accent swatches are radio buttons with no text, built from a model of
+bare hex strings, and the colour-picker button carries only an icon, so a
+screen reader announces each swatch as "not selected radio button" and the
+picker with no name. Each swatch takes a translated colour name, in model
+order, as its accessible name and its tooltip; the custom-colour indicator
+is named "Custom accent color", and the picker "Choose a custom accent
+color…", with the same text as its tooltip.
+
+--- a/kcms/colors/ui/AccentColorUI.qml
++++ b/kcms/colors/ui/AccentColorUI.qml
+@@ -129,8 +129,25 @@
+                 "#686b6f",
+             ]
+ 
++            readonly property var names: [
++                i18nc("@info:accessible accent color", "Pink"),
++                i18nc("@info:accessible accent color", "Red"),
++                i18nc("@info:accessible accent color", "Orange"),
++                i18nc("@info:accessible accent color", "Yellow"),
++                i18nc("@info:accessible accent color", "Green"),
++                i18nc("@info:accessible accent color", "Teal"),
++                i18nc("@info:accessible accent color", "Blue"),
++                i18nc("@info:accessible accent color", "Purple"),
++                i18nc("@info:accessible accent color", "Violet"),
++                i18nc("@info:accessible accent color", "Gray"),
++            ]
++
+             delegate: ColorRadioButton {
+                 color: modelData
++                Accessible.name: colorRepeater.names[index]
++                QQC2.ToolTip.text: colorRepeater.names[index]
++                QQC2.ToolTip.visible: hovered
++                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                 checked: Qt.colorEqual(kcm.accentColor, modelData) && !kcm.accentColorFromWallpaper
+ 
+                 onToggled: {
+@@ -181,6 +198,7 @@
+                 visible: isCustomColor
+                 anchors.left: parent.left
+                 activeFocusOnTab: false
++                Accessible.name: i18nc("@info:accessible", "Custom accent color")
+ 
+                 MouseArea { // To prevent the button being toggled when clicked. The toggle state should only be controlled through isCustomColor
+                     anchors.fill: parent
+@@ -197,6 +215,10 @@
+                 width: customColorButton.width
+                 padding: 0  // Round button adds some padding by default which we don't need. Setting this to 0 centers the icon
+                 icon.name: "color-picker"
++                Accessible.name: i18nc("@action:button", "Choose a custom accent color…")
++                QQC2.ToolTip.text: i18nc("@action:button", "Choose a custom accent color…")
++                QQC2.ToolTip.visible: hovered
++                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                 icon.width : Math.round(Kirigami.Units.iconSizes.small * 0.9) // This provides a nice padding.
+                 onClicked: colorDialog.open()
+             }

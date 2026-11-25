@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/kde-key.patch"
+patch -p1 -i "$PORT_SRC/portal-reentry.patch"
 cmake -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DCMAKE_BUILD_TYPE=Release \

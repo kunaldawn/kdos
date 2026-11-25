@@ -19,6 +19,7 @@ import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
+import plasma.applet.org.kdos.privacy as Privacy
 
 Kirigami.Icon {
     id: lamp
@@ -29,7 +30,9 @@ Kirigami.Icon {
 
     signal toggleList()
 
-    readonly property string summary: Plasmoid.summaries[lamp.kind] ?? ""
+    readonly property Privacy.PrivacyApplet privacy: Plasmoid as Privacy.PrivacyApplet
+
+    readonly property string summary: lamp.privacy.summaries[lamp.kind] ?? ""
 
     Layout.fillHeight: true
     Layout.preferredWidth: height
@@ -46,7 +49,7 @@ Kirigami.Icon {
 
     function press(): void {
         if (lamp.lit) {
-            Plasmoid.actOn(lamp.kind);
+            lamp.privacy.actOn(lamp.kind);
         } else {
             lamp.toggleList();
         }

@@ -14,18 +14,25 @@
  * whenever plasma-welcomerc says LiveEnvironment=true, and which the live
  * medium's launcher entry (/usr/share/kdos/data-live/applications, in front
  * of XDG_DATA_DIRS there alone) passes too, so a tour reopened from Kickoff
- * keeps this page. The page reads that
- * argument, because `show` is read the moment the page is made and must not
- * wait on a command; the mode itself lives in Welcome Center's private
- * module, which is compiled into the program, installs no module files to
- * check a page against, and owes a page no stability.
+ * keeps this page. The page reads that argument, because `show` is read
+ * the moment the page is made and must not wait on a command; the mode
+ * itself lives in Welcome Center's private module, which is compiled into
+ * the program, installs no module files to check a page against, and owes
+ * a page no stability.
  *
  * `kdos persist --json` says what there is: the store's state (none,
- * present, refused, in-use) and device, the boot medium, and the disks a
- * store could be made on (`candidates`: the medium when it is writable, then
- * every removable writable disk with nothing mounted). A disc boot has a
- * read-only medium, so the page offers only the other candidates, and with
- * none it asks for a stick to be plugged in and looks again.
+ * present, refused, in-use) and device, the boot medium and its kind
+ * (stick, disc for any read-only medium, a write-protected stick among
+ * them, ventoy, or mapped for another device-mapper disk), and the disks a
+ * store could be made on (`candidates`: the medium when it is a writable
+ * stick, then every removable writable disk with nothing mounted). Only a
+ * stick is writable, and the stick a Ventoy boot runs from is never a
+ * candidate: its partition holds the image KDOS runs from, and the boot
+ * mounts that image, not the stick. So the page offers only the other
+ * candidates, and with none it asks for another stick to be plugged in and
+ * looks again, saying why the medium cannot hold changes when it is a
+ * Ventoy stick or a read-only medium, and in a general sentence for a
+ * mapped disk or a medium of no kind.
  *
  * The store is made as root through pkexec. The live medium's polkit rule
  * (49-kdos-installer-live.rules) grants `kdos persist create --yes` and
@@ -75,6 +82,7 @@ Welcome.ScrollablePage {
     readonly property string storeDevice: page.store !== null && typeof page.store.device === "string" ? page.store.device : ""
     readonly property string storeType: page.store !== null && typeof page.store.type === "string" ? page.store.type : ""
     readonly property string medium: page.store !== null && typeof page.store.medium === "string" ? page.store.medium : ""
+    readonly property string kind: page.store !== null && typeof page.store.kind === "string" ? page.store.kind : ""
     readonly property var candidates: page.store !== null && Array.isArray(page.store.candidates) ? page.store.candidates : []
     readonly property bool canCreate: page.storeState === "none" && !page.created
     readonly property string chosen: page.pick >= 0 && page.pick < page.candidates.length ? page.candidates[page.pick] : ""
@@ -140,7 +148,11 @@ Welcome.ScrollablePage {
                 ? i18ndc("kdos-welcome", "@info %1 is a device such as /dev/sda4", "The store is %1, the partition labelled KDOS_PERSIST. To empty it, start “KDOS Live (clean session)” from the boot menu and run sudo kdos persist reset there.", page.storeDevice)
                 : page.candidates.length > 0 || !page.canCreate
                 ? i18ndc("kdos-welcome", "@info", "One new partition is made in the free space after the last one, labelled KDOS_PERSIST. The partitions already there are not changed, and a blank stick is given a partition table first. On the live medium no password is asked.")
-                : i18ndc("kdos-welcome", "@info", "A disc cannot hold changes. Plug in a USB stick and look again: the store can go on any stick, and is found there at every boot.")
+                : page.kind === "ventoy"
+                ? i18ndc("kdos-welcome", "@info", "A Ventoy stick cannot hold changes: KDOS runs from a file inside Ventoy's own partition. Plug in another USB stick and look again: the store can go on any stick, and is found there at every boot.")
+                : page.kind === "disc"
+                ? i18ndc("kdos-welcome", "@info", "A disc or a write-protected stick cannot hold changes. Plug in a USB stick and look again: the store can go on any stick, and is found there at every boot.")
+                : i18ndc("kdos-welcome", "@info", "The medium KDOS started from cannot hold changes. Plug in a USB stick and look again: the store can go on any stick, and is found there at every boot.")
             // A store that exists already leaves nothing to do here, so the
             // button goes rather than greying.
             action: !page.canCreate

@@ -47,7 +47,7 @@ upstream (see [Where sources come from](developing.md#where-sources-come-from)).
 change a source, [publish it](#publishing-sources) so other checkouts can fetch it.
 
 A few ports keep other files in git beside the recipe. Leaving out `kpkgbuild`, `build.sh`,
-`postinstall.sh`, `*.patch` and `kfs.md`, git tracks 46 files under `ports/core`. Thirty-eight of
+`postinstall.sh`, `*.patch` and `kfs.md`, git tracks 56 files under `ports/core`. Forty of
 them are named by a `sha256 =` line: small inputs that are part of the source, such as `bash`'s and
 `readline`'s upstream patch-level files and the IANA registries under `iana-etc`. A named file
 cannot change without its `sha256 =` line changing, so an edit to it changes the recipe and
@@ -55,9 +55,12 @@ rebuilds the port.
 
 Every other file beside the recipe is hashed into the
 [recipe hash](../06-reference/glossary.md#recipe-hash) itself, subdirectories included, so an edit
-to it rebuilds the port too. The eight such files in git are `linux/kdos.config`,
+to it rebuilds the port too. The sixteen such files in git are `linux/kdos.config`,
 `linux/kdos-logo-mono.pbm`, `linux/x509.genkey`, `epy/epy.desktop` and `musl/ldconfig`, which
-`build.sh` reads from `$PORT_SRC`;
+`build.sh` reads from `$PORT_SRC`; the licence texts an upstream download leaves out, which
+`build.sh` installs from `$PORT_SRC` into `/usr/share/licenses/<name>/` (`movit/COPYING`,
+`wine-mono/COPYING`, `yarn/LICENSE.md` and a `LICENSE` beside `font-caladea`,
+`meshtastic-firmware`, `rnode-firmware`, `python3-scour` and `whisper-model-base-en`);
 `pandoc/cabal.project.freeze`, which `ports/fetch` reads when it generates the vendor bundle; and
 `linux/genlogo-mono.py` and `ffmpeg/LICENSE.notice`, which no build reads. A stray file beside a
 recipe, such as an editor backup or a `kpkgbuild.new`, also changes the hash and rebuilds the port.
@@ -1316,7 +1319,7 @@ the input method, Discover, KDOS's own Plasma code and daemons) and the meta por
 [Which phase lists a port](#which-phase-lists-a-port)).
 
 **Patches.** A KDE module is patched only where no flag does the job, like any other port, and
-every patch is proposed upstream as well as carried here. Its `Subject:` says what it changes, and
+every patch is to be proposed upstream as well as carried here. Its `Subject:` says what it changes, and
 the port's `kfs.md` says why KDOS needs it and where upstream stands. Most fall into a few kinds: a
 desktop entry corrected so Plasma can match a window to it (`dolphin`'s `app-id.patch` and the
 same patch on thirteen other KDE applications, setting `StartupWMClass` to the Wayland app id); a "Get New…"
@@ -1797,16 +1800,28 @@ into `$PKG/usr/share/applications/`. A package owns its entry, so installing the
 row to the application launcher and removing the port takes it away; the same file under `fs/` is
 owned by nothing and outlives the program it names.
 
-The three entries under `fs/usr/share/applications/` are all `NoDisplay=true`.
+The four entries under `fs/usr/share/applications/` are all `NoDisplay=true`.
 `kdos-openarchive.desktop` is a handler that exists for its `MimeType=` line and names a script
 that is itself under `fs/` (`fs/usr/local/bin/kdos-openarchive`), so entry and program have the
-same lifetime. The other two break that rule: each names a program a port installs, and without
+same lifetime. The other three break that rule: each names a program a port installs, and without
 that port it names a program that is not there. `kdos-doc.desktop` names `kdos-doc`, the book
 viewer the `kdos-doc` port installs. `kdos-nomail.desktop` claims `mailto:` so that a mail link on
-the base, where no mail program is installed, opens a `kdialog` note naming the `internet` group;
-`kdialog` is a port on the base, and with it removed a mail link with no mail program installed
-starts nothing. The entry passes the link as `%u`, without which KIO hands it to `kioexec`, which
-reads it as a file.
+the base, where no mail program is installed, opens a `kdialog` note naming the `internet` group.
+`kdos-nooffice.desktop` claims every OpenDocument and Office Open XML type that
+`/etc/xdg/mimeapps.list` removes Ark from, so that an office document opens a `kdialog` note naming
+the `office` group: GLib honours a removed association only for the type it names and walks on to
+the parent `application/zip`, which Ark claims, while a claim on the type itself outranks that
+parent claim in GLib and KService alike. No mimeapps list names it as a default, and
+`kde-mimeapps.list` names a LibreOffice default for every type it claims, so LibreOffice opens
+them once the `office` group is installed: GLib ignores `InitialPreference`, and a type with no
+named default could still open the note beside LibreOffice. A type added to the removed rows is
+added to its `MimeType=` and given a LibreOffice default too; `testing/selftest.sh` fails on either
+one missing. `kdialog` is a port on the base, and with it
+removed a mail link or an office document with neither program installed starts nothing. Each
+note passes `--icon` with its entry's `Icon=`, from which `kdialog` takes its window and task
+icon, and `--desktopfile` with its entry's name, which becomes the window's application id. The
+mail entry passes the link as `%u`, without which KIO hands it to `kioexec`, which reads it as a
+file; the office entry passes the file as `%f`.
 
 ```bash
 install -d "$PKG/usr/share/applications"
@@ -1925,7 +1940,8 @@ records it either.
 |---|---|
 | Static archives | Every `.a` a build installs ships, `libpython3.14.a` and the archives nothing in the tree links included |
 | Symbol tables | `.symtab` and `.strtab` are removed from every ELF executable and shared object over 32 MiB, with `objcopy --strip-all --keep-section=.debug_*`: that removes the two sections and nothing a loader, a debugger's link or a build ID reads (`.dynsym`, `.gnu_debuglink` and the notes stay). This catches Chromium's `chromium` and the `libxul.so` of LibreWolf, Firefox ESR and Thunderbird. Everything smaller keeps its symbols, so a backtrace names its functions. Relocatable objects, kernel modules and static archives are never touched: their symbol table is what a link reads. Nor is a file with bytes after its last section and its section header table, which is a program carrying an appended payload that `objcopy` would drop. A port whose upstream strips on install keeps that switched off (`--disable-strip`, `--disable-install-strip`) |
-| Manuals | HTML and PDF manuals are removed under `usr/share/doc` and `usr/share/texmf-dist/doc`: every `*.html`, `*.htm` and `*.pdf`, and every directory named `html`. Manual pages and info pages ship, and so do the API references gtk-doc installs under `usr/share/gtk-doc/html`, which is outside both trees. Exempt is the HTML a program opens itself, where the prune would break a feature rather than drop a manual: `usr/share/doc/mednafen`, whose manual upstream writes only in HTML; `usr/share/doc/kdos`, this book; `usr/share/doc/kfs`, *KDOS from Scratch* in HTML and its PDF; `usr/share/doc/HTML/en/kdos`, the link through which KIO's `help:` worker finds this book; `usr/share/doc/R/html`, the index of R's `help.start()` and the `R.css` every page of its dynamic help links; the manuals behind a Help menu, `usr/share/doc/geany/html`, `usr/share/doc/gimagereader`, `usr/share/doc/texstudio`, `usr/share/doc/wsjtx`, `usr/share/doc/wireshark` (Help > Manual Pages) and `usr/share/doc/hatari`; and the pages an About dialog shows, `usr/share/doc/freecad` and `usr/share/doc/packages/smplayer`. The list is `DOC_KEEP` in `src/system/kdos-kpkg/prune.c`; a port whose program opens HTML from another path adds that path there. TeX Live's package manuals are the `texlive-doc` port, which `42_graphics` builds for the binhost and whose PDFs this prune removes, so `texdoc` finds nothing |
+| Manuals | HTML and PDF manuals are removed under `usr/share/doc` and `usr/share/texmf-dist/doc`: every `*.html`, `*.htm` and `*.pdf`, and every directory named `html`. Manual pages other than the unit pages below and info pages ship, and so do the API references gtk-doc installs under `usr/share/gtk-doc/html`, which is outside both trees. Exempt is the HTML a program opens itself, where the prune would break a feature rather than drop a manual: `usr/share/doc/mednafen`, whose manual upstream writes only in HTML; `usr/share/doc/kdos`, this book; `usr/share/doc/kfs`, *KDOS from Scratch* in HTML and its PDF; `usr/share/doc/HTML/en/kdos`, the link through which KIO's `help:` worker finds this book; `usr/share/doc/R/html`, the index of R's `help.start()` and the `R.css` every page of its dynamic help links; the manuals behind a Help menu, `usr/share/doc/geany/html`, `usr/share/doc/gimagereader`, `usr/share/doc/texstudio`, `usr/share/doc/wsjtx`, `usr/share/doc/wireshark` (Help > Manual Pages) and `usr/share/doc/hatari`; and the pages an About dialog shows, `usr/share/doc/freecad` and `usr/share/doc/packages/smplayer`. The list is `DOC_KEEP` in `src/system/kdos-kpkg/prune.c`; a port whose program opens HTML from another path adds that path there. TeX Live's package manuals are the `texlive-doc` port, which `42_graphics` builds for the binhost and whose PDFs this prune removes, so `texdoc` finds nothing |
+| Unit pages | A file in `usr/share/man/man8` named for a systemd unit (`*.service.8`, `.socket`, `.timer`, `.target`, `.path`, `.mount`, `.automount`, `.slice`, `.scope`, compressed or not) is removed: `kpkg` never installs a unit, so the page would send its reader to a mechanism that does not exist. Section 5 is untouched, because a page there such as `avahi.service(5)` documents a program's own file format |
 | Languages | English only. Removed: every message catalog (`.mo`, `.gmo`, `.qm`) in a `<lang>/LC_MESSAGES/` directory, whatever holds it (`usr/share/locale`, `usr/lib/locale`, R's `po/` and `translations/`, a Python package's `locales/`); any `.mo`, `.gmo` or `.qm` elsewhere, Qt's and `usr/share/<program>/translations/` among them, whose file name ends in a language tag (`de.mo`, `app_pt_BR.qm`), while one with no tag (`app.qm`, the source language) stays; every translated KDE handbook (`usr/share/doc/HTML/<lang>/`); and every directory in `usr/share/man` that is not a `man<section>` one, which removes translated manual pages and empty `cat*` directories alike. A tag is a language, then optionally a region, script or UN area, a codeset after a region and a variant (`pt_BR`, `zh_Hant`, `es_419`, `zh_TW.Big5`, `sr@latin`). A tag that is `en`, or starts with `en_`, `en-` or `en@`, is English and stays: some programs keep their English plural forms in their catalog |
 | What the language rule keeps | Input-method engines and dictionaries, fonts for every script, keyboard layouts, X11's compose tables, `locale.alias`, and any data a program reads that is not a catalog (TeX's babel files, gnucash's tax tables) |
 | Licences | `usr/share/licenses` is never pruned |
@@ -2192,7 +2208,11 @@ soon as another adds an icon.
 
 The manual index is the one that is merged rather than rebuilt, and only when nothing was removed.
 Two packages in three carry manual pages, and reading every page on the system again for each one
-would add seconds to every install. The pages an install places go to `makewhatis -d`. A removal,
+would add seconds to every install. The pages an install places, and the manual directory itself,
+go to `makewhatis -d` by absolute path, a relative `--root` resolved first: the tool changes into
+its base before reading a page, so a relative name resolves inside the base and the page is left
+out, and a symlinked page named relative to the manual root crashes it and drops its whole batch
+from the index, while by absolute path the link is indexed as an alias of its target. A removal,
 an upgrade that orphans a page, or a missing `mandoc.db` rebuilds the whole tree, because a merge
 cannot drop an entry for a file that is already gone. The build skips this index altogether and
 `70_image` writes it once over the finished tree.

@@ -1,0 +1,47 @@
+# bash completion for kdos-bootctl.
+
+_kdos_bootctl_accents="phosphor amber ice bone norton borland perfect paper"
+
+_kdos_bootctl() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        COMPREPLY=($(compgen -W "status select mark-good cancel list crypt set-slot try unfill deploy palette splash theme" -- "$cur"))
+        return
+    fi
+
+    case "${COMP_WORDS[1]}" in
+        status) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
+        list)
+            # bash splits --json=short at the `=`: right after the `=` the
+            # current word is `=` itself, and once a letter is typed it is
+            # the value with `=` before it.
+            if [ "$cur" = "=" ] && [ "$prev" = --json ]; then
+                COMPREPLY=($(compgen -W "short pretty off" -- ""))
+            elif [ "$prev" = "=" ] && [ "${COMP_WORDS[COMP_CWORD-2]}" = --json ]; then
+                COMPREPLY=($(compgen -W "short pretty off" -- "$cur"))
+            else
+                COMPREPLY=($(compgen -W "--json" -- "$cur"))
+            fi ;;
+        select|set-slot|try|unfill)
+                [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=($(compgen -W "a b" -- "$cur")) ;;
+        deploy)
+            if [ "$COMP_CWORD" -eq 2 ]; then
+                COMPREPLY=($(compgen -d -- "$cur"))
+            elif [ "$COMP_CWORD" -eq 3 ]; then
+                COMPREPLY=($(compgen -W "a b" -- "$cur"))
+            fi ;;
+        palette) [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=($(compgen -W "$_kdos_bootctl_accents" -- "$cur")) ;;
+        splash)  [ "$COMP_CWORD" -eq 2 ] && COMPREPLY=($(compgen -W "phosphor modern" -- "$cur")) ;;
+        theme)
+            case "$prev" in
+                theme)   COMPREPLY=($(compgen -W "--print $_kdos_bootctl_accents" -- "$cur")) ;;
+                --print) COMPREPLY=($(compgen -W "$_kdos_bootctl_accents" -- "$cur")) ;;
+                *)       COMPREPLY=() ;;
+            esac ;;
+        *) COMPREPLY=() ;;
+    esac
+}
+complete -F _kdos_bootctl kdos-bootctl

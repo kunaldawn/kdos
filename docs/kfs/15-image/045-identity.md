@@ -11,16 +11,16 @@ Settings → **About this System** shows the build beside the version, from
 
 The `Makefile` works them out from your clone when it starts the build container:
 
-<!-- kfs:include Makefile lines=218-221 pin=91e0519d3113 -->
+<!-- kfs:include Makefile lines=218-221 pin=8fb27fb790d2 -->
 
-`KDOS_GIT_COMMIT` is the short hash of `HEAD`, `KDOS_GIT_DIRTY` is `1` when `git status` shows any
+`KDOS_GIT_COMMIT` is the short hash of `HEAD`, twelve characters long, `KDOS_GIT_DIRTY` is `1` when `git status` shows any
 change, `KDOS_GIT_DATE` is the commit date as `YYYY-MM-DD`, and `KDOS_GIT_TIME` the commit time in
 Unix seconds, which this step and [105_ports.sh](105-ports.md) use. `script/chroot/exec.sh` passes all four into
 the chroot.
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/045_identity.sh lines=51-77 -->
+<!-- kfs:include script/phases/70_image/045_identity.sh lines=51-77 pin=b7dfc0f913b5 -->
 
 The phase runs on the tree it finds, so the file may already carry a stamp from an earlier run. The
 `grep` drops any `BUILD_ID` and `KDOS_BUILD_DATE` line, and `cat` writes what is left back into
@@ -33,7 +33,10 @@ step stops when that tag without its `v` is not the file's `VERSION_ID`, with
 10_bootstrap:000_file_system.sh again if it is bumped`. About this System,
 `kdos version`, the boot menus, What's New and `/etc/kdos-release` all name the release from this
 line, so an image built from a tag whose file was not bumped would call itself the previous
-release everywhere. The root holds the copy `10_bootstrap`'s file-system step made of
+release everywhere. The record's `VERSION` is the one form `kdos version`, What's New, the boot
+menus, the splash (from the initramfs's copy), the installer's Welcome page and the greeter's
+footer show; About this System keeps KInfoCenter's own labelled fields, `Version: 0.2.1` and
+`Build: <BUILD_ID>`. The root holds the copy `10_bootstrap`'s file-system step made of
 `fs/etc/os-release`, so a bump reaches a tree already built only when that step runs again.
 
 Without `KDOS_GIT_COMMIT`, which is a build not started by `make build`
@@ -51,12 +54,12 @@ differ in this one file.
 
 Then the step writes [`/etc/kdos-release`]{.idx}, the record of which release this root holds:
 
-<!-- kfs:include script/phases/70_image/045_identity.sh lines=79-94 -->
+<!-- kfs:include script/phases/70_image/045_identity.sh lines=79-94 pin=d4677780c904 -->
 
 `VERSION` has the one form `kdos update` also writes when it fills a slot, so the two slots of a
 machine read alike in System Versions and on the logout screen: a release build gives the release
 without its tag's `v` (`0.2.1`), any other build `os-release`'s `VERSION_ID` with `+` and the build
-id (`0.2.1+4dc1f7f82-dirty`), the same name `kdos-bootctl` and `kdos-sysupdated` give a root
+id (`0.2.1+4dc1f7f826a3-dirty`), the same name `kdos-bootctl` and `kdos-sysupdated` give a root
 without a record; `TREE` and `TREE_TIME` are the commit and its
 time; `INSTALLED_BY` says the root came from the medium. `kdos update` offers a slot image only
 when the image's time is later than `TREE_TIME`, so a root without the record is never offered

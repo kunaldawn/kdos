@@ -215,7 +215,7 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		$(if $(KDOS_JOBS),--cpus=$$(n=$$(nproc); j=$(KDOS_JOBS); [ $$j -lt $$n ] && echo $$j || echo $$n)) \
 		--rm --privileged -e HOST_UID=$$(id -u) -e HOST_GID=$$(id -g) \
 		-e KDOS_JOBS="$(KDOS_JOBS)" \
-		-e KDOS_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null)" \
+		-e KDOS_GIT_COMMIT="$$(git rev-parse --short=12 HEAD 2>/dev/null)" \
 		-e KDOS_GIT_DIRTY="$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0)" \
 		-e KDOS_GIT_DATE="$$(git log -1 --format=%cs 2>/dev/null)" \
 		-e KDOS_GIT_TIME="$$(git log -1 --format=%ct 2>/dev/null)" \
@@ -240,6 +240,7 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-v $$(pwd)/testing:/workspace/testing:ro \
 		-v $$(pwd)/Makefile:/workspace/Makefile:ro \
 		-v $$(pwd)/Dockerfile:/workspace/Dockerfile:ro \
+		-v $$(pwd)/LICENSE:/workspace/LICENSE:ro \
 		$(DOCKER_TTY) os-dev script/kdosbuild.sh $(BUILD_ARGS)
 
 snapshots: ## list the phase snapshots

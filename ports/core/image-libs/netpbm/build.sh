@@ -58,6 +58,15 @@ Libs: -L/usr/lib -lnetpbm
 Cflags: -I/usr/include
 PC
 
+for f in COPYRIGHT.PATENT copyright_summary GPL_LICENSE.txt lgpl_v21.txt; do
+	install -Dm644 "doc/$f" "$PKG/usr/share/licenses/$name/$f"
+done
+for f in lib/util/randmersenne.c converter/other/pamtooctaveimg.c converter/pbm/pbmtodjvurle.c \
+	editor/pamhomography.c editor/pammixmulti.c editor/pnmstitch.c generator/pamstereogram.c; do
+	awk '/Copyright \([Cc]\)/{b=""} {b=b $0 "\n"} /Redistribution and use/{r=1} r&&/\*\//{printf "%s", b; exit}' "$f" \
+		> "$PKG/usr/share/licenses/$name/BSD-${f##*/}"
+done
+
 mkdir man && cd man
 python3 ../buildtools/makeman -d ../userguide $(cd ../userguide && ls *.html | grep -v -x -e directory.html -e error.html -e hpcdtoppm.html -e liberror.html -e libnetpbm_dir.html -e ppmsvgalib.html -e vidtoppm.html)
 mv index.1 netpbm.1

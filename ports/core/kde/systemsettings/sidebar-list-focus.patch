@@ -1,0 +1,199 @@
+Subject: System Settings: name the sidebar lists, frame and focus their current item, leave the sidebar by Shift+Tab from Search
+
+The two sidebar lists, the categories and a category's pages, have the
+list role and no name, so a screen reader entering one by Tab reads
+"list" and nothing it can act on. The category list is named "Settings
+categories", or "Search results" while a search is typed, and a
+category's page list takes the category's title ("Colors & Themes").
+Each list hands its focus scope's focus to its current item whenever the
+list takes the active focus without it, so entering a list reads the
+list's name and then its current item. Setting the item's focus, with no
+Tab reason, leaves the style's own visual focus off.
+
+Neither list shows where the keyboard focus is: the current item's
+highlight looks the same with the focus anywhere else in the window. The
+current item draws a frame in the theme's focus colour while its list
+holds the active focus and the keyboard brought it there. A Tab into the
+window hands the active focus to the list, which keeps that state, since
+a focus scope stays active while its current item holds the focus. Every
+focus entry into a list sets it, a Tab, Backtab, arrow key or a Right or
+Enter that opens a category's pages alike, unless a pointer press on a
+sidebar item caused the entry: a press marks the sidebar until the event
+loop has run the click it ends in, and clears the frame of the list it
+lands in. Losing the active focus clears it. A mouse click on an item
+draws no frame, and Space keeps it.
+
+The search field's Backtab goes to its KeyNavigation.left, which it does
+not have, so a Shift+Tab from Search falls to the sidebar scene's own
+focus chain and wraps to the category list, and the list's and the menu
+button's backtabs close a loop of Show menu, Search and the list that
+never returns to the page. The search field hands a Backtab to
+systemsettings.focusPrevious(), as the page list's Back button does, so
+Shift+Tab from a page reaches Show menu, Search and then the page's Help
+button.
+
+A section heading is a Kirigami.ListSectionHeader, an ItemDelegate, whose
+default accessible name is its text with each '&' stripped as a mnemonic
+marker: "Security & Privacy" is read "Security  Privacy". The heading
+takes its section text as its accessible name.
+
+---
+diff --git a/app/qml/CategoriesPage.qml b/app/qml/CategoriesPage.qml
+--- a/app/qml/CategoriesPage.qml
++++ b/app/qml/CategoriesPage.qml
+@@ -58,8 +58,10 @@
+ 
+                 KeyNavigation.down: categoryView
+ 
+-                KeyNavigation.backtab: KeyNavigation.left
+                 KeyNavigation.tab: KeyNavigation.right
++                Keys.onBacktabPressed: event => {
++                    systemsettings.focusPrevious();
++                }
+ 
+                 Keys.onDownPressed: event => rowLayout.Keys.downPressed(event)
+                 onActiveFocusChanged: {
+@@ -123,6 +125,22 @@
+         activeFocusOnTab: true
+         keyNavigationWraps: true
+         Accessible.role: Accessible.List
++        Accessible.name: mainColumn.searchMode
++            ? i18nc("@info:accessible", "Search results")
++            : i18nc("@info:accessible", "Settings categories")
++
++        // Whether the keyboard brought the focus to this list: set on every
++        // focus entry that no pointer press on a sidebar item caused, cleared
++        // by such a press and by the list losing the focus.
++        property bool keyboardFocus: false
++        onActiveFocusChanged: {
++            keyboardFocus = activeFocus && !root.itemPointerPress;
++            // Hand the scope's focus to the current item, so a screen reader
++            // entering the list reads that item after the list's name.
++            if (activeFocus && currentItem && !currentItem.activeFocus) {
++                currentItem.focus = true;
++            }
++        }
+ 
+         KeyNavigation.up: searchField
+         KeyNavigation.backtab: hamburgerMenuButton
+@@ -144,6 +162,9 @@
+ 
+                 width: ListView.view.width
+                 label: section
++                // A button's default accessible name strips '&' as a mnemonic
++                // marker; the heading is read by its full text.
++                Accessible.name: section
+             }
+         }
+ 
+@@ -174,6 +195,15 @@
+             enabled: !isCategory || !mainColumn.searchMode
+ 
+             highlighted: ListView.isCurrentItem
++            focusFrameVisible: ListView.isCurrentItem && categoryView.activeFocus && categoryView.keyboardFocus
++            onPointerActiveChanged: {
++                if (pointerActive) {
++                    root.itemPointerPress = true;
++                    categoryView.keyboardFocus = false;
++                } else {
++                    Qt.callLater(root.endItemPointerPress);
++                }
++            }
+ 
+             onClicked: {
+                 if (!enabled) { return; }
+diff --git a/app/qml/CategoryItem.qml b/app/qml/CategoryItem.qml
+--- a/app/qml/CategoryItem.qml
++++ b/app/qml/CategoryItem.qml
+@@ -23,6 +23,33 @@
+     Accessible.name: text
+     Accessible.onPressAction: clicked()
+ 
++    // Set by the list that holds the item, the one that knows whether the
++    // keyboard brought its focus here.
++    property bool focusFrameVisible: false
++
++    // True while a pointer is pressed on the item. A Space key press makes
++    // the item pressed too, so the list reads this to tell a pointer from a
++    // key.
++    readonly property bool pointerActive: pointerPress.active
++
++    PointHandler {
++        id: pointerPress
++        acceptedButtons: Qt.AllButtons
++    }
++
++    Rectangle {
++        anchors.fill: parent
++        anchors.leftMargin: delegate.leftInset
++        anchors.rightMargin: delegate.rightInset
++        anchors.topMargin: delegate.topInset
++        anchors.bottomMargin: delegate.bottomInset
++        visible: delegate.focusFrameVisible
++        color: "transparent"
++        border.width: 1
++        border.color: Kirigami.Theme.focusColor
++        radius: Kirigami.Units.cornerRadius
++    }
++
+     contentItem: RowLayout {
+         spacing: Kirigami.Units.smallSpacing
+ 
+diff --git a/app/qml/SideBarItem.qml b/app/qml/SideBarItem.qml
+--- a/app/qml/SideBarItem.qml
++++ b/app/qml/SideBarItem.qml
+@@ -21,6 +21,14 @@
+     property alias searchMode: mainColumn.searchMode
+     readonly property real headerHeight: mainColumn.header.height
+ 
++    // True from a pointer press on a sidebar item until the event loop has
++    // run the click it ends in, so the list a click hands the focus to
++    // draws no focus frame.
++    property bool itemPointerPress: false
++    function endItemPointerPress() {
++        itemPointerPress = false;
++    }
++
+     CategoriesPage {
+         id: mainColumn
+         focus: true
+diff --git a/app/qml/SubCategoryPage.qml b/app/qml/SubCategoryPage.qml
+--- a/app/qml/SubCategoryPage.qml
++++ b/app/qml/SubCategoryPage.qml
+@@ -130,6 +130,20 @@
+         activeFocusOnTab: true
+         keyNavigationWraps: true
+         Accessible.role: Accessible.List
++        Accessible.name: subCategoryColumn.title
++
++        // Whether the keyboard brought the focus to this list: set on every
++        // focus entry that no pointer press on a sidebar item caused, cleared
++        // by such a press and by the list losing the focus.
++        property bool keyboardFocus: false
++        onActiveFocusChanged: {
++            keyboardFocus = activeFocus && !root.itemPointerPress;
++            // Hand the scope's focus to the current item, so a screen reader
++            // entering the list reads that item after the list's name.
++            if (activeFocus && currentItem && !currentItem.activeFocus) {
++                currentItem.focus = true;
++            }
++        }
+ 
+         KeyNavigation.up: backButton
+         KeyNavigation.backtab: hamburgerMenuButton
+@@ -187,6 +201,15 @@
+             leadingPadding: depth > 2 ? (( depth - 2 ) * Kirigami.Units.iconSizes.smallMedium) + Kirigami.Units.largeSpacing : 0
+ 
+             highlighted: ListView.isCurrentItem
++            focusFrameVisible: ListView.isCurrentItem && subCategoryView.activeFocus && subCategoryView.keyboardFocus
++            onPointerActiveChanged: {
++                if (pointerActive) {
++                    root.itemPointerPress = true;
++                    subCategoryView.keyboardFocus = false;
++                } else {
++                    Qt.callLater(root.endItemPointerPress);
++                }
++            }
+ 
+             onClicked: {
+                 systemsettings.loadModule(subCategoryView.model.index(index, 0));

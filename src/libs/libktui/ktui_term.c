@@ -32,7 +32,6 @@ volatile sig_atomic_t ktui_resized;
 static struct termios saved_tio;
 static int tio_saved;
 static int tty_fd = -1;		/* for ioctls when stdin is not the tty     */
-static int pal_fd = -1;		/* the VT the console palette is set on     */
 static int out_fd = 1;
 static int active;
 
@@ -289,60 +288,81 @@ static void detect_caps(void)
 }
 
 /*
- * THE PALETTE IS SET THROUGH A VT, WHICH /dev/tty MAY NOT BE. sudo runs its
- * command on a fresh pseudo-terminal (use_pty), so TERM is still linux and
- * the screen is still the console, but GIO_CMAP and PIO_CMAP fail on the pts
- * and the screen keeps kdos-getty's palette: its slots 4-6 are VT blue,
- * magenta and cyan where the installer's rules and hints belong. The colour
- * map is console-wide, so any VT descriptor sets the one on screen: the
- * terminal itself when it answers GIO_CMAP, else the VT sudo was started
+ * THE VT IS FOUND ONCE, AND IT MAY NOT BE /dev/tty. sudo runs its command on a
+ * fresh pseudo-terminal (use_pty), so TERM is still linux and the screen is
+ * still the console, but every console ioctl fails on the pts: the palette
+ * would stay kdos-getty's, whose slots 4-6 are VT blue, magenta and cyan where
+ * a program's rules and hints belong, and the Shift state that turns a Tab
+ * into a back-tab could not be read. The descriptor is, in order: the
+ * terminal itself when it answers KDGKBTYPE, else the VT sudo was started
  * from ($SUDO_TTY, when it names /dev/ttyN), else /dev/tty0 when stdin is a
- * pts under a sudo that set no SUDO_TTY. A sudo whose SUDO_TTY names a pts,
- * and a pts outside sudo (ssh with TERM=linux), are not on this machine's
- * screen and get no palette.
+ * pts under a sudo that set no SUDO_TTY. A sudo whose SUDO_TTY names a pts, a
+ * pts outside sudo (ssh with TERM=linux) and any TERM but linux are not on
+ * this machine's screen and get none. It is opened at ktui_term_init and held
+ * until ktui_term_shutdown, across a suspend, and closed there alone.
  */
-static int palette_fd_open(void)
-{
-	unsigned char probe[48];
-	const char *st = getenv("SUDO_TTY");
-	int fd;
+static int vt_fd = -1;
 
-	if (tty_fd >= 0 && ioctl(tty_fd, GIO_CMAP, probe) == 0)
-		return tty_fd;
-	if (st && !strncmp(st, "/dev/tty", 8) && st[8] >= '0' && st[8] <= '9') {
-		fd = open(st, O_RDWR | O_NOCTTY | O_CLOEXEC);
-		if (fd >= 0 && ioctl(fd, GIO_CMAP, probe) == 0)
-			return fd;
-		if (fd >= 0)
-			close(fd);
+static int is_vt(int fd)
+{
+	char type;
+
+	return fd >= 0 && ioctl(fd, KDGKBTYPE, &type) == 0;
+}
+
+static int vt_open(const char *path)
+{
+	int fd = open(path, O_RDWR | O_NOCTTY | O_CLOEXEC);
+
+	if (fd >= 0 && !is_vt(fd)) {
+		close(fd);
+		fd = -1;
 	}
+	return fd;
+}
+
+static int vt_find(void)
+{
+	const char *st = getenv("SUDO_TTY");
+
+	if (!(ktui_caps & KT_CAP_LINUXVT))
+		return -1;
+	if (is_vt(tty_fd))
+		return tty_fd;
+	if (st && !strncmp(st, "/dev/tty", 8) && st[8] >= '0' && st[8] <= '9')
+		return vt_open(st);
 	if (!st && getenv("SUDO_UID") && isatty(0)) {
 		const char *n = ttyname(0);
 
-		if (n && !strncmp(n, "/dev/pts/", 9)) {
-			fd = open("/dev/tty0", O_RDWR | O_NOCTTY | O_CLOEXEC);
-			if (fd >= 0 && ioctl(fd, GIO_CMAP, probe) == 0)
-				return fd;
-			if (fd >= 0)
-				close(fd);
-		}
+		if (n && !strncmp(n, "/dev/pts/", 9))
+			return vt_open("/dev/tty0");
 	}
 	return -1;
 }
 
+static void vt_close(void)
+{
+	if (vt_fd >= 0 && vt_fd != tty_fd)
+		close(vt_fd);
+	vt_fd = -1;
+}
+
+/* Library-internal: ktui_input asks it for the Shift state. -1 is no VT. */
+int ktui_term_vt_fd(void)
+{
+	return vt_fd;
+}
+
 /* The console palette is ours for the duration and exactly restored after:
  * GIO_CMAP hands back what kdos-getty's setvtrgb loaded, PIO_CMAP puts the
- * installer's eight slots in its place. No external tool, no drift. */
+ * program's eight slots in its place. No external tool, no drift. The colour
+ * map is console-wide, so the VT descriptor sets the one on screen; a VT that
+ * will not hand its map back is left alone, since it could not be restored. */
 static void palette_install(void)
 {
-	if (!(ktui_caps & KT_CAP_LINUXVT))
+	if (vt_fd < 0 || ioctl(vt_fd, GIO_CMAP, saved_cmap) < 0)
 		return;
-	pal_fd = palette_fd_open();
-	if (pal_fd < 0)
-		return;
-
-	if (ioctl(pal_fd, GIO_CMAP, saved_cmap) == 0)
-		cmap_saved = 1;
+	cmap_saved = 1;
 
 	unsigned char cm[48];
 	for (int i = 0; i < 16; i++) {
@@ -351,22 +371,19 @@ static void palette_install(void)
 		cm[i * 3 + 1] = c.g;
 		cm[i * 3 + 2] = c.b;
 	}
-	ioctl(pal_fd, PIO_CMAP, cm);
+	ioctl(vt_fd, PIO_CMAP, cm);
 }
 
 static void palette_restore(void)
 {
-	if (cmap_saved && pal_fd >= 0)
-		ioctl(pal_fd, PIO_CMAP, saved_cmap);
+	if (cmap_saved && vt_fd >= 0)
+		ioctl(vt_fd, PIO_CMAP, saved_cmap);
 	cmap_saved = 0;
-	if (pal_fd >= 0 && pal_fd != tty_fd)
-		close(pal_fd);
-	pal_fd = -1;
 }
 
 void ktui_term_repalette(void)
 {
-	if (!(ktui_caps & KT_CAP_LINUXVT) || pal_fd < 0)
+	if (!cmap_saved)
 		return;
 	unsigned char cm[48];
 	for (int i = 0; i < 16; i++) {
@@ -375,7 +392,7 @@ void ktui_term_repalette(void)
 		cm[i * 3 + 1] = c.g;
 		cm[i * 3 + 2] = c.b;
 	}
-	ioctl(pal_fd, PIO_CMAP, cm);
+	ioctl(vt_fd, PIO_CMAP, cm);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -626,6 +643,7 @@ int ktui_term_init(int want_mouse)
 	tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC);
 	if (tty_fd < 0)
 		tty_fd = isatty(0) ? 0 : -1;
+	vt_fd = vt_find();
 
 	if (want_mouse && !(ktui_caps & KT_CAP_LINUXVT))
 		ktui_caps |= KT_CAP_MOUSE;
@@ -653,6 +671,7 @@ void ktui_term_shutdown(void)
 	leave_screen();
 	palette_restore();
 	raw_off();
+	vt_close();
 	if (tty_fd > 2)
 		close(tty_fd);
 	tty_fd = -1;

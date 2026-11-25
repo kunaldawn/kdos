@@ -59,11 +59,20 @@
  * none of the three managers exits NO_PKG_MANAGER, which the caller tells from
  * a package that failed to install.
  *
+ * Each manager branch names its manager on stderr before the first manager
+ * command (apt-get's before `apt-get update`, which is part of the wait):
+ * the manager's own output stays off the terminal, and a first install in a
+ * new box is minutes of it, which would otherwise show as a hang after
+ * distrobox's last setup step. The line must follow the sudo check, which
+ * stays the script's first line.
+ *
  * A box without sudo exits BOX_UNSET before anything else: distrobox-init
  * installs sudo with the rest of its dependencies on the box's first start,
- * and prints "Container Setup Complete!" even when that install failed for
- * want of a network. A box without sudo is a box whose first setup never
- * finished, and every install in it would end in "sudo: not found".
+ * and distrobox-enter prints "Container Setup Complete!" even when that
+ * install failed for want of a network. A box without sudo is a box whose
+ * first setup never finished, and every install in it would end in "sudo: not
+ * found". That line is distrobox's, not a result: the enter running this
+ * script drops it (run_box_relay), so fetch-app's own lines report the outcome.
  */
 #define NO_PKG_MANAGER 69
 #define BOX_UNSET      70
@@ -72,11 +81,14 @@ static const char INSTALL_SH[] =
 	"command -v sudo >/dev/null || exit 70\n"
 	"set -e\n"
 	"if command -v apt-get >/dev/null; then\n"
+	"  echo '==> Running apt-get inside the box (a few minutes the first time)' >&2\n"
 	"  sudo env DEBIAN_FRONTEND=noninteractive apt-get update\n"
 	"  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -- \"$1\"\n"
 	"elif command -v dnf >/dev/null; then\n"
+	"  echo '==> Running dnf inside the box (a few minutes the first time)' >&2\n"
 	"  sudo dnf install -y -- \"$1\"\n"
 	"elif command -v pacman >/dev/null; then\n"
+	"  echo '==> Running pacman inside the box (a few minutes the first time)' >&2\n"
 	"  sudo pacman -Sy --noconfirm -- \"$1\"\n"
 	"else\n"
 	"  exit 69\n"
@@ -537,43 +549,37 @@ static int box_export(const char *box, const char *kind, const char *what,
 }
 
 /*
- * `distrobox create`, with its closing advice taken out. It ends on stderr
- * with "Distrobox '<box>' successfully created." and "To enter, run:", and
- * puts the command that line introduces on a stdout kb_run discards: relayed
- * whole, the user is left a sentence pointing at nothing. Every other line
- * reaches stderr as distrobox wrote it. The dropped line opens with the reset
- * of the "[ OK ]" before it, so the reset alone is written in its place, or
- * the terminal would stay green.
+ * A distrobox command with its stderr relayed through this process, to take
+ * out lines of distrobox's own that would contradict what follows them.
+ *
+ * BOX_CREATE: `distrobox create`, with its closing advice taken out. It ends
+ * on stderr with "Distrobox '<box>' successfully created." and "To enter,
+ * run:", and puts the command that line introduces on a stdout that goes to
+ * /dev/null: relayed whole, the user is left a sentence pointing at nothing.
+ * Every other line reaches stderr as distrobox wrote it. The dropped line
+ * opens with the reset of the "[ OK ]" before it, so the reset alone is
+ * written in its place, or the terminal would stay green.
+ *
+ * BOX_ENTER: the enter that runs INSTALL_SH. Its stdout goes to /dev/null as
+ * kb_run's does, so the package manager's output stays off the terminal as
+ * the --remove enter's does; the script names the manager on stderr before
+ * it runs, and that line reaches the terminal through this relay. The enter
+ * runs verbose: an unverbose kb_run sends stderr to /dev/null as well, and
+ * the user would see nothing for the manager's minutes. On a box's first
+ * start distrobox-enter prints its setup steps and then
+ * "\nContainer Setup Complete!\n" on stderr, and prints that line even when
+ * distrobox-init's install of its dependencies failed; fetch-app's own lines
+ * report the outcome, so those bytes alone are dropped. stderr is relayed in
+ * read() chunks, not lines: each step label is printed without its newline
+ * while the step runs, and must show while it does. At most the length of the
+ * dropped text is held back, and only while the tail could still begin it.
  */
-static int run_box_create(const KbArgv *a)
+enum box_relay { BOX_CREATE, BOX_ENTER };
+
+static const char SETUP_DONE[] = "\nContainer Setup Complete!\n";
+
+static void relay_create(FILE *f)
 {
-	int pfd[2];
-	if (pipe(pfd) != 0)
-		kb_die("pipe: %s", strerror(errno));
-
-	pid_t pid = fork();
-	if (pid < 0)
-		kb_die("fork: %s", strerror(errno));
-	if (pid == 0) {
-		int null = open("/dev/null", O_RDWR);
-		if (null >= 0) {
-			dup2(null, STDIN_FILENO);
-			dup2(null, STDOUT_FILENO);
-			if (null > STDERR_FILENO)
-				close(null);
-		}
-		dup2(pfd[1], STDERR_FILENO);
-		close(pfd[0]);
-		close(pfd[1]);
-		kb_child_reset_signals();
-		execvp(a->v[0], (char *const *)a->v);
-		_exit(127);
-	}
-	close(pfd[1]);
-
-	FILE *f = fdopen(pfd[0], "r");
-	if (!f)
-		kb_die("fdopen: %s", strerror(errno));
 	char *line = NULL;
 	size_t cap = 0;
 	int after_enter = 0;
@@ -595,7 +601,87 @@ static int run_box_create(const KbArgv *a)
 		fputs(line, stderr);
 	}
 	free(line);
-	fclose(f);
+}
+
+static void relay_put(const char *p, size_t n)
+{
+	fwrite(p, 1, n, stderr);
+	fflush(stderr);
+}
+
+static void relay_enter(int fd)
+{
+	const size_t plen = sizeof(SETUP_DONE) - 1;
+	char w[4096 + sizeof(SETUP_DONE)];
+	size_t held = 0;
+	for (;;) {
+		ssize_t r = read(fd, w + held, sizeof(w) - held);
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		size_t n = held + (size_t)r, pos = 0;
+		for (;;) {
+			char *m = memmem(w + pos, n - pos, SETUP_DONE, plen);
+			if (!m)
+				break;
+			relay_put(w + pos, (size_t)(m - (w + pos)));
+			pos = (size_t)(m - w) + plen;
+		}
+		size_t keep = n;
+		for (size_t k = n > pos + plen - 1 ? n - (plen - 1) : pos; k < n; k++)
+			if (!memcmp(w + k, SETUP_DONE, n - k)) {
+				keep = k;
+				break;
+			}
+		relay_put(w + pos, keep - pos);
+		held = n - keep;
+		memmove(w, w + keep, held);
+	}
+	relay_put(w, held);
+}
+
+static int run_box_relay(const KbArgv *a, enum box_relay mode)
+{
+	if (mode == BOX_ENTER && !kb_proc_verbose)
+		return kb_run(a);
+
+	int pfd[2];
+	if (pipe(pfd) != 0)
+		kb_die("pipe: %s", strerror(errno));
+
+	fflush(stdout);
+	fflush(stderr);
+	pid_t pid = fork();
+	if (pid < 0)
+		kb_die("fork: %s", strerror(errno));
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDWR);
+		if (null >= 0) {
+			dup2(null, STDIN_FILENO);
+			dup2(null, STDOUT_FILENO);
+			if (null > STDERR_FILENO)
+				close(null);
+		}
+		dup2(pfd[1], STDERR_FILENO);
+		close(pfd[0]);
+		close(pfd[1]);
+		kb_child_reset_signals();
+		execvp(a->v[0], (char *const *)a->v);
+		_exit(127);
+	}
+	close(pfd[1]);
+
+	if (mode == BOX_CREATE) {
+		FILE *f = fdopen(pfd[0], "r");
+		if (!f)
+			kb_die("fdopen: %s", strerror(errno));
+		relay_create(f);
+		fclose(f);
+	} else {
+		relay_enter(pfd[0]);
+		close(pfd[0]);
+	}
 
 	int st;
 	while (waitpid(pid, &st, 0) < 0)
@@ -636,7 +722,7 @@ static void box_create(const char *box, const char *image)
 	kb_argv_add(&a, "--yes");
 	kb_argv_add(&a, "--no-entry");
 	kb_argv_end(&a);
-	if (run_box_create(&a) != 0)
+	if (run_box_relay(&a, BOX_CREATE) != 0)
 		kb_die("could not create the box");
 }
 
@@ -772,7 +858,7 @@ int fetch_app_main(int argc, char **argv)
 	printf("==> Installing '%s' inside '%s'\n", app, box);
 	KbArgv ins = {0};
 	box_sh(&ins, box, INSTALL_SH, app);
-	int rc = kb_run(&ins);
+	int rc = run_box_relay(&ins, BOX_ENTER);
 	/*
 	 * A box whose first setup never finished is removed when this run
 	 * made it, so the next run online starts it afresh. The default box
@@ -796,12 +882,13 @@ int fetch_app_main(int argc, char **argv)
 		box_create(box, image);
 		created = 1;
 		printf("==> Installing '%s' inside '%s'\n", app, box);
-		rc = kb_run(&ins);
+		rc = run_box_relay(&ins, BOX_ENTER);
 	}
 	if (rc == BOX_UNSET) {
 		box_remove(box);
-		kb_die("'%s's first setup did not finish — the network is "
-		       "needed the first time; run again when online", box);
+		kb_die("the box %s did not finish its first setup — the "
+		       "network is needed the first time; run again when "
+		       "online", box);
 	}
 	if (rc == NO_PKG_MANAGER) {
 		/* A box this run made for an image it cannot drive is of no

@@ -208,14 +208,52 @@ Welcome.ScrollablePage {
 
             Accessible.role: Accessible.Grouping
             Accessible.name: i18ndc("kdos-welcome", "@title:group", "Accent")
+            Accessible.description: i18ndc("kdos-welcome", "@info accessible description of the swatches", "The arrow keys move between the accents; Space or Enter applies one.")
 
+            // Whether a swatch is the accent in force; ListModel rows are no
+            // binding, so the revision re-reads them.
+            readonly property bool hasCurrent: Kdos.Accents.revision >= 0
+                && Kdos.Accents.byName(Kdos.Accents.current) !== null
+
+            /* One Tab stop for the group, on the current swatch, or on every
+             * swatch while none is current; the arrow keys move focus only,
+             * wrapping and skipping a disabled swatch, and Space or Enter
+             * applies, because an accent repaints the machine and an arrow
+             * press must not start that. */
             Repeater {
+                id: swatchRepeater
+
                 model: Kdos.Accents.model
 
                 delegate: Kdos.AccentSwatch {
+                    id: swatch
+
+                    required property int index
+
                     Layout.fillWidth: true
                     current: name === Kdos.Accents.current
+                    focusPolicy: swatch.current || !swatches.hasCurrent ? Qt.StrongFocus : Qt.ClickFocus
                     onClicked: page.applyAccent(name)
+
+                    // The next enabled swatch `step` places away, wrapping;
+                    // a Tab reason so the focus frame is drawn.
+                    function focusNeighbour(step: int): void {
+                        const n = swatchRepeater.count;
+                        for (let k = 1; k < n; ++k) {
+                            const next = swatchRepeater.itemAt((((index + step * k) % n) + n) % n);
+                            if (next && next.enabled) {
+                                next.forceActiveFocus(Qt.TabFocusReason);
+                                return;
+                            }
+                        }
+                    }
+
+                    Keys.onLeftPressed: focusNeighbour(-1)
+                    Keys.onUpPressed: focusNeighbour(-swatches.columns)
+                    Keys.onRightPressed: focusNeighbour(1)
+                    Keys.onDownPressed: focusNeighbour(swatches.columns)
+                    Keys.onReturnPressed: page.applyAccent(name)
+                    Keys.onEnterPressed: page.applyAccent(name)
                 }
             }
         }

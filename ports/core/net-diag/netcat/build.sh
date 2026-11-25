@@ -20,3 +20,5 @@ make SRCS="netcat.c atomicio.c socks.c base64.c" \
 	CFLAGS="$CFLAGS -DIPTOS_DSCP_VA=0xb0 -DDEBIAN_VERSION=\"\\\"$version-$debrev\\\"\"" LDFLAGS="$LDFLAGS"
 install -Dm755 nc $PKG/usr/bin/nc
 install -Dm644 nc.1 $PKG/usr/share/man/man1/nc.1
+install -Dm644 debian/copyright "$PKG/usr/share/licenses/$name/copyright"
+sed '/^#if/,$d' base64.c > "$PKG/usr/share/licenses/$name/base64-COPYRIGHT"

@@ -212,44 +212,6 @@ static void draw_hints(int y)
 	ktui_draw_text(1, y, ktui_w - 2, hint, KT_MID, KT_SURFACE, 0);
 }
 
-static void draw_help(void)
-{
-	int w = 60, h = 20;
-	if (w > ktui_w - 4)
-		w = ktui_w - 4;
-	if (h > ktui_h - 4)
-		h = ktui_h - 4;
-	int x = (ktui_w - w) / 2, y = (ktui_h - h) / 2;
-
-	KRect r = krect(x, y, w, h);
-	ktui_draw_fill(r, KT_SURFACE);
-	ktui_draw_shadow(r);
-	ktui_draw_box(r, "KEYS", KT_ACCENT, KT_SURFACE, 1);
-
-	static const char *rows[][2] = {
-		{ "Tab / Shift-Tab", "move between controls" },
-		{ "Arrows", "move inside a list or a field" },
-		{ "Enter / Space", "activate, toggle, choose" },
-		{ "Alt+B / Alt+N", "previous / next page" },
-		{ "Esc", "back a page, or close this" },
-		{ "F1", "this help" },
-		{ "L", "full log, on the install and done pages" },
-		{ "Ctrl+U", "clear a text field" },
-		{ "Ctrl+Q", "quit the installer" },
-		{ "", "" },
-		{ "mouse", "click anything, wheel scrolls lists" },
-		{ "", "on a bare tty the pointer is read" },
-		{ "", "straight from /dev/input — no gpm" },
-		{ NULL, NULL },
-	};
-
-	int ry = y + 2;
-	for (int i = 0; rows[i][0] && ry < y + h - 1; i++, ry++) {
-		ktui_draw_text(x + 3, ry, 20, rows[i][0], KT_ACCENT, KT_SURFACE, 0);
-		ktui_draw_text(x + 22, ry, w - 25, rows[i][1], KT_TEXT, KT_SURFACE, 0);
-	}
-}
-
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static void quit_confirmed(void)
@@ -331,7 +293,7 @@ static void render(KtuiEvent *ev)
 	} else if (ki_help) {
 		global_keys(ev);
 		draw_header();
-		draw_help();
+		ki_draw_help();
 	} else {
 		global_keys(ev);
 

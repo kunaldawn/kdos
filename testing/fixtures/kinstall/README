@@ -11,9 +11,11 @@ pagedraw.c draws one kinstall page with no terminal, linking pages.c with
 kinstall-core: it prints the page's body rectangle, the whole frame as text
 and `# cuts N`, the text draws that lost the end of their string. Its
 PAGEDRAW_* variables stand in a disk, a mounted partition, a processor's
-name and a running or failed install, as its header lists. zoneinfo/ is a
-three-zone zone1970.tab, none of them UTC, for the 80x33 sections that check
-the Time page's choosing; zoneinfo-long/ holds zone names wider than the
+name and a running or failed install, as its header lists, and
+PAGEDRAW_MODAL and PAGEDRAW_HELP a confirm or the F1 card over the page.
+zoneinfo/ is a four-zone zone1970.tab, none of them UTC, one of them
+tzdata's real Puerto Rico row with its 59-character codes column, for the
+sections that check the Time page's parsing and choosing; zoneinfo-long/ holds zone names wider than the
 Time page's zone list, for the section that draws every page at 80x33 with
 the longest values and refuses any `# cuts` but 0.
 
@@ -28,6 +30,10 @@ udev/ holds three disks' records as udev writes them under /run/udev/data:
 a SATA SSD whose ID_MODEL_ENC is longer than libata's 16-byte sysfs model,
 an ATA name with \x20 escapes, and a QEMU disk. `harness udevmodel` reads one
 with a sysfs model given on its command line.
+
+`harness copyfile` runs the Bootloader step's copy on two paths and exits 1
+when it reports a failure: a missing source, a destination it cannot
+create, or a write that does not land (/dev/full).
 
 copy-progress.txt is a real rsync --info=progress2 --no-inc-recursive stream,
 each line prefixed with the seconds since rsync started, thinned to a line

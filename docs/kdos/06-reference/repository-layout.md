@@ -56,6 +56,8 @@ kdos/
 │   ├── unbuilt                the recipes no phase builds on purpose, one name per line
 │   ├── base                   the seeds of what the installation medium carries
 │   ├── buildonly              ports the medium's closure does not follow a dependency into
+│   ├── buildheaders           the ports of buildonly whose headers other packages' headers
+│   │                          include; a build here installs them prebuilt
 │   ├── groups                 the native application groups `kdos update install` and the
 │   │                          installer offer; staged into the image as /ports/groups
 │   ├── RELEASE                the release notes of the version being built, at most 16 KiB;

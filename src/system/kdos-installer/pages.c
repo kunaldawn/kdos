@@ -129,7 +129,8 @@ static int preflight(Preflight *c)
 		nwritable > 0,
 		kb_have_prog("rsync"),
 		kb_have_prog("mkfs.ext4") && kb_have_prog("mkfs.vfat"),
-		kb_path_exists("/usr/share/limine"),
+		kb_path_exists("/usr/share/limine/BOOTX64.EFI") &&
+			kb_path_exists("/usr/share/limine/limine-bios.sys"),
 	};
 	static const char *const pass[KI_PREFLIGHT_N] = {
 		"running as root",
@@ -143,7 +144,7 @@ static int preflight(Preflight *c)
 		"no writable disk — nothing to install to",
 		"rsync missing — nothing can be copied",
 		"mkfs.ext4 or mkfs.vfat missing — the target cannot be formatted",
-		"no Limine payload at /usr/share/limine — the disk would not start",
+		"no Limine payload (BOOTX64.EFI, limine-bios.sys) in /usr/share/limine — the disk would not start",
 	};
 
 	for (int i = 0; i < KI_PREFLIGHT_N; i++) {
@@ -494,7 +495,6 @@ static Page page_keyboard = {
 
 static struct tz_zone {
 	char label[64];
-	char cc[40];		/* the country-code column, as it stands */
 } zones[TZ_MAX_ZONES];
 static int nzones;
 
@@ -523,11 +523,17 @@ static void tz_load(void)
 		while (nzones < TZ_MAX_ZONES && fgets(line, sizeof(line), f)) {
 			if (line[0] == '#')
 				continue;
-			/* `codes<TAB>coords<TAB>name[<TAB>comment]` */
-			if (sscanf(line, "%39[^\t]\t%*[^\t]\t%63[^\t\n]",
-				   zones[nzones].cc,
-				   zones[nzones].label) != 2)
+			/* `codes<TAB>coords<TAB>name[<TAB>comment]`, split on
+			 * the tabs: the codes column has no width bound
+			 * (Puerto Rico's is 59 characters), and a field read
+			 * short shifts the coordinates into the name. */
+			char *coords = strchr(line, '\t');
+			char *name = coords ? strchr(coords + 1, '\t') : NULL;
+			if (!name || !*++name || *name == '\t' || *name == '\n')
 				continue;
+			name[strcspn(name, "\t\n")] = 0;
+			kb_strlcpy(zones[nzones].label, name,
+				   sizeof(zones[nzones].label));
 			nzones++;
 		}
 		fclose(f);
@@ -537,7 +543,6 @@ static void tz_load(void)
 	 * is the one zone that needs no data to be right. */
 	if (!nzones) {
 		kb_strlcpy(zones[0].label, "UTC", sizeof(zones[0].label));
-		kb_strlcpy(zones[0].cc, "--", sizeof(zones[0].cc));
 		nzones = 1;
 	}
 }
@@ -721,7 +726,8 @@ static void disk_row(int idx, int x, int y, int w, int selected, int focus,
 
 	snprintf(row, sizeof(row), "%-10s %8s  %-6s %s", d->name,
 		 kb_human_size(ki_disk_bytes(d)), d->tran,
-		 d->is_boot_media ? "[boot medium]" : d->model);
+		 d->is_boot_media ? "[boot medium]" :
+		 d->is_boot_copy ? "[medium copy]" : d->model);
 	row_title(x + 3, y, w - 3, row, fg, bg);
 }
 
@@ -733,10 +739,12 @@ static void disk_enter(void)
 			disklist.sel = i;
 	if (!cfg.disk[0]) {
 		/* Default to the first fixed disk that is not the stick we
-		 * booted from — the common case, without pre-selecting the
-		 * one choice that would destroy the installer mid-run. */
+		 * booted from or a copy of it — the common case, without
+		 * pre-selecting a choice that could destroy the installer
+		 * mid-run. */
 		for (int i = 0; i < ki_ndisk; i++) {
-			if (ki_disk[i].is_boot_media || ki_disk[i].readonly)
+			if (ki_disk[i].is_boot_media || ki_disk[i].is_boot_copy ||
+			    ki_disk[i].readonly)
 				continue;
 			kb_strlcpy(cfg.disk, ki_disk[i].path, sizeof(cfg.disk));
 			disklist.sel = i;
@@ -745,9 +753,103 @@ static void disk_enter(void)
 	}
 }
 
+/* A partition's TYPE and LABEL columns. A remapped node is named for what
+ * it points at, which stands in for the partition's own filesystem in this
+ * column: Ventoy's boot
+ * partition reads `Ventoy`, any other mapping `mapped` and the mapping's
+ * name, short for ki_disk_contents()'s "Ventoy's boot partition" and
+ * "mapped to <name>". kinstall-core's target check refuses either as the
+ * reuse plan's ESP or root. */
+static const char *part_type_word(const Part *p)
+{
+	return !strcmp(p->remap, "ventoy") ? "Ventoy"
+	       : p->remap[0] ? "mapped"
+	       : p->is_esp ? "ESP"
+	       : p->is_bios_boot ? "BIOS boot"
+	       : p->fstype[0] ? p->fstype : "-";
+}
+
+static const char *part_label_word(const Part *p)
+{
+	return p->remap[0] && strcmp(p->remap, "ventoy") ? p->remap : p->label;
+}
+
+/* One segment of a proportional bar, `wl` cells of `glyph` in `fill` from
+ * column x0 of r. Every segment gets at least one cell, and the cursor (the
+ * first column the previous segment left free) walks forward, so a 1M
+ * partition beside a 1T one still shows instead of being rounded away and
+ * then painted over by its neighbour. A caller rounds both edges of a
+ * segment from absolute positions the same way and passes the width
+ * between them, so a part ending within half a cell of the bar's end
+ * reaches it, and a gap of half a cell or more stays visible. `num` > 0 is
+ * drawn as KT_BG ink on the fill: one cell in when the segment is wider than
+ * 3, at its start when the number fits, and not at all in a segment narrower
+ * than its number.
+ * Returns the cursor for the next segment; r.w once the bar is full. */
+static int bar_segment(KRect r, int x0, int wl, int cursor, int fill,
+		       int glyph, int num)
+{
+	if (x0 < cursor)
+		x0 = cursor;
+	if (wl < 1)
+		wl = 1;
+	if (x0 >= r.w)
+		return r.w;
+	if (x0 + wl > r.w)
+		wl = r.w - x0;
+	for (int k = 0; k < wl; k++)
+		ktui_draw_text(r.x + x0 + k, r.y, 1, ktui_glyph[glyph], fill,
+			       KT_BG, 0);
+	if (num > 0) {
+		char tag[16];
+		int tl = snprintf(tag, sizeof(tag), "%d", num);
+		if (wl > 3)
+			ktui_draw_text(r.x + x0 + 1, r.y, wl - 1, tag, KT_BG,
+				       fill, 0);
+		else if (wl >= tl)
+			ktui_draw_text(r.x + x0, r.y, wl, tag, KT_BG, fill, 0);
+	}
+	return x0 + wl;
+}
+
+/* The fill of the n-th partition that is not the ESP on the Disk page's
+ * bar, counted from 0. The ESP is KT_WARN and the others alternate KT_MID
+ * and KT_TEXT, so no two neighbours share a fill. The Layout page, which
+ * has an accent segment, takes accent_peer() instead. */
+static int bar_fill(int n)
+{
+	return n % 2 ? KT_TEXT : KT_MID;
+}
+
+/* The bar fill, KT_MID or KT_TEXT, that stands further from KT_ACCENT in
+ * the live palette, so the warmed copy night light installs is judged as
+ * drawn. Neither slot does in every scheme: KT_TEXT sits at 1.10-1.64:1
+ * against the accent in the dark schemes and KT_MID at 1.14:1 in paper, and
+ * a segment beside the accent in the nearer one has no boundary to see. */
+static int accent_peer(void)
+{
+	const KRgb *a = &ktui_theme->slot[KT_ACCENT];
+	const KRgb *m = &ktui_theme->slot[KT_MID];
+	const KRgb *t = &ktui_theme->slot[KT_TEXT];
+	uint32_t ac = (uint32_t)a->r << 16 | (uint32_t)a->g << 8 | a->b;
+	uint32_t mc = (uint32_t)m->r << 16 | (uint32_t)m->g << 8 | m->b;
+	uint32_t tc = (uint32_t)t->r << 16 | (uint32_t)t->g << 8 | t->b;
+
+	return kcol_contrast(ac, mc) >= kcol_contrast(ac, tc) ? KT_MID
+							       : KT_TEXT;
+}
+
 /* A proportional bar of the existing table. Eight colours means the parts are
- * told apart by letter, not by hue — which is also what makes it readable on
- * a monochrome laptop panel. */
+ * told apart by number, not by hue — which is also what makes it readable on
+ * a monochrome laptop panel. Each segment carries its partition number, the
+ * one its name ends in in the list below, drawn in the background's colour on
+ * the segment's own fill; a segment narrower than its number carries none.
+ * The fills mark where each part ends: the ESP's is KT_WARN and the rest
+ * alternate (bar_fill()), so no two neighbours share one. Both edges of a
+ * segment are rounded to the nearest cell from the part's absolute sectors,
+ * so the last part reaches the bar's end on any table whose tail is under
+ * half a cell (sfdisk's 2048-sector tail as well as a KDOS install's), and
+ * free space of half a cell or more shows as shade. */
 static void draw_parttable(KRect r, Disk *d)
 {
 	if (!d->nparts) {
@@ -758,33 +860,16 @@ static void draw_parttable(KRect r, Disk *d)
 	for (int i = 0; i < r.w; i++)
 		ktui_draw_text(r.x + i, r.y, 1, ktui_glyph[KT_G_SHADE], KT_DIM, KT_BG, 0);
 
-	/* Every partition gets at least one cell, and the cursor walks forward
-	 * so a 512M ESP next to a 1T root still shows up instead of being
-	 * rounded away and then painted over by its neighbour. */
-	int cursor = 0;
-	for (int i = 0; i < d->nparts; i++) {
+	int cursor = 0, other = 0;
+	for (int i = 0; i < d->nparts && cursor < r.w; i++) {
 		Part *p = &d->part[i];
-		int x0 = (int)((double)p->start / (double)d->sectors * r.w);
-		int wl = (int)((double)p->sectors / (double)d->sectors * r.w);
-		if (x0 < cursor)
-			x0 = cursor;
-		if (wl < 1)
-			wl = 1;
-		if (x0 >= r.w)
-			break;
-		if (x0 + wl > r.w)
-			wl = r.w - x0;
-		cursor = x0 + wl;
-		int c = p->is_esp ? KT_WARN : KT_MID;
-		for (int k = 0; k < wl; k++)
-			ktui_draw_text(r.x + x0 + k, r.y, 1, ktui_glyph[KT_G_FULL], c,
-				  KT_BG, 0);
-		if (wl > 3) {
-			char tag[16];
-			snprintf(tag, sizeof(tag), "%d", i + 1);
-			ktui_draw_text(r.x + x0 + 1, r.y, wl - 1, tag, KT_BG, c,
-				  KT_A_REVERSE);
-		}
+		int x0 = (int)((double)p->start / (double)d->sectors * r.w + 0.5);
+		int x1 = (int)((double)(p->start + p->sectors) /
+				       (double)d->sectors * r.w + 0.5);
+		int wl = x1 - (x0 > cursor ? x0 : cursor);
+		int c = p->is_esp ? KT_WARN : bar_fill(other++);
+		cursor = bar_segment(r, x0, wl, cursor, c, KT_G_FULL,
+				     p->num > 0 ? p->num : i + 1);
 	}
 }
 
@@ -829,10 +914,8 @@ static void disk_draw(KRect b)
 
 			snprintf(row, sizeof(row), "  %-12s %-10s %-9s %-9s ",
 				 p->name, kb_human_size(p->sectors * 512ULL),
-				 p->is_esp ? "ESP"
-				 : p->is_bios_boot ? "BIOS boot"
-				 : p->fstype[0] ? p->fstype : "-",
-				 p->label[0] ? p->label : "-");
+				 part_type_word(p),
+				 part_label_word(p)[0] ? part_label_word(p) : "-");
 			cx = ktui_draw_text_fit(b.x, y, b.w, row, fg, KT_BG, 0);
 
 			if (!p->mounted) {
@@ -876,6 +959,11 @@ static void disk_draw(KRect b)
 		     "This is the medium KDOS is running from. Installing onto it "
 		     "will pull the filesystem out from under the installer.",
 		     KT_ERR);
+	else if (d->is_boot_copy)
+		ktui_para(b.x, y, b.w,
+		     "This disk holds a copy of the medium KDOS is running from, "
+		     "and nothing tells which of the two the installer runs on.",
+		     KT_ERR);
 	else if (d->removable)
 		ktui_note(b.x, y, b.w, "removable device");
 }
@@ -918,11 +1006,8 @@ static void part_row_generic(int idx, int x, int y, int w, int selected,
 
 	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
 	snprintf(row, sizeof(row), "%-9s %6s  %-8s %s", p->name,
-		 kb_human_size(p->sectors * 512ULL),
-		 p->is_esp ? "ESP"
-		 : p->is_bios_boot ? "BIOS boot"
-		 : p->fstype[0] ? p->fstype : "-",
-		 p->label);
+		 kb_human_size(p->sectors * 512ULL), part_type_word(p),
+		 part_label_word(p));
 	row_title(x + 1, y, w - 1, row, fg, bg);
 }
 
@@ -1276,34 +1361,67 @@ static void layout_draw(KRect b)
 					 : 0;
 	unsigned long long root = ki_wipe_root_bytes();
 
-	int bx = b.x, bwid = b.w;
+	/* The partitions in the order do_partition writes them, each carrying
+	 * its number: the ESP on KT_WARN, the partitions between it and the
+	 * last on alternating fills, and the last, the root, in the accent.
+	 * With two slots the last one splits, in the proportions of the volumes
+	 * listed below, into slot A in the accent, slot B as shade beside it —
+	 * a copy kept for the next update — the swap volume and the shared
+	 * home. The root's neighbours on both sides (the partition before it,
+	 * slot B, home) take `peer`, the fill further from the accent in the
+	 * live scheme (accent_peer()), and the runs alternate `peer` and
+	 * `other` outwards from it (slot B is told from home by its shade), so
+	 * no two neighbours are drawn alike and the accent's boundaries show in
+	 * every scheme. Each row of the list is
+	 * inked in its segment's fill, so the list is the bar's key; the LVM
+	 * partition's row, which spans several segments, is in the label ink. */
+	KRect bar = krect(b.x, y, b.w, 1);
+	int bwid = b.w;
 	int wesp = (int)((double)esp / total * bwid);
+	int wbios = (int)((double)((unsigned long long)KI_BIOS_BOOT_MB << 20) /
+			  total * bwid);
 	int wswp = (int)((double)swp / total * bwid);
-	if (esp && wesp < 2)
+	if (wesp < 2)
 		wesp = 2;
+	if (wbios < 1)
+		wbios = 1;
 	if (swp && wswp < 2)
 		wswp = 2;
-	int wroot = bwid - wesp - wswp;
+	int wroot = bwid - wesp - wbios - wswp;
 
-	for (int i = 0; i < wesp; i++)
-		ktui_draw_text(bx + i, y, 1, ktui_glyph[KT_G_FULL], KT_WARN, KT_BG, 0);
-	for (int i = 0; i < wswp; i++)
-		ktui_draw_text(bx + wesp + i, y, 1, ktui_glyph[KT_G_FULL], KT_MID, KT_BG, 0);
-	/* Slot A in the accent, slot B as shade beside it — a copy kept for
-	 * the next update — and the shared home after them. */
+	int peer = accent_peer();
+	int other = peer == KT_MID ? KT_TEXT : KT_MID;
+	int biosfill = swp ? other : peer, swpfill = peer;
+	int rfill = peer, lvfill = other;
+	int cur = 0;
+	cur = bar_segment(bar, cur, wesp, cur, KT_WARN, KT_G_FULL, KI_PART_ESP);
+	cur = bar_segment(bar, cur, wbios, cur, biosfill, KT_G_FULL,
+			  KI_PART_BIOS_BOOT);
+	if (swp)
+		cur = bar_segment(bar, cur, wswp, cur, swpfill, KT_G_FULL,
+				  ki_wipe_part_swap());
 	int ab = cfg.lvm && ki_ab();
-	int wa = wroot, wb = 0;
+	int wa = wroot, wb = 0, wsl = 0;
 	if (ab && root) {
 		wa = (int)((double)(ki_slot_mb() << 20) / root * wroot);
 		if (wa < 1)
 			wa = 1;
 		wb = wa;
+		if (ki_swap_lv_mb()) {
+			wsl = (int)((double)(ki_swap_lv_mb() << 20) / root * wroot);
+			if (wsl < 1)
+				wsl = 1;
+		}
 	}
-	for (int i = 0; i < wroot; i++)
-		ktui_draw_text(bx + wesp + wswp + i, y, 1,
-			       ktui_glyph[i < wa ? KT_G_FULL
-					  : i < wa + wb ? KT_G_SHADE : KT_G_FULL],
-			       i < wa ? KT_ACCENT : KT_MID, KT_BG, 0);
+	int rend = cur + wroot;
+	cur = bar_segment(bar, cur, wa, cur, KT_ACCENT, KT_G_FULL,
+			  ki_wipe_part_root());
+	if (wb)
+		cur = bar_segment(bar, cur, wb, cur, rfill, KT_G_SHADE, 0);
+	if (wsl)
+		cur = bar_segment(bar, cur, wsl, cur, lvfill, KT_G_FULL, 0);
+	if (cur < rend)
+		bar_segment(bar, cur, rend - cur, cur, rfill, KT_G_FULL, 0);
 	y += 2;
 
 	char nm[96];
@@ -1311,12 +1429,12 @@ static void layout_draw(KRect b)
 	y += part_line(b, y, KT_WARN, 2, 14, nm, kb_human_size(esp),
 		       "EFI System, FAT32, mounted at /boot/efi");
 	ki_part_name(d->path, KI_PART_BIOS_BOOT, nm, sizeof(nm));
-	y += part_line(b, y, KT_MID, 2, 14, nm,
+	y += part_line(b, y, biosfill, 2, 14, nm,
 		       kb_human_size((unsigned long long)KI_BIOS_BOOT_MB << 20),
 		       "BIOS boot, Limine's legacy-BIOS stage");
 	if (swp) {
 		ki_part_name(d->path, ki_wipe_part_swap(), nm, sizeof(nm));
-		y += part_line(b, y, KT_MID, 2, 14, nm, kb_human_size(swp),
+		y += part_line(b, y, swpfill, 2, 14, nm, kb_human_size(swp),
 			       "Linux swap");
 	}
 	ki_part_name(d->path, ki_wipe_part_root(), nm, sizeof(nm));
@@ -1333,15 +1451,15 @@ static void layout_draw(KRect b)
 			unsigned long long used = 2 * (ki_slot_mb() << 20) +
 						  (ki_swap_lv_mb() << 20);
 
-			y += part_line(b, y, KT_MID, 4, 12, KI_VG "/" KI_LV_B,
+			y += part_line(b, y, rfill, 4, 12, KI_VG "/" KI_LV_B,
 				       kb_human_size(ki_slot_mb() << 20),
 				       "slot B, a copy of slot A");
 			if (ki_swap_lv_mb())
-				y += part_line(b, y, KT_MID, 4, 12,
+				y += part_line(b, y, lvfill, 4, 12,
 					       KI_VG "/" KI_LV_SWAP,
 					       kb_human_size(ki_swap_lv_mb() << 20),
 					       "swap, for both slots");
-			y += part_line(b, y, KT_MID, 4, 12, KI_VG "/" KI_LV_HOME,
+			y += part_line(b, y, rfill, 4, 12, KI_VG "/" KI_LV_HOME,
 				       kb_human_size(root > used ? root - used : 0),
 				       "/home, for both slots");
 		}
@@ -1551,8 +1669,8 @@ static void accounts_draw(KRect b)
 		f = ktui_lay_left(&l);
 		ktui_para(f.x, f.y, f.w,
 			  "No account is made. The first time the machine is "
-			  "switched on, the setup wizard asks for the language, "
-			  "keyboard, time zone and network, and makes the "
+			  "switched on, the setup wizard asks for the keyboard, "
+			  "time zone and network, and makes the "
 			  "account, which is an administrator.", KT_MID);
 		ktui_lay_gap(&l, 4);
 	}
@@ -1894,7 +2012,9 @@ static void apps_draw(KRect b)
 			    "is only recorded; this installs it once a binary "
 			    "host answers:", KT_MID);
 		ktui_draw_text(b.x + 2, y++, b.w - 2,
-			       "sudo kdos update install --pending",
+			       cfg.user_wheel || cfg.oem
+			       ? "sudo kdos update install --pending"
+			       : "su -c 'kdos update install --pending'",
 			       KT_MID, KT_BG, 0);
 		y += ktui_para(b.x, y, b.w,
 			  "A boxed group is built by podman from the catalogue "
@@ -2798,6 +2918,48 @@ static Page page_done = {
 	"done", "Done", "reboot into KDOS",
 	done_enter, done_draw, NULL, done_event, 1
 };
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/* F1's card. The second column runs from x + 22 to one cell inside the right
+ * border, so every description has w - 24 cells: 36 at 80 columns. */
+void ki_draw_help(void)
+{
+	int w = 60, h = 20;
+	if (w > ktui_w - 4)
+		w = ktui_w - 4;
+	if (h > ktui_h - 4)
+		h = ktui_h - 4;
+	int x = (ktui_w - w) / 2, y = (ktui_h - h) / 2;
+
+	KRect r = krect(x, y, w, h);
+	ktui_draw_fill(r, KT_SURFACE);
+	ktui_draw_shadow(r);
+	ktui_draw_box(r, "KEYS", KT_ACCENT, KT_SURFACE, 1);
+
+	static const char *rows[][2] = {
+		{ "Tab / Shift-Tab", "move between controls" },
+		{ "Arrows", "move inside a list or a field" },
+		{ "Enter / Space", "activate, toggle, choose" },
+		{ "Alt+B / Alt+N", "previous / next page" },
+		{ "Esc", "back a page, or close this" },
+		{ "F1", "this help" },
+		{ "L", "full log (Install and Done pages)" },
+		{ "Ctrl+U", "clear a text field" },
+		{ "Ctrl+Q", "quit the installer" },
+		{ "", "" },
+		{ "mouse", "click anything, wheel scrolls lists" },
+		{ "", "on a bare tty the pointer is read" },
+		{ "", "straight from /dev/input — no gpm" },
+		{ NULL, NULL },
+	};
+
+	int ry = y + 2;
+	for (int i = 0; rows[i][0] && ry < y + h - 1; i++, ry++) {
+		ktui_draw_text(x + 3, ry, 20, rows[i][0], KT_ACCENT, KT_SURFACE, 0);
+		ktui_draw_text(x + 22, ry, w - 24, rows[i][1], KT_TEXT, KT_SURFACE, 0);
+	}
+}
 
 /* ──────────────────────────────────────────────────────────────────────── */
 

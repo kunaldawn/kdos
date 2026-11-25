@@ -185,6 +185,7 @@ int ktui_term_hungup(void);
 void ktui_term_mark_hungup(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
+int ktui_term_vt_fd(void);	/* library-internal: the held VT, -1 when none */
 /* OSC 52 clipboard write, base64 encoded by hand (this library links nothing
  * but libc). Returns whether anything was actually emitted: the Linux VT
  * (KT_CAP_LINUXVT) has no OSC 52 handler at all — not "some terminals don't",

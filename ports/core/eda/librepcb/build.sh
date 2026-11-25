@@ -31,6 +31,9 @@ cmake -S . -B build -G Ninja \
 	-DUNBUNDLE_POLYCLIPPING=ON
 cmake --build build
 DESTDIR=$PKG cmake --install build
+install -Dm644 LICENSE.txt "$PKG/usr/share/licenses/$name/LICENSE.txt"
+install -Dm644 -t "$PKG/usr/share/licenses/$name/LICENSES" LICENSES/*.txt
+install -Dm644 .reuse/dep5 "$PKG/usr/share/licenses/$name/dep5"
 
 find "$PKG/usr/share/librepcb/i18n" -name '*.qm' ! -name '*_en*.qm' -delete
 

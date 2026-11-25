@@ -17,9 +17,9 @@ The companion chapter [Known gaps](known-gaps.md) lists what does not exist at a
 
 ## Release line
 
-KDOS is at **v0.2.1**. The book states the version only here and in the
+KDOS is at **v0.2**. The book states the version only here and in the
 [repository README](../../../README.md); the system reads it from `fs/etc/os-release`
-(`VERSION="0.2.1"`), and a release build and `ports/publish --release` refuse a tag that is not
+(`VERSION="0.2"`), and a release build and `ports/publish --release` refuse a tag that is not
 its `VERSION_ID` with a `v` before it.
 
 The v0.2 line is a desktop built on KDE Plasma 6.8, KDE Frameworks and all of KDE Gear, with KDOS's

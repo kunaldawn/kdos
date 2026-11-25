@@ -12,11 +12,13 @@ them is in
 [Manual pages and the book](../../../docs/kdos/04-programs/kdos-command.md#manual-pages-and-the-book).
 
 `/usr/bin/kdos-doc`, built from `kdos-doc.c` beside the recipe, opens the book at a page:
-`kdos-doc 04-programs/kdos-command#kdos-theme` hands KHelpCenter that page's file URL, or the
-desktop's browser through `xdg-open` where there is no Help Center, or prints the file's path on a
-console with neither. The page name is checked against letters, digits and `._-/`, with no `..`,
-before it is used, so it can only name a page under `/usr/share/doc/kdos`, and it reaches the
-viewer as one argument through `exec`.
+`kdos-doc 04-programs/kdos-command#kdos-theme` hands KHelpCenter that page's file URL in a graphical
+session, or the desktop's browser through `xdg-open` where there is no Help Center; on a text
+console it opens the page in [lynx](#port-lynx), or `w3m` where lynx is absent, at the anchor's
+heading; and it prints the file's path when its output is not a terminal or no text browser is
+installed, so a pipe or a script gets the path. The page name is checked against letters, digits
+and `._-/`, with no `..`, before it is used, so it can only name a page under
+`/usr/share/doc/kdos`, and it reaches the viewer as one argument through `exec`.
 
 The book is read in the browser, and in the Help Center where [khelpcenter](#port-khelpcenter)
 is installed; the installation medium does not carry it, since it pulls in Qt WebEngine. The

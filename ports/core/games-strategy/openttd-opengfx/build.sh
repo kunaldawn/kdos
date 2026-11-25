@@ -15,3 +15,4 @@ cd opengfx-$version
 install -d "$PKG/usr/share/games/openttd/baseset/opengfx"
 install -m644 *.grf opengfx.obg license.txt readme.txt changelog.txt \
 	"$PKG/usr/share/games/openttd/baseset/opengfx/"
+install -Dm644 license.txt "$PKG/usr/share/licenses/$name/license.txt"

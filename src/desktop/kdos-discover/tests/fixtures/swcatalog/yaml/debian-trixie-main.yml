@@ -77,3 +77,64 @@ Categories:
   - Accessibility
 Icon:
   stock: kmag
+---
+Type: desktop-application
+ID: schism.desktop
+Package: schism
+Name:
+  C: Schism Tracker
+Summary:
+  C: Impulse Tracker clone
+Categories:
+  - AudioVideo
+  - Audio
+Icon:
+  stock: schism
+Launchable:
+  desktop-id:
+    - schism.desktop
+---
+Type: desktop-application
+ID: org.gnome.Calculator
+Package: gnome-calculator
+Name:
+  C: Calculator
+Summary:
+  C: Perform arithmetic, scientific or financial calculations
+Categories:
+  - Utility
+  - Calculator
+Icon:
+  stock: org.gnome.Calculator
+Url:
+  homepage: https://apps.gnome.org/Calculator
+---
+Type: desktop-application
+ID: io.github.xpad.Xpad
+Package: xpad
+Name:
+  C: Notes
+Summary:
+  C: Sticky notes on the desktop
+Categories:
+  - Utility
+Icon:
+  stock: xpad
+Url:
+  homepage: https://github.com/xpad-org/xpad
+---
+Type: desktop-application
+ID: io.example.LightVideo
+Package: rank-lightvideo
+Name:
+  C: Light Video
+Summary:
+  C: Plays video files
+Categories:
+  - AudioVideo
+  - Video
+Keywords:
+  C:
+    - Video
+Icon:
+  stock: video-x-generic

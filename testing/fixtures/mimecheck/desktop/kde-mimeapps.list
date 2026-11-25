@@ -1,0 +1,5 @@
+[Default Applications]
+text/plain=org.kde.kate.desktop;
+
+[Removed Associations]
+text/calendar=org.kde.kate.desktop;

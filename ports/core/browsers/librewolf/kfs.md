@@ -60,3 +60,13 @@ alone and leaves out the older `TranslateEnabled` and `GenerativeAI` policies, w
 ignores beside `AIControls` with an "Ignoring … policy in favor of AIControls" line at every
 start. `kdos.js` keeps only the spelling dictionary path and the portal file chooser, and no
 `distribution.ini` is written.
+
+The source tarball ships no AppStream metainfo of LibreWolf's own, only Firefox's flatpak
+templates under `browser/installer/linux/app/flatpak`, so `build.sh` writes
+`/usr/share/metainfo/librewolf.metainfo.xml` beside the desktop entry. Discover's author line and
+the description on the program's page come only from a metainfo file the package installs; with
+the desktop entry alone the catalogue component has no `<developer>` and Discover says "Unknown
+author". The component id is `librewolf.desktop`, the id the catalogue gives the bare desktop
+entry, so the Discover entry keeps its identity. `appstreamcli validate` reports one warning for
+it, `cid-desktopapp-is-not-rdns`, and one pedantic hint, and exits non-zero on the warning; it
+reports no error, and a reverse-domain id would change the Discover entry's id.

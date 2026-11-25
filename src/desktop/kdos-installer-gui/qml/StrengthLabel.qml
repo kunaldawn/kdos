@@ -8,20 +8,19 @@
  *   StrengthLabel — how hard a password or passphrase is to guess, by length
  *
  * Under a password field on the Encryption and Account pages, shown while
- * the field is, and taking no room while it is empty, so an empty form has
- * no gap between a password and its second field. Given the `field` it
- * describes, it is as wide as that field and follows it, never narrower
- * than its fixed width; without one its width is fixed. The fixed width is
- * the short advice's own width on one line, at least 18 grid units and at
- * most `available`, the width of the page the form is in, so a form whose
- * widest row is this label lays its field column out wide enough for the
- * advice not to wrap. A page too narrow for labels and that column side by
- * side puts the form in Kirigami's one-column layout, which keeps it inside
- * the page, and the advice wraps at the page's width. Either way the
- * changing text never resizes the form's field column. Once it has text it
- * is as high as its longest advice wraps to at that width, so the fields
- * below it move once, at the first character, and not as a person goes on
- * typing.
+ * the field is. Given the `field` it describes, it is as wide as that field
+ * and follows it, never narrower than its fixed width; without one its
+ * width is fixed. The fixed width is the short advice's own width on one
+ * line, at least 18 grid units and at most `available`, the width of the
+ * page the form is in, so a form whose widest row is this label lays its
+ * field column out wide enough for the advice not to wrap. A page too
+ * narrow for labels and that column side by side puts the form in
+ * Kirigami's one-column layout, which keeps it inside the page, and the
+ * advice wraps at the page's width. Either way the changing text never
+ * resizes the form's field column. It is as high as its longest advice
+ * wraps to at that width whether or not anything is typed, empty text
+ * included, so the second field below it stays where it is: a click aimed
+ * at the second field while the first is being typed in lands in it.
  */
 
 import QtQuick
@@ -70,8 +69,8 @@ QQC2.Label {
     Layout.fillWidth: field !== null
     Layout.preferredWidth: fixedWidth
     Layout.maximumWidth: lineWidth
-    Layout.minimumHeight: secret.length === 0 ? 0 : longest.implicitHeight
-    Layout.preferredHeight: secret.length === 0 ? 0 : Math.max(longest.implicitHeight, implicitHeight)
+    Layout.minimumHeight: longest.implicitHeight
+    Layout.preferredHeight: Math.max(longest.implicitHeight, implicitHeight)
     verticalAlignment: Text.AlignTop
     wrapMode: Text.Wrap
     text: secret.length === 0 ? ""

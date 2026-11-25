@@ -243,7 +243,7 @@ int kp_facets_left(const KpConf *c, const char *name, int facet)
 
 /* Every compile reads the C library's headers and the kernel's and links
  * gcc's libgcc.a, and no recipe names the three in `depends =`. */
-static const char *const IMPLICIT[] = { "musl", "linux", "gcc", NULL };
+const char *const kp_facet_implicit[] = { "musl", "linux", "gcc", NULL };
 
 char **kp_facet_wanted(const KpConf *c, const char *port)
 {
@@ -263,8 +263,8 @@ char **kp_facet_wanted(const KpConf *c, const char *port)
 	int ncl = 0;
 	while (cl[ncl])
 		ncl++;
-	for (int i = 0; i < ncl + 3; i++) {
-		const char *name = i < ncl ? cl[i] : IMPLICIT[i - ncl];
+	for (int i = 0; i < ncl || kp_facet_implicit[i - ncl]; i++) {
+		const char *name = i < ncl ? cl[i] : kp_facet_implicit[i - ncl];
 		int dup = 0;
 		for (int k = 0; k < n && !dup; k++)
 			dup = !strcmp(out[k], name);

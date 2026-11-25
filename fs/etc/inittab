@@ -24,9 +24,10 @@ si::sysinit:/etc/init.d/rcS
 # Local Console (QEMU Window / Physical) — the display manager.
 #
 # kdos-dm execs SDDM, whose greeter compositor takes tty1. It is started here
-# and never from rcS: init reaches this line only once rcS has returned, and rcS
-# lets go of the framebuffer synchronously at its end (`kdos-splash handoff`),
-# so the compositor's modeset never races the splash for the DRM master.
+# and never from rcS: init reaches this line only once rcS has returned, and the
+# splash stops drawing synchronously at its end (`kdos-splash handoff`), its
+# settled frame left on screen for the compositor's first frame to replace, so
+# the compositor's modeset never races the splash for the DRM master.
 #
 # A MISSING OR FAILING SDDM STILL GIVES A CONSOLE. sddm stays up across every
 # login and logout, so a respawn here is sddm having exited; kdos-dm turns a

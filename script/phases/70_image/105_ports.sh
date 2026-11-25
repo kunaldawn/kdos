@@ -17,12 +17,13 @@
 # and other recipe files, ports/shelves, ports/sources.idx, ports/groups (the
 # groups `kdos update install` and the installer offer), ports/RELEASE (the
 # release notes `kdos update notes` and What's New read), ports/buildonly (the
-# build-only ports `kdos update` keeps out of a prebuilt plan), and src/, the two
-# books under docs/ and script/book for the programs of our own, whose sources
-# no archive holds. A shipped machine updates
-# by building from this tree, and kpkg fetches each source over the network
-# from the sources-<N> archive or upstream. The fetched tarballs are tens of
-# gigabytes and stay off the medium.
+# build-only ports `kdos update` keeps out of a prebuilt plan),
+# ports/buildheaders (the build-only ports a build here installs prebuilt
+# because installed packages' headers include them), and src/, the two books
+# under docs/ and script/book for the programs of our own, whose sources no
+# archive holds. A shipped machine updates by building from this tree, and
+# kpkg fetches each source over the network from the sources-<N> archive or
+# upstream. The fetched tarballs are tens of gigabytes and stay off the medium.
 #
 # A FILE IS A SOURCE WHEN ITS RECIPE HASHES IT (`sha256 = <hash>  <file>`) OR
 # WHEN IT IS AN ARCHIVE, unless it is a recipe file: kpkgbuild, build.sh,
@@ -64,7 +65,7 @@ echo "Staging the recipe tree for /ports..."
 rm -rf "$STAGE"
 mkdir -p "$TREE/core"
 
-for f in shelves sources.idx groups RELEASE buildonly; do
+for f in shelves sources.idx groups RELEASE buildonly buildheaders; do
     [ -f "/ports/$f" ] || { echo "FATAL: /ports/$f is missing" >&2; exit 1; }
     cp "/ports/$f" "$TREE/$f"
 done

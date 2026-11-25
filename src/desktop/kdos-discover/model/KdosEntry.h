@@ -59,6 +59,7 @@ struct Entry {
     EntryState state = EntryState::None;
     QString appstreamId;
     QString desktopId; // the host desktop entry a Port launches
+    QStringList desktopIds; // every entry its component names; the first installed one is launched
     bool removable = false; // a Port in the world set that no installed package depends on (`kdos update removable`)
     QString neededBy; // for a Port in the world set that is not removable, an installed package that depends on it
     QStringList screenshots; // local image files only: nothing is fetched
@@ -68,6 +69,7 @@ struct Entry {
     QStringList members; // what a Set or an Archive installs
     QString kind; // a pack's kind: app, runtime, base or data; for a Port or PortSource, the AppStream kind of the component it is listed by (desktop-application, console-application, addon, ...)
     QString packOrigin; // store or medium, for a Pack or a Catalogue row; empty for none
+    bool vendorDeb = false; // a Catalogue row built from its publisher's own .deb release (a `deb` row)
     QString signature; // what kdos-pack verify answered, for a PackFile
     QString path; // the file behind an Archive or a PackFile
     QString box; // the box the resource runs in; empty for none

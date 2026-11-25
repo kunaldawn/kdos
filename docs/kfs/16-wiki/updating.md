@@ -54,8 +54,8 @@ index says, never by its name:
 | Key | Where `kdos update fetch` takes it from | With no key |
 |---|---|---|
 | `tree` | `kdos-ports.tar.xz` and its `.sig` | the latest KDOS release on GitHub |
-| `binhost` | the release index through which the binhost index, `PACKAGES` and `PACKAGES.sig`, and the packages it names are found | the release `<version>` of a tree whose stamp names its release, whose index points into the releases `binhost-<version>-01`, `-02`, … |
-| `image` | the release index through which the slot image manifest, `kdos-image.manifest` and its `.sig`, and its bundles are found | the latest KDOS release, whose index points into the release `image-<version>` |
+| `binhost` | the release index through which the binhost index, `PACKAGES` and `PACKAGES.sig`, and the packages it names are found | the release `<tag>` of a tree whose stamp names its release, whose index points into the releases `binhost-<tag>-01`, `-02`, … |
+| `image` | the release index through which the slot image manifest, `kdos-image.manifest` and its `.sig`, and its bundles are found | the latest KDOS release, whose index points into the release `image-<tag>` |
 | `carry` | a path, under `/etc` or `/var`, carried into a slot when an update arms it (see [A/B slots and rollback](ab-slots-and-rollback.md#updating-through-the-inactive-slot)); one line per path | nothing beyond the built-in list |
 | `install` | `prebuilt` or `source`: the route `kdos update install` takes when no flag names one | `prebuilt` |
 | `build-deps` | `prebuilt` or `source`: for a source install, whether each dependency the machine lacks is downloaded or built too | `prebuilt` |
@@ -87,7 +87,7 @@ Its description, from `fs/etc/kdos/keys/tree/README`:
 The image step that fills it. An image built without the release key ships the ring empty, and
 then refuses every fetched tree:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=184-193 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=185-194 pin=68e72034c604 -->
 
 ### /etc/kdos/keys/
 
@@ -108,7 +108,7 @@ The stamp naming the commit `/ports` was made from and when, and the release it 
 fetch` compares it with a fetched tree's own stamp and refuses an older tree; a `/ports` with no
 stamp, from an image built without a commit, accepts any signed tree. The same step writes it:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=166-183 pin=bd0c2a400e65 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=167-184 pin=bd0c2a400e65 -->
 
 On a booted image it reads, with the image's own commit, time and release:
 
@@ -169,8 +169,9 @@ Discover's tray icon shows when an update is offered. Open Discover's **Updates*
 system update is listed with its version beside any application updates, and its text names the
 lane it comes by and the size still to download, or to copy when the binhost or image is a local
 directory. **Update All** writes the inactive slot, and **Restart to update** reboots
-into it. The update is confirmed a minute into the next session, or rolled back by itself when
-that boot does not get there (see [A/B slots and rollback](ab-slots-and-rollback.md)). System
+into it. The update is kept when a session on that boot runs for a minute, or, on a machine SDDM
+does not log in automatically, when the login screen does; a version that does not get that far
+is rolled back by itself (see [A/B slots and rollback](ab-slots-and-rollback.md)). System
 Settings → **System Versions** shows what each slot holds and why the last update stopped, if it
 did.
 
@@ -275,13 +276,23 @@ archive is, `<tag>/<asset>`, in its place, and like any variable it has to be se
 
 ### Applying an update
 
-1. See what would be done. This needs no root:
+1. See what would be done. This needs no root. On an A/B machine the inactive slot is not
+   mounted, and a plain `--dry-run` refuses it, so pass `--mount`, which a dry run only names:
 
    ```bash
-   kdos update apply --dry-run
+   kdos update apply --dry-run --mount
    ```
 
-   With nothing behind it prints `nothing to take: everything installed matches the ports tree`.
+   On a mounted slot with nothing behind it prints `nothing to take: everything installed matches
+   the ports tree`, or the candidate it would take; a mounted slot an update stopped while writing
+   prints `slot <x> holds every package of <version> but was left incomplete; finishing it` and
+   stops there, `<version>` being the version the slot records, the name System Versions and
+   `kdos-bootctl status` show. On an unmounted slot it prints `dry run: slot
+   <x> (<uuid>) is not mounted; without --dry-run, --mount mounts it at /run/kdos/slot-<x> and
+   installs the candidate there`, unless an update stopped while writing that slot: then it prints
+   `dry run: slot <x> (<uuid>) is not mounted, and an update stopped while writing it; without
+   --dry-run, --mount mounts it at /run/kdos/slot-<x> and finishes it`, which the apply below does,
+   and a slot that then holds the version running is made complete again without a trial.
 
 2. Apply:
 
@@ -407,13 +418,23 @@ route installs that port again, alone, by the route asked for.
 
 A source install readies the machine first, because the image carries each package without its
 headers and static libraries ([Development files](kpkg.md#development-files)) and carries no
-build tools. It installs each member of the `build-tools` group the machine lacks prebuilt, `==> installing <pkg>
-(prebuilt, for building)` per package; then it installs again whole, from the binhost, every
+build tools. It installs each member of the `build-tools` group the machine lacks prebuilt
+(`fortify-headers` among them, the `/usr/include/fortify` that `chroot.env`'s flags include), `==> installing <pkg>
+(prebuilt, for building)` per package, and the same way each build-only header port
+(`/ports/buildheaders`: `xorgproto`, `wayland-protocols` and the rest) that a package the build
+compiles against needs and the machine lacks. Each package it installs that way records `prebuilt`
+in `/var/lib/kdos/origin`, and the build tools and header ports join `/var/lib/kdos/world`, so
+`kdos update removable` lists them and `kdos update remove` takes them; then it installs again whole, from the binhost, every
 installed package the build compiles against that lacks its development files, `==> restoring the
 development files of <pkg> (prebuilt)`. The dry run lists both first, as `<pkg> prebuilt …` and
-`<pkg> dev <file> <bytes>` lines. To bring a package's development files back without building
-anything, the second form with those of everything a build against it compiles against, and the
-third with a working `cc` and the C library's and kernel's headers:
+`<pkg> dev <file> <bytes>` lines. Plan for the first source install: building a KDE application
+on a fresh install restores the development files of most of Qt, KDE Frameworks and the
+libraries under them, about 170 to 260 packages, and with the build tools that build downloads
+roughly 600 MiB and takes about 1.5 GB of the root slot, most of it the restored development
+files (`kcolorchooser` takes `/` from 57% to 74% used), whatever the size of the application. A
+later build against the same closure restores nothing. To bring a package's development files
+back without building anything, the second form with those of everything a build against it
+compiles against, and the third with a working `cc` and the C library's and kernel's headers:
 
 ```bash
 sudo kdos update install --dev zlib
@@ -599,8 +620,8 @@ Discover offers no system update, or `kdos update check` reports a problem
 `no signed binhost index is on this machine`
 : `kdos update install` found no binhost index and could not fetch one. The second line says why:
   ``no binhost is named`` means `/ports/TREE` names no release and `update.conf` has no
-  `binhost =`; write one, as in
-  [A v0.2 machine finds no prebuilt package](../../kdos/06-reference/known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release),
+  `binhost =`; write one (the `binhost` key in
+  [Configuration](../../kdos/06-reference/configuration.md)),
   or run `sudo kdos update fetch` to take a published tree that names its release. When the line
   says the published tree is older than this machine's, that fetch is refused, and `binhost =` is
   the one way. ``<base> names a
@@ -677,7 +698,6 @@ Discover offers no system update, or `kdos update check` reports a problem
 
 ## Known gaps
 
-- [A v0.2 machine finds no prebuilt package until `update.conf` names the release](../../kdos/06-reference/known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release)
 - [No published release's update has been applied to an installed machine](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)
 - [An update with --root compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-with---root-compiles-against-the-running-system)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)

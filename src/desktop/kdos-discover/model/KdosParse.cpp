@@ -95,6 +95,12 @@ Catalogue parseCatalogue(const QByteArray &text)
 {
     static const QStringList packKinds{u"base"_s, u"runtime"_s, u"app"_s, u"data"_s};
     Catalogue cat;
+    // `deb` and `about` rows are applied once the whole file is read: the
+    // shipped file puts every `deb` row above the pack row it names, and
+    // kdos-appbox reads a `deb` row wherever it stands; an `about` row, which
+    // only Discover reads, may stand anywhere.
+    QStringList debIds;
+    QList<QPair<QString, QString>> abouts;
 
     for (const QByteArray &raw : lines(text)) {
         const QString line = QString::fromUtf8(raw).trimmed();
@@ -130,6 +136,10 @@ Catalogue parseCatalogue(const QByteArray &text)
             it->category = firstCategory(f.value(1));
             it->bytes = f.value(2).trimmed().toULongLong();
             it->tagline = f.mid(3).join(u'|').trimmed();
+        } else if (w[0] == "deb"_L1) {
+            debIds << w[1];
+        } else if (w[0] == "about"_L1 && w.size() >= 3) {
+            abouts.append({w[1], line.section(QRegularExpression(u"\\s+"_s), 2)});
         } else if (w[0] == "group"_L1 && w.size() >= 3) {
             // kdos-appbox's rule: a row naming an app. or data. id lists
             // members, and the first row that names none is the description.
@@ -152,6 +162,23 @@ Catalogue parseCatalogue(const QByteArray &text)
             if (!any && g->description.isEmpty())
                 g->description = line.section(QRegularExpression(u"\\s+"_s), 2);
         }
+    }
+    for (const QString &id : std::as_const(debIds)) {
+        auto it = cat.rows.find(id);
+        if (it != cat.rows.end())
+            it->vendorDeb = true;
+    }
+    // `about <id> <licence>|<author>|<homepage>|<description>`: the
+    // description is the rest of the line, so it may carry a pipe.
+    for (const auto &a : std::as_const(abouts)) {
+        auto it = cat.rows.find(a.first);
+        if (it == cat.rows.end())
+            continue;
+        const QStringList f = a.second.split(u'|');
+        it->license = f.value(0).trimmed();
+        it->author = f.value(1).trimmed();
+        it->homepage = f.value(2).trimmed();
+        it->description = f.mid(3).join(u'|').trimmed();
     }
     return cat;
 }

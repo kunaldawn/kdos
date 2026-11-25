@@ -55,14 +55,15 @@ static void chapter_rows(KbBuf *b)
 	rn_list_free(&l);
 }
 
-/* Two chapters share `The firewall`; the third is titled `Firewall`, a
- * page's own heading, which names the book alone. */
+/* Two chapters share `The firewall`, and each row of it carries its
+ * chapter in its title; the third is titled `Firewall`, a page's own
+ * heading, which no other row shares and which names the book alone. */
 static int chapters(const char *dir)
 {
 	static const char *const want =
 		"Firewall|KDOS book\n"
-		"The firewall|Administration · KDOS book\n"
-		"The firewall|Security model · KDOS book\n";
+		"The firewall in Administration|Administration · KDOS book\n"
+		"The firewall in Security model|Security model · KDOS book\n";
 	char p[1024];
 	KbBuf a = { 0 }, b = { 0 };
 	int bad;

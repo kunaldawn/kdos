@@ -15,8 +15,9 @@
  * question and is never skipped.
  *
  * Each password, the account's and root's, has the same strength line
- * under it, as wide as its field and shown once something is typed, and
- * its second field says it wants the password again.
+ * under it, as wide as its field, which keeps its room while that field
+ * is shown, typed in or not, so the second field never moves; and its
+ * second field says it wants the password again.
  */
 
 import QtQuick
@@ -39,7 +40,13 @@ WizardPage {
         if (!answers.hostnameOk(answers.hostname)) {
             return i18n("The computer's name may hold letters a–z, digits and dashes, and not start or end with a dash.");
         }
-        if (!answers.rootLocked && (rootPass.text.length === 0 || rootPass.text !== rootAgain.text)) {
+        if (!answers.rootLocked && rootPass.text.length === 0) {
+            return i18n("Give root a password, typed twice the same, or lock root.");
+        }
+        if (!answers.rootLocked && rootAgain.text.length === 0) {
+            return i18n("Type root's password again.");
+        }
+        if (!answers.rootLocked && rootPass.text !== rootAgain.text) {
             return i18n("Give root a password, typed twice the same, or lock root.");
         }
         if (!answers.rootLocked && !answers.fitsAnswerFile(rootPass.text)) {
@@ -62,6 +69,9 @@ WizardPage {
         }
         if (pass.text.length === 0) {
             return i18n("Choose a password.");
+        }
+        if (again.text.length === 0) {
+            return i18n("Type the password again.");
         }
         if (pass.text !== again.text) {
             return i18n("The two passwords do not match.");
@@ -96,7 +106,7 @@ WizardPage {
         Layout.maximumWidth: Kirigami.Units.gridUnit * 30
         visible: page.answers.oem
         wrapMode: Text.Wrap
-        text: i18n("No account is made now. The first time the computer starts, a setup wizard asks for the language, keyboard, time zone and network, and makes an administrator's account. Use this for a computer you are preparing for someone else.")
+        text: i18n("No account is made now. The first time the computer starts, a setup wizard asks for the keyboard, time zone and network, and makes an administrator's account. Use this for a computer you are preparing for someone else.")
     }
 
     Kirigami.FormLayout {
@@ -104,6 +114,7 @@ WizardPage {
 
         QQC2.TextField {
             id: fullname
+            objectName: "fullname"
             Kirigami.FormData.label: i18nc("@label:textbox", "Your name:")
             visible: !page.answers.oem
             Layout.fillWidth: true
@@ -141,7 +152,7 @@ WizardPage {
             onTextChanged: page.answers.password = text
         }
         StrengthLabel {
-            visible: !page.answers.oem && pass.text.length > 0
+            visible: !page.answers.oem
             secret: pass.text
             field: pass
             available: page.availableWidth
@@ -237,7 +248,7 @@ WizardPage {
             onTextChanged: page.answers.rootPassword = text
         }
         StrengthLabel {
-            visible: !page.answers.rootLocked && rootPass.text.length > 0
+            visible: !page.answers.rootLocked
             secret: rootPass.text
             field: rootPass
             available: page.availableWidth

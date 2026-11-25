@@ -14,6 +14,11 @@ patch -p1 -i "$PORT_SRC/region-no-generation.patch"
 patch -p1 -i "$PORT_SRC/kdos-bootctl-entry.patch"
 patch -p1 -i "$PORT_SRC/sandbox-badge.patch"
 patch -p1 -i "$PORT_SRC/notifications-group-expander.patch"
+patch -p1 -i "$PORT_SRC/appstream-runner-name-match.patch"
+patch -p1 -i "$PORT_SRC/appstream-runner-icon.patch"
+patch -p1 -i "$PORT_SRC/desktop-view-title.patch"
+patch -p1 -i "$PORT_SRC/timezone-selector-width.patch"
+patch -p1 -i "$PORT_SRC/kcm-colors-accent-names.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

@@ -64,6 +64,19 @@ chord: KDOS ships no activities interface and leaves that action unbound, so the
 an unassigned shortcut. The chord-driven list is to be offered upstream; the card's removal is
 KDOS's alone.
 
+`release-notes-pages.patch` makes two changes for an entry that opens one page, as KDOS's Release
+Notes runs `plasma-welcome --pages 90-WhatsNew.qml`. Welcome Center is a unique D-Bus application:
+a second start hands its arguments to the running one and exits, and upstream's running window
+only raises itself and drops them, so with the tour open the entry would bring the tour forward
+and show no notes. With the patch the running window reads the second start's `--pages`, names
+each page as the first start does, and shows them as layers over its own pages, so Back returns
+to where it was; asking again replaces the layers, and a window that is itself a run of exactly
+those pages is only raised. The post-update page's footer has only OK, which closes the window,
+so the patch gives it a Back button while a layer is open; without one, notes opened over the
+Plasma update page would leave no way back to it. And a run of one page with no layer open hides Skip and the page
+indicator, so Finish is its one exit, where upstream offers Skip beside Finish and a single dot.
+It is to be offered upstream.
+
 The post-update page offers to download a preview of the Plasma release announcement from
 kde.org. It does so only when the person asks, because `AutomaticUpdatePreview` defaults to
 false; every other link on the pages opens in the web browser.

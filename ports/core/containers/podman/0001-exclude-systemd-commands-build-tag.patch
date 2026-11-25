@@ -1,0 +1,118 @@
+Subject: cmd/podman: add the exclude_systemd_commands build tag
+
+The tag leaves `podman generate systemd`, `podman quadlet` and
+`podman auto-update` out of the binary, for systems with no systemd to read
+the units the first two write or to restart the units the third relies on,
+and makes the `podman generate` description name Kubernetes YAML alone. It
+drops `podman quadlet` and `podman auto-update` from podman(1)'s command
+table and `systemd` from podman-generate(1)'s. Upstream's default binary is
+unchanged; the documentation hunks apply in every build.
+
+--- a/cmd/podman/auto-update.go
++++ b/cmd/podman/auto-update.go
+@@ -1,3 +1,5 @@
++//go:build !exclude_systemd_commands
++
+ package main
+ 
+ import (
+--- a/cmd/podman/generate/generate.go
++++ b/cmd/podman/generate/generate.go
+@@ -11,7 +11,7 @@
+ 	GenerateCmd = &cobra.Command{
+ 		Use:   "generate",
+ 		Short: "Generate structured data based on containers, pods or volumes",
+-		Long:  "Generate structured data (e.g., Kubernetes YAML or systemd units) based on containers, pods or volumes.",
++		Long:  "Generate structured data (e.g., " + generateExamples + ") based on containers, pods or volumes.",
+ 		RunE:  validate.SubCommandExists,
+ 	}
+ 	containerConfig = registry.PodmanConfig().ContainersConfDefaultsRO
+--- a/cmd/podman/generate/generate_examples.go
++++ b/cmd/podman/generate/generate_examples.go
+@@ -0,0 +1,5 @@
++//go:build exclude_systemd_commands
++
++package generate
++
++const generateExamples = "Kubernetes YAML"
+--- a/cmd/podman/generate/generate_examples_systemd.go
++++ b/cmd/podman/generate/generate_examples_systemd.go
+@@ -0,0 +1,5 @@
++//go:build !exclude_systemd_commands
++
++package generate
++
++const generateExamples = "Kubernetes YAML or systemd units"
+--- a/cmd/podman/generate/systemd.go
++++ b/cmd/podman/generate/systemd.go
+@@ -1,3 +1,5 @@
++//go:build !exclude_systemd_commands
++
+ package generate
+ 
+ import (
+--- a/cmd/podman/main.go
++++ b/cmd/podman/main.go
+@@ -21,7 +21,6 @@
+ 	_ "go.podman.io/podman/v6/cmd/podman/manifest"
+ 	_ "go.podman.io/podman/v6/cmd/podman/networks"
+ 	_ "go.podman.io/podman/v6/cmd/podman/pods"
+-	_ "go.podman.io/podman/v6/cmd/podman/quadlet"
+ 	"go.podman.io/podman/v6/cmd/podman/registry"
+ 	_ "go.podman.io/podman/v6/cmd/podman/secrets"
+ 	_ "go.podman.io/podman/v6/cmd/podman/system"
+--- a/cmd/podman/main_quadlet.go
++++ b/cmd/podman/main_quadlet.go
+@@ -0,0 +1,5 @@
++//go:build !exclude_systemd_commands
++
++package main
++
++import _ "go.podman.io/podman/v6/cmd/podman/quadlet"
+--- a/docs/source/markdown/podman.1.md
++++ b/docs/source/markdown/podman.1.md
+@@ -21,9 +21,6 @@
+ Remote connections use the server's containers.conf, except when documented in
+ man pages.
+ 
+-To manage containers, pods, volumes, networks, and images declaratively via systemd,
+-use quadlet files. See **podman-quadlet**(1) and **podman-systemd.unit**(5).
+-
+ **podman [GLOBAL OPTIONS]**
+ 
+ ## GLOBAL OPTIONS
+@@ -364,7 +361,6 @@
+ |--------------------------------------------------|------------------------------------------------------------------------------|
+ | [podman-artifact(1)](podman-artifact.1.md)       | Manage OCI artifacts.                                                        |
+ | [podman-attach(1)](podman-attach.1.md)           | Attach to a running container.                                               |
+-| [podman-auto-update(1)](podman-auto-update.1.md) | Auto update containers according to their auto-update policy                 |
+ | [podman-build(1)](podman-build.1.md)             | Build a container image using a Containerfile.                               |
+ | [podman-farm(1)](podman-farm.1.md)               | Farm out builds to machines running podman for different architectures       |
+ | [podman-commit(1)](podman-commit.1.md)           | Create new image based on the changed container.                             |
+@@ -402,7 +398,6 @@
+ | [podman-ps(1)](podman-ps.1.md)                   | Print out information about containers.                                      |
+ | [podman-pull(1)](podman-pull.1.md)               | Pull an image from a registry.                                               |
+ | [podman-push(1)](podman-push.1.md)               | Push an image, manifest list or image index from local storage to elsewhere. |
+-| [podman-quadlet(1)](podman-quadlet.1.md)         | Allows users to manage Quadlets.                                             |
+ | [podman-rename(1)](podman-rename.1.md)           | Rename an existing container.                                                |
+ | [podman-restart(1)](podman-restart.1.md)         | Restart one or more containers.                                              |
+ | [podman-rm(1)](podman-rm.1.md)                   | Remove one or more containers.                                               |
+@@ -504,7 +499,7 @@
+ The Network File System (NFS) and other distributed file systems (for example: Lustre, Spectrum Scale, the General Parallel File System (GPFS)) are not supported when running in rootless mode as these file systems do not understand user namespace.  However, rootless Podman can make use of an NFS Homedir by modifying the `$HOME/.config/containers/storage.conf` to have the `graphroot` option point to a directory stored on local (Non NFS) storage.
+ 
+ ## SEE ALSO
+-**[containers-mounts.conf(5)](https://github.com/containers/container-libs/blob/main/common/docs/containers-mounts.conf.5.md)**, **[containers.conf(5)](https://github.com/containers/container-libs/blob/main/common/docs/containers.conf.5.md)**, **[containers-registries.conf(5)](https://github.com/containers/image/blob/main/docs/containers-registries.conf.5.md)**, **[containers-storage.conf(5)](https://github.com/containers/storage/blob/main/docs/containers-storage.conf.5.md)**, **[buildah(1)](https://github.com/containers/buildah/blob/main/docs/buildah.1.md)**, **[oci-hooks(5)](https://github.com/containers/container-libs/blob/main/common/pkg/hooks/docs/oci-hooks.5.md)**, **[containers-policy.json(5)](https://github.com/containers/image/blob/main/docs/containers-policy.json.5.md)**, **[crun(1)](https://github.com/containers/crun/blob/main/crun.1.md)**, **[runc(8)](https://github.com/opencontainers/runc/blob/main/man/runc.8.md)**, **[subuid(5)](https://www.unix.com/man-page/linux/5/subuid)**, **[subgid(5)](https://www.unix.com/man-page/linux/5/subgid)**, **[pasta(1)](https://passt.top/builds/latest/web/passt.1.html)**, **[conmon(8)](https://github.com/containers/conmon/blob/main/docs/conmon.8.md)**, **[podman-quadlet(1)](podman-quadlet.1.md)**, **[podman-systemd.unit(5)](podman-systemd.unit.5.md)**
++**[containers-mounts.conf(5)](https://github.com/containers/container-libs/blob/main/common/docs/containers-mounts.conf.5.md)**, **[containers.conf(5)](https://github.com/containers/container-libs/blob/main/common/docs/containers.conf.5.md)**, **[containers-registries.conf(5)](https://github.com/containers/image/blob/main/docs/containers-registries.conf.5.md)**, **[containers-storage.conf(5)](https://github.com/containers/storage/blob/main/docs/containers-storage.conf.5.md)**, **[buildah(1)](https://github.com/containers/buildah/blob/main/docs/buildah.1.md)**, **[oci-hooks(5)](https://github.com/containers/container-libs/blob/main/common/pkg/hooks/docs/oci-hooks.5.md)**, **[containers-policy.json(5)](https://github.com/containers/image/blob/main/docs/containers-policy.json.5.md)**, **[crun(1)](https://github.com/containers/crun/blob/main/crun.1.md)**, **[runc(8)](https://github.com/opencontainers/runc/blob/main/man/runc.8.md)**, **[subuid(5)](https://www.unix.com/man-page/linux/5/subuid)**, **[subgid(5)](https://www.unix.com/man-page/linux/5/subgid)**, **[pasta(1)](https://passt.top/builds/latest/web/passt.1.html)**, **[conmon(8)](https://github.com/containers/conmon/blob/main/docs/conmon.8.md)**
+ 
+ ### Troubleshooting
+ 
+--- a/docs/source/markdown/podman-generate.1.md
++++ b/docs/source/markdown/podman-generate.1.md
+@@ -15,7 +15,6 @@
+ |---------|------------------------------------------------------------|-------------------------------------------------------------------------------------|
+ | kube    | [podman-kube-generate(1)](podman-kube-generate.1.md)       | Generate Kubernetes YAML based on containers, pods or volumes.                      |
+ | spec    | [podman-generate-spec(1)](podman-generate-spec.1.md)       | Generate Specgen JSON based on containers or pods.                                  |
+-| systemd | [podman-generate-systemd(1)](podman-generate-systemd.1.md) | [DEPRECATED] Generate systemd unit file(s) for a container or pod.                  |
+ 
+ 
+ ## SEE ALSO

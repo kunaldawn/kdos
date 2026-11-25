@@ -18,18 +18,25 @@
  * appended to calls.log as one line, the program's name first, so a test
  * asserts on the order of what kdos-box asked for.
  *
- *   $KDOS_FAKE_DIR/podman.state   `container <name> <state> [<manager>]`
- *                                 and `image <ref>` lines; <manager> is
- *                                 the container's `manager` label
+ *   $KDOS_FAKE_DIR/podman.state   `container <name> <state> [<manager>]`,
+ *                                 `label <name> <digest>` and `image <ref>`
+ *                                 lines; <manager> is the container's
+ *                                 `manager` label, <digest> its
+ *                                 io.kdos.profile one
  *   $KDOS_FAKE_DIR/calls.log      every call
  *   $KDOS_FAKE_EXIT               what a recorder exits with (default 0)
  *
  * The answers are podman's own shapes for what kdos-box parses: `ps
  * --format` rows with the columns its template names (the name, the state,
  * a creation time of 0 and the `manager` label) in its order, `inspect` the
- * bare status, exit 1 from `container exists` for no such container, and
- * 125 for an inspect of one. `distrobox create` labels its container
- * `manager=distrobox`, as distrobox does.
+ * bare status, or the io.kdos.profile label (`<no value>` for none) when
+ * the format names it, exit 1 from `container exists` for no such
+ * container, 125 for an inspect of one, and `images` one repository a line,
+ * a `kdos/` image under `localhost/`. `distrobox create` labels its
+ * container `manager=distrobox`, as distrobox does, and keeps the
+ * io.kdos.profile label its `--additional-flags` carry, so the real
+ * kdos-box's report compares a profile changed since with what the
+ * container was made from; `rm` drops the label with the container.
  */
 
 #include <QCoreApplication>
@@ -50,10 +57,13 @@ QString dir()
     return qEnvironmentVariable("KDOS_FAKE_DIR");
 }
 
+const QString profileLabel = u"io.kdos.profile"_s;
+
 struct Container {
     QString name;
     QString state;
     QString manager;
+    QString label;
 };
 
 struct State {
@@ -82,7 +92,13 @@ State load()
     for (const QString &l : lines) {
         const QStringList t = l.simplified().split(u' ');
         if ((t.size() == 3 || t.size() == 4) && t.at(0) == "container"_L1) {
-            s.containers.append({t.at(1), t.at(2), t.value(3)});
+            s.containers.append({t.at(1), t.at(2), t.value(3), QString()});
+        } else if (t.size() == 3 && t.at(0) == "label"_L1) {
+            for (Container &c : s.containers) {
+                if (c.name == t.at(1)) {
+                    c.label = t.at(2);
+                }
+            }
         } else if (t.size() == 2 && t.at(0) == "image"_L1) {
             s.images << t.at(1);
         }
@@ -103,6 +119,11 @@ void save(const State &s)
             out << ' ' << c.manager;
         }
         out << '\n';
+    }
+    for (const Container &c : s.containers) {
+        if (!c.label.isEmpty()) {
+            out << "label " << c.name << ' ' << c.label << '\n';
+        }
     }
     for (const QString &i : s.images) {
         out << "image " << i << '\n';
@@ -166,11 +187,27 @@ int podman(const QStringList &args)
     if (verb == "image"_L1) {
         return 1;
     }
+    if (verb == "images"_L1) {
+        /* `{{.Repository}}`: the reference without its tag, an
+         * unqualified `kdos/` one under localhost as podman builds it. */
+        for (const QString &i : std::as_const(s.images)) {
+            const int colon = i.lastIndexOf(u':');
+            const QString repo = colon > i.lastIndexOf(u'/') ? i.left(colon) : i;
+            say((repo.startsWith(u"kdos/"_s) ? u"localhost/"_s + repo : repo) + u'\n');
+        }
+        return 0;
+    }
     if (verb == "inspect"_L1) {
         const int i = s.find(target(args));
         if (i < 0) {
             say(u"Error: no such object\n"_s, stderr);
             return 125;
+        }
+        const int f = args.indexOf(u"--format"_s);
+        if (f >= 0 && args.value(f + 1).contains(profileLabel)) {
+            const QString label = s.containers.at(i).label;
+            say((label.isEmpty() ? u"<no value>"_s : label) + u'\n');
+            return 0;
         }
         say(s.containers.at(i).state + u'\n');
         return 0;
@@ -218,8 +255,19 @@ int distrobox(const QStringList &args)
         return 2;
     }
     State s = load();
+    /* `--additional-flags "… --label io.kdos.profile=<digest> …"`. */
+    QString label;
+    const int a = args.indexOf(u"--additional-flags"_s);
+    if (a >= 0) {
+        const QStringList flags = args.value(a + 1).split(u' ', Qt::SkipEmptyParts);
+        for (int k = 0; k + 1 < flags.size(); ++k) {
+            if (flags.at(k) == "--label"_L1 && flags.at(k + 1).startsWith(profileLabel + u'=')) {
+                label = flags.at(k + 1).mid(profileLabel.size() + 1);
+            }
+        }
+    }
     if (s.find(args.at(n + 1)) < 0) {
-        s.containers.append({args.at(n + 1), u"created"_s, u"distrobox"_s});
+        s.containers.append({args.at(n + 1), u"created"_s, u"distrobox"_s, label});
         save(s);
     }
     return 0;

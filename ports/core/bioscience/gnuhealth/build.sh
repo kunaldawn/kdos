@@ -33,6 +33,9 @@ pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 
 find "$PKG$_home" -path '*/trytond/modules/*/locale/*.po' -delete
 
+install -Dm644 tryton/COPYING "$PKG/usr/share/licenses/$name/COPYING"
+install -Dm644 tryton/LICENSES/CC-BY-SA-4.0.txt "$PKG/usr/share/licenses/$name/CC-BY-SA-4.0.txt"
+
 install -d "$PKG$_home/libexec" "$PKG/usr/bin"
 cat > "$PKG$_home/libexec/launch" <<'KDOS_SH'
 #!/bin/sh

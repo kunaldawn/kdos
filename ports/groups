@@ -79,7 +79,7 @@ wine
 
 group build-tools Compilers and build tools
 gcc binutils make cmake meson ninja pkgconf autoconf automake libtool bison
-flex
+flex fortify-headers
 
 group lang-zh Chinese input and fonts
 fcitx5-chinese-addons fcitx5-gtk noto-cjk noto-cjk-prefer-zh

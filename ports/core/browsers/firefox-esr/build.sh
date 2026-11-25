@@ -112,7 +112,6 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     "DisableTelemetry": true,
     "DisableFirefoxStudies": true,
     "DisableRemoteImprovements": true,
-    "DisableRemoteSettingsAndAcceptSecurityConsequences": true,
     "DisableAppUpdate": true,
     "DisableSystemAddonUpdate": true,
     "DisableFeedbackCommands": true,
@@ -179,6 +178,10 @@ pref("browser.region.network.url", "");
 pref("browser.region.update.enabled", false);
 pref("geo.provider.network.url", "");
 pref("geo.provider.use_geoclue", false);
+pref("app.normandy.enabled", false);
+pref("app.normandy.api_url", "");
+pref("app.shield.optoutstudies.enabled", false);
+pref("network.connectivity-service.enabled", false);
 EOF
 
 for _png in browser/branding/official/default*.png; do

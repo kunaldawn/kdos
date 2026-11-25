@@ -20,3 +20,6 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	"$LIBS"/libkpack/*.c $LDFLAGS
 
 install -Dm755 kdos-pack "$PKG/usr/bin/kdos-pack"
+
+install -Dm644 "$LIBS/libksig/monocypher/LICENCE.md" \
+	"$PKG/usr/share/licenses/$name/monocypher-LICENCE.md"

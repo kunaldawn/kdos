@@ -15,5 +15,20 @@ is written in QML need it at run time.
 - `-DFEATURE_quick_vectorimage=ON` — the `VectorImage` item, which draws an SVG as Qt Quick
   shapes. It needs Qt SVG, which is why [qt6-qtsvg](#port-qt6-qtsvg) is in `depends`.
 
+## Patches
+`quickwidget-focus-accessible.patch` makes a Tab or Backtab into a `QQuickWidget` read the control
+it lands on. `QQuickWidget::focusInEvent` moves the scene's focus to its first item on a Tab and
+its last on a Backtab, and that item sends its accessible focus event at once; `QWidget::setFocus`
+sends the `QQuickWidget`'s own focus event only after the focus-in has been delivered. The screen
+reader's last focus event is then the unnamed `QQuickWidget` ("layered pane" in Orca), and the
+control is never read. While accessibility is active the patch records the item reached and the
+count of the scene's focus changes, and once the widget has been announced sends the item's focus
+event again, unless the widget lost the focus or the focus moved in between, in which case whoever
+moved it announced its own item. It covers every `QQuickWidget`: System Settings' sidebar, a Qt
+Quick settings page (on top of [kcmutils](#port-kcmutils)' own backtab step, which moves the focus
+and so keeps this one silent) and any application that embeds Qt Quick in widgets. The patch adds
+a case for each direction and for the moved-on focus to `tst_qquickwidget`. It is to be offered
+upstream to qt/qtdeclarative.
+
 ## Notes
 Like every Qt 6 module but `qt6-qtbase`, it passes no install paths of its own (see [How Qt 6 is built](../../../../docs/kdos/05-developer/writing-ports.md#how-qt-6-is-built)).

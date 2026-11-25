@@ -67,6 +67,9 @@ class Backend : public QObject
      * sorted, with UTC first: the list the terminal wizard offers. */
     Q_PROPERTY(QStringList timeZones READ timeZones CONSTANT)
     Q_PROPERTY(QString systemTimeZone READ systemTimeZone CONSTANT)
+    /* The release this medium installs, as readRelease() reads it from
+     * the running root; "" when neither file names one. */
+    Q_PROPERTY(QString release READ release CONSTANT)
 
     Q_PROPERTY(bool partitionManagerAvailable READ partitionManagerAvailable CONSTANT)
     Q_PROPERTY(bool partitionManagerRunning READ partitionManagerRunning NOTIFY partitionManagerRunningChanged)
@@ -91,6 +94,7 @@ public:
     QString error() const { return m_error; }
     QStringList timeZones() const;
     QString systemTimeZone() const;
+    QString release() const;
     bool partitionManagerAvailable() const;
     bool partitionManagerRunning() const { return m_partitionManager != nullptr; }
     bool installing() const { return m_install != nullptr; }
@@ -99,6 +103,11 @@ public:
     /* The zones of a zone1970.tab, as timeZones lists them: column three,
      * sorted, UTC first; UTC alone when the file cannot be read. */
     static QStringList readZones(const QString &tabPath);
+    /* The release the root at `root` holds, in the one form `kdos version`,
+     * the boot menu, the splash and the greeter give: VERSION in
+     * etc/kdos-release, or with no record etc/os-release's VERSION_ID and
+     * "+BUILD_ID" when it has one; "" when neither names one. */
+    static QString readRelease(const QString &root);
     /* Whether a mounts table (/proc/mounts) has an overlay at `/`: the live
      * medium, by the probe's own test, known before the first probe. */
     static bool liveRoot(const QString &mountsPath);
@@ -134,7 +143,9 @@ public:
     static QString diskTitle(const QVariantMap &disk);
     /* A partition as a disk's contents list it: its type (EFI system, BIOS
      * boot, an LVM physical volume by its group, or the filesystem), its
-     * label in quotes when it has one, and its size. */
+     * label in quotes when it has one, and its size; a partition the
+     * probe marks `remap` as "Ventoy's boot partition <size>" or "mapped to
+     * <name> <size>". */
     static QString partitionText(const QVariantMap &part);
     /* What erasing a disk destroys: its partitions, joined by ", ", or the
      * signature on the whole device of a disk with none; a disk the probe

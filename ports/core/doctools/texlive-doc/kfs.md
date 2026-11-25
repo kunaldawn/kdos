@@ -26,3 +26,8 @@ examples and the plain-text and source files, and `texdoc` still has no PDF to o
   Perl block reads the database with; the tlpdb bundle, made by hand, is described in
   [A bundle no tool writes](../../../../docs/kdos/05-developer/writing-ports.md#a-bundle-no-tool-writes).
   The Perl block prints how many packages and files it moved.
+- **Licence texts.** `/usr/share/licenses/texlive-doc` holds the same five texts as texlive's,
+  all taken from the texmf tree and the installer, since this port has no source tarball: urlbst's
+  copy of the GPL 2, LaTeX's `lppl.txt`, the opening nine lines of `plain.tex` for Knuth's terms,
+  `LICENSE.TL` and `LICENSE.CTAN`. They are installed before the Perl block, which moves
+  documentation files such as `lppl.txt` out of `$SRC`.

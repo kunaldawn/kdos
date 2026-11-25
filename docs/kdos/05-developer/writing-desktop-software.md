@@ -187,7 +187,12 @@ without the JSON changing is caught.
 A plasmoid is built with `plasma_add_applet(org.kdos.<name> QML_SOURCES ... CPP_SOURCES ...)` and
 carries a `metadata.json` with `X-Plasma-API-Minimum-Version` 6.0, which plasmashell needs before
 it will load the widget at all. A widget that belongs in the system tray names its
-`X-Plasma-NotificationAreaCategory`. A QML module several pieces import (the checklist's
+`X-Plasma-NotificationAreaCategory`. A widget with a C++ applet class registers it with
+`QML_ELEMENT` (and `QML_UNCREATABLE`), passes `QML_ARGS DEPENDENCIES org.kde.plasma.plasmoid` to
+`plasma_add_applet`, and reads the class's members through `Plasmoid as <Alias>.<Class>` after
+`import plasma.applet.org.kdos.<name> as <Alias>`: the attached `Plasmoid` is typed as the base
+`Plasma::Applet`, and qmllint in [`make plasmatest`](testing.md) fails a member read through it.
+A QML module several pieces import (the checklist's
 `org.kdos.checklist`, which the Welcome pages also show) is built and installed as a module of its
 own.
 
@@ -207,7 +212,9 @@ KWin loads three kinds of package from `share/kwin`: a JavaScript effect (`KWin/
 Each is installed with ECM's `kpackage_install_package` and keeps working across KWin releases,
 because it reaches KWin through its scripting API rather than its C++ classes. A compiled effect
 does not: KWin embeds its version in the plugin's interface id and refuses one built for another
-release, so KDOS's one compiled effect is carried as a patch to the `kwin` port. A shortcut a
+release, so KDOS's one compiled effect is carried as a patch to the `kwin` port. A package's QML
+imports KWin's types as `import org.kde.kwin as KWinComponents` and names every one qualified
+(`KWinComponents.ShortcutHandler`), as KWin's own effects do. A shortcut a
 script or effect registers is checked against every other binding the session makes (see
 [Shortcuts](#shortcuts)).
 

@@ -139,9 +139,10 @@ static void head_add(const char *text, const char *file, const char *id,
  * `<hN id="x">text</hN>`, with spans for section numbers inside. The page's
  * first non-empty <h1>..<h3> is its title, whatever its level: a KDOS
  * chapter's h1, a KFS part's h1, chapter's h2 or port page's h3. Every later
- * heading carries it: the books repeat a heading across
- * chapters (`The firewall` is in four), and the row's subtext is all that
- * tells them apart. */
+ * heading carries it as the row's subtext: the books repeat a heading across
+ * chapters (`The firewall` is in four), and title_by_source() puts the
+ * chapter in the title of each row whose heading another row shares, since
+ * KRunner shows a subtext on the selected row alone. */
 static void page_headings(const char *file, int book)
 {
 	char *html = kb_read_whole(file, NULL);
@@ -523,10 +524,54 @@ static void match_places(const RnQuery *q, RnList *out)
 	rn_arg(m, url);
 }
 
+/* The length of a row's source: its subtext up to the ` · `, a heading's
+ * chapter, a page title's book, or Kolibri; 0 when it has none. */
+static int source_len(const RnMatch *m)
+{
+	const char *dot = strstr(m->subtext, " · ");
+
+	return dot ? (int)(dot - m->subtext) : (int)strlen(m->subtext);
+}
+
+/* Rows `from` on whose text another of those rows shares are titled
+ * `<text> in <its source>`: KRunner shows a row's subtext only while the
+ * row is selected, so two `The firewall` rows read as one answer shown
+ * twice until each says its chapter. A row whose title is unique keeps its
+ * bare text, and so does a row with no source or whose longer title would
+ * not fit. Two headings of one text in one chapter both read `<text> in
+ * <chapter>`: the chapter is the finest source a row carries. The titles are
+ * compared before any is changed, so every row of a shared title is
+ * retitled, not all but the last. */
+static void title_by_source(RnList *out, int from)
+{
+	int n = out->n - from;
+	char *dup;
+
+	if (n < 2)
+		return;
+	dup = calloc((size_t)n, 1);
+	if (!dup)
+		return;
+	for (int i = 0; i < n; i++)
+		for (int j = i + 1; j < n; j++)
+			if (!strcmp(out->v[from + i].text, out->v[from + j].text))
+				dup[i] = dup[j] = 1;
+	for (int i = 0; i < n; i++) {
+		RnMatch *m = &out->v[from + i];
+		size_t tl = strlen(m->text), sl = (size_t)source_len(m);
+
+		if (!dup[i] || !sl || tl + 4 + sl >= sizeof(m->text))
+			continue;
+		memcpy(m->text + tl, " in ", 4);
+		memcpy(m->text + tl + 4, m->subtext, sl);
+		m->text[tl + 4 + sl] = '\0';
+	}
+	free(dup);
+}
+
 /* Rows `from` on, beside the KDOS settings pages. A row whose text is a
- * page's Name, whatever was typed, is titled `<name> in <its source>` (the
- * subtext up to its ` · `: a heading's chapter, a page title's book, or
- * Kolibri): System Settings' own runner lists that page under
+ * page's Name, whatever was typed, is titled `<name> in <its source>`, by
+ * source_len()'s rule: System Settings' own runner lists that page under
  * its bare Name for a part of it as for the whole, and two rows of one title
  * read as one answer shown twice. When the query is a page's whole title the
  * rows are also scaled under the palette's row for it; scaling, not
@@ -551,9 +596,7 @@ static void below_settings(const RnQuery *q, RnList *out, int from)
 			m->rel *= 0.6;
 		}
 		if (p) {
-			const char *dot = strstr(m->subtext, " · ");
-			int sl = dot ? (int)(dot - m->subtext)
-				     : (int)strlen(m->subtext);
+			int sl = source_len(m);
 
 			if (sl)
 				snprintf(m->text, sizeof(m->text), "%s in %.*s",
@@ -575,6 +618,7 @@ void rn_library_match(const RnQuery *q, RnList *out)
 	match_books(q, out);
 	match_man(q, out);
 	rn_zeal_match(q, out);
+	title_by_source(out, from);
 	below_settings(q, out, from);
 }
 
@@ -823,6 +867,7 @@ void rn_library_answer(RnAsk *a, const RnQuery *q, RnList *out)
 		kiwix_rows(a, out);
 	else
 		kolibri_rows(a, out);
+	title_by_source(out, from);
 	below_settings(q, out, from);
 }
 

@@ -74,9 +74,21 @@
  * could not be written leaves the port as the step left it and is said, not
  * failed.
  *
- * The environment pkexec hands over is replaced by a fixed PATH and the C
- * locale before anything runs, so nothing the caller set reaches a root
- * process.
+ * A FAILED BUILD KEEPS ITS LOG in /var/log/kdos-build/<port>.log, which
+ * the builder writes as it runs: every line `kdos update` and the build
+ * print goes to Discover on the stream it was written to, and to that file
+ * too. Discover shows the build's output nowhere, and a failed build's work
+ * directory is removed (KPKG_CLEAN_FAILED), so without the file a desktop
+ * user has nothing to learn the cause from; `kdos update` names it at the
+ * end of the failure line Discover shows. The file is readable by anyone,
+ * replaced by the next build of the port, and removed when the run
+ * succeeds.
+ *
+ * The environment pkexec hands over is replaced by a fixed PATH, the C
+ * locale, KDOS_UPDATE_FRONT=discover (so `kdos update` words its next step
+ * as the button, not as a command to type) and, for the builder,
+ * KDOS_UPDATE_LOG naming the log, before anything runs, so nothing the
+ * caller set reaches a root process.
  * ---------------------------------
  */
 
@@ -88,6 +100,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/signalfd.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -124,6 +137,45 @@ static int kph_name_ok(const char *s)
  * minutes after somebody pressed Cancel. */
 #define KPH_STOP_MS 60000
 
+#ifdef KPH_BUILD
+#define KPH_LOG_DIR "/var/log/kdos-build"
+#endif
+
+/* All of `buf` to `fd`, retried across interruptions and short writes; a
+ * reader gone away (EPIPE) or any other error ends the copy to that fd. */
+static void kph_put(int fd, const char *buf, size_t n)
+{
+	while (n) {
+		ssize_t w = write(fd, buf, n);
+		if (w < 0 && errno == EINTR)
+			continue;
+		if (w <= 0)
+			return;
+		buf += w;
+		n -= (size_t)w;
+	}
+}
+
+/* One read of the child's pipe `*from` copied to `to` and to `log`: 1 when
+ * something was copied, 2 when the pipe was empty, 0 with `*from` closed and
+ * set to -1 at end of file or an error. */
+static int kph_copy(int *from, int to, int log)
+{
+	char buf[4096];
+	ssize_t got = read(*from, buf, sizeof(buf));
+	if (got < 0 && (errno == EINTR || errno == EAGAIN))
+		return 2;
+	if (got <= 0) {
+		close(*from);
+		*from = -1;
+		return 0;
+	}
+	kph_put(to, buf, (size_t)got);
+	if (log >= 0)
+		kph_put(log, buf, (size_t)got);
+	return 1;
+}
+
 /* Milliseconds left until `end` on the monotonic clock, never below 0. */
 static int kph_ms_left(const struct timespec *end)
 {
@@ -139,9 +191,12 @@ static int kph_ms_left(const struct timespec *end)
  * closes (CANCEL IS STDIN CLOSING above). The child's exit status, 128 plus
  * the signal that ended it, -1 when it could not be started or watched, or
  * -2 when the run was cancelled before it finished; in every case the child
- * has been reaped.
+ * has been reaped. With `log` open, the child writes into two pipes in place
+ * of this program's stdout and stderr, and each chunk read from one is
+ * copied to the stream it stands for and to `log`, so Discover reads
+ * progress and errors where it always does.
  */
-static int kph_run(const KbArgv *a)
+static int kph_run(const KbArgv *a, int log)
 {
 	sigset_t set, old;
 	sigemptyset(&set);
@@ -160,15 +215,42 @@ static int kph_run(const KbArgv *a)
 	 * not end this program before its group is stopped. */
 	signal(SIGPIPE, SIG_IGN);
 
+	/* out[0], err[0]: the read ends this program copies from; out[1],
+	 * err[1]: the write ends the child takes as its stdout and stderr. */
+	int out[2] = {-1, -1}, err[2] = {-1, -1};
+	if (log >= 0 && (pipe2(out, O_CLOEXEC) != 0 ||
+			 pipe2(err, O_CLOEXEC) != 0)) {
+		fprintf(stderr, KPH_NAME ": pipe: %s\n", strerror(errno));
+		for (int i = 0; i < 2; i++) {
+			if (out[i] >= 0)
+				close(out[i]);
+			if (err[i] >= 0)
+				close(err[i]);
+		}
+		close(sfd);
+		sigprocmask(SIG_SETMASK, &old, NULL);
+		return -1;
+	}
+
 	pid_t pid = fork();
 	if (pid < 0) {
 		fprintf(stderr, KPH_NAME ": fork: %s\n", strerror(errno));
+		if (log >= 0) {
+			close(out[0]);
+			close(out[1]);
+			close(err[0]);
+			close(err[1]);
+		}
 		close(sfd);
 		sigprocmask(SIG_SETMASK, &old, NULL);
 		return -1;
 	}
 	if (pid == 0) {
 		setpgid(0, 0);
+		if (log >= 0) {
+			dup2(out[1], STDOUT_FILENO);
+			dup2(err[1], STDERR_FILENO);
+		}
 		int null = open("/dev/null", O_RDONLY);
 		if (null >= 0) {
 			dup2(null, STDIN_FILENO);
@@ -182,6 +264,12 @@ static int kph_run(const KbArgv *a)
 	/* Both sides set the group, so no signal sent before the child ran
 	 * its own setpgid can miss it. */
 	setpgid(pid, pid);
+	if (log >= 0) {
+		close(out[1]);
+		close(err[1]);
+		fcntl(out[0], F_SETFL, O_NONBLOCK);
+		fcntl(err[0], F_SETFL, O_NONBLOCK);
+	}
 
 	int in = fcntl(STDIN_FILENO, F_GETFD) >= 0 ? STDIN_FILENO : -1;
 	int stopping = 0, killed = 0, st = 0;
@@ -190,11 +278,13 @@ static int kph_run(const KbArgv *a)
 		pid_t r = waitpid(pid, &st, WNOHANG);
 		if (r == pid || (r < 0 && errno == ECHILD))
 			break;
-		struct pollfd p[2] = {
+		struct pollfd p[4] = {
 			{.fd = sfd, .events = POLLIN},
 			{.fd = stopping ? -1 : in, .events = POLLIN},
+			{.fd = out[0], .events = POLLIN},
+			{.fd = err[0], .events = POLLIN},
 		};
-		int n = poll(p, 2, stopping && !killed ? kph_ms_left(&end) : -1);
+		int n = poll(p, 4, stopping && !killed ? kph_ms_left(&end) : -1);
 		if (n < 0 && errno == EINTR)
 			continue;
 		if (n < 0) {
@@ -202,11 +292,19 @@ static int kph_run(const KbArgv *a)
 			kill(-pid, SIGKILL);
 			while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
 				;
+			if (out[0] >= 0)
+				close(out[0]);
+			if (err[0] >= 0)
+				close(err[0]);
 			close(sfd);
 			sigprocmask(SIG_SETMASK, &old, NULL);
 			return -1;
 		}
 		int stop = 0;
+		if (n > 0 && p[2].revents)
+			kph_copy(&out[0], STDOUT_FILENO, log);
+		if (n > 0 && p[3].revents)
+			kph_copy(&err[0], STDERR_FILENO, log);
 		if (n == 0 && stopping && !killed) {
 			kill(-pid, SIGKILL);
 			killed = 1;
@@ -234,6 +332,18 @@ static int kph_run(const KbArgv *a)
 			end.tv_sec += KPH_STOP_MS / 1000;
 		}
 	}
+	/* What the child wrote before it exited is still in the pipes. A
+	 * process of its group that outlived it may hold a write end open, so
+	 * the drain stops at the first empty read rather than waiting for the
+	 * end of file. */
+	while (out[0] >= 0 && kph_copy(&out[0], STDOUT_FILENO, log) == 1)
+		;
+	while (err[0] >= 0 && kph_copy(&err[0], STDERR_FILENO, log) == 1)
+		;
+	if (out[0] >= 0)
+		close(out[0]);
+	if (err[0] >= 0)
+		close(err[0]);
 	close(sfd);
 	sigprocmask(SIG_SETMASK, &old, NULL);
 	/* A run that finished before the stop reached it is a run that
@@ -290,6 +400,26 @@ int main(int argc, char **argv)
 	clearenv();
 	setenv("PATH", SAFE_PATH, 1);
 	setenv("LC_ALL", "C", 1);
+	setenv("KDOS_UPDATE_FRONT", "discover", 1);
+
+	int log = -1;
+#ifdef KPH_BUILD
+	char logpath[sizeof(KPH_LOG_DIR) + 140];
+	snprintf(logpath, sizeof(logpath), KPH_LOG_DIR "/%s.log", port);
+	if (mkdir(KPH_LOG_DIR, 0755) != 0 && errno != EEXIST)
+		fprintf(stderr, KPH_NAME ": %s: %s\n", KPH_LOG_DIR,
+			strerror(errno));
+	log = open(logpath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW |
+			    O_CLOEXEC, 0644);
+	if (log < 0)
+		fprintf(stderr, KPH_NAME ": %s: %s; the build's output goes "
+				"to Discover alone\n", logpath,
+			strerror(errno));
+	else {
+		fchmod(log, 0644);
+		setenv("KDOS_UPDATE_LOG", logpath, 1);
+	}
+#endif
 
 	kb_argv_add(&install, "kdos");
 	kb_argv_add(&install, "update");
@@ -304,7 +434,14 @@ int main(int argc, char **argv)
 #endif
 	kb_argv_add(&install, port);
 	kb_argv_end(&install);
-	int rc = kph_run(&install);
+	int rc = kph_run(&install, log);
+#ifdef KPH_BUILD
+	if (log >= 0) {
+		close(log);
+		if (rc == 0)
+			unlink(logpath);
+	}
+#endif
 	if (rc == -2) {
 		printf("==> %s: cancelled\n", port);
 		return 130;

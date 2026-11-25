@@ -698,11 +698,14 @@ is silent otherwise. It also exposes the self-deadlock described under
 starts.
 
 Every five seconds of raw scene clock it reports the demo's clock against the player's position,
-with what the servo has had to take out and how long the mixer thread went unscheduled:
+with what the servo has had to take out and how long the mixer thread went unscheduled, in one
+line:
 
 ```
-kdos-bb: sync  demo   80.01s, player  278/1000, held  -829016 us, err   1620 us, worst gap 10102 us
+kdos-bb: sync  demo   80.01s, player  278/1000, held  -829016 us,
 ```
+
+continued on the same line by `err   1620 us, worst gap 10102 us`.
 
 | Field | Meaning |
 |---|---|

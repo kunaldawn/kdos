@@ -127,10 +127,6 @@ int mpctl_main(int argc, char **argv);		/* kdos-mpctl               */
 const char *kdt_reason_dir(void);
 char *kdt_reason_header(const char *text, const char *key, int nth);
 
-/* "the aphorism · the scar" with cite, the aphorism alone without, picked by
- * (day XOR boot). NULL when nothing is installed. The caller frees. */
-char *kdt_oracle_line(int cite);
-
 /*
  * `kdos update` (update.c). Fetches a signed recipe tree into /ports, verified
  * against /etc/kdos/keys/tree, with the signed binhost index and slot image

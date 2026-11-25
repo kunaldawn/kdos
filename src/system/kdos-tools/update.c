@@ -98,6 +98,7 @@
  * ---------------------------------
  */
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -210,6 +211,24 @@ static const char *keyring_dir(void)
 {
 	const char *e = getenv("KPKG_KEYRING");
 	return e && *e ? e : "/etc/kdos/keys";
+}
+
+/* 1 when $KDOS_UPDATE_FRONT says Discover's ports helpers ran this command:
+ * its words reach a person who pressed a button and typed no command. */
+static int front_discover(void)
+{
+	const char *e = getenv("KDOS_UPDATE_FRONT");
+	return e && !strcmp(e, "discover");
+}
+
+/* The file $KDOS_UPDATE_LOG names, which kdos-ports-builder copies this
+ * command's output into and keeps when the run fails; NULL when the output
+ * goes only to a terminal or a pipe, where the build's lines are above the
+ * failure. */
+static const char *build_log(void)
+{
+	const char *e = getenv("KDOS_UPDATE_LOG");
+	return e && *e ? e : NULL;
 }
 
 /* THE KEY BEFORE THE NETWORK, for the release index as for the tree: a
@@ -1265,6 +1284,26 @@ static int bh_present(const BhStanza *s)
 	       (long long)st.st_size == s->size;
 }
 
+/* The bytes still to download for `s`: none when bh_present() holds, the
+ * rest when the cache keeps a shorter `<file>.part` of a cut download, and
+ * the whole size otherwise, as kdt_relidx_take_resume() discards a part of
+ * the full size or longer. The rest of a cut download is what a take asks
+ * for; a server that cannot serve a range, or a delta that fails and takes
+ * the part with it, downloads the whole file, and a delta that applies
+ * downloads less, so this is an estimate and not a bound. */
+static long long bh_to_fetch(const BhStanza *s)
+{
+	char p[1024];
+	struct stat st;
+	if (bh_present(s))
+		return 0;
+	snprintf(p, sizeof(p), "%s/%s.part", cache_dir(), s->file);
+	if (stat(p, &st) == 0 && S_ISREG(st.st_mode) &&
+	    (long long)st.st_size < s->size)
+		return s->size - (long long)st.st_size;
+	return s->size;
+}
+
 /* ── problems ──────────────────────────────────────────────────────────── */
 
 /*
@@ -1364,10 +1403,13 @@ static long long release_time(const char *root)
 	return t;
 }
 
-/* The tree commit this root's /etc/kdos-release records, "" for none. */
-static void release_tree(const char *root, char *out, size_t cap)
+/* The value `key` has in this root's /etc/kdos-release (TREE, the tree
+ * commit; VERSION; BUILD_ID), "" for none. */
+static void release_key(const char *root, const char *key, char *out,
+			size_t cap)
 {
 	char p[1024];
+	size_t kl = strlen(key);
 	snprintf(p, sizeof(p), "%s%s", strcmp(root, "/") ? root : "",
 		 RELEASE_FILE);
 	char *d = kb_read_all(p, NULL);
@@ -1376,8 +1418,8 @@ static void release_tree(const char *root, char *out, size_t cap)
 		char *nl = strchr(l, '\n');
 		if (nl)
 			*nl = 0;
-		if (!strncmp(l, "TREE=", 5)) {
-			const char *v = l + 5 + (l[5] == '"');
+		if (!strncmp(l, key, kl) && l[kl] == '=') {
+			const char *v = l + kl + 1 + (l[kl + 1] == '"');
 			kb_strlcpy(out, v, cap);
 			out[strcspn(out, "\"")] = 0;
 		}
@@ -1475,7 +1517,7 @@ static KdtImage *image_offer(char *why, size_t wcap)
 		 * trees are named, since two builds of one version differ
 		 * only there. */
 		char mine[64];
-		release_tree(sys_root(), mine, sizeof(mine));
+		release_key(sys_root(), "TREE", mine, sizeof(mine));
 		snprintf(why, wcap, "the fetched image %s (tree %.9s) is not "
 			 "newer than this machine's %s%s%.9s", kdt_image_version(m),
 			 kdt_image_tree(m)[0] ? kdt_image_tree(m) : "unknown",
@@ -1595,8 +1637,7 @@ static int check_json(const KpConf *c, FILE *o)
 			if (v[i].stanza < 0)
 				continue;
 			covered++;
-			if (!bh_present(&ix.st[v[i].stanza]))
-				size += ix.st[v[i].stanza].size;
+			size += bh_to_fetch(&ix.st[v[i].stanza]);
 		}
 	}
 	char iwhy[256], irec[64], iorigin[1024] = "";
@@ -3042,6 +3083,7 @@ typedef struct {
 	char crypt[96];		/* its LUKS container, "" for none */
 	char running[8];	/* the slot this boot runs, "" when unknown */
 	char trying[8];		/* the slot armed or on trial, "" for none */
+	char unfilled[8];	/* the slot an update stopped writing, "" for none */
 	int live;		/* no slots because this is the live medium */
 	int known;		/* kdos-bootctl said what slots this machine has */
 } Layout;
@@ -3061,7 +3103,8 @@ typedef struct {
  * THE INACTIVE SLOT IS THE ONE THAT IS NOT CONFIRMED, which on a trial boot
  * is the root this boot runs; `running` and `trying` are read beside it so
  * apply_target can refuse that case and disarm an armed slot before it is
- * written (slot_disarm). */
+ * written (slot_disarm). `unfilled` is read so a slot an update stopped
+ * writing is finished even when nothing is behind (slot_refill). */
 static int bootctl_layout(Layout *L)
 {
 	memset(L, 0, sizeof(*L));
@@ -3093,6 +3136,7 @@ static int bootctl_layout(Layout *L)
 		   sizeof(L->crypt));
 	json_field(out.p, "running", L->running, sizeof(L->running));
 	json_field(out.p, "trying", L->trying, sizeof(L->trying));
+	json_field(out.p, "unfilled", L->unfilled, sizeof(L->unfilled));
 	kb_buf_free(&out);
 	return L->uuid[0] != 0;
 }
@@ -3279,7 +3323,7 @@ static int tree_into_slot(const char *root, const char *mnt)
  * the image's own record; an image's manifest names the release by the tag.
  */
 static int release_fields(const char *mnt, const char *ver, const char *commit,
-			  long long t, const char *how)
+			  const char *build_id, long long t, const char *how)
 {
 	char p[1024], day[16] = "";
 	time_t tt = (time_t)t;
@@ -3295,12 +3339,13 @@ static int release_fields(const char *mnt, const char *ver, const char *commit,
 		      "kdos-sysupdated and\n"
 		      "# kdos-bootctl.\n"
 		      "VERSION=\"%s\"\n"
-		      "BUILD_ID=\"%.12s\"\n"
+		      "BUILD_ID=\"%.*s\"\n"
 		      "BUILD_DATE=\"%s\"\n"
 		      "TREE=\"%s\"\n"
 		      "TREE_TIME=\"%lld\"\n"
 		      "INSTALLED_BY=\"%s\"\n",
-		      ver, commit, day, commit, t, how);
+		      ver, build_id ? (int)strlen(build_id) : 12,
+		      build_id ? build_id : commit, day, commit, t, how);
 	snprintf(p, sizeof(p), "%s%s", strcmp(mnt, "/") ? mnt : "",
 		 RELEASE_FILE);
 	int rc = kb_write_file_atomic(p, b.p);
@@ -3336,9 +3381,11 @@ static void os_version_id(const char *root, char *out, size_t cap)
  * (70_image/045_identity.sh): a named release (release_fields drops its
  * tag's `v`), else the filled root's os-release VERSION_ID, or the running
  * root's when the slot has none, and `+` the first twelve characters of the
- * tree's commit (`0.2.1+4dc1f7f82`). Another form would name the two slots
+ * tree's commit (`0.2.1+4dc1f7f826a3`). Another form would name the two slots
  * of one machine differently in System Versions and on the logout screen.
- * A tree records no dirty state, so this form never carries `-dirty`.
+ * A tree records no dirty state of its own, so this form never carries
+ * `-dirty`; release_record_name gives a slot of the running root's own
+ * unnamed tree the running root's name instead.
  */
 static void release_version(const char *mnt, const char *tree, char *out,
 			    size_t cap)
@@ -3360,16 +3407,56 @@ static void release_version(const char *mnt, const char *tree, char *out,
 		kb_strlcpy(out, raw, cap);
 }
 
-/* The record for a root filled from the ports tree `tree`. */
+/*
+ * The VERSION and BUILD_ID a root filled from the ports tree `tree` records
+ * (release_write; a named release's tag keeps its `v` here, which
+ * release_fields and release_name drop), and the name every message about
+ * that slot gives. A slot of the running root's own unnamed tree (its
+ * /etc/kdos-release TREE is this commit and the tree names no release)
+ * takes the running root's VERSION and BUILD_ID as they stand, `-dirty`
+ * included, so the two slots of one tree read alike in System Versions, in
+ * `kdos-bootctl status`, on the logout screen and in what an apply prints.
+ * A tree that names a release keeps that name even at the running root's
+ * commit: the running root's `-dirty` would claim changes the published
+ * tree does not hold. Any other tree takes release_version's form and the
+ * commit's first twelve characters, and `rid` is "" (release_fields then
+ * stamps its own).
+ */
+static void release_record_name(const char *mnt, const char *tree, char *ver,
+				size_t vcap, char *rid, size_t rcap)
+{
+	char commit[64], run[64], rver[128], id[64];
+	long long t = 0;
+	int named = 0;
+
+	rid[0] = 0;
+	tree_version(tree, ver, vcap, &named);
+	if (!named && tree_read(tree, commit, sizeof(commit), &t) == 0) {
+		release_key(sys_root(), "TREE", run, sizeof(run));
+		if (!strcmp(run, commit)) {
+			release_key(sys_root(), "VERSION", rver, sizeof(rver));
+			release_key(sys_root(), "BUILD_ID", id, sizeof(id));
+			if (version_ok(rver) && version_ok(id)) {
+				kb_strlcpy(ver, rver, vcap);
+				kb_strlcpy(rid, id, rcap);
+				return;
+			}
+		}
+	}
+	release_version(mnt, tree, ver, vcap);
+}
+
+/* The record for a root filled from the ports tree `tree`, under the name
+ * release_record_name gives it. */
 static int release_write(const char *mnt, const char *tree, const char *how)
 {
-	char ver[128], commit[64];
+	char ver[128], commit[64], rid[64];
 	long long t = 0;
 
 	if (tree_read(tree, commit, sizeof(commit), &t) != 0)
 		return -1;
-	release_version(mnt, tree, ver, sizeof(ver));
-	return release_fields(mnt, ver, commit, t, how);
+	release_record_name(mnt, tree, ver, sizeof(ver), rid, sizeof(rid));
+	return release_fields(mnt, ver, commit, rid[0] ? rid : NULL, t, how);
 }
 
 /* ── apply ─────────────────────────────────────────────────────────────── */
@@ -3506,11 +3593,18 @@ static void build_work_dir(char *out, size_t cap)
  * failure: the removal gives the space back before this returns. The line
  * says only what is true of `pkg`: a run may have installed other packages
  * before it, and goes on to others after. kpkg's exit status, with the line
- * the caller prints in `why` on a failure.
+ * the caller prints in `why` on a failure. A failed build's line ends with
+ * where its lines are: above it, or in build_log()'s file when one is named,
+ * because Discover shows none of them and the work directory is gone.
  */
 static int build_install(const char *pkg, char *why, size_t cap)
 {
-	char wd[1024], mark[1100];
+	char wd[1024], mark[1100], tail[320];
+	if (build_log())
+		snprintf(tail, sizeof(tail), "the build's log is in %s",
+			 build_log());
+	else
+		kb_strlcpy(tail, "the log is above", sizeof(tail));
 	build_work_dir(wd, sizeof(wd));
 	snprintf(mark, sizeof(mark), "%s/.kpkg-failed", wd);
 	unlink(mark);
@@ -3544,11 +3638,10 @@ static int build_install(const char *pkg, char *why, size_t cap)
 	if (got) {
 		if (strcmp(name, pkg))
 			snprintf(why, cap, "%s did not install: the build of %s, "
-				 "which it needs, failed; the log is above", pkg,
-				 name);
+				 "which it needs, failed; %s", pkg, name, tail);
 		else
 			snprintf(why, cap, "%s did not install: its build failed; "
-				 "the log is above", pkg);
+				 "%s", pkg, tail);
 		return rc;
 	}
 	/* No record: the build never started, or it succeeded and the install
@@ -3559,11 +3652,11 @@ static int build_install(const char *pkg, char *why, size_t cap)
 	    build_full((unsigned long long)sv.f_bavail * sv.f_frsize,
 		       (unsigned long long)sv.f_blocks * sv.f_frsize))
 		snprintf(why, cap, "%s did not install: the root is full (%s "
-			 "left); the log is above", pkg,
+			 "left); %s", pkg,
 			 kb_human_size((unsigned long long)sv.f_bavail *
-				       sv.f_frsize));
+				       sv.f_frsize), tail);
 	else
-		snprintf(why, cap, "%s did not install; the log is above", pkg);
+		snprintf(why, cap, "%s did not install; %s", pkg, tail);
 	return rc;
 }
 
@@ -3588,12 +3681,40 @@ typedef struct {
 	int n, cap;
 } BuildArch;
 
-/* The bytes of the source archives the recipe of `name` hashes that are on
- * this machine, in its port directory or $SOURCE_DIR — the two places a build
- * reads them from. An archive not fetched yet counts nothing. Each archive
- * `seen` lacks is added to it. */
+/* The index of `file` in `a`, added with `size` when it is not there. */
+static int arch_add(BuildArch *a, const char *file, long long size)
+{
+	for (int j = 0; j < a->n; j++)
+		if (!strcmp(a->file[j], file))
+			return j;
+	if (a->n == a->cap) {
+		a->cap = a->cap ? 2 * a->cap : 16;
+		a->file = kb_realloc(a->file, (size_t)a->cap * sizeof(*a->file));
+		a->size = kb_realloc(a->size, (size_t)a->cap * sizeof(*a->size));
+	}
+	a->file[a->n] = kb_strdup(file);
+	a->size[a->n] = size;
+	return a->n++;
+}
+
+static void arch_free(BuildArch *a)
+{
+	for (int j = 0; j < a->n; j++)
+		free(a->file[j]);
+	free(a->file);
+	free(a->size);
+	memset(a, 0, sizeof(*a));
+}
+
+/* The bytes of the source archives the recipe of `name` hashes: on this
+ * machine, as found in its port directory or $SOURCE_DIR — the two places a
+ * build reads them from — and otherwise as `remote` measured them where the
+ * fetch will download them; one `remote` lacks or could not measure (-1)
+ * counts nothing. Each archive `seen` lacks is added to it, and each one not
+ * on the machine to `miss` when it is not NULL. */
 static long long port_source_bytes(const KpConf *c, const char *name,
-				   BuildArch *seen)
+				   BuildArch *seen, BuildArch *miss,
+				   const BuildArch *remote)
 {
 	char *pd = kp_port_dir(c, name);
 	if (!pd)
@@ -3622,29 +3743,29 @@ static long long port_source_bytes(const KpConf *c, const char *name,
 			if (k % 2 == 0 || strchr(t, '/'))
 				continue;
 			struct stat sb;
+			long long size;
 			char *at = kb_path_join(pd, t);
 			if (stat(at, &sb) != 0 || !S_ISREG(sb.st_mode)) {
 				free(at);
 				at = kb_path_join(c->source_dir, t);
 				if (stat(at, &sb) != 0 || !S_ISREG(sb.st_mode))
-					sb.st_size = 0;
+					sb.st_size = -1;
 			}
 			free(at);
-			sum += sb.st_size;
-			int j;
-			for (j = 0; j < seen->n && strcmp(seen->file[j], t); j++)
-				;
-			if (j < seen->n)
-				continue;
-			if (seen->n == seen->cap) {
-				seen->cap = seen->cap ? 2 * seen->cap : 16;
-				seen->file = kb_realloc(seen->file,
-					(size_t)seen->cap * sizeof(*seen->file));
-				seen->size = kb_realloc(seen->size,
-					(size_t)seen->cap * sizeof(*seen->size));
+			size = sb.st_size;
+			if (size < 0) {
+				if (miss)
+					arch_add(miss, t, -1);
+				size = 0;
+				for (int j = 0; remote && j < remote->n; j++)
+					if (!strcmp(remote->file[j], t)) {
+						if (remote->size[j] > 0)
+							size = remote->size[j];
+						break;
+					}
 			}
-			seen->file[seen->n] = kb_strdup(t);
-			seen->size[seen->n++] = sb.st_size;
+			sum += size;
+			arch_add(seen, t, size);
 		}
 	}
 	free(data);
@@ -3652,18 +3773,65 @@ static long long port_source_bytes(const KpConf *c, const char *name,
 	return sum;
 }
 
+/*
+ * The sizes of the archives `miss` names, none of them on this machine, as
+ * `kpkg fetch --size` measures them at the archive and upstream URLs its
+ * fetch would download them from: one call for the whole run, each size
+ * left at -1 when no server answered with one — offline, or a copy that is
+ * gone.
+ */
+static void remote_sizes(const char *const *names, int n, BuildArch *miss)
+{
+	KbArgv a = {0};
+	if (ab_chroot) {
+		kb_argv_add(&a, "chroot");
+		kb_argv_add(&a, ab_chroot);
+	}
+	kb_argv_add(&a, "kpkg");
+	kb_argv_add(&a, "fetch");
+	kb_argv_add(&a, "--size");
+	for (int i = 0; i < n; i++)
+		kb_argv_add(&a, names[i]);
+	kb_argv_end(&a);
+	KbBuf out = {0};
+	kb_run_capture_buf(&a, &out);
+	char *save = NULL;
+	for (char *line = out.p ? strtok_r(out.p, "\n", &save) : NULL; line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char *sp = strrchr(line, ' ');
+		if (!sp || !isdigit((unsigned char)sp[1]))
+			continue;
+		*sp = 0;
+		for (int j = 0; j < miss->n; j++)
+			if (!strcmp(miss->file[j], line))
+				miss->size[j] = strtoll(sp + 1, NULL, 10);
+	}
+	kb_buf_free(&out);
+}
+
 static void name_list(char *out, size_t cap, const char *const *names, int n);
 
-/* The reckoning above for the `n` ports of `names`; 0 for none. */
-static long long build_space(const KpConf *c, const char *const *names, int n)
+/* The reckoning above for the `n` ports of `names`; 0 for none. Archives
+ * not on the machine count at the size remote_sizes measures; those it
+ * could not measure count nothing, and their number is in *nunk and their
+ * names in `unk`. */
+static long long build_space(const KpConf *c, const char *const *names, int n,
+			     int *nunk, char *unk, size_t ucap)
 {
+	*nunk = 0;
+	unk[0] = 0;
 	if (n <= 0)
 		return 0;
-	BuildArch seen = {0};
+	BuildArch seen = {0}, miss = {0};
+	for (int i = 0; i < n; i++)
+		port_source_bytes(c, names[i], &seen, &miss, NULL);
+	arch_free(&seen);
+	if (miss.n)
+		remote_sizes(names, n, &miss);
 	long long most = 0, all = 0;
 	int at = 0;
 	for (int i = 0; i < n; i++) {
-		long long b = port_source_bytes(c, names[i], &seen);
+		long long b = port_source_bytes(c, names[i], &seen, NULL, &miss);
 		if (b > most) {
 			most = b;
 			at = i;
@@ -3672,21 +3840,24 @@ static long long build_space(const KpConf *c, const char *const *names, int n)
 	/* The largest build's own archives are in its tree's reckoning, so
 	 * the residue is every distinct archive less those. */
 	BuildArch mine = {0};
-	port_source_bytes(c, names[at], &mine);
+	port_source_bytes(c, names[at], &mine, NULL, &miss);
 	for (int j = 0; j < seen.n; j++) {
 		int k;
 		for (k = 0; k < mine.n && strcmp(mine.file[k], seen.file[j]); k++)
 			;
 		if (k == mine.n)
 			all += seen.size[j];
-		free(seen.file[j]);
 	}
-	for (int k = 0; k < mine.n; k++)
-		free(mine.file[k]);
-	free(seen.file);
-	free(seen.size);
-	free(mine.file);
-	free(mine.size);
+	const char **u = kb_calloc((size_t)miss.n + 1, sizeof(*u));
+	for (int j = 0; j < miss.n; j++)
+		if (miss.size[j] < 0)
+			u[(*nunk)++] = miss.file[j];
+	if (*nunk)
+		name_list(unk, ucap, u, *nunk);
+	free(u);
+	arch_free(&seen);
+	arch_free(&mine);
+	arch_free(&miss);
 	return most * BUILD_SPACE_FACTOR + all + BUILD_SPACE_BASE;
 }
 
@@ -3772,6 +3943,7 @@ typedef struct {
 	char *mnt;		/* the slot's mountpoint, when A/B */
 	int mounted;		/* this run mounted it */
 	int ab;			/* installing into the inactive slot */
+	int refill;		/* finishing a slot left incomplete, untried */
 	Layout L;
 	char tree[512];		/* the ports tree's root */
 	char version[64];	/* the tree's version */
@@ -3784,8 +3956,11 @@ typedef struct {
  * A SLOT WITH NOTHING BEHIND MAY STILL BE THE UPDATE. A slot an earlier run
  * filled, whose arm never happened, holds every package of the tree while the
  * running root is still behind it: that slot is the candidate, and is checked
- * and armed as one. Only when the running root is current too is there
- * nothing to take.
+ * and armed as one. Only when the running root is current too, and the slot
+ * is not one an earlier run left incomplete (slot_refill), is there nothing
+ * to take. A dry run surveys the running root as well, so what it says (this
+ * slot is the candidate, or it is finished without a trial) is what the real
+ * run does.
  */
 static int slot_ahead(const Apply *ap)
 {
@@ -3793,11 +3968,40 @@ static int slot_ahead(const Apply *ap)
 	int orphans = 0;
 	int n;
 
-	if (!ap->ab || ap->dry)
+	if (!ap->ab)
 		return 0;
 	n = survey(ap->run, &v, &orphans);
 	free(v);
 	return n > 0;
+}
+
+/*
+ * A SLOT LEFT INCOMPLETE IS FINISHED WHEN NOTHING IS BEHIND. A run stopped
+ * after its fill holds every package of the tree in the slot, and the boot
+ * state still marks it `unfilled`, which only the arm's `kdos-bootctl
+ * deploy` clears: with the running root current too, the slot would stay
+ * without a menu entry and the machine without a way back until a newer
+ * release. The run goes on to the check and the arm with `refill` set, and
+ * arm_slot deploys it without a trial, since it holds the version running.
+ * The slot is named by the version its record gives (release_record_name),
+ * as System Versions and `kdos-bootctl status` name it; the progress line keeps
+ * the tree's version, which kdos-sysupdated matches. 1 when the run goes on;
+ * a dry run says the same and goes no further.
+ */
+static int slot_refill(Apply *ap, const char *who)
+{
+	char ver[128], rid[64];
+
+	if (!ap->ab || !ap->L.unfilled[0] || strcmp(ap->L.unfilled, ap->L.slot))
+		return 0;
+	release_record_name(ap->root, ap->tree, ver, sizeof(ver), rid,
+			    sizeof(rid));
+	printf("slot %s holds every package of %s but was left incomplete; "
+	       "finishing it\n", ap->L.slot,
+	       release_name(ver[0] ? ver : ap->version));
+	prog("verified %s %s 0 0", who, ap->version);
+	ap->refill = 1;
+	return 1;
 }
 
 /* Nothing to take: said to a person, recorded, and — to a program waiting to
@@ -3891,7 +4095,11 @@ static int nothing_behind(Apply *ap)
  * in RAM, and what an update installs there is gone at the next restart
  * unless a persistence store holds it. AP_OK to go on, another AP_ code to
  * stop with it, or -1 when a dry run has said all it can (the slot is not
- * mounted and --mount would mount it): the run then ends with AP_OK.
+ * mounted and --mount would mount it): the run then ends with AP_OK. A slot
+ * that is not mounted cannot be read, but its `unfilled` mark is in the boot
+ * state: a dry run, and the refusal without --mount, say from it that an
+ * update stopped while writing the slot and that --mount finishes it, which
+ * is what the run with --mount does (slot_refill).
  */
 static int apply_target(Apply *ap, const KpConf *c)
 {
@@ -3907,13 +4115,26 @@ static int apply_target(Apply *ap, const KpConf *c)
 				      "an update is installed once it is "
 				      "confirmed or rolled back", ap->L.slot);
 		ap->mnt = slot_mountpoint(ap->L.uuid);
+		int incomplete = ap->L.unfilled[0] &&
+				 !strcmp(ap->L.unfilled, ap->L.slot);
 		/* A dry run mounts nothing, so with no slot to read it says
 		 * what --mount would do and stops there, having succeeded. */
 		if (!ap->mnt && ap->mount && ap->dry) {
-			printf("dry run: slot %s (%s) is not mounted; without "
-			       "--dry-run, --mount mounts it at " SLOT_MNT "%s "
-			       "and installs the candidate there\n", ap->L.slot,
-			       ap->L.uuid, ap->L.slot);
+			if (incomplete)
+				printf("dry run: slot %s (%s) is not mounted, "
+				       "and an update stopped while writing "
+				       "it; without --dry-run, --mount mounts "
+				       "it at " SLOT_MNT "%s and finishes it: "
+				       "what it lacks is installed, and a slot "
+				       "that then holds the version running is "
+				       "made complete again without a trial\n",
+				       ap->L.slot, ap->L.uuid, ap->L.slot);
+			else
+				printf("dry run: slot %s (%s) is not mounted; "
+				       "without --dry-run, --mount mounts it at "
+				       SLOT_MNT "%s and installs the candidate "
+				       "there\n", ap->L.slot, ap->L.uuid,
+				       ap->L.slot);
 			apply_end(ap);
 			return -1;
 		}
@@ -3927,10 +4148,12 @@ static int apply_target(Apply *ap, const KpConf *c)
 			return refuse(ap, NULL,
 				      "this machine has A/B root slots and slot "
 				      "%s (%s) is not mounted, so there is "
-				      "nowhere to install the candidate. Mount "
+				      "nowhere to install the candidate%s. Mount "
 				      "it, pass --mount, or pass --in-place to "
 				      "update the running root and give up the "
-				      "rollback", ap->L.slot, ap->L.uuid);
+				      "rollback", ap->L.slot, ap->L.uuid,
+				      incomplete ? "; an update stopped while "
+				      "writing it, and --mount finishes it" : "");
 		ap->root = ap->mnt;
 		ap->ab = 1;
 		printf("%sA/B:%s installing into slot %s at %s\n", A, O,
@@ -4199,7 +4422,8 @@ static int fetch_delta(const BhIndex *ix, const BhStanza *s, int say)
  * checked against the binhost index's hash too. A file that does not match
  * is deleted, not left for `kpkg binhost` to refuse later. With `say`, each
  * file the cache lacks is announced on stdout before its download starts,
- * and a cut download's words end by saying the same command continues it.
+ * and a cut download's words end by saying the same command continues it,
+ * or, under front_discover(), pressing Install again.
  * 0, -1 with `why` set, -2 when the network could not be reached. */
 static int fetch_package(const BhIndex *ix, const BhStanza *s, int say,
 			 char *why, size_t wcap)
@@ -4229,12 +4453,15 @@ static int fetch_package(const BhIndex *ix, const BhStanza *s, int say,
 	}
 	if (got != KDT_GOT_OK) {
 		/* Only a command run by hand continues by being run again;
-		 * apply's words reach Discover's banner, which ran none. */
+		 * apply's words reach Discover's banner, which ran none, and
+		 * an install Discover's helpers ran continues by its button. */
 		size_t wl = strlen(why);
 		if (say && cut > 0 && wl < wcap)
 			snprintf(why + wl, wcap - wl, "; nothing was installed "
-				 "— run the same command again to continue "
-				 "the download");
+				 "— %s", front_discover()
+				 ? "pressing Install again continues the download"
+				 : "run the same command again to continue the "
+				   "download");
 		unlink(sig);
 		return got == KDT_GOT_OFFLINE ? -2 : -1;
 	}
@@ -4624,11 +4851,18 @@ static int fill_image(Apply *ap)
  * (kp_facet_wanted: the declared closure, musl, linux and gcc) is installed
  * again
  * from the binhost with KPKG_FACETS=all, and every member of the
- * `build-tools` group that is not installed is installed prebuilt; a package of this machine's own
+ * `build-tools` group (the compilers and build tools, and fortify-headers,
+ * the /usr/include/fortify chroot.env's flags include) that is not installed
+ * is installed prebuilt, and so is
+ * every ports/buildheaders port such a package names that is not installed
+ * (dev_headers); a package of this machine's own
  * build (origin `source`) is built again instead. Everything such a run
  * installs, it installs whole, so a package built later in the run finds what
- * an earlier one placed. `kdos update install --dev` is the same restore,
- * asked for by name.
+ * an earlier one placed. Each package it installs for building records the
+ * route `prebuilt` in the origin record, and the build-tools members and
+ * header ports join the world set; with no origin line the removal graph
+ * would read the package as the image's and refuse to remove it.
+ * `kdos update install --dev` is the same restore, asked for by name.
  */
 enum { DEV_RESTORE, DEV_TOOL, DEV_REBUILD };
 
@@ -4636,7 +4870,8 @@ typedef struct {
 	char name[128];
 	int kind;
 	int stanza;		/* the binhost entry, or -1 for DEV_REBUILD */
-	int world;		/* a build-tools member: joins the world set */
+	int world;		/* a build-tools member or a header port:
+				 * joins the world set */
 } DevItem;
 
 typedef struct {
@@ -4650,6 +4885,7 @@ typedef struct {
 
 static char **build_tools(const KpConf *c);
 static int world_add(const char *name);
+static char **buildheaders_load(const KpConf *c);
 
 static void dev_free(DevPlan *p)
 {
@@ -4680,8 +4916,7 @@ static void dev_push(DevPlan *p, const char *name, int kind, int stanza,
 	d->world = world;
 	if (stanza >= 0) {
 		p->npre++;
-		if (!bh_present(&ix->st[stanza]))
-			p->bytes += ix->st[stanza].size;
+		p->bytes += bh_to_fetch(&ix->st[stanza]);
 	} else {
 		p->nsrc++;
 	}
@@ -4727,11 +4962,127 @@ static int dev_restore(const KpConf *c, const BhIndex *ix, int have_ix,
 static int conf_route(const char *key);
 
 /*
+ * The build-only header ports (ports/buildheaders) that the development
+ * files of a package the build of `port` compiles against include, and what
+ * each lacks to install, prebuilt into the plan. A member of the declared
+ * closure counts when it is installed, already in the plan, or one of
+ * `inst[0..ninst)` the run installs prebuilt; its `depends =` names the
+ * header port. Neither kp_resolve, which stops at an installed package, nor
+ * a prebuilt install, which follows no edge into ports/buildonly its `N:`
+ * line does not name, reaches xorgproto under an installed libX11, whose
+ * X11/Xlib.h includes X11/X.h and whose x11.pc requires xproto; without it
+ * every build that finds X11 fails. A port of `src[0..n)` is built by the
+ * run and is not added. A header port joins the world set, as a build-tools
+ * member does, so `removable` lists it, `remove` takes it with what only it
+ * brought, and an A/B apply carries it into the next slot; what it needs at
+ * run time that is not a header port stays out of the world set and leaves
+ * with it. 0, or -1 with `p->bad` set.
+ */
+static int dev_headers(const KpConf *c, const BhIndex *ix, int have_ix,
+		       char *const *src, int n, const char *port,
+		       char *const *inst, int ninst, char *const *hdr,
+		       DevPlan *p)
+{
+	char **cl = kp_store_closure(c, port);
+	char (*dep)[128] = kb_calloc(KP_MAX_DEPS, sizeof(*dep));
+	for (int more = 1; more && !p->bad[0];) {
+		more = 0;
+		for (int i = 0; cl[i] && !p->bad[0]; i++) {
+			int in = kp_installed(c, cl[i]) || dev_has(p, cl[i]);
+			for (int k = 0; k < ninst && !in; k++)
+				in = !strcmp(inst[k], cl[i]);
+			char *pd = in ? kp_port_dir(c, cl[i]) : NULL;
+			if (!pd)
+				continue;
+			int nd = kp_depends(pd, dep, KP_MAX_DEPS);
+			free(pd);
+			for (int d = 0; d < nd && !p->bad[0]; d++) {
+				int skip = !strv_has(hdr, dep[d]) ||
+					   kp_installed(c, dep[d]) ||
+					   dev_has(p, dep[d]);
+				for (int k = 0; k < n && !skip; k++)
+					skip = !strcmp(src[k], dep[d]);
+				char *dpd = skip ? NULL
+						 : kp_port_dir(c, dep[d]);
+				if (!dpd)
+					continue;
+				free(dpd);
+				KpOrder *ord = kb_calloc(1, sizeof(*ord));
+				char *one[1] = { dep[d] };
+				kp_resolve(c, one, 1, ord);
+				if (have_ix)
+					order_runtime_set(c, ix, one, 1, 0, ord);
+				for (int j = 0; j < ord->n && !p->bad[0]; j++) {
+					const char *nm = ord->order[j];
+					char *opd = kp_port_dir(c, nm);
+					if (!opd || kp_installed(c, nm) ||
+					    dev_has(p, nm)) {
+						free(opd);
+						continue;
+					}
+					free(opd);
+					char w[96] = "not in the binhost";
+					int st = have_ix ? bh_match(c, ix, nm, w,
+								    sizeof(w))
+							 : -1;
+					if (st < 0) {
+						const char *why =
+							have_ix ? w
+							: "no binhost index here";
+						const char *tail =
+							have_ix ? ""
+							: binhost_step_last(c);
+						const char *dash =
+							have_ix ? "" : " — ";
+						if (!strcmp(nm, dep[d]))
+							snprintf(p->bad,
+								 sizeof(p->bad),
+								 "%s, whose headers "
+								 "%s's headers "
+								 "include, cannot be "
+								 "installed prebuilt: "
+								 "%s%s%s",
+								 nm, cl[i], why,
+								 dash, tail);
+						else
+							snprintf(p->bad,
+								 sizeof(p->bad),
+								 "%s, which %s "
+								 "needs (%s's headers "
+								 "include %s's), "
+								 "cannot be installed "
+								 "prebuilt: %s%s%s",
+								 nm, dep[d], cl[i],
+								 dep[d], why, dash,
+								 tail);
+						break;
+					}
+					dev_push(p, nm, DEV_TOOL, st,
+						 strv_has(hdr, nm), ix);
+					more = 1;
+				}
+				free(ord);
+			}
+		}
+	}
+	free(dep);
+	kb_strv_free(cl);
+	return p->bad[0] ? -1 : 0;
+}
+
+/*
  * The plan for building `src[0..n)` here: every member of the build tools
  * that is not installed, and what it lacks, prebuilt; with `deps`, every
  * package of the ports' own closure that is not installed and the binhost
- * covers, prebuilt as well; then every restore the build and the toolchain
- * need. 0, or -1 with `p->bad` set.
+ * covers, prebuilt as well; then the build-only header ports the closure's
+ * development files include (dev_headers; `inst[0..ninst)` are the packages
+ * the caller installs prebuilt itself); then every restore the build and the
+ * toolchain need. A ports/buildheaders port joins the world set whichever
+ * step adds it: the `deps` step reaches xorgproto under an uninstalled
+ * libX11 first, and dev_headers then finds it in the plan and adds nothing,
+ * so a header port that step left at world=0 would be listed as left by
+ * removals the moment it is installed and missing from the next slot. 0, or
+ * -1 with `p->bad` set.
  *
  * `deps` is for a caller that installs nothing of the closure itself: the
  * world step after a slot image hands each port to `kpkg install`, which
@@ -4741,9 +5092,11 @@ static int conf_route(const char *key);
  * each member by `build-deps =`, so it passes 0.
  */
 static int dev_prepare(const KpConf *c, const BhIndex *ix, int have_ix,
-		       char *const *src, int n, int deps, DevPlan *p)
+		       char *const *src, int n, int deps, char *const *inst,
+		       int ninst, DevPlan *p)
 {
 	memset(p, 0, sizeof(*p));
+	char **hdr = buildheaders_load(c);
 	char **tools = build_tools(c);
 	int ntools = 0;
 	while (tools[ntools])
@@ -4782,7 +5135,8 @@ static int dev_prepare(const KpConf *c, const BhIndex *ix, int have_ix,
 			int member = 0;
 			for (int k = 0; k < nw; k++)
 				member |= !strcmp(want[k], ord->order[i]);
-			dev_push(p, ord->order[i], DEV_TOOL, st, member, ix);
+			dev_push(p, ord->order[i], DEV_TOOL, st,
+				 member || strv_has(hdr, ord->order[i]), ix);
 		}
 		free(ord);
 		free(want);
@@ -4804,10 +5158,14 @@ static int dev_prepare(const KpConf *c, const BhIndex *ix, int have_ix,
 			char w[96];
 			int st = bh_match(c, ix, ord->order[i], w, sizeof(w));
 			if (st >= 0)
-				dev_push(p, ord->order[i], DEV_TOOL, st, 0, ix);
+				dev_push(p, ord->order[i], DEV_TOOL, st,
+					 strv_has(hdr, ord->order[i]), ix);
 		}
 		free(ord);
 	}
+	for (int i = 0; i < n && hdr[0] && !p->bad[0]; i++)
+		dev_headers(c, ix, have_ix, src, n, src[i], inst, ninst, hdr, p);
+	kb_strv_free(hdr);
 	for (int i = 0; i < ntools && !p->bad[0]; i++)
 		dev_restore(c, ix, have_ix, tools[i], p);
 	kb_strv_free(tools);
@@ -4885,7 +5243,11 @@ static int dev_fetch(const BhIndex *ix, const DevPlan *p, char *why,
 }
 
 /* The plan carried out, under KPKG_FACETS=all, into `root` (NULL: the
- * running root, or the slot run_* chroot into). 0, or -1 with `why` set. */
+ * running root, or the slot run_* chroot into). Every package it installs
+ * for building records the prebuilt route, so the removal graph reads it as
+ * this machine's and not the image's, and a build-tools member or a header
+ * port joins the world set; a restored or rebuilt package keeps the line it
+ * has. 0, or -1 with `why` set. */
 static int dev_install(const DevPlan *p, const char *root, char *why,
 		       size_t wcap)
 {
@@ -4919,6 +5281,11 @@ static int dev_install(const DevPlan *p, const char *root, char *why,
 			snprintf(why, wcap, "%s did not install", d->name);
 			return -1;
 		}
+		if (d->kind == DEV_TOOL &&
+		    origin_set(d->name, ROUTE_PREBUILT) != 0)
+			fprintf(stderr, "kdos update: %s is installed and its "
+					"route could not be recorded in %s\n",
+				d->name, ORIGIN_FILE);
 		if (d->world && world_add(d->name) != 0)
 			fprintf(stderr, "kdos update: %s is installed and could "
 					"not be added to %s\n", d->name,
@@ -4949,10 +5316,13 @@ static const char **built_names(const DevPlan *dp, const char *const *extra,
  * THE ROOM A RUN'S BUILDS NEED, before the first of them: a dry run prints
  * `build-space <bytes>`, and a run whose estimate (build_space) does not fit
  * the work directory's filesystem is refused, dry or not, as cache_room
- * refuses downloads. Checked once on the archives already here, before
- * anything is fetched, and again once every source is fetched. build_fit: 0,
- * or -1 with the refusal in `why` (`root` as build_room's); build_check, for
- * the running root: 0, or -1 with the refusal printed and `tail` after it.
+ * refuses downloads. Checked once before anything is fetched, on the archives
+ * already here and the sizes `kpkg fetch --size` reads for the rest from
+ * where they would be downloaded, and again once every source is fetched. An
+ * archive no server gave a size for counts nothing in the first check, and a
+ * dry run names it on stderr. build_fit: 0, or -1 with the refusal in `why`
+ * (`root` as build_room's); build_check, for the running root: 0, or -1 with
+ * the refusal printed and `tail` after it.
  */
 static int build_fit(const KpConf *c, const char *root,
 		     const char *const *names, int n, int dry, char *why,
@@ -4960,9 +5330,18 @@ static int build_fit(const KpConf *c, const char *root,
 {
 	if (n <= 0)
 		return 0;
-	long long need = build_space(c, names, n);
-	if (dry)
+	char unk[200];
+	int nunk;
+	long long need = build_space(c, names, n, &nunk, unk, sizeof(unk));
+	if (dry) {
 		printf("build-space %lld\n", need);
+		if (nunk)
+			fprintf(stderr, "kdos update: the size of %d source "
+				"archive%s (%s) is not known until %s "
+				"downloaded; the space is checked again after "
+				"the download\n", nunk, nunk == 1 ? "" : "s",
+				unk, nunk == 1 ? "it is" : "they are");
+	}
 	return build_room(c, root, names, n, need, why, cap);
 }
 
@@ -5052,6 +5431,10 @@ static int bh_fill(Apply *ap, int after_image)
 			bh_free(&ix);
 			return AP_OK;
 		}
+		if (slot_refill(ap, ix.who)) {
+			bh_free(&ix);
+			return AP_OK;
+		}
 		bh_free(&ix);
 		return nothing_behind(ap);
 	}
@@ -5069,8 +5452,7 @@ static int bh_fill(Apply *ap, int after_image)
 		else if (have_ix &&
 			 (v[i].stanza = bh_match(&ap->tconf, &ix, v[i].name, w,
 						 sizeof(w))) >= 0) {
-			if (!bh_present(&ix.st[v[i].stanza]))
-				bytes += ix.st[v[i].stanza].size;
+			bytes += bh_to_fetch(&ix.st[v[i].stanza]);
 		} else {
 			bad[nbad++] = v[i].name;
 		}
@@ -5110,7 +5492,7 @@ static int bh_fill(Apply *ap, int after_image)
 				src[ns++] = v[i].name;
 		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, ns,
 				     conf_route("build-deps") == ROUTE_PREBUILT,
-				     &dp);
+				     NULL, 0, &dp);
 		free(src);
 		if (pr != 0) {
 			free(bad);
@@ -5429,6 +5811,8 @@ static int fill_source(Apply *ap)
 			       ap->L.slot, ap->version);
 			return AP_OK;
 		}
+		if (slot_refill(ap, "source"))
+			return AP_OK;
 		return nothing_behind(ap);
 	}
 	/* What the builds compile with comes first (dev_prepare), from the
@@ -5442,7 +5826,8 @@ static int fill_source(Apply *ap)
 		char **src = kb_calloc((size_t)n + 1, sizeof(*src));
 		for (int i = 0; i < n; i++)
 			src[i] = v[i].name;
-		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, n, 0, &dp);
+		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, n, 0,
+				     NULL, 0, &dp);
 		free(src);
 		if (pr != 0) {
 			free(v);
@@ -5758,8 +6143,13 @@ static int stop_deployed(Apply *ap)
  * slot whose directory was never filled, or holds a kernel older than its
  * /lib/modules, boots with no modular driver. A deploy that fails leaves the
  * slot untried.
+ *
+ * `try` 0 FINISHES A SLOT WITHOUT A TRIAL (slot_refill): everything up to the
+ * deploy is done the same, and the deploy clears the slot's `unfilled` mark
+ * and gives it its boot-menu entry back, but a slot that holds the version
+ * running is no candidate, so `kdos-bootctl try` is not run.
  */
-static int arm_slot(Apply *ap, const char *how, int check_acquired)
+static int arm_slot(Apply *ap, const char *how, int check_acquired, int try)
 {
 	char code[32], detail[256], want[160], why[256];
 
@@ -5798,7 +6188,7 @@ static int arm_slot(Apply *ap, const char *how, int check_acquired)
 			return fail(ap, "build-failed", cwhy);
 	}
 	if (ap->from_image
-		? release_fields(ap->root, ap->version, ap->itree, ap->itime,
+		? release_fields(ap->root, ap->version, ap->itree, NULL, ap->itime,
 				 how) != 0
 		: release_write(ap->root, ap->tree, how) != 0) {
 		snprintf(why, sizeof(why), "slot %s's /etc/kdos-release could "
@@ -5822,6 +6212,18 @@ static int arm_slot(Apply *ap, const char *how, int check_acquired)
 	}
 	if (g_stop)
 		return stop_deployed(ap);
+	if (!try) {
+		char rec[128];
+		release_key(ap->root, "VERSION", rec, sizeof(rec));
+		printf("slot %s is complete again and holds %s, the version "
+		       "running; nothing is tried\n", ap->L.slot,
+		       rec[0] ? rec : ap->version);
+		snprintf(why, sizeof(why), "slot %s written again", ap->L.slot);
+		state_set("apply", "ok", why);
+		apply_end(ap);
+		doc_refresh();
+		return AP_OK;
+	}
 	KbArgv t = {0};
 	kb_argv_add(&t, "kdos-bootctl");
 	kb_argv_add(&t, "try");
@@ -5969,7 +6371,7 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 			}
 		}
 		return arm_slot(&ap, ap.from_image ? "image"
-				: ap.source ? "source" : "binhost", 1);
+				: ap.source ? "source" : "binhost", 1, 1);
 	}
 
 	/* THE LANE: an image newer than this system when one is cached and
@@ -6027,7 +6429,7 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 		 * or this image. */
 		if (ap.from_image) {
 			state_set("apply", "ok", "written from the slot image");
-			release_fields(ap.root, ap.version, ap.itree, ap.itime,
+			release_fields(ap.root, ap.version, ap.itree, NULL, ap.itime,
 				       "image");
 		} else {
 			if (!ap.source)
@@ -6044,7 +6446,7 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 		return rc;
 	if (g_stop)
 		return cancelled(&ap, STOP_UNARMED);
-	if (ap.acquire) {
+	if (ap.acquire && !ap.refill) {
 		char got[160];
 		snprintf(got, sizeof(got), "slot %s %s", ap.L.slot, ap.version);
 		state_set("apply", "acquired", got);
@@ -6056,8 +6458,10 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 		doc_refresh();
 		return AP_OK;
 	}
+	/* A refill is finished whichever half was asked for: it tries
+	 * nothing, so there is no arm left for a later --arm to do. */
 	return arm_slot(&ap, ap.from_image ? "image"
-			    : ap.source ? "source" : "binhost", 0);
+			    : ap.source ? "source" : "binhost", 0, !ap.refill);
 }
 
 /* ── notes ─────────────────────────────────────────────────────────────── */
@@ -6330,12 +6734,9 @@ static int stale_dep(const KpConf *c, const char *name, const Behind *v,
  * three kp_facet_wanted adds to every build, are restored as `--dev` restores
  * them. The image carries gcc under FACETS=run, which leaves out the gcc and
  * cc drivers with the dev facet, and musl's and the kernel's headers; without
- * the restore the group installs and `cc` is not found.
- * The list is a copy of IMPLICIT in libkpkg's kp_facet.c; the two change
- * together, or the group restores a different set from the one a build
- * restores.
+ * the restore the group installs and `cc` is not found. The three are
+ * libkpkg's kp_facet_implicit, so the group restores the set a build does.
  */
-static const char *const TOOLCHAIN_DEV[] = { "musl", "linux", "gcc", NULL };
 #define GROUPS_MAX 64
 typedef struct {
 	char id[64];
@@ -6416,12 +6817,16 @@ static const Group *group_find(const Group *g, int n, const char *id)
 }
 
 /* The members of the `build-tools` group, or, in a tree that names no such
- * group, the ports no build starts without. kb_strv_free it. */
+ * group, the ports no build starts without. fortify-headers is one of them:
+ * chroot.env's flags name -isystem /usr/include/fortify, and without that
+ * directory musl ignores _FORTIFY_SOURCE and the build is less hardened than
+ * the binhost's under the same build-config hash. kb_strv_free it. */
 static char **build_tools(const KpConf *c)
 {
 	static const char *const fallback[] = { "gcc", "binutils", "make",
 						"cmake", "meson", "ninja",
-						"pkgconf", NULL };
+						"pkgconf", "fortify-headers",
+						NULL };
 	Group *g = NULL;
 	int ng = groups_load(c, &g);
 	const Group *gr = group_find(g, ng, "build-tools");
@@ -6520,8 +6925,8 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 					: -1;
 			if (s < 0)
 				covered = 0;
-			else if (!bh_present(&ix.st[s]))
-				size += ix.st[s].size;
+			else
+				size += bh_to_fetch(&ix.st[s]);
 		}
 		if (json) {
 			kb_buf_str(&b, i ? ",{\"id\":" : "{\"id\":");
@@ -6572,6 +6977,13 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 }
 
 static int cmd_install(const KpConf *c, int argc, char **argv);
+/* Set by install_index() when its fetch of the release index failed. */
+static int index_fetch_refused;
+/* Set by install_index() when its fetch left no index in the cache:
+ * INDEX_UNNAMED when no binhost is named for the tree, INDEX_UNPUBLISHED
+ * when one is named and publishes none. */
+enum { INDEX_UNNAMED = 1, INDEX_UNPUBLISHED = 2 };
+static int index_absent;
 
 /* Set while a group's members are installed: a member already installed is
  * not added to the world set (see A GROUP IS A NAMED SET OF PORTS). */
@@ -6585,7 +6997,14 @@ static int installing_toolchain;
  * recorded in /var/lib/kdos/groups-pending because the binhost could not be
  * reached, installed by the route the flags or update.conf name. Each one
  * that installs leaves the file at once, and the file goes with the last,
- * so a run stopped half way picks up where it stopped.
+ * so a run stopped half way picks up where it stopped. When dependencies
+ * come prebuilt (the prebuilt route, or the source route with build-deps
+ * prebuilt), a refusal after a failed index fetch (index_fetch_refused)
+ * or after a fetch that found no index to take (index_absent) stops the
+ * run: every later entry would be refused for the same reason, so they are
+ * named once as staying pending, until the network is up, a binhost is
+ * named or the named one publishes an index, and the run exits 1 with the
+ * file untouched.
  */
 #define GROUPS_PENDING "/var/lib/kdos/groups-pending"
 static int install_pending(const KpConf *c, int dry, int mode, int deps)
@@ -6629,6 +7048,28 @@ static int install_pending(const KpConf *c, int dry, int mode, int deps)
 		int r = cmd_install(c, an, av);
 		if (r > worst)
 			worst = r;
+		if (r && (index_fetch_refused || index_absent) &&
+		    ((mode >= 0 ? mode : conf_route("install")) != ROUTE_SOURCE ||
+		     (deps >= 0 ? deps : conf_route("build-deps")) ==
+			     ROUTE_PREBUILT)) {
+			KbBuf b = {0};
+			kb_buf_str(&b, "");
+			for (int k = i; k < n; k++)
+				if (want[k][0])
+					kb_buf_printf(&b, "%s%s",
+						      b.n ? " " : "", want[k]);
+			fprintf(stderr, "kdos update: %s stay%s pending; run "
+					"`kdos update install --pending` again "
+					"once %s\n", b.p,
+				n - i == 1 ? "s" : "",
+				index_fetch_refused ? "the network is up"
+				: index_absent == INDEX_UNNAMED
+					? "a binhost is named"
+					: "the binhost publishes an index");
+			kb_buf_free(&b);
+			worst = 1;
+			break;
+		}
 		if (r || dry)
 			continue;
 		/* Rewritten whole without what is installed: every entry that
@@ -6855,13 +7296,13 @@ static int cache_room(long long need, char *why, size_t cap)
 	return -1;
 }
 
-/* The words of <tree>/buildonly, NULL-terminated (kb_strv_free); an empty
- * list when the tree carries none. '#' starts a comment. */
-static char **buildonly_load(const KpConf *c)
+/* The words of <tree>/<file>, NULL-terminated (kb_strv_free); an empty list
+ * when the tree carries none. '#' starts a comment. */
+static char **words_load(const KpConf *c, const char *file)
 {
 	char root[512], p[600];
 	ports_root(c, root, sizeof(root));
-	snprintf(p, sizeof(p), "%s/buildonly", root);
+	snprintf(p, sizeof(p), "%s/%s", root, file);
 	char *data = kb_read_all(p, NULL);
 	int n = 0, cap = 16;
 	char **v = kb_calloc((size_t)cap + 1, sizeof(*v));
@@ -6886,6 +7327,19 @@ static char **buildonly_load(const KpConf *c)
 	return v;
 }
 
+/* The ports a build needs and a running system does not (<tree>/buildonly). */
+static char **buildonly_load(const KpConf *c)
+{
+	return words_load(c, "buildonly");
+}
+
+/* The ports of <tree>/buildonly whose headers, pkg-config files or protocol
+ * files other packages' development files include (<tree>/buildheaders). */
+static char **buildheaders_load(const KpConf *c)
+{
+	return words_load(c, "buildheaders");
+}
+
 /* 1 when the whole-package stanza of `name` names `dep` on its `N:` line, or
  * carries no `N:` line at all: an unmeasured package keeps every edge. */
 static int bh_runtime_edge(const BhIndex *ix, const char *name, const char *dep)
@@ -6906,17 +7360,44 @@ static int bh_runtime_edge(const BhIndex *ix, const char *name, const char *dep)
 	return 1;
 }
 
+/* Which packages of a walk follow every edge, build-only or not. */
+typedef struct {
+	int by_origin;		/* a package of origin `source` */
+	const char *root;	/* a build here: this root, and every package
+				 * the run builds (build_route) */
+	int deps;		/* the build's --build-deps route */
+} WalkRule;
+
+/* 1 when `name` follows every edge under `r`. */
+static int walk_all(const KpConf *c, const BhIndex *ix, const WalkRule *r,
+		    const char *name)
+{
+	if (r->by_origin && origin_of(name) == ROUTE_SOURCE)
+		return 1;
+	if (!r->root)
+		return 0;
+	if (!strcmp(name, r->root))
+		return 1;
+	if (kp_installed(c, name))
+		return 0;
+	char w[96];
+	return r->deps == ROUTE_SOURCE || bh_match(c, ix, name, w, sizeof(w)) < 0;
+}
+
 /* `name` and what it reaches over `depends =`, into seen[0..*n), entering a
- * port of `skip` only where bh_runtime_edge says the package needs it. With
- * `by_origin`, a package this machine builds from its recipe (origin
- * `source`), root or not, follows every one of its edges, since its build
- * compiles against each dependency; what those reach is installed, not
- * built, and is cut like any other package unless its own origin is
- * `source`. A name is marked before its dependencies are walked, so a cycle
- * ends at the back edge. */
+ * port of `skip` only where bh_runtime_edge says the package needs it, or
+ * where walk_all says the package follows every edge. With `by_origin`, a
+ * package this machine builds from its recipe (origin `source`), root or
+ * not, follows every one of its edges, since its build compiles against each
+ * dependency; what those reach is installed, not built, and is cut like any
+ * other package unless its own origin is `source`. With `root`, the root of
+ * a build here and every package that run builds (not installed, and
+ * --build-deps=source or no binhost stanza) follow every edge, and a package
+ * that comes prebuilt is cut. A name is marked before its dependencies are
+ * walked, so a cycle ends at the back edge. */
 static void runtime_walk(const KpConf *c, const BhIndex *ix, const char *name,
-			 char *const *skip, int by_origin, char (*seen)[128],
-			 int *n, int cap)
+			 char *const *skip, const WalkRule *r,
+			 char (*seen)[128], int *n, int cap)
 {
 	for (int i = 0; i < *n; i++)
 		if (!strcmp(seen[i], name))
@@ -6930,25 +7411,61 @@ static void runtime_walk(const KpConf *c, const BhIndex *ix, const char *name,
 	char (*dep)[128] = kb_calloc(KP_MAX_DEPS, sizeof(*dep));
 	int nd = kp_depends(pd, dep, KP_MAX_DEPS);
 	free(pd);
-	int all = by_origin && origin_of(name) == ROUTE_SOURCE;
+	int all = walk_all(c, ix, r, name);
 	for (int i = 0; i < nd; i++)
 		if (all || !strv_has(skip, dep[i]) ||
 		    bh_runtime_edge(ix, name, dep[i]))
-			runtime_walk(c, ix, dep[i], skip, by_origin, seen, n,
-				     cap);
+			runtime_walk(c, ix, dep[i], skip, r, seen, n, cap);
 	free(dep);
 }
 
+/* What `roots[0..nroots)` reach over the edges `r` follows, into
+ * seen[0..*n): runtime_walk from each root into one set. */
+static void walk_set(const KpConf *c, const BhIndex *ix, char *const *roots,
+		     int nroots, const WalkRule *r, char (*seen)[128], int *n,
+		     int cap)
+{
+	char **skip = buildonly_load(c);
+	for (int i = 0; i < nroots; i++)
+		runtime_walk(c, ix, roots[i], skip, r, seen, n, cap);
+	kb_strv_free(skip);
+}
+
 /* What `roots[0..nroots)` reach over the edges a prebuilt install follows,
- * into seen[0..*n): runtime_walk from each root into one set. */
+ * into seen[0..*n). */
 static void runtime_set(const KpConf *c, const BhIndex *ix,
 			char *const *roots, int nroots, int by_origin,
 			char (*seen)[128], int *n, int cap)
 {
+	WalkRule r = { .by_origin = by_origin };
+	walk_set(c, ix, roots, nroots, &r, seen, n, cap);
+}
+
+/* `ord` cut to what `roots` reach under `r`; a tree without ports/buildonly
+ * cuts nothing. */
+static void order_walk_set(const KpConf *c, const BhIndex *ix,
+			   char *const *roots, int nroots, const WalkRule *r,
+			   KpOrder *ord)
+{
 	char **skip = buildonly_load(c);
-	for (int r = 0; r < nroots; r++)
-		runtime_walk(c, ix, roots[r], skip, by_origin, seen, n, cap);
+	int none = !skip[0];
 	kb_strv_free(skip);
+	if (none)
+		return;
+	char (*seen)[128] = kb_calloc(KP_MAX_ORDER, sizeof(*seen));
+	int ns = 0;
+	walk_set(c, ix, roots, nroots, r, seen, &ns, KP_MAX_ORDER);
+	int w = 0;
+	for (int i = 0; i < ord->n; i++) {
+		int keep = 0;
+		for (int k = 0; k < ns && !keep; k++)
+			keep = !strcmp(seen[k], ord->order[i]);
+		if (keep && w != i)
+			memcpy(ord->order[w], ord->order[i], sizeof(ord->order[0]));
+		w += keep;
+	}
+	ord->n = w;
+	free(seen);
 }
 
 /*
@@ -6970,25 +7487,8 @@ static void order_runtime_set(const KpConf *c, const BhIndex *ix,
 			      char *const *roots, int nroots, int by_origin,
 			      KpOrder *ord)
 {
-	char **skip = buildonly_load(c);
-	int none = !skip[0];
-	kb_strv_free(skip);
-	if (none)
-		return;
-	char (*seen)[128] = kb_calloc(KP_MAX_ORDER, sizeof(*seen));
-	int ns = 0;
-	runtime_set(c, ix, roots, nroots, by_origin, seen, &ns, KP_MAX_ORDER);
-	int w = 0;
-	for (int i = 0; i < ord->n; i++) {
-		int keep = 0;
-		for (int k = 0; k < ns && !keep; k++)
-			keep = !strcmp(seen[k], ord->order[i]);
-		if (keep && w != i)
-			memcpy(ord->order[w], ord->order[i], sizeof(ord->order[0]));
-		w += keep;
-	}
-	ord->n = w;
-	free(seen);
+	WalkRule r = { .by_origin = by_origin };
+	order_walk_set(c, ix, roots, nroots, &r, ord);
 }
 
 /* order_runtime_set for one root, which `kdos update install` routes itself. */
@@ -6997,6 +7497,25 @@ static void order_runtime(const KpConf *c, const BhIndex *ix, const char *name,
 {
 	char *one[1] = { (char *)name };
 	order_runtime_set(c, ix, one, 1, 0, ord);
+}
+
+/*
+ * A BUILD HERE TAKES WHAT IT COMPILES AGAINST, NOT WHAT ITS PREBUILT
+ * DEPENDENCIES WERE BUILT WITH: `ord`, the closure of a --source install of
+ * `name`, cut to what the root reaches when the root and every package the
+ * run builds follow every edge (each is compiled against all of them) and a
+ * package that comes prebuilt follows an edge into a ports/buildonly port
+ * only where its `N:` line names it, as a prebuilt install does.
+ * extra-cmake-modules comes prebuilt without the Sphinx and the Python build
+ * backends it was built with. What a prebuilt package's headers include from
+ * a build-only port, dev_prepare adds (ports/buildheaders).
+ */
+static void order_build_set(const KpConf *c, const BhIndex *ix,
+			    const char *name, int deps, KpOrder *ord)
+{
+	char *one[1] = { (char *)name };
+	WalkRule r = { .root = name, .deps = deps };
+	order_walk_set(c, ix, one, 1, &r, ord);
 }
 
 /*
@@ -7013,15 +7532,18 @@ static void order_runtime(const KpConf *c, const BhIndex *ix, const char *name,
  * was pressed. --source builds the port here from its recipe, and each
  * package it lacks comes from the binhost (--build-deps=prebuilt, a package
  * the index does not cover built instead) or is built too
- * (--build-deps=source). With neither flag, `install =` and `build-deps =` in
+ * (--build-deps=source); a package that comes prebuilt brings what it runs
+ * with, not what it was built with (order_build_set). With neither flag, `install =` and `build-deps =` in
  * update.conf decide, and both default to prebuilt. An install never rebuilds
  * a package that is installed: the base stays what the release built and
  * tested. A port already installed by the other route is installed again by
  * the one asked for, alone.
  *
  * A RUN THAT BUILDS READIES THE MACHINE FIRST (dev_prepare): each missing
- * member of the build tools, and the development facet of everything the builds
- * compile against, both prebuilt and printed before the order; a tool the
+ * member of the build tools, the build-only header ports the development
+ * files the builds compile against include (ports/buildheaders), and the
+ * development facet of everything the builds compile against, all prebuilt
+ * and printed before the order; a tool the
  * order also names comes from the plan. Everything such a run installs goes
  * in under KPKG_FACETS=all. --dev (install_dev) is the restore alone, and
  * --dev --deps the restore of a port and the closure a build against it
@@ -7046,7 +7568,12 @@ static void order_runtime(const KpConf *c, const BhIndex *ix, const char *name,
  * (<route>)` line per package; Discover reads the first line as the step
  * having passed the password, and the first `==> installing` as the
  * downloads having finished. A cut download keeps what arrived, and the
- * same command run again continues it. --dry-run
+ * same command run again continues it. KDOS_UPDATE_FRONT=discover, which
+ * Discover's ports helpers set, words that last step as pressing Install
+ * again; KDOS_UPDATE_LOG, which kdos-ports-builder sets to the file it
+ * keeps this command's output in, makes a failed build's line on stderr
+ * end `the build's log is in <file>` where it would say the log is above.
+ * --dry-run
  * decides everything above and touches nothing, so it needs no root, and
  * prints one line per package, `<pkg> prebuilt <file> <bytes>`, `<pkg>
  * source <version>-<release>`, or for a restore `<pkg> dev <file> <bytes>`
@@ -7062,9 +7589,18 @@ static void order_runtime(const KpConf *c, const BhIndex *ix, const char *name,
  * update fetch --binhost-only` does first. A cached index that fails its
  * signature is not replaced here, and a dry run changes nothing, so both
  * still stop. 1 with `ix` loaded, 0 with the reason in `why` and `refused`
- * set when the fetch was tried and failed, having said why. Called with the
- * update lock held, or on a dry run.
+ * set when the fetch was tried and failed, having said why. A fetch is
+ * tried once per process: after a failed one every later call refuses at
+ * once with the same reason and index_fetch_refused set, so a run over
+ * several groups pays one network timeout, not one per group; after one
+ * that left no index in the cache (no binhost named, or none published)
+ * every later call returns 0 at once with the same reason, `refused` unset
+ * and index_absent set, so install_pending() stops at the first group. A
+ * fetch that took an index bh_load cannot read sets neither, and the next
+ * call finds the file and reports it again. Called
+ * with the update lock held, or on a dry run.
  */
+static char index_refused_why[512];
 static int install_index(const KpConf *c, int dry, BhIndex *ix, char *why,
 			 size_t wcap, int *refused)
 {
@@ -7075,10 +7611,34 @@ static int install_index(const KpConf *c, int dry, BhIndex *ix, char *why,
 		char ip[1024];
 		snprintf(ip, sizeof(ip), "%s/" BINHOST_INDEX, cache_dir());
 		if (access(ip, F_OK) != 0) {
-			if (binhost_fetch(c, 0) == 0)
-				have = bh_load(ix, why, wcap) == 0;
-			else
+			if (index_fetch_refused) {
+				snprintf(why, wcap, "%s", index_refused_why);
 				*refused = 1;
+			} else if (index_absent) {
+				snprintf(why, wcap, "%s", index_refused_why);
+			} else if (binhost_fetch(c, 0) == 0) {
+				have = bh_load(ix, why, wcap) == 0;
+				if (!have && access(ip, F_OK) != 0) {
+					char root[512], ver[64], base[1024];
+					int named = 0;
+					ports_root(c, root, sizeof(root));
+					tree_version(root, ver, sizeof(ver),
+						     &named);
+					index_absent =
+						binhost_base(ver, named, base,
+							     sizeof(base))
+							? INDEX_UNNAMED
+							: INDEX_UNPUBLISHED;
+					snprintf(index_refused_why,
+						 sizeof(index_refused_why),
+						 "%s", why);
+				}
+			} else {
+				*refused = 1;
+				index_fetch_refused = 1;
+				snprintf(index_refused_why,
+					 sizeof(index_refused_why), "%s", why);
+			}
 		}
 	}
 	return have;
@@ -7265,11 +7825,15 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		installing_group = 0;
 		installing_toolchain = 0;
 		if (toolchain) {
-			char **dv = kb_calloc((size_t)gr->n + 4, sizeof(*dv));
+			int ni = 0;
+			while (kp_facet_implicit[ni])
+				ni++;
+			char **dv = kb_calloc((size_t)(gr->n + ni) + 1,
+					      sizeof(*dv));
 			int nd = 0;
-			for (int k = 0; k < gr->n + 3; k++) {
+			for (int k = 0; k < gr->n + ni; k++) {
 				const char *p = k < gr->n ? gr->ports[k]
-					: TOOLCHAIN_DEV[k - gr->n];
+					: kp_facet_implicit[k - gr->n];
 				int dup = 0;
 				for (int q = 0; q < nd && !dup; q++)
 					dup = !strcmp(dv[q], p);
@@ -7344,6 +7908,8 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	kp_resolve(c, one, 1, ord);
 	if (mode == ROUTE_PREBUILT && have_ix)
 		order_runtime(c, &ix, name, ord);
+	else if (mode == ROUTE_SOURCE && have_ix)
+		order_build_set(c, &ix, name, deps, ord);
 	/* kp_resolve passes over a root that is installed and current; one
 	 * installed by the other route goes in again, alone. */
 	if (kp_installed(c, name) && origin_of(name) != mode &&
@@ -7389,8 +7955,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			nsrc++;
 		} else {
 			npre++;
-			if (!bh_present(&ix.st[st[i]]))
-				bytes += ix.st[st[i]].size;
+			bytes += bh_to_fetch(&ix.st[st[i]]);
 		}
 		need++;
 	}
@@ -7409,12 +7974,16 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	 * (dev_prepare). A tool the order also names comes from the plan. */
 	if (nsrc) {
 		char **src = kb_calloc((size_t)ord->n + 1, sizeof(*src));
-		int ns = 0;
+		char **pre = kb_calloc((size_t)ord->n + 1, sizeof(*pre));
+		int ns = 0, np = 0;
 		for (int i = 0; i < ord->n; i++)
 			if (route[i] == ROUTE_SOURCE)
 				src[ns++] = ord->order[i];
-		int pr = dev_prepare(c, &ix, have_ix, src, ns, 0, &dp);
+			else if (route[i] == ROUTE_PREBUILT)
+				pre[np++] = ord->order[i];
+		int pr = dev_prepare(c, &ix, have_ix, src, ns, 0, pre, np, &dp);
 		free(src);
+		free(pre);
 		if (pr != 0) {
 			fprintf(stderr, "kdos update: %s\n", dp.bad);
 			goto out;
@@ -7426,8 +7995,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 				nsrc--;
 			else {
 				npre--;
-				if (!bh_present(&ix.st[st[i]]))
-					bytes -= ix.st[st[i]].size;
+				bytes -= bh_to_fetch(&ix.st[st[i]]);
 			}
 			route[i] = -1;
 			need--;
@@ -7642,8 +8210,21 @@ out:
  *
  * kpkg's database records versions and files and no edges, so the edges are
  * each installed package's recipe in the tree in place, read with kp_depends
- * as the solver reads them; a package with no recipe here depends on nothing
- * this can see.
+ * as the solver reads them, cut as a prebuilt install cuts them: an edge into
+ * a port of <tree>/buildonly is kept only where rm_runtime_edge keeps it, the
+ * package's binhost stanza naming the port on its `N:` line or carrying no
+ * `N:` line at all. A stanza for another version or release than the one
+ * installed keeps every edge: it measures a build the machine does not run.
+ * A package built here (origin `source`) keeps every edge of its recipe: the
+ * next update builds it here again against the same build dependencies, so
+ * the ones it names stay while it is installed and go with its removal. A
+ * build-only port brought for a dependency installed prebuilt is cut by that
+ * dependency's `N:` line and is left by removals.
+ * Without the cut a package that only compiled against a
+ * build-only port (kactivitymanagerd against boost's headers) would hold
+ * that port, and all it brought, after the app that installed it is gone.
+ * With no verified index, or a tree without the list, every edge is kept. A
+ * package with no recipe here depends on nothing this can see.
  */
 typedef struct {
 	char **installed;	/* the database's entries */
@@ -7667,6 +8248,33 @@ static int rm_index(const RmGraph *g, const char *name)
 	return hit ? (int)(hit - g->installed) : -1;
 }
 
+/* 1 when the removal graph keeps the edge `name` -> build-only `dep`: `name`
+ * was built here (origin `source`), or the index's stanza for `name` names
+ * `dep` on its `N:` line or carries none, or the stanza is not for the version
+ * and release kpkg has installed. The `N:` line measures the binhost's build:
+ * a package built here is rebuilt here by the next update and needs `dep`
+ * for it, and a newer index measures a newer build that the installed one
+ * may still load `dep` from. */
+static int rm_runtime_edge(const KpConf *c, const BhIndex *ix,
+			   const char *name, const char *dep)
+{
+	char iv[64] = "", ir[32] = "";
+	if (origin_of(name) == ROUTE_SOURCE)
+		return 1;
+	if (kp_installed_version(c, name, iv, sizeof(iv), ir, sizeof(ir)))
+		return 1;
+	for (int i = 0; i < ix->n; i++) {
+		const BhStanza *st = &ix->st[i];
+		if (st->from[0] || strcmp(st->name, name))
+			continue;
+		if (strcmp(st->version, iv) ||
+		    strcmp(st->release, ir[0] ? ir : "1"))
+			return 1;
+		return bh_runtime_edge(ix, name, dep);
+	}
+	return 1;
+}
+
 static void rm_graph_load(const KpConf *c, RmGraph *g)
 {
 	memset(g, 0, sizeof(*g));
@@ -7684,6 +8292,13 @@ static void rm_graph_load(const KpConf *c, RmGraph *g)
 		      rm_cmp);
 	int cap = 0;
 	char (*deps)[128] = kb_calloc(KP_MAX_DEPS, sizeof(*deps));
+	char **skip = buildonly_load(c);
+	BhIndex ix;
+	char why[256];
+	if (skip[0])
+		bh_load_at(&ix, why, sizeof(why));
+	else
+		memset(&ix, 0, sizeof(ix));
 	for (int i = 0; i < g->ninst; i++) {
 		char *pd = kp_port_dir(c, g->installed[i]);
 		if (!pd)
@@ -7691,6 +8306,9 @@ static void rm_graph_load(const KpConf *c, RmGraph *g)
 		int nd = kp_depends(pd, deps, KP_MAX_DEPS);
 		free(pd);
 		for (int d = 0; d < nd; d++) {
+			if (strv_has(skip, deps[d]) &&
+			    !rm_runtime_edge(c, &ix, g->installed[i], deps[d]))
+				continue;
 			if (g->nneed >= cap) {
 				cap = cap ? cap * 2 : 256;
 				g->need = kb_realloc(g->need, (size_t)cap *
@@ -7701,6 +8319,8 @@ static void rm_graph_load(const KpConf *c, RmGraph *g)
 			g->nneed++;
 		}
 	}
+	bh_free(&ix);
+	kb_strv_free(skip);
 	free(deps);
 	g->edge = kb_calloc((size_t)g->nneed + 1, sizeof(*g->edge));
 	for (int e = 0; e < g->nneed; e++) {
@@ -7988,12 +8608,15 @@ static void cache_prune_removed(const RmGraph *g, char **gone)
 
 /*
  * `kdos update removable [--json]`: each installed world package no
- * installed package depends on, one a line, then, under a `left by
- * removals:` line, each package left by removals (rm_closure); with --json
- * one object, `{"removable":[...],"needed":{"<pkg>":"<an installed package
- * needing it>",...},"left":[...]}`, `needed` holding the installed world
- * packages that are not removable. Discover's Remove button for host
- * software reads it.
+ * installed package depends on, one a line; then, under a `kept, needed by
+ * an installed package:` line, each other installed world package as
+ * `<pkg> (needed by <by>)`; then, under a `left by removals:` line, each
+ * package left by removals (rm_closure). A heading is printed only when its
+ * section has lines. With --json one object,
+ * `{"removable":[...],"needed":{"<pkg>":"<an installed package needing
+ * it>",...},"left":[...]}`, `needed` holding the installed world packages
+ * that are not removable. Discover's Remove button for host software reads
+ * it.
  */
 static int cmd_removable(const KpConf *c, int argc, char **argv)
 {
@@ -8026,6 +8649,12 @@ static int cmd_removable(const KpConf *c, int argc, char **argv)
 			printf("%s\n", world[i]);
 			continue;
 		}
+		if (!json) {
+			kb_buf_printf(&nd, "%s (needed by %s)\n", world[i],
+				      by);
+			nnd++;
+			continue;
+		}
 		KbBuf *b = by ? &nd : &rm;
 		kb_buf_str(b, (by ? nnd++ : nrm++) ? "," : "");
 		kb_json_str(b, world[i]);
@@ -8034,6 +8663,8 @@ static int cmd_removable(const KpConf *c, int argc, char **argv)
 			kb_json_str(b, by);
 		}
 	}
+	if (!json && nnd)
+		printf("kept, needed by an installed package:\n%s", nd.p);
 	if (!json && nl)
 		printf("left by removals:\n");
 	for (int i = 0; i < nl; i++) {

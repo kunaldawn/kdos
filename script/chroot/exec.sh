@@ -151,12 +151,14 @@ if [ -d "$REPO_ROOT/testing" ]; then
         || log_mount "warning: testing bound read-write: no read-only remount"
     mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/kdos/ports"
 fi
-# The Makefile and the Dockerfile read-only: kdos-kfs renders Part I of KDOS
-# from Scratch from /kdos, and that part shows lines of both; 110_iso.sh
-# copies both onto a medium that carries the sources. Without the binds each
-# is the container's empty mount point, and the book prints "not in this
-# tree" where the listing goes. A file the container lacks is skipped.
-for _f in Makefile Dockerfile; do
+# The Makefile, the Dockerfile and LICENSE read-only: kdos-kfs renders Part I
+# of KDOS from Scratch from /kdos, and that part shows lines of the first two;
+# 110_iso.sh copies both onto a medium that carries the sources; 105_ports.sh
+# installs LICENSE as /usr/share/licenses/kdos/LICENSE and stops the image
+# without it. Without the binds each is the container's empty mount point, and
+# the book prints "not in this tree" where the listing goes. A file the
+# container lacks is skipped.
+for _f in Makefile Dockerfile LICENSE; do
     [ -f "$REPO_ROOT/$_f" ] && [ -e "$CHROOT_DIR/kdos/$_f" ] || continue
     mount --bind "$REPO_ROOT/$_f" "$CHROOT_DIR/kdos/$_f"
     mount -o remount,bind,ro "$CHROOT_DIR/kdos/$_f" \
@@ -233,7 +235,9 @@ _release=
 #                      KDOS_GIT_RELEASE into /ports/TREE and 010_binhost.sh
 #                      into the binhost index as `version`, the one name
 #                      `kdos update` matches the two by; empty, both name
-#                      the commit
+#                      the commit. 70_image/045_identity.sh stops the build
+#                      when KDOS_GIT_RELEASE without its v is not
+#                      /etc/os-release's VERSION_ID
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and 70_image calls kdos-appbox

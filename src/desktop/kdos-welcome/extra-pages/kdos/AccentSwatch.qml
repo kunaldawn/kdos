@@ -15,6 +15,14 @@
  * The frame is drawn in the RUNNING scheme's roles, so the one in force and
  * the one with focus are marked in the colours around the swatch, not in
  * the swatch's own. Square, as every KDOS plate is.
+ *
+ * A SWATCH IS A RADIO BUTTON. It is checkable and checked where its accent
+ * is current, so the accessibility layer reports the checked state itself;
+ * an Accessible.checked override is replaced by the button's own. A click
+ * toggles `checked`, which leaves a value the accent list did not set, so
+ * `checked` is bound to `current` again after every toggle and whenever
+ * `current` moves. The page that lays the swatches out gives the group its
+ * one Tab stop and its arrow keys (10-Look.qml).
  * ---------------------------------
  */
 
@@ -43,7 +51,15 @@ QQC2.AbstractButton {
     bottomPadding: Kirigami.Units.smallSpacing * 4
     enabled: known
     hoverEnabled: true
-    focusPolicy: Qt.StrongFocus
+    checkable: true
+    checked: current
+
+    function bindChecked(): void {
+        checked = Qt.binding(() => swatch.current);
+    }
+
+    onToggled: bindChecked()
+    onCurrentChanged: bindChecked()
 
     Accessible.role: Accessible.RadioButton
     Accessible.name: title
@@ -51,8 +67,6 @@ QQC2.AbstractButton {
         ? i18ndc("kdos-welcome", "@info accessible description of the accent in use", "In use")
         : (light ? i18ndc("kdos-welcome", "@info accessible description", "Light accent")
                  : i18ndc("kdos-welcome", "@info accessible description", "Dark accent"))
-    Accessible.checkable: true
-    Accessible.checked: current
 
     QQC2.ToolTip.visible: hovered
     QQC2.ToolTip.text: i18ndc("kdos-welcome", "@info:tooltip %1 is an accent name", "Use the %1 accent everywhere", title)

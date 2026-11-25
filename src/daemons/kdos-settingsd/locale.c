@@ -10,9 +10,14 @@
  * THE SYSTEM LOCALE AND THE TWO KEYBOARDS. The locale is /etc/locale.conf,
  * which SDDM hands to the greeter and to every session it starts. The
  * console keymap is /etc/keymap, which kdos-getty loads on every console,
- * with a copy on the ESP for the initramfs's passphrase prompt;
- * the graphical layout is /etc/kdos/xkb.conf, which reaches the login screen
- * through `kwin_wayland --locale1` and the session through startplasma.
+ * with a copy on the ESP for the initramfs's passphrase prompt.
+ * The graphical layout is two files. /etc/kdos/xkb.conf reaches the login
+ * screen through `kwin_wayland --locale1` and the session through
+ * startplasma's XKB_DEFAULT_* environment; /etc/xdg/kxkbrc is the same
+ * layout in the kxkbrc cascade, which KWin and the lock screen read before
+ * that environment. Every layout change rewrites both, so the layout an
+ * OEM machine's first-boot wizard picks replaces the one the installer
+ * wrote, and a stale system kxkbrc never outranks the stored layout.
  *
  * THE LOGIN SCREEN FOLLOWS A CHANGE AT ONCE. Its compositor listens for
  * PropertiesChanged on this object and reloads the layout when it hears one,
@@ -213,12 +218,19 @@ static int apply_vconsole(KsAuth *a, sd_bus_error *err)
 	if (a->b[0] && *km) {
 		ks_xkb_stored(&x);
 		if (ks_vt_to_xkb(km, x.layout, sizeof(x.layout), x.variant,
-				 sizeof(x.variant)) &&
-		    ks_set_xkb(&x) != 0) {
-			emit_keyboard();
-			return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
-						 "cannot write /etc/kdos/xkb.conf: %s",
-						 strerror(errno));
+				 sizeof(x.variant))) {
+			if (ks_set_xkb(&x) != 0) {
+				emit_keyboard();
+				return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
+							 "cannot write /etc/kdos/xkb.conf: %s",
+							 strerror(errno));
+			}
+			if (ks_set_kxkbrc(&x) != 0) {
+				emit_keyboard();
+				return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
+							 "cannot write /etc/xdg/kxkbrc: %s",
+							 strerror(errno));
+			}
 		}
 	}
 	emit_keyboard();
@@ -275,6 +287,12 @@ static int apply_x11(KsAuth *a, sd_bus_error *err)
 		return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
 					 "cannot write /etc/kdos/xkb.conf: %s",
 					 strerror(errno));
+	if (ks_set_kxkbrc(&x) != 0) {
+		emit_keyboard();
+		return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
+					 "cannot write /etc/xdg/kxkbrc: %s",
+					 strerror(errno));
+	}
 	if (a->b[0] && ks_xkb_to_vt(x.layout, x.variant, km, sizeof(km))) {
 		ks_keymap(cur, sizeof(cur));
 		if (strcmp(cur, km)) {

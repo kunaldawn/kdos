@@ -34,9 +34,12 @@ box" badge links to it.
 A namespace, a volume or a podman limit cannot change on a live container, so a change to
 network, home folder, what it writes, devices, graphics card, the init process or a limit, on a box
 that has a container, is written and takes effect only when the box is created again. The page
-remembers such changes in `$XDG_STATE_HOME/kcm_kdos_boxesstaterc` and shows a Recreate banner until
-the box has been made again; Recreate stops, removes and creates the box with kdos-box. Only a
-pack box writes outside its container; any other box keeps its writes inside it, so recreating or
+remembers the changes made on it in `$XDG_STATE_HOME/kcm_kdos_boxesstaterc`, reads those made with
+`kdos-box profile` from the report's `!` line naming the keys that differ, and shows a Recreate
+banner until the box has been made again. For a labelled container (`created = matches` or
+`differs` in the report) the report is authoritative, and a remembered key it does not name is
+forgotten, whichever write set it back; an `unrecorded` container keeps the page's memory.
+Recreate stops, removes and creates the box with kdos-box. Only a pack box writes outside its container; any other box keeps its writes inside it, so recreating or
 removing one deletes them, and the confirmation says so.
 
 The list is read from `kdos-box list --json` alone. The table `kdos-box list` prints is for a

@@ -8,14 +8,17 @@
  * ---------------------------------
  *   90-WhatsNew.qml — the release notes of the slot just started
  *
- * Never part of the tour (`show` is false); it is opened once whenever the
- * running version differs from the last one it was shown for — after an
- * update and after a rollback alike — as `plasma-welcome --pages
- * 90-WhatsNew.qml`, which shows a page whatever its `show` says. The notes
- * are `kdos update notes --json`: the version now running, the other slot's
- * when this boot came from it or went back from it, whether it went back,
- * whether this is the live medium, and the release notes as Markdown, all
- * read from the slot itself, so they are there with no network.
+ * Never part of the tour (`show` is false); it is opened as `plasma-welcome
+ * --pages 90-WhatsNew.qml`, which shows a page whatever its `show` says: by
+ * kdos-notice after a confirmed login on a version other than the one this
+ * account recorded (an update, or going back by hand from a version it used),
+ * never on an account's first login or on the live medium; and at any time
+ * Welcome Center is not running, by the Release Notes entry
+ * (io.kdos.releasenotes.desktop). The notes are `kdos update notes --json`:
+ * the version now running, the other slot's when this boot came from it or
+ * went back from it, whether it went back, whether this is the live medium,
+ * and the release notes as Markdown, all read from the slot itself, so they
+ * are there with no network.
  * ---------------------------------
  */
 

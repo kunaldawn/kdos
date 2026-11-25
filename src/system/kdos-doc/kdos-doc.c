@@ -11,11 +11,21 @@
  *   kdos-doc 04-programs/kdos-command        a chapter
  *   kdos-doc 04-programs/kdos-command#kdos-theme
  *
- * THE BOOK IS THE HTML mkbook.py INSTALLED under /usr/share/doc/kdos, read in
- * the Help Center, where it is KDOS's first entry; a machine without
- * KHelpCenter gets the desktop's browser through xdg-open, and a console with
- * neither gets the file's path, which `lynx` or `w3m` can open. A page is
- * named as the book's own links name it, with or without `.md` or `.html`.
+ * THE BOOK IS THE HTML mkbook.py INSTALLED under /usr/share/doc/kdos. The
+ * viewer follows the session:
+ *
+ *   WAYLAND_DISPLAY or DISPLAY set   the Help Center, where the book is
+ *                                    KDOS's first entry, else the
+ *                                    desktop's browser through xdg-open
+ *   stdin and stdout a terminal      lynx, else w3m, at the page and its
+ *                                    heading
+ *   anything else                    the file's path on stdout
+ *
+ * KHelpCenter is tried only with a display, since on a console it has none to
+ * open. The path is the answer whenever output is not a terminal, so a script
+ * or a pipe gets a path rather than a text browser waiting for keys. A page
+ * is named as the book's own links name it, with or without `.md` or
+ * `.html`.
  *
  * THE NAME IS CHECKED BEFORE IT IS USED: letters, digits and `._-/` for the
  * page, the same for the anchor, and no `..`, so the argument can only ever
@@ -32,7 +42,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifndef DOCROOT
 #define DOCROOT "/usr/share/doc/kdos"
+#endif
 
 static int usage(void)
 {
@@ -108,10 +120,17 @@ int main(int argc, char **argv)
 	}
 	snprintf(url, sizeof(url), "file://%s%s%s", file, *anchor ? "#" : "",
 		 anchor);
-	if (have("khelpcenter"))
-		execlp("khelpcenter", "khelpcenter", url, (char *)NULL);
-	if (getenv("WAYLAND_DISPLAY") && have("xdg-open"))
-		execlp("xdg-open", "xdg-open", url, (char *)NULL);
+	if (getenv("WAYLAND_DISPLAY") || getenv("DISPLAY")) {
+		if (have("khelpcenter"))
+			execlp("khelpcenter", "khelpcenter", url, (char *)NULL);
+		if (have("xdg-open"))
+			execlp("xdg-open", "xdg-open", url, (char *)NULL);
+	} else if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+		if (have("lynx"))
+			execlp("lynx", "lynx", url, (char *)NULL);
+		if (have("w3m"))
+			execlp("w3m", "w3m", url, (char *)NULL);
+	}
 	printf("%s\n", file);
 	return 0;
 }

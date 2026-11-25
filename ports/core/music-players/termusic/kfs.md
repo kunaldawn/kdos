@@ -4,7 +4,8 @@
 daemon, `termusic-server`, owns the audio device and the playback queue, and `termusic`, the
 interface, talks to it over gRPC. Shipping only the interface would give a player that starts and
 cannot play. It keeps its own library database and knows nothing about mpd, so the two stacks do not
-meet. The recipe writes a terminal desktop entry for it, named Music.
+meet. The recipe writes a terminal desktop entry for it, named Termusic, the project's name: a
+generic name would read the same as GNOME Music in a Discover search.
 
 ## Flags
 

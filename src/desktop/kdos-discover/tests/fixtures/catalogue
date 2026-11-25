@@ -1,6 +1,8 @@
 # A trimmed KDOS catalogue, in the shipped file's shapes.
 snapshot = auto
 meta app.early   Early|Office|1|dropped: above its own row
+deb app.maxima   https://api.github.com/repos/example/maxima/releases/latest amd64.deb
+about app.early  GPL-2.0-or-later|Early Ltd|https://early.example/|kept: an about row may stand above its row
 image   alpine    alpine:3.24.1
 base    alpine    -
 base    base      -        bash ca-certificates
@@ -23,3 +25,4 @@ group games       Games and emulators
 meta app.kcalc    KCalc|Utility;Office;|4200000|Scientific calculator # a hash in a tagline
 meta app.scribus  Scribus|Office|99000000|Page layout|with a pipe
 meta data.tess    Tesseract languages|Office|30000000|OCR models
+about app.maxima MIT|Maxima Team|https://maxima.example/|A computer algebra system|with a pipe

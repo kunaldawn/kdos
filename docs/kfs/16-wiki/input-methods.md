@@ -47,10 +47,12 @@ it takes the one locale1 serves, which follows the console keymap, and `us` when
 either. A profile that exists is never rewritten. From `fs/usr/local/lib/kdos/session-common.sh`,
 which `kdos-session-wrapper` and the Plasma environment script both call:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=154-211 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=154-211 pin=787320f78c94 -->
 
 The layout can matter beyond fcitx5: with *Allow Overriding System XKB Settings* on, fcitx5
-writes the group's layout into `~/.config/kxkbrc`, which outranks `/etc/xdg/kxkbrc`, so a profile
+writes the group's layout into `~/.config/kxkbrc`, which outranks `/etc/xdg/kxkbrc` (the
+installer's layout, rewritten by [kdos-settingsd](#port-kdos-settingsd) on every locale1 layout
+change), so a profile
 naming another layout would put it under the lock screen too. KDOS ships that option off (see
 `wayland.conf` below), and a person can turn it back on from the Input Method page; the
 generated profile keeps the layout written then the system's. The first item is the *inactive* state, plain typing in the
@@ -106,7 +108,7 @@ service:
 A boxed application reaches fcitx5 through KWin, never directly. `kdos-appbox` sets one variable
 for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=481-493 pin=afbe7df0b3c1 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=482-494 pin=afbe7df0b3c1 -->
 
 ## Usage
 

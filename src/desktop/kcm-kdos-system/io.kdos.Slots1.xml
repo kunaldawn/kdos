@@ -70,7 +70,7 @@
            onTrial        b  this boot is the trial: running == try
            blessUserspace b  /run/kdos/bless/userspace exists
            blessGraphical b  /run/kdos/bless/graphical exists
-           rolledBack     s  the slot whose last trial was abandoned, ""
+           rolledBack     s  the slot whose last trial ended unconfirmed, ""
                              once anything has been installed into it since
            phase          s  "idle", "acquiring", "installing", "acquired"
                              (an update is prepared in the other slot and
@@ -105,13 +105,18 @@
            running    b  this boot runs from it
            confirmed  b  it is ActiveSlot
            trial      b  it is TrySlot
-           failed     b  its last trial was abandoned (State.rolledBack)
+           failed     b  its last trial ended unconfirmed (State.rolledBack)
+           abandoned  b  its trial was set aside by picking the confirmed
+                         slot at the boot menu; not a failure
            incomplete b  an update began writing the slot and did not
                          finish (the boot state's unfilled)
            bootable   b  Try(id) would be accepted now
            reason     s  why it is not bootable, "" when it is
-           state      s  "trial", "incomplete", "failed", "confirmed",
-                         "installed" or "empty", first match in that order
+           state      s  "trial", "visiting", "incomplete", "failed",
+                         "abandoned", "confirmed", "installed" or "empty",
+                         first match in that order; "visiting" (running,
+                         neither confirmed nor on trial) and "abandoned"
+                         are kdos-bootctl's own state for the slot
          A slot whose root cannot be read (not mounted, unreadable) is
          present with an empty version, never left out. -->
     <method name="ListSlots">

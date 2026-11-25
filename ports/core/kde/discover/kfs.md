@@ -54,7 +54,7 @@ Snap, no PackageKit and no KNewStuff add-ons (see
 backend before it downloads anything; upstream fetches every application's ratings from
 odrs.gnome.org at each start whose cached copy is a day old, for the Home page's "Most Popular"
 list. `/usr/share/kdos/xdg/discoverrc` sets it false. The key defaults to true, so the patch changes
-nothing where it is unset, and it is proposed upstream in that form.
+nothing where it is unset, and it is to be proposed upstream in that form.
 
 `sysupdate-errors.patch` makes the system-update backend read the error replies of
 `org.freedesktop.sysupdate1`. Upstream reads `GetVersion` and `CheckNew` straight into a string,

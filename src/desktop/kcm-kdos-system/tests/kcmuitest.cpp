@@ -165,6 +165,24 @@ int countShown(QQuickItem *item, const QString &text)
     return n;
 }
 
+/* Every visible item under `item`, in the visual tree, that carries a
+ * `wideMode` property (the page's Kirigami.FormLayouts) or, with `name`,
+ * that object name. A Repeater's delegates are visual children only, out
+ * of reach of findChildren. */
+void visibleItems(QQuickItem *item, const QString &name, QList<QQuickItem *> *out)
+{
+    if (!item->isVisible()) {
+        return;
+    }
+    if (name.isEmpty() ? item->metaObject()->indexOfProperty("wideMode") >= 0 : item->objectName() == name) {
+        out->append(item);
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        visibleItems(child, name, out);
+    }
+}
+
 /* Whether a visible item under `item` has exactly `name` as its accessible
  * name, of any role. */
 bool namesExactly(QQuickItem *item, const QString &name)
@@ -273,7 +291,7 @@ private:
     QWindow *m_parent;
 };
 
-const QString RollbackHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart; if it does not start properly, the computer goes back by itself."_s;
+const QString RollbackHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart. It is kept when a session runs for a minute, or, on a computer that logs nobody in automatically, when the login screen does; a version that does not get that far is undone by itself."_s;
 const QString OneSlotHelp = u"Whatever the source, an update is installed only if it carries the KDOS release signature. On this computer it is installed from a terminal: “sudo kdos update fetch” downloads it and “sudo kdos update apply” installs it. It is written over the running system and takes effect after a restart, and there is no previous version to go back to if it does not start properly."_s;
 }
 
@@ -433,6 +451,26 @@ private Q_SLOTS:
         for (const QString &n : std::as_const(names)) {
             QVERIFY2(!n.startsWith(u"Start "_s), qPrintable(names.join(u", "_s)));
         }
+
+        /* At System Settings' default page width the reason wraps inside the
+         * value column: every form keeps its label:value layout and the
+         * sentence ends left of the scroll bar, a sixteen-pixel strip at
+         * the page's right edge. */
+        window.resize(760, 1400);
+        ui->setSize(window.size());
+        QTest::qWait(200);
+        QList<QQuickItem *> forms;
+        visibleItems(ui, QString(), &forms);
+        QVERIFY(forms.size() >= 3);
+        for (QQuickItem *f : std::as_const(forms)) {
+            QTRY_VERIFY2(f->property("wideMode").toBool(), qPrintable(u"a form is stacked at width %1"_s.arg(f->width())));
+        }
+        QList<QQuickItem *> reasons;
+        visibleItems(ui, u"slotReason"_s, &reasons);
+        QCOMPARE(reasons.size(), 1);
+        const QRectF box = reasons.first()->mapRectToItem(ui, QRectF(0, 0, reasons.first()->width(), reasons.first()->height()));
+        QVERIFY2(box.right() <= ui->width() - 16, qPrintable(u"reason ends at %1 of %2"_s.arg(box.right()).arg(ui->width())));
+        QVERIFY(reasons.first()->property("lineCount").toInt() >= 2);
         QFile::remove(m_dir.path() + u"/unfilled"_s);
     }
 

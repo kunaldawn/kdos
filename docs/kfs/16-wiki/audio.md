@@ -32,7 +32,7 @@ One service script concerns sound, `50_alsa`, which restores the cards' mixer le
 saves them at shutdown. It is part of the base filesystem; the installer offers it as a choice,
 on by default:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=09936ab49b18 -->
 
 There is no [JACK]{.idx} server and no PulseAudio daemon. JACK programs load PipeWire's `libjack.so.0`,
 and PulseAudio programs talk to `pipewire-pulse`; see

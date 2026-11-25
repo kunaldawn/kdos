@@ -25,9 +25,9 @@ libmnl
 rpcsvc-proto
 libtirpc
 
-# mDNS, and the only reason it is here: CUPS' driverless printer discovery is
-# compiled out without it. musl has no NSS module system, so `.local` name
-# resolution will never work — avahi's own API is what CUPS uses.
+# mDNS: CUPS' driverless printer discovery is compiled out without it, and
+# kdos-mdnsd (50_desktop) answers `.local` names in DNS from this daemon,
+# since musl has no NSS module system for nss-mdns.
 avahi
 
 libnl

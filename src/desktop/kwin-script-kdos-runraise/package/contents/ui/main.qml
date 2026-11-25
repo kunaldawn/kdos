@@ -24,7 +24,7 @@
  */
 
 import QtQuick
-import org.kde.kwin
+import org.kde.kwin as KWinComponents
 
 import "raise.js" as Raise
 
@@ -38,8 +38,8 @@ Item {
     property var held: ({})
 
     function raiseOrRun(program) {
-        const found = Raise.matching(Workspace.windows, program);
-        const target = Raise.pick(found, Workspace.activeWindow);
+        const found = Raise.matching(KWinComponents.Workspace.windows, program);
+        const target = Raise.pick(found, KWinComponents.Workspace.activeWindow);
         if (target) {
             bringForward(target);
             return;
@@ -60,10 +60,10 @@ Item {
             window.minimized = false;
         }
         if (!window.onAllDesktops && window.desktops.length > 0
-                && window.desktops.indexOf(Workspace.currentDesktop) < 0) {
-            Workspace.currentDesktop = window.desktops[0];
+                && window.desktops.indexOf(KWinComponents.Workspace.currentDesktop) < 0) {
+            KWinComponents.Workspace.currentDesktop = window.desktops[0];
         }
-        Workspace.activeWindow = window;
+        KWinComponents.Workspace.activeWindow = window;
     }
 
     function open(program) {
@@ -79,7 +79,7 @@ Item {
     }
 
     Connections {
-        target: Workspace
+        target: KWinComponents.Workspace
 
         function onWindowAdded(window) {
             for (const program in root.held) {
@@ -93,7 +93,7 @@ Item {
     Component {
         id: launcher
 
-        DBusCall {
+        KWinComponents.DBusCall {
             service: "org.kde.kglobalaccel"
             dbusInterface: "org.kde.kglobalaccel.Component"
             method: "invokeShortcut"
@@ -101,49 +101,49 @@ Item {
         }
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise mc"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open mc (files)")
         sequence: "Meta+Shift+M"
         onActivated: root.raiseOrRun("mc")
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise aerc"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open aerc (mail)")
         sequence: "Meta+Shift+E"
         onActivated: root.raiseOrRun("aerc")
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise lynx"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open lynx (web)")
         sequence: "Meta+Shift+B"
         onActivated: root.raiseOrRun("lynx")
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise rmpc"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open rmpc (music)")
         sequence: "Meta+Shift+U"
         onActivated: root.raiseOrRun("rmpc")
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise ikhal"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open ikhal (calendar)")
         sequence: "Meta+Shift+C"
         onActivated: root.raiseOrRun("ikhal")
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise iamb"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open iamb (chat)")
         sequence: "Meta+Shift+G"
         onActivated: root.raiseOrRun("iamb")
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Raise micro"
         text: i18nd("kdos-kwin-script-runraise", "Raise or Open micro (editor)")
         sequence: "Meta+Shift+W"

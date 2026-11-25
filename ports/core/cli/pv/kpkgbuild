@@ -10,7 +10,7 @@
 
 name        = pv
 version     = 1.12.0
-release     = 1
+release     = 2
 source      = https://codeberg.org/ivarch/pv/releases/download/v$version/$name-$version.tar.gz
 sha256      = 31fdbdb449c7143cd2968567bef7599e9f031950e6158ee7bb76e40aebf6ffb8  pv-1.12.0.tar.gz
 description = Pipe viewer — progress, throughput and ETA for any stream

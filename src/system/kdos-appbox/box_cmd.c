@@ -171,6 +171,47 @@ static void list_sizes(ListRow *rows, int nrows)
 }
 
 /*
+ * THE LOCAL STORE'S REPOSITORIES, read once for a whole listing: one podman
+ * call however many store boxes there are. `repos` is podman's text, one
+ * repository a line with a newline before the first, so a lookup is a
+ * search for "\n<repo>\n"; NULL when podman failed, and then nothing is said
+ * about any image.
+ */
+static char *store_repos(void)
+{
+	KbBuf out = {0};
+	KbArgv a = {0};
+
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "images");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Repository}}");
+	kb_argv_end(&a);
+	kb_buf_add(&out, "\n", 1);
+	if (kb_run_capture_buf(&a, &out) != 0) {
+		kb_buf_free(&out);
+		return NULL;
+	}
+	if (out.p[out.n - 1] != '\n')
+		kb_buf_add(&out, "\n", 1);
+	kb_buf_add(&out, "", 0);
+	return out.p;
+}
+
+/* A store image `kdos/<id>` is listed by podman as `localhost/kdos/<id>`,
+ * the registry an unqualified name it built resolves to. */
+static int store_repo_has(const char *repos, const char *ref)
+{
+	char want[MAX_LINE];
+
+	snprintf(want, sizeof(want), "\nlocalhost/%s\n", ref);
+	if (strstr(repos, want))
+		return 1;
+	snprintf(want, sizeof(want), "\n%s\n", ref);
+	return strstr(repos, want) != NULL;
+}
+
+/*
  * `kdos-box list [--json]`. The table is for a person; the JSON array is for
  * the Boxes page, one object per box with `name`, `base`, `state`,
  * `persistence`, `accent`, `disk` (bytes), `created` (seconds since the
@@ -179,7 +220,11 @@ static void list_sizes(ListRow *rows, int nrows)
  * list_sizes), `confinement` (what the box's
  * last launch recorded, "" when nothing is recorded) and `manager` (the
  * container's `manager` label: "distrobox" for one distrobox made, kdos-box's
- * own boxes included, "" for none).
+ * own boxes included, "" for none). A store box (base `image:kdos/<id>`)
+ * carries `image` as well: "present" when its image is in the local store,
+ * "absent" when its application's uninstall released it — such a box cannot
+ * be created until the application is installed again. The field is left out
+ * of every other row, and of every row when `podman images` fails.
  *
  * THE LABEL IS READ WITH `{{.Label "manager"}}`. `podman ps` formats a row
  * through its reporter type, whose `Labels` METHOD returns the labels as one
@@ -301,6 +346,9 @@ static int cmd_box_list(int json)
 		       "BASE", "STATE", "PERSIST", "DISK", "ACCENT");
 	else
 		kb_buf_str(&j, "[");
+	char *repos = NULL;
+	int repos_read = 0;
+
 	for (int i = 0; i < nrows; i++) {
 		Profile p;
 		char *bd = box_dir(rows[i].name);
@@ -338,8 +386,19 @@ static int cmd_box_list(int json)
 		kb_json_str(&j, conf);
 		kb_buf_str(&j, ",\"manager\":");
 		kb_json_str(&j, rows[i].manager);
+		if (box_lane(&p) == BOX_LANE_STORE) {
+			if (!repos_read) {
+				repos = store_repos();
+				repos_read = 1;
+			}
+			if (repos)
+				kb_buf_str(&j, store_repo_has(repos, p.base + 6)
+					       ? ",\"image\":\"present\""
+					       : ",\"image\":\"absent\"");
+		}
 		kb_buf_str(&j, "}");
 	}
+	free(repos);
 	if (json) {
 		kb_buf_str(&j, "]\n");
 		fputs(j.p, stdout);
@@ -404,11 +463,64 @@ static void profile_restore(const char *box, const char *was)
 }
 
 /*
+ * ONE key=value WORD OF A COMMAND LINE, set or refused. A refusal dies with
+ * one line ending `nothing was written`, so a caller that checks every word
+ * before it writes leaves the profile as it found it. A word profile_load()
+ * would merely report is an error here: the person who typed it is present to
+ * correct it, and a refused value read as its default could widen the box.
+ */
+/* The names in the ", "-separated list `of` that are not in `in`, into `out`
+ * in the same form; returns how many. */
+static int keys_not_in(const char *of, const char *in, char *out, size_t n)
+{
+	char want[256];
+	int count = 0;
+
+	out[0] = '\0';
+	kb_strlcpy(want, of, sizeof(want));
+	for (char *sv, *k = strtok_r(want, ", ", &sv); k;
+	     k = strtok_r(NULL, ", ", &sv)) {
+		char have[256];
+		int found = 0;
+
+		kb_strlcpy(have, in, sizeof(have));
+		for (char *sv2, *h = strtok_r(have, ", ", &sv2); h && !found;
+		     h = strtok_r(NULL, ", ", &sv2))
+			found = !strcmp(h, k);
+		if (found)
+			continue;
+		size_t l = strlen(out);
+		snprintf(out + l, n - l, "%s%s", count ? ", " : "", k);
+		count++;
+	}
+	return count;
+}
+
+static void profile_arg(Profile *p, const char *arg)
+{
+	char key[64];
+
+	if (!strchr(arg, '='))
+		kb_die("'%s' is not key=value — nothing was written", arg);
+	switch (profile_set(p, arg)) {
+	case 0:
+		return;
+	case -2:
+		snprintf(key, sizeof(key), "%.*s", (int)strcspn(arg, " \t="),
+			 arg);
+		kb_die("'%s': %s takes %s — nothing was written", arg, key,
+		       profile_value_rule(key));
+	default:
+		kb_die("unknown key in '%s' — nothing was written", arg);
+	}
+}
+
+/*
  * NOTHING IS WRITTEN UNTIL THE COMMAND LINE IS KNOWN GOOD. Every key=value is
  * read into the profile before its file is touched, and a word with no `=`,
  * an unknown key or a base that names nothing — none at all, `image:` with no
  * reference, `pack:` with no id, `box:` of a box with no pack or image base —
- * ends the create with one line and leaves the file as it was. A create that
+ * or a store base whose image is not in the local store ends the create with one line and leaves the file as it was. A create that
  * fails after that puts the profile back as it found it (profile_restore), so
  * neither a refusal nor a failure leaves a box behind for `list` and the
  * Boxes page to show as not created. One that succeeds writes the boxes'
@@ -438,14 +550,8 @@ static int cmd_box_create(int argc, char **argv)
 	}
 
 	profile_load(&p, box);
-	for (int i = 1; i < argc; i++) {
-		if (!strchr(argv[i], '='))
-			kb_die("'%s' is not key=value — nothing was written",
-			       argv[i]);
-		if (profile_set(&p, argv[i]) != 0)
-			kb_die("unknown key in '%s' — nothing was written",
-			       argv[i]);
-	}
+	for (int i = 1; i < argc; i++)
+		profile_arg(&p, argv[i]);
 
 	/*
 	 * `box:<src>` RESOLVES TO <src>'S OWN BASE, IN PLACE. Clone another
@@ -475,6 +581,48 @@ static int cmd_box_create(int argc, char **argv)
 	if (strpbrk(p.base, " \t"))
 		kb_die("%s: base=%s is not one word — nothing was written", box,
 		       p.base);
+	/*
+	 * A STORE IMAGE NEVER COMES FROM A REGISTRY. `kdos/<id>` is built on
+	 * this machine by `kdos app install`, so when it is not in the local
+	 * store a pull can only fail, after saying it reaches the network; the
+	 * one way to the box is the install, which builds the image and makes
+	 * the application's own box with the profile it finds. A box of any
+	 * other name is created afterwards, by this verb, from the image the
+	 * install built, so its refusal sends the create back round, not on to
+	 * a box the install never makes.
+	 */
+	if (box_lane(&p) == BOX_LANE_STORE) {
+		const char *w[3] = {"image", "exists", p.base + 6};
+		const char *id = p.base + 6 + sizeof(STORE_IMG_PREFIX) - 1;
+		char spec[MAX_LINE];
+		int rc = podman(w, 3);
+
+		/* A Debian package's box is `deb.<package>` with each `+` of
+		 * the package written `_`; it is installed as `deb:<package>`.
+		 * No Debian package name holds `_`, so the mapping reverses. */
+		if (!strncmp(id, "deb.", 4)) {
+			snprintf(spec, sizeof(spec), "deb:%s", id + 4);
+			for (char *c = spec; *c; c++)
+				if (*c == '_')
+					*c = '+';
+		} else {
+			kb_strlcpy(spec, id, sizeof(spec));
+		}
+		/* `image exists` answers 1 for an absent image; anything else
+		 * is podman failing, which says nothing about the install. */
+		if (rc == 1 && !strcmp(box, id))
+			kb_die("%s: its application is not installed — `kdos app "
+			       "install %s` builds its image and makes the box "
+			       "— nothing was written", box, spec);
+		if (rc == 1)
+			kb_die("%s: its image kdos/%s is not installed — `kdos "
+			       "app install %s` builds it, then this create can "
+			       "run — nothing was written", box, id, spec);
+		if (rc != 0)
+			kb_die("%s: podman could not look for %s in the local "
+			       "store (exit %d) — nothing was written", box,
+			       p.base + 6, rc);
+	}
 
 	pp = profile_path(box);
 	was = kb_read_whole(pp, NULL);
@@ -849,6 +997,8 @@ static int cmd_box_enter(int argc, char **argv)
 
 /* ── apps, export ──────────────────────────────────────────────────────── */
 
+static int box_known(const char *box);
+
 static int cmd_box_apps(const char *box)
 {
 	KbArgv a = {0};
@@ -856,6 +1006,10 @@ static int cmd_box_apps(const char *box)
 
 	if (!name_ok(box))
 		kb_die(BOX_NAME_RULE);
+	/* A name that is no box is answered as every other verb answers it,
+	 * before the start below tries to make one. */
+	if (!box_known(box))
+		kb_die("there is no box named %s", box);
 	if (pack_box_start(box) != 0)
 		kb_die("could not start %s", box);
 	kb_argv_add(&a, "podman");
@@ -1184,8 +1338,6 @@ static int box_has_command(const char *box, const char *app)
 		return 0;
 	return -1;
 }
-
-static int box_known(const char *box);
 
 static int cmd_box_export(const char *box, const char *app, int undo)
 {
@@ -2082,12 +2234,19 @@ int box_main(int argc, char **argv)
 {
 	const char *cmd;
 
+	/* A refusal is signed with the name that was typed: a user who ran
+	 * kdos-box has never heard of the binary it is a second name of. */
+	kb_set_progname("kdos-box");
 	if (argc < 1)
 		return box_usage(stderr, 2);
 	cmd = argv[0];
 
 #define BCMD(s) (!strcmp(cmd, s))
 	if (BCMD("--help") || BCMD("-h") || BCMD("help"))
+		return box_usage(stdout, 0);
+	/* `<verb> --help` asks for the usage, whatever the verb: no box name
+	 * starts with `-`, so the word takes nothing any verb reads. */
+	if (argc > 1 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h")))
 		return box_usage(stdout, 0);
 	if (BCMD("list") || BCMD("ls")) {
 		int json = 0;
@@ -2232,19 +2391,35 @@ int box_main(int argc, char **argv)
 		Profile p;
 		if (!name_ok(argv[1]))
 			kb_die(BOX_NAME_RULE);
-		profile_load(&p, argv[1]);
+		int had = profile_load(&p, argv[1]);
 		if (argc > 2) {
+			Profile orig = p;
 			char before[sizeof(p.accent)];
 			char d0[PROFILE_DIGEST_MAX], d1[PROFILE_DIGEST_MAX];
-			char keys[256];
+			char label[PROFILE_DIGEST_MAX + 32];
+			char keys[256], changed[256], back[256];
 			Profile old = p;
-			int only_accent, ncreate;
-			int kept = profile_is_kept(argv[1]) &&
-				   !box_exists(argv[1]);
+			int only_accent, ncreate, nchanged, nback = 0;
+			int exists = box_exists(argv[1]);
+			int kept = profile_is_kept(argv[1]) && !exists;
 
 			kb_strlcpy(before, p.accent, sizeof(before));
+			/* Every word is checked before the file is touched:
+			 * profile_arg() dies on the first bad one, so a typo
+			 * among good words writes none of them. */
 			for (int i = 2; i < argc; i++)
-				profile_set(&p, argv[i]);
+				profile_arg(&p, argv[i]);
+			/* A WRITE THAT CHANGES NOTHING IS NOT MADE, and says so:
+			 * any other line names a change to come. The file must
+			 * exist and hold no word the load refused or did not
+			 * know, since the rewrite drops those. */
+			if (had && !orig.nbad && !orig.nunknown &&
+			    !memcmp(&orig, &p, sizeof(p))) {
+				printf("%s: unchanged — it already holds those "
+				       "values.\n", argv[1]);
+				profile_print(&p);
+				return 0;
+			}
 			profile_save(&p);
 			/* An edit of a profile remove kept keeps it kept. A
 			 * box with a container needs no mark — its remove
@@ -2256,32 +2431,77 @@ int box_main(int argc, char **argv)
 			if (strcmp(before, p.accent))
 				box_rules_refresh();
 			/* Whether anything but the accent changed, field by
-			 * field, and which create-time keys did: a launch-time
-			 * key needs no new container. */
+			 * field. */
 			memcpy(old.accent, p.accent, sizeof(old.accent));
 			only_accent = strcmp(before, p.accent) &&
 				      !memcmp(&old, &p, sizeof(p));
+			/*
+			 * THE CREATE-TIME KEYS NAMED ARE THOSE THAT DIFFER FROM
+			 * WHAT THE CONTAINER WAS MADE WITH, its `v1.` label, as
+			 * profile_print and the settings page compare them: a
+			 * key this write set back to its created value is in
+			 * effect now and needs no new container, and a key an
+			 * earlier write changed still needs one. A container
+			 * with no `v1.` label (one distrobox made by itself)
+			 * records nothing to compare with, so it is the keys
+			 * this write changed that are named.
+			 */
 			profile_create_digest(&old, d0, sizeof(d0));
 			profile_create_digest(&p, d1, sizeof(d1));
-			ncreate = profile_digest_diff(d0, d1, keys, sizeof(keys));
+			nchanged = profile_digest_diff(d0, d1, changed,
+						       sizeof(changed));
+			label[0] = '\0';
+			if (exists)
+				box_profile_label(argv[1], label, sizeof(label));
+			if (!strncmp(label, "v1.", 3)) {
+				ncreate = profile_digest_diff(label, d1, keys,
+							      sizeof(keys));
+				nback = keys_not_in(changed, keys, back,
+						    sizeof(back));
+			} else {
+				ncreate = nchanged;
+				kb_strlcpy(keys, changed, sizeof(keys));
+			}
 			/* Only a box with a container is removed and made
 			 * again: removing one without a container deletes the
 			 * profile just written. */
 			if (only_accent)
 				printf("%s: written — the title-bar colour "
 				       "changes now.\n", argv[1]);
-			else if (!ncreate)
-				printf("%s: written — it applies at the box's "
-				       "next launch.\n", argv[1]);
-			else if (box_exists(argv[1]))
-				printf("%s: written — %s %s at CREATE time, so "
-				       "run `kdos-box remove %s` and create it "
-				       "again for %s to take effect.\n", argv[1],
-				       keys, ncreate == 1 ? "applies" : "apply",
-				       argv[1], ncreate == 1 ? "it" : "them");
-			else
+			else if (!exists && ncreate)
 				printf("%s: written — it applies when the box "
 				       "is created.\n", argv[1]);
+			else if (ncreate || nback) {
+				/* One line accounts for every key written:
+				 * those still differing from the container,
+				 * those set back to it, and the rest, read at
+				 * the next launch. */
+				const char *rest = profile_launch_differs(&old, &p)
+					? " The rest applies at the box's next"
+					  " launch." : "";
+
+				printf("%s: written —", argv[1]);
+				if (ncreate)
+					printf(" %s %s at CREATE time, so run "
+					       "`kdos-box remove %s` and create "
+					       "it again for %s to take effect.",
+					       keys, ncreate == 1 ? "applies"
+								  : "apply",
+					       argv[1], ncreate == 1 ? "it"
+								     : "them");
+				if (nback)
+					printf(" %s %s what the box was created "
+					       "with, so %s in effect now.",
+					       back, nback == 1 ? "is" : "are",
+					       nback == 1 ? "it is"
+							  : "they are");
+				printf("%s\n", rest);
+			} else
+				printf("%s: written — it applies at the box's "
+				       "next launch.\n", argv[1]);
+			/* The file now holds a known value for every key,
+			 * so a value the load refused is no longer in it. */
+			p.nbad = 0;
 		}
 		profile_print(&p);
 		return 0;

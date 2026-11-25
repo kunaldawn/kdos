@@ -158,7 +158,7 @@ fixed, checked set of words. The image's setuid inventory, all of it upstream's,
 | `kdos-bootctl` | Chooses and confirms which of the two root filesystem slots, A or B, boots, and writes the console palette for the accent | [Boot and init](../03-architecture/boot-and-init.md#kdos-bootctl) |
 | `kdos-splash` | The boot splash, drawn straight to the framebuffer | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
-| `kdos-doc` | Opens this book at a page, in the Help Center | [The kdos command](kdos-command.md#manual-pages-and-the-book) |
+| `kdos-doc` | Opens this book at a page, in the Help Center, the browser, or `lynx` on a console | [The kdos command](kdos-command.md#manual-pages-and-the-book) |
 | `kdos-shot` | Screenshots, through Spectacle | [The kdos command](kdos-command.md#kdos-shot) |
 | `kdos-theme` | The build-time generators of KDOS's identity: the KDE colour schemes, the Konsole schemes, the qt5ct palettes, the wallpapers and the login screen's palette, and the contrast check over them. The picker is `kdos theme` | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-mpctl` | Music player control, over mpd's protocol or MPRIS: what a media key runs | [The kdos command](kdos-command.md#kdos-mpctl) |

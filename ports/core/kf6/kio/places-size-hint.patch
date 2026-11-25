@@ -1,0 +1,53 @@
+Subject: KFilePlacesView: size hint fits the widest label at the delegate's icon size
+
+sizeHint() measured the text column with PM_SmallIconSize and three
+margins, while the delegate paints each row with its own icon size and
+reserves the icon area, the action area and two text margins. The hint
+also left out the group headers, the frame and a vertical scroll bar,
+so a dock sized from it, Dolphin's Places panel on a first launch,
+opened too narrow and elided its longest label.
+
+Measure the row as the delegate paints it: its icon size, the eject
+area when a visible row recommends one, horizontalAdvance() for the
+text and the section header indent, then the frame and the scroll
+bar's extent unless its policy hides it.
+
+To be offered upstream.
+
+--- a/src/filewidgets/kfileplacesview.cpp
++++ b/src/filewidgets/kfileplacesview.cpp
+@@ -1762,16 +1762,31 @@
+     const int height = QListView::sizeHint().height();
+     QFontMetrics fm = d->q->fontMetrics();
+     int textWidth = 0;
++    int headerWidth = 0;
++    bool hasActionIcon = false;
+ 
+     for (int i = 0; i < placesModel->rowCount(); ++i) {
+         QModelIndex index = placesModel->index(i, 0);
+         if (!placesModel->isHidden(index)) {
+-            textWidth = qMax(textWidth, fm.boundingRect(index.data(Qt::DisplayRole).toString()).width());
++            textWidth = qMax(textWidth, fm.horizontalAdvance(index.data(Qt::DisplayRole).toString()));
++            headerWidth = qMax(headerWidth, fm.horizontalAdvance(index.data(KFilePlacesModel::GroupRole).toString()));
++            hasActionIcon = hasActionIcon || placesModel->isTeardownOverlayRecommended(index);
+         }
+     }
+ 
+-    const int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize) + 3 * s_lateralMargin;
+-    return QSize(iconSize + textWidth + fm.height() / 2, height);
++    // The widths the delegate paints a row with: the icon area, the text and the action area,
++    // each with its margin; a hint narrower than this elides the widest label.
++    const int iconAreaWidth = s_lateralMargin + d->m_delegate->iconSize();
++    const int actionAreaWidth = hasActionIcon ? s_lateralMargin + d->m_delegate->actionIconSize() : s_lateralMargin;
++    const int rowWidth = iconAreaWidth + actionAreaWidth + 2 * s_lateralMargin + textWidth;
++    // drawSectionHeader() indents the group label by 6 px.
++    const int sectionWidth = 6 + headerWidth + s_lateralMargin;
++
++    int width = qMax(rowWidth, sectionWidth) + 2 * frameWidth();
++    if (verticalScrollBarPolicy() != Qt::ScrollBarAlwaysOff) {
++        width += style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, verticalScrollBar());
++    }
++    return QSize(width, height);
+ }
+ 
+ void KFilePlacesViewPrivate::addDisappearingItem(KFilePlacesViewDelegate *delegate, const QModelIndex &index)

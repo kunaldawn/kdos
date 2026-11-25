@@ -33,7 +33,7 @@
 # none. VERSION has one form, the one `kdos update` writes when it fills a
 # slot from a tree: a release build gives the release without its tag's `v`
 # (0.2.1), any other build os-release's VERSION_ID and `+BUILD_ID`
-# (0.2.1+4dc1f7f82-dirty), the name kdos-bootctl and kdos-sysupdated also
+# (0.2.1+4dc1f7f826a3-dirty), the name kdos-bootctl and kdos-sysupdated also
 # give a root without a record. Two forms would name the two slots of one
 # machine differently in System Versions and on the logout screen.
 #

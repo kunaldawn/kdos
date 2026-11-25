@@ -53,14 +53,29 @@
 # qmllint resolves an import only against a QML module that is installed, so
 # the applications whose modules KDOS's QML imports are here too:
 # plasma-welcome (the Welcome pages), plasma-desktop (the Breeze greeter the
-# KDOS SDDM theme is made from) and sddm (the greeter's components). The ports that generate KDOS's packages run here as well, so
-# libjpeg-turbo's cjpeg is here for the look-and-feel previews.
+# KDOS SDDM theme is made from) and sddm (the greeter's components). The ports
+# that generate KDOS's packages run here as well, so libjpeg-turbo's cjpeg is
+# here for the look-and-feel previews and Pillow for the SDDM theme's preview.
+#
+# PLASMA-WELCOME IS THE TREE'S, BUILT OVER ALPINE'S. The KDOS Welcome pages
+# call Utils.globalShortcutTexts, which a patch of the tree's plasma-welcome
+# adds, and qmllint reads Utils from the qmltypes that build installs: against
+# Alpine's unpatched one every page that calls it fails. The layer runs the
+# recipe's own build.sh, with its patches, from the build context `welcome`
+# (the recipe directory, which testing/devdeps-image.sh names), on the tarball
+# its recipe pins, and installs into /usr over Alpine's package, whose
+# run-time dependencies stay.
+#
+# The KDOS SDDM theme is Breeze's greeter, copied from plasma-desktop, and
+# its build installs plasma-desktop's LGPL text from where a KDOS package
+# keeps its licences, /usr/share/licenses/<port>/; Alpine keeps none, so the
+# image puts the LICENSES of the tree's plasma-desktop release there.
 #
 # DISCOVER IS THE TREE'S OWN RELEASE, BUILT HERE. libdiscover installs no
 # header, and every plugin interface carries discover's full version in its
 # IID, so kdos-discover configures only against the exact release the tree
 # ships and refuses any other. Alpine's discover is another point release and
-# has no headers, so the last layer builds the tree's: the version and sha256
+# has no headers, so a layer builds the tree's: the version and sha256
 # testing/devdeps-image.sh reads out of the discover recipe (the defaults below
 # are that recipe's at the time of writing), from the same tarball, with the
 # recipe's flags, installed into /usr, and libdiscover's headers copied to
@@ -141,6 +156,29 @@ RUN mkdir /tmp/discover && cd /tmp/discover \
              libdiscover/notifiers/discovernotifiers_export.h; do \
         install -Dm644 "build/$h" "/usr/include/discover/${h##*/}"; done \
  && cd / && rm -rf /tmp/discover
+
+ARG WELCOME_VERSION=6.8.2
+ARG WELCOME_SHA256=16ced545dca365a03e42867ae33634d8c9bb0fe0e3fa9ba12eb3600774873d9c
+COPY --from=welcome build.sh *.patch /tmp/welcome-port/
+RUN apk add --no-cache knewstuff-dev py3-pillow \
+ && mkdir /tmp/welcome && cd /tmp/welcome \
+ && curl -fsSLo welcome.tar.xz \
+        "https://download.kde.org/stable/plasma/$WELCOME_VERSION/plasma-welcome-$WELCOME_VERSION.tar.xz" \
+ && echo "$WELCOME_SHA256  welcome.tar.xz" | sha256sum -c - \
+ && tar -xf welcome.tar.xz --strip-components=1 \
+ && PORT_SRC=/tmp/welcome-port PKG=/ bash -e /tmp/welcome-port/build.sh \
+ && cd / && rm -rf /tmp/welcome /tmp/welcome-port
+
+ARG DESKTOP_VERSION=6.8.2
+ARG DESKTOP_SHA256=fff6177d217e60ab747cb34e35ef249afab41c72bbd5ea61d3471ef88864bd80
+RUN mkdir /tmp/desktop && cd /tmp/desktop \
+ && curl -fsSLo desktop.tar.xz \
+        "https://download.kde.org/stable/plasma/$DESKTOP_VERSION/plasma-desktop-$DESKTOP_VERSION.tar.xz" \
+ && echo "$DESKTOP_SHA256  desktop.tar.xz" | sha256sum -c - \
+ && tar -xf desktop.tar.xz --strip-components=1 "plasma-desktop-$DESKTOP_VERSION/LICENSES" \
+ && install -d /usr/share/licenses/plasma-desktop \
+ && cp -r LICENSES /usr/share/licenses/plasma-desktop/ \
+ && cd / && rm -rf /tmp/desktop
 
 WORKDIR /kdos
 CMD ["bash", "testing/selftest.sh"]

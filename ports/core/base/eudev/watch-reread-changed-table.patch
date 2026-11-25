@@ -1,0 +1,190 @@
+Subject: udevd: re-read a closed disk's partition table only when it changed
+
+--- a/src/udev/Makefile.am
++++ b/src/udev/Makefile.am
+@@ -22,8 +22,13 @@
+ udevd_SOURCES = \
+ 	udevd.c
+ 
++udevd_CFLAGS = \
++	$(AM_CFLAGS) \
++	$(BLKID_CFLAGS)
++
+ udevd_LDADD = \
+-	libudev-core.la
++	libudev-core.la \
++	$(BLKID_LIBS)
+ 
+ udevadm_SOURCES = \
+ 	udevadm.c \
+--- a/src/udev/udevd.c
++++ b/src/udev/udevd.c
+@@ -47,6 +47,10 @@
+ #include <sys/utsname.h>
+ #include <sys/sysmacros.h>
+ 
++#ifdef HAVE_BLKID
++#include <blkid/blkid.h>
++#endif
++
+ #include "udev.h"
+ #include "udev-util.h"
+ #include "def.h"
+@@ -784,6 +788,81 @@
+         return;
+ }
+ 
++#ifdef HAVE_BLKID
++/*
++ * Compare the partition table on the disk with the partitions the kernel
++ * holds, by number, start and size, all in 512-byte sectors. An extended
++ * partition is compared by start alone: the kernel gives it a size of one
++ * or two sectors. Any probe error counts as a difference. The probe opens
++ * the node read-only, so its close raises no new watch event.
++ */
++static bool disk_table_matches_kernel(const char *devnode, struct udev *udev, struct udev_enumerate *e) {
++        blkid_probe pr;
++        blkid_partlist pl;
++        struct udev_list_entry *item;
++        int nblkid = 0, nkernel = 0;
++        bool match = false;
++
++        pr = blkid_new_probe_from_filename(devnode);
++        if (!pr)
++                return false;
++
++        if (blkid_probe_enable_superblocks(pr, 0) < 0 ||
++            blkid_probe_enable_partitions(pr, 1) < 0)
++                goto out;
++
++        pl = blkid_probe_get_partitions(pr);
++        if (pl) {
++                nblkid = blkid_partlist_numof_partitions(pl);
++                if (nblkid < 0)
++                        goto out;
++        }
++
++        udev_list_entry_foreach(item, udev_enumerate_get_list_entry(e)) {
++                _cleanup_udev_device_unref_ struct udev_device *d = NULL;
++                blkid_partition par;
++                const char *v;
++                unsigned long long start, size;
++                int partno;
++
++                d = udev_device_new_from_syspath(udev, udev_list_entry_get_name(item));
++                if (!d)
++                        goto out;
++
++                if (!streq_ptr("partition", udev_device_get_devtype(d)))
++                        continue;
++
++                nkernel++;
++                if (!pl)
++                        goto out;
++
++                v = udev_device_get_sysattr_value(d, "partition");
++                if (!v || safe_atoi(v, &partno) < 0)
++                        goto out;
++                v = udev_device_get_sysattr_value(d, "start");
++                if (!v || safe_atollu(v, &start) < 0)
++                        goto out;
++                v = udev_device_get_sysattr_value(d, "size");
++                if (!v || safe_atollu(v, &size) < 0)
++                        goto out;
++
++                par = blkid_partlist_get_partition_by_partno(pl, partno);
++                if (!par)
++                        goto out;
++                if ((unsigned long long) blkid_partition_get_start(par) != start)
++                        goto out;
++                if (!blkid_partition_is_extended(par) &&
++                    (unsigned long long) blkid_partition_get_size(par) != size)
++                        goto out;
++        }
++
++        match = nkernel == nblkid;
++out:
++        blkid_free_probe(pr);
++        return match;
++}
++#endif
++
+ static int synthesize_change(struct udev_device *dev) {
+         char filename[UTIL_PATH_SIZE];
+         int r;
+@@ -793,28 +872,12 @@
+             !startswith(udev_device_get_sysname(dev), "dm-")) {
+                 bool part_table_read = false;
+                 bool has_partitions = false;
++                bool table_unchanged = false;
+                 int fd;
+                 struct udev *udev = udev_device_get_udev(dev);
+                 _cleanup_udev_enumerate_unref_ struct udev_enumerate *e = NULL;
+                 struct udev_list_entry *item;
+ 
+-                /*
+-                 * Try to re-read the partition table. This only succeeds if
+-                 * none of the devices is busy. The kernel returns 0 if no
+-                 * partition table is found, and we will not get an event for
+-                 * the disk.
+-                 */
+-                fd = open(udev_device_get_devnode(dev), O_RDONLY|O_CLOEXEC|O_NOFOLLOW|O_NONBLOCK);
+-                if (fd >= 0) {
+-                        r = flock(fd, LOCK_EX|LOCK_NB);
+-                        if (r >= 0)
+-                                r = ioctl(fd, BLKRRPART, 0);
+-
+-                        close(fd);
+-                        if (r >= 0)
+-                                part_table_read = true;
+-                }
+-
+                 /* search for partitions */
+                 e = udev_enumerate_new(udev);
+                 if (!e)
+@@ -832,6 +895,34 @@
+                 if (r < 0)
+                         return r;
+ 
++#ifdef HAVE_BLKID
++                table_unchanged = disk_table_matches_kernel(udev_device_get_devnode(dev), udev, e);
++#endif
++
++                /*
++                 * Re-read the partition table only when the table on the disk
++                 * differs from the kernel's. A re-read removes and re-adds every
++                 * partition node, so a program that writes the whole disk and
++                 * then opens one of its partitions would find the node gone;
++                 * with the table unchanged, "change" for the disk and its
++                 * partitions re-runs the rules without touching the nodes. The
++                 * re-read only succeeds if none of the devices is busy. The
++                 * kernel returns 0 if no partition table is found, and we will
++                 * not get an event for the disk.
++                 */
++                if (!table_unchanged) {
++                        fd = open(udev_device_get_devnode(dev), O_RDONLY|O_CLOEXEC|O_NOFOLLOW|O_NONBLOCK);
++                        if (fd >= 0) {
++                                r = flock(fd, LOCK_EX|LOCK_NB);
++                                if (r >= 0)
++                                        r = ioctl(fd, BLKRRPART, 0);
++
++                                close(fd);
++                                if (r >= 0)
++                                        part_table_read = true;
++                        }
++                }
++
+                 udev_list_entry_foreach(item, udev_enumerate_get_list_entry(e)) {
+                         _cleanup_udev_device_unref_ struct udev_device *d = NULL;
+ 
+@@ -855,8 +946,8 @@
+                         return 0;
+ 
+                 /*
+-                 * We have partitions but re-reading the partition table did not
+-                 * work, synthesize "change" for the disk and all partitions.
++                 * The table was left alone, or re-reading it did not work:
++                 * synthesize "change" for the disk and all partitions.
+                  */
+                 log_debug("device %s closed, synthesising 'change'", udev_device_get_devnode(dev));
+                 strscpyl(filename, sizeof(filename), udev_device_get_syspath(dev), "/uevent", NULL);

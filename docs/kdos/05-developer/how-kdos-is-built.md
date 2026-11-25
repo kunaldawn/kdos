@@ -99,7 +99,7 @@ runs, not under the image's BusyBox. It then runs that image with:
 | `--privileged` | The later phases mount `/proc`, `/sys` and bind mounts inside the target tree and `chroot` into it, which needs those privileges |
 | `--cpu-shares=256` | A weight, not a cap: an idle host gives the build every thread; under contention it yields to other containers and services, and on a systemd cgroup-v2 host shares the CPU evenly with the user session. `KDOS_CPU_SHARES` changes the weight. The environment every phase shares sets one job count, `KDOS_JOBS`, for make, `cmake --build` and cargo: the host's thread count, clamped to one job per 2 GiB of memory |
 | `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too; ninja is handed `-j$KDOS_JOBS` by `script/bin/ninja` |
-| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile` and the `Dockerfile` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them |
+| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them; `LICENSE` for the MIT text the image installs |
 
 The container is a fixed, known starting point. Whatever distribution your machine runs, the
 compilers that start the bootstrap are the same ones, which is why a build on one developer's
@@ -812,10 +812,10 @@ switches change what it carries, `KDOS_ISO_SOURCES=1` (the tree's sources under 
 medium boots is in [Boot and init](../03-architecture/boot-and-init.md).
 
 **What the medium needs.** Measured on a full build tree, the base is 900 of 2,442 packages
-and 5.5 GB of their 49.5 GB of files, and the base ISO is 1,775,599,616 bytes (1,693 MiB), 207 MiB under the 1,900 MiB gate,
-without the 13 MB of noto-fonts-extra that `ports/base` also names. An image built with
-`KDOS_IMAGE=full` carries every package and its ISO is 20.4 GB. The full image sets four
-requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
+and 5.5 GB of their 49.5 GB of files, and the base ISO measures about 1,700 MiB (1,699 MiB
+measured), about 200 MiB under the 1,900 MiB gate, with the 13 MB of noto-fonts-extra that
+`ports/base` also names. An image built with `KDOS_IMAGE=full` carries every package and its
+ISO is 20.4 GB. The full image sets four requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
 [Installation](../02-user-guide/installation.md), [kinstall](../04-programs/kinstall.md) and the
 release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a Blu-ray disc for
 optical boot, since the image does not fit a DVD; a disk larger than the install, because

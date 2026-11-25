@@ -20,7 +20,10 @@
 # a listed port only where the package's binhost index stanza names that
 # port on its `N:` line (its recorded run-time needs, as wesnoth's name
 # boost); a stanza with no `N:` line, and a tree without the file, keep
-# every edge, and a `--source` install follows every edge.
+# every edge, and a `--source` install follows every edge of the port and of
+# each package it builds, and cuts a prebuilt one's as above;
+# ports/buildheaders names the listed ports a build installs because
+# installed packages' headers include them.
 #
 # A PORT HERE MUST BE NOTHING A PROGRAM ON THE IMAGE RUNS OR LOADS. 087_gates
 # proves it: linkcheck fails the image when a DT_NEEDED or a #! resolves to

@@ -2061,10 +2061,14 @@ static void do_prepare(void)
 		fail("required tool missing: %s", ki_fs(cfg.fstype)->mkfs);
 	/* The copy's source is this root, so the Bootloader step finds the
 	 * payload here or nowhere; asked after the erase, a missing one leaves
-	 * a wiped disk that does not start. A rehearsal places nothing. */
-	if (!cfg.dry_run && !kb_path_exists("/usr/share/limine"))
-		fail("no Limine payload at /usr/share/limine — the disk would "
-		     "not start");
+	 * a wiped disk that does not start. The two files, not the directory:
+	 * an empty /usr/share/limine starts nothing either. A rehearsal places
+	 * nothing. */
+	if (!cfg.dry_run &&
+	    (!kb_path_exists("/usr/share/limine/BOOTX64.EFI") ||
+	     !kb_path_exists("/usr/share/limine/limine-bios.sys")))
+		fail("no Limine payload (BOOTX64.EFI, limine-bios.sys) in "
+		     "/usr/share/limine — the disk would not start");
 	/* The Layout page refuses this too; an unattended install never
 	 * shows it, and this is before anything is written. */
 	if (!ki_sys.uefi && ki_bios_boot_part() < 0)
@@ -3341,37 +3345,88 @@ static void do_slotb(void)
 	emit('P', "1");
 }
 
-static void copy_file(const char *src, const char *dst)
+/* close() is counted, not dropped: vfat allocates clusters at close, so a
+ * full ESP reports ENOSPC there after every write has returned whole. */
+int ki_copy_file(const char *src, const char *dst)
 {
 	if (cfg.dry_run) {
 		logf_("copy %s -> %s", src, dst);
-		return;
+		return 0;
 	}
 	int in = open(src, O_RDONLY | O_CLOEXEC);
 	if (in < 0) {
 		logf_("  missing %s", src);
-		return;
+		return -1;
 	}
 	int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 	if (out < 0) {
-		close(in);
 		logf_("  cannot create %s: %s", dst, strerror(errno));
-		return;
+		close(in);
+		return -1;
 	}
 	char b[65536];
 	ssize_t n;
-	while ((n = read(in, b, sizeof(b))) > 0) {
+	int bad = 0;
+	while (!bad && (n = read(in, b, sizeof(b))) != 0) {
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			logf_("  cannot read %s: %s", src, strerror(errno));
+			bad = 1;
+			break;
+		}
 		ssize_t off = 0;
 		while (off < n) {
 			ssize_t w = write(out, b + off, (size_t)(n - off));
-			if (w <= 0)
+			if (w < 0 && errno == EINTR)
+				continue;
+			if (w <= 0) {
+				logf_("  cannot write %s: %s", dst,
+				      w < 0 ? strerror(errno) : "short write");
+				bad = 1;
 				break;
+			}
 			off += w;
 		}
 	}
 	close(in);
-	close(out);
+	if (close(out) < 0 && !bad) {
+		logf_("  cannot write %s: %s", dst, strerror(errno));
+		bad = 1;
+	}
+	if (bad)
+		return -1;
 	logf_("copy %s -> %s", src, dst);
+	return 0;
+}
+
+/* A file the disk cannot start without: a failed copy fails the step, so an
+ * install never reaches its Done page with no bootloader or kernel placed. */
+static void must_copy(const char *src, const char *dst)
+{
+	if (ki_copy_file(src, dst) < 0)
+		fail("could not copy %s to %s — the disk would not start",
+		     src, dst);
+}
+
+/* A piece the disk starts without: a failed copy is a warning naming it and
+ * what the machine loses, and the result says whether to point the menu at
+ * it. */
+static int may_copy(const char *src, const char *dst, const char *loss)
+{
+	if (ki_copy_file(src, dst) == 0)
+		return 0;
+	emit('W', "could not copy %s to %s — %s", src, dst, loss);
+	return -1;
+}
+
+/* <dir>/<name>, in one static buffer: one call per expression. */
+static const char *lim_file(const char *dir, const char *name)
+{
+	static char buf[320];
+
+	snprintf(buf, sizeof(buf), "%s/%s", dir, name);
+	return buf;
 }
 
 /*
@@ -3494,6 +3549,118 @@ static void target_release(char *out, size_t n)
 	free(rel);
 }
 
+/*
+ * A KDOS NVRAM ENTRY WHOSE PARTITION IS GONE IS A DEAD FIRMWARE MENU ITEM
+ * under the same label as the one about to be written, and one naming the
+ * ESP about to be written would be its duplicate. Only those two are
+ * removed: the entry must be labelled exactly `KDOS` (so kdos-bootctl's
+ * `KDOS update trial` and every other label never match) and name a GPT
+ * partition by GUID; it is stale when <byuuid>/<guid> does not exist, or
+ * resolves to the same node as <esp>. An entry naming a live ESP on another
+ * disk, a second KDOS install, is kept, and so is a line with no HD(…GPT…)
+ * device path, which shows nothing to compare.
+ *
+ * `line` is one line of efibootmgr's plain listing,
+ * `BootXXXX* KDOS<TAB>HD(n,GPT,<guid>,…)…`, or `BootXXXX  KDOS…` for an
+ * inactive entry. Returns 1 with the four hex
+ * digits in num when the entry is stale, 0 otherwise.
+ */
+int ki_nvram_stale(const char *line, const char *byuuid, const char *esp,
+		   char num[5])
+{
+	if (strncmp(line, "Boot", 4))
+		return 0;
+	const char *p = line + 4;
+	for (int i = 0; i < 4; i++)
+		if (!isxdigit((unsigned char)p[i]))
+			return 0;
+	char n[5];
+	memcpy(n, p, 4);
+	n[4] = 0;
+	p += 4;
+	/* efibootmgr prints `*` after an active entry's number and a space
+	 * after an inactive one's; a disabled KDOS entry is as stale. */
+	if (*p != '*' && *p != ' ')
+		return 0;
+	p++;
+	if (strncmp(p, " KDOS\t", 6))
+		return 0;
+	p += 6;
+
+	const char *hd = strstr(p, "HD(");
+	if (!hd)
+		return 0;
+	hd += 3;
+	/* the partition index, then `,GPT,` */
+	while (isdigit((unsigned char)*hd))
+		hd++;
+	if (strncmp(hd, ",GPT,", 5))
+		return 0;
+	hd += 5;
+	char guid[37];
+	for (int i = 0; i < 36; i++) {
+		unsigned char c = (unsigned char)hd[i];
+		if (!isxdigit(c) && c != '-')
+			return 0;
+		guid[i] = (char)tolower(c);
+	}
+	guid[36] = 0;
+	if (hd[36] != ',' && hd[36] != ')')
+		return 0;
+
+	char path[PATH_MAX], a[PATH_MAX], b[PATH_MAX];
+	int w = snprintf(path, sizeof(path), "%s/%s", byuuid, guid);
+	if (w < 0 || (size_t)w >= sizeof(path))
+		return 0;
+	int stale = !kb_path_exists(path) ||
+		    (realpath(path, a) && realpath(esp, b) && !strcmp(a, b));
+	if (stale)
+		memcpy(num, n, 5);
+	return stale;
+}
+
+#define KI_NVRAM_BYUUID "/dev/disk/by-partuuid"
+#define KI_NVRAM_MAX 32
+
+static char nvram_stale[KI_NVRAM_MAX][5];
+static int nvram_nstale;
+
+static void nvram_parse(const char *line)
+{
+	char num[5];
+
+	logf_("%s", line);
+	if (nvram_nstale < KI_NVRAM_MAX &&
+	    ki_nvram_stale(line, KI_NVRAM_BYUUID, part_esp, num))
+		memcpy(nvram_stale[nvram_nstale++], num, 5);
+}
+
+/* Each stale KDOS entry is deleted before the new one is created, so a
+ * reinstall replaces the firmware's KDOS entry rather than adding a second.
+ * With no by-partuuid directory no GUID can be shown to be gone, and nothing
+ * is deleted. A dry run logs the listing and never parses it. */
+static void nvram_drop_stale(void)
+{
+	static const int ok[] = { 0 };
+
+	if (!cfg.dry_run && !kb_path_exists(KI_NVRAM_BYUUID)) {
+		logf_("no %s — existing KDOS boot entries are kept",
+		      KI_NVRAM_BYUUID);
+		return;
+	}
+	nvram_nstale = 0;
+	char *ls[] = { "efibootmgr", NULL };
+	if (run_full(ls, NULL, nvram_parse, NULL, ok, 1)) {
+		logf_("  (efibootmgr listing failed: existing entries kept)");
+		nvram_nstale = 0;
+	}
+	for (int i = 0; i < nvram_nstale; i++) {
+		char *del[] = { "efibootmgr", "--bootnum", nvram_stale[i],
+				"--delete-bootnum", NULL };
+		try_(del);
+	}
+}
+
 static void do_boot(void)
 {
 	char root_uuid[64] = "", esp_uuid[64] = "", b_uuid[64] = "";
@@ -3546,11 +3713,19 @@ static void do_boot(void)
 		logf_("LUKS UUID %s", lp.uuid);
 	}
 
+	/* The directory that HOLDS the first stage, not the first that
+	 * exists: an empty /usr/share/limine is a disk that does not start.
+	 * A rehearsal places nothing and needs none. */
 	const char *lim = "/usr/share/limine";
-	if (!kb_path_exists(lim))
+	if (!kb_path_exists(lim_file(lim, "BOOTX64.EFI")))
 		lim = TARGET "/usr/share/limine";
-	if (!kb_path_exists(lim))
-		fail("Limine is not installed — no bootloader to place");
+	if (!kb_path_exists(lim_file(lim, "BOOTX64.EFI"))) {
+		if (!cfg.dry_run)
+			fail("Limine's BOOTX64.EFI is in neither "
+			     "/usr/share/limine nor the target — no bootloader "
+			     "to place");
+		lim = "/usr/share/limine";
+	}
 
 	emit('N', "placing Limine on the ESP");
 	mkpath(TARGET "/boot/efi/EFI/BOOT");
@@ -3567,7 +3742,7 @@ static void do_boot(void)
 	 * that no bootloader reads before the kernel exists.
 	 */
 	snprintf(src, sizeof(src), "%s/BOOTX64.EFI", lim);
-	copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTX64.EFI");
+	must_copy(src, TARGET "/boot/efi/EFI/BOOT/BOOTX64.EFI");
 
 	/*
 	 * AND THE 32-BIT FIRMWARE'S FIRST STAGE BESIDE IT, so a disk written on
@@ -3583,7 +3758,8 @@ static void do_boot(void)
 	 */
 	snprintf(src, sizeof(src), "%s/BOOTIA32.EFI", lim);
 	if (kb_path_exists(src))
-		copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTIA32.EFI");
+		may_copy(src, TARGET "/boot/efi/EFI/BOOT/BOOTIA32.EFI",
+			 "this disk will not start on 32-bit UEFI firmware");
 	else
 		emit('W', "Limine has no BOOTIA32.EFI — this disk will not "
 			  "start on 32-bit UEFI firmware");
@@ -3597,7 +3773,7 @@ static void do_boot(void)
 	 * BIOS boot has room to give.
 	 */
 	snprintf(src, sizeof(src), "%s/limine-bios.sys", lim);
-	copy_file(src, TARGET "/boot/efi/limine-bios.sys");
+	must_copy(src, TARGET "/boot/efi/limine-bios.sys");
 	emit('P', "0.4");
 
 	/*
@@ -3609,23 +3785,24 @@ static void do_boot(void)
 	 * later kernel — the `linux` postinstall's, where it wrote one, else
 	 * the image's own.
 	 */
-	/* The release in the first entry's comment and in slot B's title,
-	 * the words kdos-bootctl's menu_sync writes from the slot's release
-	 * record: "KDOS 0.2.1 (slot B)", or "KDOS (slot B)" with none. */
-	char ver[64], a_note[96] = "", b_note[96] = "KDOS ";
+	/* The release in every entry's title and in the first entry's
+	 * comment, the words kdos-bootctl's menu_sync writes from the slot's
+	 * release record: "KDOS 0.2.1", "KDOS 0.2.1 (slot B)", or "KDOS" and
+	 * "KDOS (slot B)" with none. */
+	char ver[64], a_note[96] = "", name[80] = "KDOS";
 	target_release(ver, sizeof(ver));
 	if (ver[0]) {
 		snprintf(a_note, sizeof(a_note), ", KDOS %s", ver);
-		snprintf(b_note, sizeof(b_note), "KDOS %s ", ver);
+		snprintf(name, sizeof(name), "KDOS %s", ver);
 	}
 
 	emit('N', "kernel and initramfs onto the ESP");
 	mkpath(TARGET "/boot/efi/EFI/kdos/a");
-	copy_file(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
+	must_copy(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
 			  ? TARGET "/boot/initramfs-kdos.cpio.gz"
 			  : TARGET "/boot/initramfs.cpio.gz",
 		  TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz");
-	copy_file(TARGET "/boot/vmlinuz-kdos",
+	must_copy(TARGET "/boot/vmlinuz-kdos",
 		  TARGET "/boot/efi/EFI/kdos/a/vmlinuz");
 	write_slot_release("a");
 	/* Slot B boots the kernel of the root it was filled from, which is the
@@ -3633,14 +3810,14 @@ static void do_boot(void)
 	 * one slot's pair and never the other's. */
 	if (part_b[0]) {
 		mkpath(TARGET "/boot/efi/EFI/kdos/b");
-		copy_file(TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz",
+		must_copy(TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz",
 			  TARGET "/boot/efi/EFI/kdos/b/initramfs.cpio.gz");
-		copy_file(TARGET "/boot/efi/EFI/kdos/a/vmlinuz",
+		must_copy(TARGET "/boot/efi/EFI/kdos/a/vmlinuz",
 			  TARGET "/boot/efi/EFI/kdos/b/vmlinuz");
 		write_slot_release("b");
 		snprintf(b_entry, sizeof(b_entry),
 			 "\n"
-			 "/%s(slot B)\n"
+			 "/%s (slot B)\n"
 			 "    comment: The other version, for one boot; nothing "
 			 "changes\n"
 			 "    protocol: linux\n"
@@ -3648,7 +3825,7 @@ static void do_boot(void)
 			 "    module_path: boot():/EFI/kdos/b/initramfs.cpio.gz\n"
 			 "    cmdline: kdos_slot=b %s%sroot=UUID=%s rw "
 			 "console=tty0 " KI_QUIET "\n",
-			 b_note, slot_opt, crypt_opt, b_uuid);
+			 name, slot_opt, crypt_opt, b_uuid);
 	} else {
 		esp_room_for_b();
 	}
@@ -3679,9 +3856,10 @@ static void do_boot(void)
 	};
 	for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
 		if (kb_path_exists(fonts[i])) {
-			copy_file(fonts[i], TARGET "/boot/efi/EFI/kdos/font.bin");
-			fontline = "term_font: boot():/EFI/kdos/font.bin\n"
-				   "term_font_size: 8x16\n";
+			if (may_copy(fonts[i], TARGET "/boot/efi/EFI/kdos/font.bin",
+				     "the boot menu uses Limine's own typeface") == 0)
+				fontline = "term_font: boot():/EFI/kdos/font.bin\n"
+					   "term_font_size: 8x16\n";
 			break;
 		}
 	/*
@@ -3701,9 +3879,10 @@ static void do_boot(void)
 	};
 	for (size_t i = 0; i < sizeof(papers) / sizeof(papers[0]); i++)
 		if (kb_path_exists(papers[i])) {
-			copy_file(papers[i],
-				  TARGET "/boot/efi/EFI/kdos/wallpaper.png");
-			paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
+			if (may_copy(papers[i],
+				     TARGET "/boot/efi/EFI/kdos/wallpaper.png",
+				     "the boot menu has a plain backdrop") == 0)
+				paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
 			break;
 		}
 
@@ -3727,11 +3906,12 @@ static void do_boot(void)
 	 * binary, so `if_fw_type` keeps it off a BIOS menu that could not start
 	 * it. */
 	const char *memtest = "";
-	if (kb_path_exists("/usr/share/kdos/memtest86plus/memtest.efi")) {
-		copy_file("/usr/share/kdos/memtest86plus/memtest.efi",
-			  TARGET "/boot/efi/EFI/kdos/memtest.efi");
+	if (kb_path_exists("/usr/share/kdos/memtest86plus/memtest.efi") &&
+	    may_copy("/usr/share/kdos/memtest86plus/memtest.efi",
+		     TARGET "/boot/efi/EFI/kdos/memtest.efi",
+		     "the boot menu has no Memory Test entry") == 0) {
 		memtest = "\n/Memory Test (memtest86+)\n"
-			  "    comment: Test this machine's RAM — UEFI only\n"
+			  "    comment: Test this machine's RAM (UEFI only)\n"
 			  "    protocol: efi\n"
 			  "    if_fw_type: UEFI\n"
 			  "    path: boot():/EFI/kdos/memtest.efi\n";
@@ -3764,30 +3944,30 @@ static void do_boot(void)
 	   "%s"
 	   "%s%s"
 	   "\n"
-	   "/KDOS\n"
+	   "/%s\n"
 	   "    comment: Start this computer (slot A%s)\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 " KI_QUIET "\n"
 	   "\n"
-	   "/KDOS (verbose)\n"
+	   "/%s (verbose)\n"
 	   "    comment: Every kernel message on the console\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
-	   "/KDOS (single user)\n"
+	   "/%s (single user)\n"
 	   "    comment: A root shell for root's password, no desktop\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s%s",
-	   theme, paper, fontline, a_note,
-	   slot_opt, crypt_opt, root_uuid,
-	   slot_opt, crypt_opt, root_uuid,
+	   theme, paper, fontline, name, a_note,
+	   slot_opt, crypt_opt, root_uuid, name,
+	   slot_opt, crypt_opt, root_uuid, name,
 	   slot_opt, crypt_opt, root_uuid, b_entry, memtest);
 
 	/*
@@ -3925,6 +4105,7 @@ static void do_boot(void)
 			     part_esp);
 		} else {
 			kb_strlcpy(disk, cfg.disk, sizeof(disk));
+			nvram_drop_stale();
 			char *eb[] = { "efibootmgr", "--create", "--disk", disk,
 				       "--part", pn, "--loader", (char *)loader,
 				       "--label", "KDOS", NULL };

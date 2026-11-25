@@ -396,14 +396,24 @@ Kirigami.ApplicationWindow {
                         onClicked: root.close()
                     }
                     /* Why Next is disabled. A screen reader is told the
-                     * reason once it has held still for a moment while the
-                     * window is in front; a plain label would be read only
-                     * when found. Announcing each change at once would speak
-                     * the half-way reasons a page steps through as one field
-                     * is typed in, such as Encryption's "do not match" at the
-                     * first key of the first passphrase. */
+                     * reason 800 ms after the reason and the focused field
+                     * have both held still, while the window is in front; a
+                     * plain label would be read only when found. Announcing
+                     * each change at once would speak the half-way reasons a
+                     * page steps through as a field is typed in, and a reason
+                     * that holds while a field is typed ("The two passwords
+                     * do not match." through the whole of the second one) is
+                     * half-way too until typing pauses. Nothing is
+                     * announced while Backend is busy, so a probe's passing
+                     * "Looking…" is never spoken; the reason it settles on
+                     * is announced 800 ms after it ends. Orca drops an announcement that comes
+                     * close behind another, so one due within 1500 ms of
+                     * the last waits out the rest of that time instead.
+                     * The reason just spoken is not spoken again while the
+                     * page is unchanged. */
                     QQC2.Label {
                         id: problem
+                        objectName: "problem"
                         Layout.fillWidth: true
                         text: root.currentPage.complete ? "" : (root.currentPage.problem || "")
                         color: Kirigami.Theme.neutralTextColor
@@ -412,20 +422,68 @@ Kirigami.ApplicationWindow {
                         maximumLineCount: 2
                         Accessible.role: Accessible.StatusBar
                         Accessible.name: text
-                        onTextChanged: settle.restart()
+                        /* When the last announcement went out (Date.now()),
+                         * what it said, and on which step. */
+                        property real lastSpoken: 0
+                        property string spokenText
+                        property int spokenStep: -1
+                        readonly property int gap: 1500
+                        function retime() {
+                            holdOff.stop();
+                            settle.restart();
+                        }
+                        onTextChanged: retime()
                         Timer {
                             id: settle
                             interval: 800
                             onTriggered: {
-                                if (problem.text.length > 0 && root.active) {
-                                    problem.Accessible.announce(problem.text);
+                                if (problem.text.length === 0 || !root.active || Backend.busy) {
+                                    return;
                                 }
+                                if (problem.text === problem.spokenText && root.current === problem.spokenStep) {
+                                    return;
+                                }
+                                const wait = problem.lastSpoken + problem.gap - Date.now();
+                                if (wait > 0) {
+                                    holdOff.interval = wait;
+                                    holdOff.restart();
+                                    return;
+                                }
+                                problem.lastSpoken = Date.now();
+                                problem.spokenText = problem.text;
+                                problem.spokenStep = root.current;
+                                problem.Accessible.announce(problem.text);
                             }
+                        }
+                        /* The rest of the gap after the last announcement. */
+                        Timer {
+                            id: holdOff
+                            onTriggered: settle.triggered()
                         }
                         Connections {
                             target: root
                             function onActiveChanged() {
-                                settle.restart();
+                                problem.retime();
+                            }
+                            function onCurrentChanged() {
+                                problem.retime();
+                            }
+                            function onActiveFocusItemChanged() {
+                                problem.retime();
+                            }
+                        }
+                        /* Each edit in the focused field restarts the settle. */
+                        Connections {
+                            target: root.activeFocusItem
+                            ignoreUnknownSignals: true
+                            function onTextChanged() {
+                                problem.retime();
+                            }
+                        }
+                        Connections {
+                            target: Backend
+                            function onBusyChanged() {
+                                problem.retime();
                             }
                         }
                     }

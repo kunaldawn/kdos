@@ -13,7 +13,7 @@ the packages that install no licence text.
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/087_gates.sh lines=58-147 -->
+<!-- kfs:include script/phases/70_image/087_gates.sh lines=58-148 pin=c35f262b453f -->
 
 The first three checks are Python programs in `testing/`, which `script/chroot/exec.sh` binds
 read-only at `/kdos/testing` in the chroot; the fourth is `script/lib/imageset.py`, the script
@@ -80,9 +80,9 @@ The licence texts
   `/usr/share/licenses/<name>` is listed, less the packages of our own whose licence is `MIT`
   alone, which [105_ports.sh](105-ports.md#kdoss-licence-text) links to KDOS's text after this
   step; one of ours under `MIT AND` another licence is listed until its `build.sh` installs the
-  other text. The ports in `LICENCE_TEXTLESS` (`sqlite`, `snooze`, `iana-etc`, `debian-dep11` and
-  `fwupd-snapshot`, whose sources hold no text: public-domain and CC0 code and data, and data
-  published under terms no file carries) are
+  other text. The ports in `LICENCE_TEXTLESS` (`sqlite`, `snooze`, `iana-etc`, `debian-dep11`,
+  `fwupd-snapshot` and `librfnm`, whose sources hold no text: public-domain and CC0 code and data,
+  data published under terms no file carries, and code published with no licence) are
   printed apart, on a line `no text in the source, as expected:`. Any other name, on the line
   `<n> package(s) install no /usr/share/licenses/<name>:`, is a port whose source keeps its text
   where kpkg does not look, and its `build.sh` should install it (see

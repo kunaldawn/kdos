@@ -38,8 +38,9 @@
  * answer the page asks kinstall's plan (Backend.checkPlan), and its
  * `swap_problem`, the target check's swap rule alone, is shown under the
  * swap size and holds Next. The plan decides on the payload the last root
- * probe measured, which Backend hands on, so the largest swap it names is
- * the one the Summary's root plan accepts.
+ * probe measured, which Backend hands on, so the swap size it advises (the
+ * largest multiple of KI_SWAP_MIN_MB that fits, or no swap) is one the
+ * Summary's root plan accepts.
  *
  * WHETHER A DISK CAN TAKE THE INSTALL, AND HOLDS TWO SLOTS, IS kinstall's
  * ANSWER: `fits`, `problem` and `ab_fits` in its probe, by the rules the
@@ -104,10 +105,11 @@ WizardPage {
         return [Backend.formatSize(have, 3), Backend.formatSize(need, 3)];
     }
     /* kinstall's reason, except that a disk too small is said in this
-     * page's units. */
+     * page's units; a copy of the medium keeps its own reason, which no
+     * resize answers. */
     function why(d) {
         const need = Backend.probe.need_bytes || 0;
-        if (!d.boot_media && !d.readonly && need > 0 && diskBytes(d) < need) {
+        if (!d.boot_media && !d.boot_copy && !d.readonly && need > 0 && diskBytes(d) < need) {
             const s = apart(diskBytes(d), need);
             return i18nc("@info %1 device %2 disk size %3 the least the install needs", "%1 holds %2; the install needs at least %3", d.path, s[0], s[1]);
         }
@@ -126,7 +128,9 @@ WizardPage {
         return Backend.holds(d);
     }
     /* A partition in a list by node, size, type and label, so the one
-     * formatting would wipe is named as the row above names it. */
+     * formatting would wipe is named as the row above names it. Only the
+     * esps and roots lists call it, and neither holds a remapped
+     * partition. */
     function partLabel(p) {
         const kind = p.esp ? " — " + i18nc("@item a partition type", "EFI system")
                    : p.bios_boot ? " — " + i18nc("@item a partition type", "BIOS boot") : "";
@@ -141,22 +145,24 @@ WizardPage {
      * makes the swap a volume in the group whatever kind was asked for. */
     readonly property bool twoSlots: answers.plan === "wipe" && answers.lvm && disk !== null && disk.ab_fits === true
     /* An ESP is a partition typed as one or holding FAT; never the BIOS
-     * boot partition, which holds Limine's raw stage. */
+     * boot partition, which holds Limine's raw stage, nor a partition whose
+     * node points at another device (Ventoy's), which no tool can write. */
     readonly property var esps: {
         const out = [];
         for (let i = 0; i < parts.length; i++) {
-            if (!parts[i].bios_boot && (parts[i].esp || parts[i].fstype === "vfat")) {
+            if (!parts[i].bios_boot && !parts[i].remap && (parts[i].esp || parts[i].fstype === "vfat")) {
                 out.push(parts[i]);
             }
         }
         return out;
     }
-    /* A root is formatted: never an ESP, the BIOS boot partition or an LVM
-     * physical volume, whose volumes are listed instead. */
+    /* A root is formatted: never an ESP, the BIOS boot partition, a
+     * remapped partition or an LVM physical volume, whose volumes are
+     * listed instead. */
     readonly property var roots: {
         const out = [];
         for (let i = 0; i < parts.length; i++) {
-            if (!parts[i].esp && !parts[i].bios_boot && parts[i].fstype !== "LVM2_member") {
+            if (!parts[i].esp && !parts[i].bios_boot && !parts[i].remap && parts[i].fstype !== "LVM2_member") {
                 out.push(parts[i]);
             }
         }
@@ -637,9 +643,15 @@ WizardPage {
             Accessible.name: i18nc("@label:listbox", "Swap")
             onActivated: index => page.answers.swap = values[index]
         }
+        // from and stepSize are kinstall-core's KI_SWAP_MIN_MB: the swap
+        // refusal advises only a multiple of it, so its size can be typed here.
+        // Greyed rather than hidden with no swap: the form's label column is
+        // as wide as its widest shown label, so hiding this row would move
+        // every control sideways.
         QQC2.SpinBox {
+            objectName: "swapSize"
             Kirigami.FormData.label: i18nc("@label:spinbox", "Swap size (MiB):")
-            visible: page.answers.swap !== "none"
+            enabled: page.answers.swap !== "none"
             from: 256
             to: 262144
             stepSize: 256

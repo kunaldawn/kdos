@@ -70,7 +70,9 @@ BoxesModule::BoxesModule(QObject *parent, const KPluginMetaData &metaData, const
         setRepresentsDefaults(m_current.isEmpty() || m_profile->isAtDefaults());
     });
     connect(m_profile, &BoxProfile::pendingChanged, this, &BoxesModule::currentChanged);
-    connect(m_profile, &BoxProfile::notesChanged, this, &BoxesModule::generalNotesChanged);
+    /* The report's `!` line about a stale container is half of
+     * recreateKeys(), so its arrival can show the banner. */
+    connect(m_profile, &BoxProfile::notesChanged, this, &BoxesModule::currentChanged);
     connect(this, &BoxesModule::currentChanged, this, &BoxesModule::generalNotesChanged);
     connect(m_boxes, &BoxListModel::refreshed, this, &BoxesModule::refreshCurrent);
     connect(m_tool, &BoxTool::progress, this, [this](const QString &line) {
@@ -166,7 +168,7 @@ QVariantMap BoxesModule::current() const
 
 bool BoxesModule::needsRecreate() const
 {
-    return !m_current.isEmpty() && !m_profile->pendingRecreate().isEmpty() && m_currentRow.value(u"created"_s).toBool();
+    return m_currentRow.value(u"created"_s).toBool() && !recreateKeys().isEmpty();
 }
 
 QString BoxesModule::initialBox() const
@@ -207,7 +209,30 @@ QStringList BoxesModule::generalNotes() const
 
 bool BoxesModule::isRecreateNote(const QString &note)
 {
-    return note.contains(u"written after"_s) && note.contains(u"created"_s);
+    return BoxProfile::isRecreateNote(note);
+}
+
+QStringList BoxesModule::recreateKeys() const
+{
+    if (m_current.isEmpty()) {
+        return QStringList();
+    }
+    const QStringList pending = m_profile->pendingRecreate();
+    const QStringList stale = m_profile->staleKeys();
+    QStringList keys;
+    for (const QString &key : BoxProfile::editableKeys()) {
+        if (pending.contains(key) || stale.contains(key)) {
+            keys << key;
+        }
+    }
+    /* `base` and `image` are create-time keys the page does not edit; a
+     * report that names one still names it. */
+    for (const QString &key : pending + stale) {
+        if (!keys.contains(key)) {
+            keys << key;
+        }
+    }
+    return keys;
 }
 
 void BoxesModule::setMessage(const QString &text, MessageType type)
@@ -284,6 +309,10 @@ void BoxesModule::refreshCurrent()
         m.insert(u"stateText"_s, BoxListModel::stateText(row->state, row->kept));
         m.insert(u"kept"_s, row->kept);
         m.insert(u"appBox"_s, row->isAppBox());
+        /* A store box whose image is gone, the application's own box or a
+         * box made on its image: only installing the application again
+         * builds the image its create needs. */
+        m.insert(u"appMissing"_s, row->base.startsWith(u"image:kdos/"_s) && row->imageMissing);
         m.insert(u"exports"_s, row->exports);
         m.insert(u"running"_s, row->isRunning());
         m.insert(u"created"_s, row->hasContainer());
@@ -305,6 +334,7 @@ void BoxesModule::refreshCurrent()
         m.insert(u"created"_s, false);
         m.insert(u"kept"_s, false);
         m.insert(u"appBox"_s, false);
+        m.insert(u"appMissing"_s, false);
         m.insert(u"exports"_s, QStringList());
     }
     m_currentRow = m;
@@ -368,11 +398,18 @@ void BoxesModule::save()
                 }
                 return;
             }
-            if (hadContainer && !createTime.isEmpty()) {
+            /* A key set back to the container's own value needs no new
+             * container, whichever write changed it before. */
+            const QStringList back = BoxProfile::keysBackToCreated(r.output);
+            QStringList still = createTime;
+            still.removeIf([&back](const QString &k) {
+                return back.contains(k);
+            });
+            if (hadContainer) {
+                BoxProfile::dropPendingRecreate(name, back);
+                BoxProfile::recordPendingRecreate(name, still);
                 if (shown) {
-                    m_profile->addPendingRecreate(createTime);
-                } else {
-                    BoxProfile::recordPendingRecreate(name, createTime);
+                    m_profile->reloadPending();
                 }
             }
             /* Nothing more to tell anybody. A new accent is the box's KWin
@@ -383,7 +420,11 @@ void BoxesModule::save()
             if (shown) {
                 m_profile->loadFile(name);
                 /* `kdos-box profile <box> key=value` prints the profile it
-                 * wrote, which is the report for the new values. */
+                 * wrote, which is the report for the new values. A report
+                 * asked for before this write is older, and is dropped: a
+                 * labelled container's report retires pending keys, and an
+                 * old one would retire the keys this write recorded. */
+                ++m_reportSerial;
                 m_profile->applyReport(r.output);
             }
             m_boxes->refresh();

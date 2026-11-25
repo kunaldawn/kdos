@@ -1323,8 +1323,10 @@ static void write_starship(const KcolScheme *sc)
  * theme name `kde` that Qt 6 programs answer with plasma-integration; there is
  * no KF5, so qt5ct is their only way to the accent (A11). The palettes are
  * installed, one per accent, by kdos-plasma-look; this points the person's
- * qt5ct.conf at the accent's, and only while it points at a KDOS palette or
- * at none — a palette chosen in qt5ct's own window is the person's.
+ * qt5ct.conf at the accent's and its Open and Save dialogs at the portal
+ * (`xdgdesktopportal`, KDE's dialog), and only while it points at a KDOS
+ * palette or at none — a palette chosen in qt5ct's own window is the
+ * person's.
  *
  * QT5CT COPIES ITS FIRST FILE ITSELF, from the first qt5ct/qt5ct.conf along
  * XDG_CONFIG_DIRS, when a program starts and finds none in the home. A file
@@ -1376,6 +1378,7 @@ static void write_qt5ct(const KcolScheme *sc)
 	kdt_ini_set(conf, "Appearance", "color_scheme_path", path);
 	kdt_ini_set(conf, "Appearance", "custom_palette", "true");
 	kdt_ini_set(conf, "Appearance", "style", "Fusion");
+	kdt_ini_set(conf, "Appearance", "standard_dialogs", "xdgdesktopportal");
 	kdt_ini_set(conf, "Appearance", "icon_theme",
 		    kdt_accent_light(sc) ? "KDOS-Light" : "KDOS");
 	/* QUOTED: QSettings reads an unquoted value with a comma in it as a

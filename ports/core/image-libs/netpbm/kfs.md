@@ -55,6 +55,11 @@ headers, and `misc` (with `rgb.txt`) into `/usr/share/netpbm`. The package direc
 `pkgconfig_template`, which Netpbm's interactive `installnetpbm` script fills in; `build.sh` does not
 run that script, so it writes `netpbm.pc` itself.
 
+Netpbm's licence texts are not at the top of the source, where kpkg collects them, so `build.sh`
+installs them into `/usr/share/licenses/netpbm`: the IJG, GPL and LGPL texts from `doc/`, and,
+because the BSD-3-Clause text is only in source headers, the copyright comment of each BSD-licensed
+source file as `BSD-<file>`.
+
 The manual pages are generated from the HTML user guide with Netpbm's own `buildtools/makeman`,
 which is why `python3` is a build dependency. Every page is converted except the guide's
 directory and error pages (`directory.html`, `liberror.html`, `libnetpbm_dir.html`) and the pages

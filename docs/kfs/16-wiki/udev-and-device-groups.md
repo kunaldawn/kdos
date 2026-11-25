@@ -213,6 +213,14 @@ sudo udevadm trigger --action=add
 - `sudo udevadm control --log-priority=debug` raises the running `udevd`'s log level, so it logs
   each rule it applies. The level lasts until `udevd` is restarted, or until you set another with
   `--log-priority=`.
+- `udevd` watches every disk. When a program closes a disk it opened for writing, `udevd`
+  compares the partition table on the disk with the kernel's, by number, start and size: only a
+  table that differs is re-read, which removes and re-adds every partition node, and an unchanged
+  one gets a `change` event for the disk and each of its partitions, which re-runs the rules and
+  leaves the nodes in place. A tool that writes the whole disk and then formats one of its
+  partitions therefore finds the node there, and after a raw write that changes the table, such as
+  an image written with `dd`, the new partitions appear without a replug or
+  `blockdev --rereadpt`.
 - On the live medium, a rule, a group membership or a module file you add is in memory and is lost
   at power-off unless a persistence store exists
   ([`kdos persist`](../../kdos/04-programs/kdos-command.md#kdos-persist)). On an installed system it

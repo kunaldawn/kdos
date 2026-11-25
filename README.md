@@ -68,7 +68,7 @@ marked **Latest**. Each release carries:
 
 | File | What it is |
 |---|---|
-| `kdos-<tag>.iso` (for example `kdos-v0.2.1.iso`), or `kdos-<tag>.iso.part01`, `.part02`, … | The live ISO, named by the release's tag. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
+| `kdos-<tag>.iso` (for example `kdos-v0.2.iso`), or `kdos-<tag>.iso.part01`, `.part02`, … | The live ISO, named by the release's tag. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
 | `SHA256SUMS`, `SHA256SUMS.sig` | The checksums of the whole ISO and each of its parts, `sources.sha256`, the recipe tree, the update index, their two signatures and the release key, and the list's signature by the release key. The list does not cover its own signature or the book files below, which are attached after it is made |
 | `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
 | `kdos-ports.tar.xz`, `kdos-ports.tar.xz.sig` | The recipe tree of the release, signed: what `kdos update fetch` installs as `/ports` |
@@ -76,8 +76,8 @@ marked **Latest**. Each release carries:
 | `sources.sha256` | Every upstream source file the release's recipes name, by hash |
 | `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built, attached once the release is published. The v0.2 release does not carry them |
 
-The prebuilt packages and the update images sit in pre-releases beside it (`binhost-<version>-NN`,
-`image-<version>`). You never download those by hand: a KDOS machine finds them through the
+The prebuilt packages and the update images sit in pre-releases beside it (`binhost-<tag>-NN` and
+`image-<tag>`). You never download those by hand: a KDOS machine finds them through the
 release's signed index.
 
 When the release carries the ISO in parts (`.part01`, `.part02` and on, and no whole
@@ -95,7 +95,7 @@ Then check the ISO:
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-It must print `kdos-<tag>.iso: OK`, with the tag, for example `kdos-v0.2.1.iso: OK`. A checksum list downloaded beside the file proves only that
+It must print `kdos-<tag>.iso: OK`, with the tag, for example `kdos-v0.2.iso: OK`. A checksum list downloaded beside the file proves only that
 the two agree. To check the list's signature on a machine that does not run KDOS, download
 `SHA256SUMS.sig` and `kdos-release.pub` too, and use OpenSSL 3 and `xxd`:
 
@@ -145,7 +145,7 @@ On a KDOS machine, ISO Image Writer does it from a window; it knows no KDOS key 
 not find the key to verify the ISO image", so check the image with `kdos verify` as above.
 A Ventoy stick boots the ISO copied onto it, in Ventoy's normal mode. A stick holding copies of
 the ISO's files (Rufus in ISO mode, or files copied onto a FAT stick) does not boot: the boot
-stops at "Failed to find KDOS installation media."
+stops at "Failed to find the KDOS live medium."
 The ISO boots from UEFI and from legacy BIOS. **Turn Secure Boot off** in the firmware first:
 KDOS's boot loader is not signed for it.
 
@@ -219,29 +219,6 @@ reached a working desktop it becomes the system, and if it does not, the compute
 old slot by itself. Nothing is downloaded until you ask: the nightly check reads only what is
 already on the machine.
 
-A machine installed from v0.2 takes the v0.2.1 slot image from **Updates**, or in a terminal
-with `sudo kdos update fetch` and then `sudo kdos update apply --mount`, and once it runs 0.2.1
-deletes the `binhost = …/v0.2` line from `/etc/kdos/update.conf` if it added one
-([Known gaps](docs/kdos/06-reference/known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release)).
-
-An account made on v0.2 keeps the `~/.config/kxkbrc` that v0.2's input method wrote, naming the
-US layout, and the system's layout never reaches an account whose `kxkbrc` names one. After taking
-v0.2.1, set your layout once on System Settings → Keyboard, or delete `~/.config/kxkbrc` and log in
-again ([Known gaps](docs/kdos/06-reference/known-gaps.md#an-account-made-on-v02-keeps-the-us-keyboard-layout)).
-
-A machine installed from v0.2 with a German, French, Danish, Norwegian, Swiss or Portuguese
-keyboard keeps the console keymap v0.2 chose, kbd's 7-bit `de`, `fr`, `dk`, `no`, `sg`, `fr_CH`
-or `pt`, on which the text consoles cannot type ü, é or ø. After taking v0.2.1, run
-`sudo kdos keymap de-latin1` once (or `fr-latin1`, `dk-latin1`, `no-latin1`, `sg-latin1`,
-`fr_CH-latin1`, `pt-latin1`); it sets the consoles and the disk passphrase prompt. On an encrypted
-v0.2 machine the first start of the new slot still asks for the passphrase with the US keymap
-([Known gaps](docs/kdos/06-reference/known-gaps.md#a-v02-machine-keeps-a-7-bit-console-keymap)).
-
-A machine installed from v0.2 keeps printing off, because v0.2's installer disabled CUPS and the
-update carries that choice. After taking v0.2.1, run `sudo service enable cups`, then `sudo
-service start` with `cups`, `cups-browsed` and `ipp-usb` in turn, once
-([Known gaps](docs/kdos/06-reference/known-gaps.md#a-v02-machine-has-printing-off)).
-
 ## What it looks like
 
 Every picture is the live ISO, booted under QEMU with UEFI and software rendering at 1920×1080, in
@@ -295,8 +272,8 @@ binaries by design, and runs only in boxes. The complete list is in
 **KDOS can build KDOS.** The build's self-hosting phase, `20_selfhost`, rebuilds the C library and
 the compilers inside the new system, with itself. The image carries the package manager, Python
 and every recipe, and no compiler: a build on an installed machine first installs, prebuilt, the
-members of the `build-tools` group it lacks (GCC's assembler and linker, make, CMake, Meson, Ninja
-and the rest), so the machine can rebuild any port of its own. Rust, Go and the other compilers
+members of the `build-tools` group it lacks (GCC's assembler and linker, make, CMake, Meson, Ninja,
+the fortify-headers its hardening flags need on musl, and the rest), so the machine can rebuild any port of its own. Rust, Go and the other compilers
 arrive prebuilt the first time a build needs them.
 
 **The build runs offline.** Every source file a recipe uses is named by a `sha256 =` line in that

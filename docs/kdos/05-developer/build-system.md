@@ -35,7 +35,7 @@ package the build made, and a bootable image at `build/iso-build/kdos.iso`, whic
    root filesystem through `script/chroot/exec.sh`.
 
 The container sees the repository at `/workspace`. `src/`, `fs/`, `script/`, `ports/`, `docs/`
-and `testing/`, the `Makefile` and the `Dockerfile` are mounted read-only and only `build/` is
+and `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` are mounted read-only and only `build/` is
 writable, so a build cannot modify its own sources; nothing else of the checkout, `.git`
 included, is mounted. The
 `Makefile` passes nineteen variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
@@ -489,7 +489,7 @@ The file is verbatim, escape sequences included. The full-screen interface keeps
 | File | Holds |
 |---|---|
 | `snapshots.log` | Every notice the build shows (snapshots taken, skipped or failed, restores, plans, stop requests), with a time stamp, so a notice survives the interface that displayed it |
-| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree, or a `docs/`, `testing/`, `Makefile` or `Dockerfile` it could not bind read-only, an open-files limit it could not raise |
+| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree, or a `docs/`, `testing/`, `Makefile`, `Dockerfile` or `LICENSE` it could not bind read-only, an open-files limit it could not raise |
 | `<phase>/expansion.log` | Why a package phase could not be resolved |
 
 Reading a failed step's log is covered in [Build troubleshooting](build-troubleshooting.md).
@@ -704,7 +704,8 @@ The phases from `20_selfhost` on run inside the target root filesystem, `build/f
    read-only at `/kdos/testing` and `ports/` again at `/kdos/ports` for `70_image`'s
    `087_gates.sh`, whose checks run from `/kdos` and read the recipes under it. The `Makefile` and
    the `Dockerfile` are bound read-only over their own paths under `/kdos`, for the listings
-   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium. The
+   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium, and
+   `LICENSE` beside them for the MIT text `105_ports.sh` installs. The
    repository bind mount does not carry the container's own mounts beneath it, so each directory
    and file a step needs is mounted explicitly. For a `70_image` step from `017_stage.sh` on under
    `KDOS_IMAGE=base`, all of this is mounted in the image stage instead of `build/fs` (see
@@ -953,12 +954,10 @@ alone (the rules above and gcc's `facet_dev` line), 4.51 GB of files, measured t
 Both base sets are larger than the one the v0.2 image was built from: its `system.sfs` is
 1,517 MiB at zstd:19 and its ISO 1,573 MiB, 327 MiB under the 1,900 MiB gate, so the kernel,
 the initramfs, the boot loader and the `/ports` append beside `system.sfs` take about 56 MiB.
-The base with Orca, BRLTTY, plocate, ISO Image Writer and Adwaita added measures
-1,775,599,616 bytes (1,693 MiB) of ISO, 207 MiB under the gate; noto-fonts-extra (Indic and
-Southeast Asian scripts, 13 MB unpacked), which `ports/base` also names, has not been measured in
-an ISO. A build that lands over
-the gate either cuts the base further, which the ledger guides, or sets `KDOS_ISO_COMP=xz-bcj`,
-about 6% smaller.
+The base with Orca, BRLTTY, plocate, ISO Image Writer, Adwaita and noto-fonts-extra (Indic and
+Southeast Asian scripts, 13 MB unpacked) added measures about 1,700 MiB (1,699 MiB measured) of
+ISO, about 200 MiB under the gate. A build that lands over the gate either cuts the base further,
+which the ledger guides, or sets `KDOS_ISO_COMP=xz-bcj`, about 6% smaller.
 
 ## Databases stamped into the image
 

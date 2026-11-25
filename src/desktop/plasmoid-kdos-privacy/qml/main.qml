@@ -22,28 +22,38 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
+import plasma.applet.org.kdos.privacy as Privacy
 
 PlasmoidItem {
     id: root
 
-    readonly property bool anyActive: Plasmoid.microphoneActive || Plasmoid.cameraActive || Plasmoid.screenActive
+    readonly property Privacy.PrivacyApplet privacy: Plasmoid as Privacy.PrivacyApplet
 
-    Plasmoid.icon: Plasmoid.screenActive ? "media-record-symbolic"
-                 : Plasmoid.cameraActive ? "camera-on-symbolic"
-                 : Plasmoid.microphoneActive ? (Plasmoid.microphoneMuted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic")
+    readonly property bool anyActive: root.privacy.microphoneActive || root.privacy.cameraActive || root.privacy.screenActive
+
+    Plasmoid.icon: root.privacy.screenActive ? "media-record-symbolic"
+                 : root.privacy.cameraActive ? "camera-on-symbolic"
+                 : root.privacy.microphoneActive ? (root.privacy.microphoneMuted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic")
                  : "security-high-symbolic"
     Plasmoid.status: root.anyActive ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
     Plasmoid.title: i18ndc("kdos-plasmoid-privacy", "@title", "Privacy Lamps")
 
-    toolTipMainText: root.anyActive ? i18ndc("kdos-plasmoid-privacy", "@info:tooltip", "Something is capturing")
-                                    : i18ndc("kdos-plasmoid-privacy", "@info:tooltip", "Nothing is capturing")
+    /* No tooltip while the list is open: the lamp's own MouseArea takes the
+     * press the tray would hide the tooltip on, and a tooltip with no text
+     * is hidden, so it does not sit over the list. */
+    toolTipMainText: root.expanded ? ""
+                   : root.anyActive ? i18ndc("kdos-plasmoid-privacy", "@info:tooltip", "Something is capturing")
+                   : i18ndc("kdos-plasmoid-privacy", "@info:tooltip", "Nothing is capturing")
     toolTipSubText: {
-        if (!Plasmoid.available && Plasmoid.problem.length > 0) {
-            return Plasmoid.problem;
+        if (root.expanded) {
+            return "";
+        }
+        if (!root.privacy.available && root.privacy.problem.length > 0) {
+            return root.privacy.problem;
         }
         const lines = [];
         for (const kind of ["mic", "camera", "screen"]) {
-            const s = Plasmoid.summaries[kind] ?? "";
+            const s = root.privacy.summaries[kind] ?? "";
             if (s.length > 0) {
                 lines.push(s);
             }
@@ -68,16 +78,16 @@ PlasmoidItem {
 
         Lamp {
             kind: "mic"
-            visible: Plasmoid.microphoneActive || !root.anyActive
-            lit: Plasmoid.microphoneActive
-            source: Plasmoid.microphoneMuted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic"
-            actionText: Plasmoid.microphoneMuted ? i18ndc("kdos-plasmoid-privacy", "@action:button", "Unmute the microphone")
+            visible: root.privacy.microphoneActive || !root.anyActive
+            lit: root.privacy.microphoneActive
+            source: root.privacy.microphoneMuted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic"
+            actionText: root.privacy.microphoneMuted ? i18ndc("kdos-plasmoid-privacy", "@action:button", "Unmute the microphone")
                                                  : i18ndc("kdos-plasmoid-privacy", "@action:button", "Mute the microphone")
             onToggleList: root.expanded = !root.expanded
         }
         Lamp {
             kind: "camera"
-            visible: Plasmoid.cameraActive
+            visible: root.privacy.cameraActive
             lit: true
             source: "camera-on-symbolic"
             actionText: i18ndc("kdos-plasmoid-privacy", "@action:button", "Stop using the camera")
@@ -85,7 +95,7 @@ PlasmoidItem {
         }
         Lamp {
             kind: "screen"
-            visible: Plasmoid.screenActive
+            visible: root.privacy.screenActive
             lit: true
             source: "media-record-symbolic"
             actionText: i18ndc("kdos-plasmoid-privacy", "@action:button", "Stop sharing the screen")

@@ -142,11 +142,18 @@ unset _p
 # Install the boot splash. Static, so it needs nothing else here, and it keeps
 # running across switch_root: its FIFO lives in /dev (devtmpfs is moved into the
 # new root, not remounted), so one process spans the initramfs and the real root
-# without the screen ever going black between them.
+# without the screen ever going black between them. It names the release under
+# the wordmark from the image's /etc/kdos-release and /etc/os-release, which
+# 045_identity.sh stamped before this step, copied beside it: that is what it
+# shows before any root is open. An image built with no commit has no record,
+# so that copy may fail, and without either file it draws the name alone.
+# sp_root_release, below, replaces it with the release of the root it boots.
 if [ -x /usr/bin/kdos-splash ]; then
     cp /usr/bin/kdos-splash bin/kdos-splash
     mkdir -p usr/share/kdos
     cp /usr/share/kdos/splash.psf usr/share/kdos/splash.psf
+    cp /etc/os-release etc/os-release
+    [ ! -f /etc/kdos-release ] || cp /etc/kdos-release etc/kdos-release
 else
     echo "Warning: kdos-splash not installed — booting without the splash"
 fi
@@ -558,6 +565,15 @@ sp_step() { [ -x /bin/kdos-splash ] && /bin/kdos-splash step "\$1" 2>/dev/null; 
 sp_ok()   { [ -x /bin/kdos-splash ] && /bin/kdos-splash ok 2>/dev/null; return 0; }
 sp_fail() { [ -x /bin/kdos-splash ] && /bin/kdos-splash fail 2>/dev/null; return 0; }
 sp_total() { [ -x /bin/kdos-splash ] && /bin/kdos-splash total "\$1" 2>/dev/null; return 0; }
+# THE SPLASH NAMES THE ROOT IT BOOTS, not the image that built this
+# initramfs: an installed machine keeps one initramfs across every update that
+# is not a slot image, so its copy of /etc/kdos-release can be a release
+# behind. The client reads /newroot's record (os-release when it has none) and
+# the running splash takes it. Sent before /dev moves, like everything else.
+sp_root_release() {
+    [ -x /bin/kdos-splash ] && KDOS_SPLASH_ROOT=/newroot /bin/kdos-splash release 2>/dev/null
+    return 0
+}
 # Called before /dev moves into the new root: the splash's FIFO is
 # /dev/.kdos-splash, and once /dev has moved no command sent from here reaches
 # it. \`emergency\` makes init run sulogin before rcS, the one thing that stops
@@ -586,25 +602,37 @@ sp_release() {
 # writes are synced before the shell opens and the screens tell whoever
 # changes a disk to run sync first. On tty1 under a serial /dev/console the
 # screen names the menu's verbose entry, the one way to see the boot log
-# there. A shell is opened on tty1 in its own session with tty1 as its
-# controlling terminal, and this process becomes the shell on /dev/console, so
-# the serial line keeps its shell and the log it has been reading. When
+# there, and under the reason and hint tty1 lists RESCUE_TRIED, the devices
+# a failed medium scan tried and why each was passed over: the scan's own
+# line about them went to the serial console only. tty1 gets a shell loop of
+# its own, in a process setsid -f detaches from this one: each shell is a
+# setsid -c session with tty1 as its controlling terminal, and tty1 is
+# released when that session ends, so the next shell can claim it and an exit
+# there opens a fresh one. It is never a background job of this shell, which
+# runs without job control: bash starts an asynchronous command with SIGINT
+# and SIGQUIT ignored, every shell the loop opened would inherit that, and
+# Ctrl+C would reach nothing it runs. This process runs a shell on /dev/console
+# in a loop, so the serial line keeps its shell and the log it has been reading,
+# and an exit there, or an input that ends the shell, opens a fresh one. When
 # /dev/console is itself a virtual terminal there is one screen and one shell,
-# and the reason is printed on it once: an echo before the branch and the
-# printf in it would both land on that one screen. That shell is opened on the
-# terminal itself, never on /dev/console, which cannot be a controlling
-# terminal: a shell there has no job control, says so in two lines of noise,
-# and lets Ctrl+C reach nothing it runs. setsid -c makes the terminal the
-# shell's controlling terminal and -w waits for it, in a loop, so an exit
-# opens a fresh shell. A shell that ends non-zero, a failed start among
-# them, waits a second before the next, so a shell that cannot start does
-# not spin the loop. PID 1 must never return from here: a shell that exits
-# as PID 1 panics the kernel with "Attempted to kill init".
+# and the reason is printed on it once: an echo before the branch and the printf
+# in it would both land on that one screen. That shell is opened on the terminal
+# itself, never on /dev/console, which cannot be a controlling terminal: a shell
+# there has no job control, says so in two lines of noise, and lets Ctrl+C reach
+# nothing it runs. setsid -c makes the terminal the shell's controlling terminal
+# and -w waits for it, in a loop, so an exit opens a fresh shell. Every shell,
+# whatever its exit status, is followed by a second's wait before the next: a
+# shell that cannot start, or one that reads end-of-file at once from a hung-up
+# line and exits 0, would otherwise spin the loop and flood the console with
+# prompts. PID 1 must never return from here, on either branch: a shell that
+# exits as PID 1, or a return from this function, panics the kernel with
+# "Attempted to kill init".
 #
 # EVERY FIXED LINE AND EVERY HINT IS 80 COLUMNS OR FEWER. They are printed
 # before fbcon's deferred takeover has widened the console, while the VT is 80
 # columns, and a longer line wraps a lone word onto a line of its own.
 RESCUE_HOLD=4
+RESCUE_TRIED=""
 RESCUE_RESTART="Ctrl+Alt+Del restarts at once; run sync first if you changed a disk."
 RESCUE_VERBOSE="The boot menu's '(verbose)' entry shows the boot log on this screen."
 rescue() {
@@ -624,7 +652,7 @@ rescue() {
         echo "KDOS cannot boot. This is a rescue shell."
         echo "\$RESCUE_RESTART"
         while :; do
-            setsid -c -w /bin/sh -i < "/dev/\$con" > "/dev/\$con" 2>&1 || sleep 1
+            setsid -c -w /bin/sh -i < "/dev/\$con" > "/dev/\$con" 2>&1; sleep 1
         done
         ;;
     esac
@@ -633,13 +661,16 @@ rescue() {
     {
         printf '\n%s\n' "\$1"
         [ -n "\$2" ] && printf '%s\n' "\$2"
+        [ -n "\$RESCUE_TRIED" ] && printf 'Devices tried:\n%s\n' "\$RESCUE_TRIED"
         echo "KDOS cannot boot. This is a rescue shell."
         echo "\$RESCUE_VERBOSE"
         echo "\$RESCUE_RESTART"
     } > /dev/tty1 2>/dev/null
-    setsid -f -c /bin/sh -i < /dev/tty1 > /dev/tty1 2>&1
+    setsid -f /bin/sh -c 'while :; do setsid -c -w /bin/sh -i < /dev/tty1 > /dev/tty1 2>&1; sleep 1; done' < /dev/null > /dev/null 2>&1
     echo "A rescue shell is also open on tty1."
-    exec /bin/sh
+    while :; do
+        /bin/sh; sleep 1
+    done
 }
 
 # The two stages every boot path runs; each path adds its own share below.
@@ -900,7 +931,12 @@ if [ -n "\$BOOTSTATE_UUID" ] && [ -x /bin/kdos-bootctl ]; then
         # own slot and nothing else. Absent on a menu whose entries share
         # one kernel, where \`select\` decides alone. \`select\` also rewrites
         # the menu on the ESP when its decision moves the next boot.
+        # KDOS_CMDLINE names /proc/cmdline outright: a state file away from
+        # /boot/efi reads no command line without it, and \`select\` reads
+        # \`kdos_menu=trial\` there to tell a confirmed entry picked from a
+        # trial menu from a firmware fallback.
         SEL=\$(KDOS_BOOTSTATE=/esp/EFI/kdos/bootstate \
+               KDOS_CMDLINE=/proc/cmdline \
                /bin/kdos-bootctl select \${BOOT_SLOT:+"\$BOOT_SLOT"} \
                2>/dev/console)
         # BOTH READS HAPPEN WHILE IT IS MOUNTED. \`crypt\` reads the same file
@@ -1063,6 +1099,7 @@ if [ -n "\$ROOT_UUID" ]; then
             # the splash must be (see sp_release).
             sp_step "SWITCHING ROOT"
             sp_ok
+            sp_root_release
             sp_release
             udev_release
             # Move Mountpoints
@@ -1234,15 +1271,40 @@ sp_step "BOOT MEDIA"
 # /dev/mapper/ventoy COMES FIRST. A Ventoy stick boots the ISO as a file on its
 # exFAT partition, and Ventoy's hook in the initrd maps that file to
 # /dev/mapper/ventoy; it also swaps the stick's second partition node for the
-# same device, but naming the mapping does not depend on that swap. On any
-# other machine the name does not exist and costs one test.
+# same device, but naming the mapping does not depend on that swap. The hook
+# builds that mapping over the stick while this scan runs, and the scan reaches
+# whichever of the two names exists first: either is the medium. On any other
+# machine the name does not exist and costs one test.
+#
+# NOTHING IS MOUNTED THAT IS NOT ISO 9660. A mount opens its device
+# exclusively, and a mount of the Ventoy stick or its exFAT partition while the
+# hook builds its mapping makes the mapping fail with EBUSY: the boot is then
+# left without a medium. So each node's primary volume descriptor, CD001 at
+# byte 32769, is read first through a plain read, which claims nothing, and
+# only a node that carries it is mounted.
 #
 # EACH DEVICE IS NARRATED THE FIRST TIME IT IS SEEN, on whichever pass it
 # appears, and what it turned out to be is kept in WHY. A stick that
 # enumerates after the first pass is named in the log like one that was
 # there at once, and when the bound passes one line lists every device tried
 # and why it was not the medium: the line a failed boot is diagnosed from.
+# The same list goes into RESCUE_TRIED one device to a line for the rescue's
+# tty1 screen, at most eight devices and each line cut to 80 columns, since
+# that line is wider than the screen and goes to the serial console alone.
+#
+# THE MEDIUM IS THE ONE THE ENTRY NAMES. Every live entry of the medium's
+# limine.conf carries kdos.medium=<id>, and the medium carries the same id in
+# kdos-medium.id beside system.sfs. A device with system.sfs and another id, or
+# none, is a second KDOS medium attached to the machine: it is released,
+# recorded in WHY as "another KDOS medium (<id>)" and the scan goes on. Taking
+# it would pair this kernel's modules with another release's system.sfs and
+# make the installer call the wrong device the boot medium. A command line
+# without kdos.medium= (a hand-made entry) takes the first medium found.
 MEDIA_HINT="Write the whole ISO with dd, Rufus DD mode or Ventoy; copied files cannot boot."
+WANT_MEDIUM=""
+for i in \$(cat /proc/cmdline); do
+    case "\$i" in kdos.medium=*) WANT_MEDIUM="\${i#kdos.medium=}" ;; esac
+done
 SCAN_UNTIL=\$(( \$(cut -d. -f1 /proc/uptime) + 10 ))
 FOUND=0
 PASS=0
@@ -1256,22 +1318,27 @@ while :; do
         [ -b "\$dev" ] || continue
         # ONE INSPECTION PER DEVICE. A node that mounts as iso9660 and has no
         # system.sfs on it will not grow one, and a disk that is not ISO 9660
-        # will not become one, so repeating the mount for it every 100 ms is
-        # churn, and every failed iso9660 mount puts an ISOFS line in the
-        # kernel log. Only an optical drive is retried after a failed mount:
-        # a disc still spinning up answers on a later pass.
+        # will not become one, so reading or mounting it again every 100 ms is
+        # churn. Only an optical drive is inspected again after a read or a
+        # mount that failed: a disc still spinning up answers on a later pass.
         case "\$CHECKED" in *" \$dev "*) continue ;; esac
         case "\$SEEN" in
             *" \$dev "*) first=0 ;;
             *) first=1; SEEN="\$SEEN\$dev "; echo "Checking \$dev..." ;;
         esac
         # A DRIVE WITH NO MEDIUM IN IT IS PASSED OVER. Opening it fails
-        # (ENOMEDIUM), so the scan opens before it mounts: a mount of it only
+        # (ENOMEDIUM), so the scan opens before it reads: a mount of it only
         # prints "Can't open blockdev", and its sysfs size is no test, since
         # an empty optical drive reports a guessed size rather than 0. It is
         # not marked checked: a disc still spinning up opens on a later pass.
         if ! { : < "\$dev"; } 2>/dev/null; then
             WHY[\$dev]="no medium"
+            continue
+        fi
+        pvd=\$(dd if="\$dev" bs=1 skip=32769 count=5 2>/dev/null | tr '\000' '?')
+        if [ "\$pvd" != CD001 ]; then
+            WHY[\$dev]="not ISO 9660"
+            case "\$dev" in /dev/sr*) ;; *) CHECKED="\$CHECKED\$dev " ;; esac
             continue
         fi
         # Only a device's first mount prints its error. A hundred retries of
@@ -1283,18 +1350,25 @@ while :; do
             mount -t iso9660 "\$dev" /mnt/iso 2>/dev/null
         fi
         if [ \$? -ne 0 ]; then
-            WHY[\$dev]="not ISO 9660"
+            WHY[\$dev]="ISO 9660 that does not mount"
             case "\$dev" in /dev/sr*) ;; *) CHECKED="\$CHECKED\$dev " ;; esac
             continue
         fi
         CHECKED="\$CHECKED\$dev "
         if [ -f /mnt/iso/system.sfs ]; then
-            echo "Found KDOS media on \$dev"
-            MEDIUM="\$dev"
-            FOUND=1
-            break
+            have=""
+            [ -f /mnt/iso/kdos-medium.id ] && read -r have < /mnt/iso/kdos-medium.id
+            if [ -z "\$WANT_MEDIUM" ] || [ "\$have" == "\$WANT_MEDIUM" ]; then
+                echo "Found KDOS media on \$dev (medium \${have:-without an id})"
+                MEDIUM="\$dev"
+                FOUND=1
+                break
+            fi
+            WHY[\$dev]="another KDOS medium (\${have:-none})"
+            echo "\$dev is another KDOS medium (\${have:-none}), not \$WANT_MEDIUM"
+        else
+            WHY[\$dev]="ISO 9660 without system.sfs"
         fi
-        WHY[\$dev]="ISO 9660 without system.sfs"
         # THE UMOUNT IS CHECKED because /mnt/iso is the only mount point the
         # scan has: if it stays busy, the next mount stacks a second
         # filesystem on the same path and every later test reads the wrong
@@ -1314,10 +1388,20 @@ while :; do
 done
 if [ "\$FOUND" != "1" ]; then
     tried=""
+    tried_n=0
     for dev in \$SEEN; do
         tried="\$tried\${tried:+, }\$dev (\${WHY[\$dev]:-not inspected})"
+        tried_n=\$((tried_n + 1))
+        if [ "\$tried_n" -le 8 ]; then
+            tried_line="  \$dev: \${WHY[\$dev]:-not inspected}"
+            RESCUE_TRIED="\$RESCUE_TRIED\${RESCUE_TRIED:+
+}\${tried_line:0:80}"
+        fi
     done
     echo "No KDOS media; tried: \${tried:-no block device appeared}"
+    [ "\$tried_n" -gt 8 ] && RESCUE_TRIED="\$RESCUE_TRIED
+  ...and \$((tried_n - 8)) more; the serial line lists every one."
+    [ -n "\$RESCUE_TRIED" ] || RESCUE_TRIED="  no block device appeared"
 fi
 
 if [ "\$FOUND" == "1" ]; then
@@ -1460,6 +1544,7 @@ if [ "\$FOUND" == "1" ]; then
             [ -z "\$UPPER" ] && umount -l /mnt/overlay
             rmdir /mnt/system /mnt/overlay 2>/dev/null
             sp_ok
+            sp_root_release
             sp_release
             udev_release
             # Move pseudo-filesystems under the new root (standard; Alpine mkinitfs does this)
@@ -1513,7 +1598,7 @@ if [ "\$FOUND" == "1" ]; then
     fi
 else
     sp_fail
-    rescue "Failed to find KDOS installation media." "\$MEDIA_HINT"
+    rescue "Failed to find the KDOS live medium." "\$MEDIA_HINT"
 fi
 
 rescue "Boot failed."

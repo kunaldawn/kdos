@@ -42,9 +42,9 @@ come from:
 
 An application row and its description, as an example:
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=327-327 pin=db241a9ade70 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=332-332 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=537-537 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=549-549 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -67,7 +67,7 @@ KWin reads the same file for the box's `grant` line.
 The session wrapper's `kdos_session_boxes`, in `fs/usr/local/lib/kdos/session-common.sh`, starts
 the warmup in the background, once at every login:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=118-121 pin=c05799d7b245 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=149-152 pin=c05799d7b245 -->
 
 The idle sweep is a row of the per-user timers, run under the user service `timers` from the
 user's first login to the last, from `fs/etc/kdos/user-services/timers.d/40-box-gc.timer`:
@@ -244,7 +244,8 @@ Inside, `KDOS_BOX` holds the box's name.
 2. Set keys. For a box that has a container it answers `<name>: written`, reminds you that
    namespaces and volumes apply at create time, and prints the profile again; for one with no
    container yet it says the profile applies when the box is created. `autostop=30m` is stored as
-   `autostop=1800s`:
+   `autostop=1800s`. A value its key does not take, such as `network=maybe`, is refused with one
+   line ending `nothing was written`, and none of the keys on that command line is written:
 
    ```bash
    kdos-box profile app.hugin home=private network=private
@@ -378,9 +379,11 @@ kdos app remove app.hugin
 
 It removes the box, the application's image, and each runtime image above the base that no
 remaining box's chain names, then regenerates the launchers. The base image is never removed, and
-neither is the box's profile. The box is removed with `kdos-box remove`, which refuses a running
-box: the remove then prints `kdos-appbox: app.hugin was not uninstalled` and touches no image, so
-stop the box first with `kdos-box stop app.hugin`.
+neither is the box's profile. Removing the last box over the base, a `deb:` one too, says it was
+kept, with the image it is built on, their size and the `podman rmi kdos/base debian:trixie-slim`
+that gives it back. The box is removed with `kdos-box remove`, which refuses a running box: the
+remove then prints `kdos-appbox: app.hugin was not uninstalled` and touches no image, so stop the
+box first with `kdos-box stop app.hugin`.
 
 ### Updating an application
 

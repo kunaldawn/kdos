@@ -44,7 +44,7 @@ script and the `linux` postinstall, and by one file on the machine.
 
 The module list, in the build script, decides which disks and filesystems can hold a root:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=445-491 pin=e85bf30992e0 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=466-512 pin=e85bf30992e0 -->
 
 The last line writes the same list to the image as [`/boot/initramfs.modules`]{.idx}. That file is the one
 setting on the machine: the [`linux`]{.idx} postinstall reads it to decide which modules to append for a
@@ -52,18 +52,19 @@ new kernel. A module named there is carried for the next kernel installed into t
 
 The command-line words the generated `init` reads are below (`\$` here is the generator's
 escaping: the init is written by a heredoc, and the generated script has a plain `$`). The live
-path checks for `nopersist` separately, to skip the persistence store. Every word is explained in
+path checks for `nopersist` separately, to skip the persistence store, and the medium scan reads
+`kdos.medium=` itself, to take only the medium it names. Every word is explained in
 [Command-line parameters KDOS reads](../../kdos/03-architecture/boot-and-init.md#command-line-parameters-kdos-reads):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=672-702 pin=2d484d0f7c3e -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=740-770 pin=2d484d0f7c3e -->
 
 The rescue helper, which every failure ends in:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=579-606 pin=6f1c3908e567 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=589-675 pin=475060a6513e -->
 
 The new kernel's initramfs and its deploy, in the `linux` postinstall:
 
-<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=153-182 pin=ebd732b12a82 -->
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=183-212 pin=ebd732b12a82 -->
 
 ## Usage
 
@@ -125,7 +126,9 @@ When `init` cannot finish, the splash shows the reason and quits, and a shell op
 `/dev/console` with the reason printed above it. On an installed machine `/dev/console` is `tty1`,
 the screen. When it is the serial line, as on the live entries or on any command line whose last
 `console=` is `ttyS0`, a second shell opens on `tty1` with the same reason, and the serial line
-prints `A rescue shell is also open on tty1.` above its own prompt. The screen's banner says that
+prints `A rescue shell is also open on tty1.` above its own prompt. When no medium was found,
+`tty1` lists under the reason, after `Devices tried:`, each device the scan tried and why it was
+not the medium, one to a line and at most eight. The screen's banner says that
 the boot menu's `(verbose)` entry shows the boot log on this screen, and ends with
 `Ctrl+Alt+Del restarts at once; run sync first if you changed a disk.` Every line of it fits 80
 columns, the console's width before the framebuffer console takes over.
@@ -144,15 +147,16 @@ columns, the console's width before the framebuffer console takes over.
    carries no `reboot`, and `Ctrl+Alt+Del` there restarts at once with no `sync` of its own, so run
    `sync` first after changing a disk.
 
-On an installed machine `exit` opens a fresh shell on `tty1`. On the live medium, do not leave the
-shell on the serial line with `exit`: it is process 1, and the kernel panics with
-`Attempted to kill init`.
+`exit` opens a fresh shell, on `tty1` and on the serial line alike: the init runs every rescue
+shell in a loop, because process 1 leaving it would panic the kernel with `Attempted to kill init`.
+Under a serial console the `tty1` loop runs in a process of its own beside process 1's loop on the
+serial line, so each screen gets its fresh shell independently.
 
 ## Tips
 
 - `blkid` with no arguments lists every filesystem the initramfs can see, with its UUID; compare
   it with `root=` and `cryptdevice=` in `cat /proc/cmdline`.
-- On an installed machine, the `KDOS (verbose)` entry prints every kernel message, which shows a
+- On an installed machine, the `KDOS <version> (verbose)` entry prints every kernel message, which shows a
   missing driver before the splash reaches the stage that needs it.
 - The init, the programs and the microcode in the image's initramfs are the medium's. A kernel
   update, through `kdos update` or `kpkg`, runs the `linux` postinstall, which appends modules and
@@ -169,11 +173,11 @@ shell on the serial line with `exit`: it is process 1, and the kernel panics wit
 | `cryptdevice: no device for …` or `Failed to unlock …` | `blkid -t TYPE=crypto_LUKS` | A wrong container UUID on the command line or in the boot state |
 | `Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again.` | The keyboard layout: the prompt reads US key positions | `Ctrl+Alt+Del` gives three more tries; see [Encrypted root](encrypted-root.md#troubleshooting) |
 | `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` on the splash, and the boot goes on | `e2fsck -p` left errors on an ext root | Run `e2fsck -f` on the root while it is not mounted, from the live medium |
-| `Failed to find KDOS installation media.` (live) | Is the stick still in? Did it enumerate within the scan's ten seconds? The serial line's `No KDOS media; tried:` line names every device and what it was | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
-| `Failed to find KDOS installation media.`, then `Write the whole ISO with dd, Rufus DD mode or Ventoy; copied files cannot boot.`, from a stick written as files (Rufus in ISO mode, or the ISO's files copied onto a FAT stick) (live) | `No KDOS media; tried:` names the stick's disk and partitions as `not ISO 9660` | The scan finds the medium only as an ISO 9660 filesystem. Write the whole ISO: `dd`, Rufus in DD mode, ISO Image Writer, or a Ventoy stick in normal mode |
-| `Failed to find KDOS installation media.`, with `Cannot release /mnt/iso after <dev> — stopping the scan` before it on the serial line (live) | The scan's one mount point stayed busy | Reboot; report the device |
+| `Failed to find the KDOS live medium.` (live) | Is the stick still in? Did it enumerate within the scan's ten seconds? `Devices tried:` on tty1 under a serial console, or the `No KDOS media; tried:` line on the serial line or on the one screen of a verbose boot, names each device and what it was | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
+| `Failed to find the KDOS live medium.`, then `Write the whole ISO with dd, Rufus DD mode or Ventoy; copied files cannot boot.`, from a stick written as files (Rufus in ISO mode, or the ISO's files copied onto a FAT stick) (live) | `Devices tried:` on tty1 under a serial console, or the `No KDOS media; tried:` line on the serial line or on the one screen of a verbose boot, names the stick's disk and partitions as `not ISO 9660` | The scan finds the medium only as an ISO 9660 filesystem. Write the whole ISO: `dd`, Rufus in DD mode, ISO Image Writer, or a Ventoy stick in normal mode |
+| `Failed to find the KDOS live medium.`, with `Cannot release /mnt/iso after <dev> — stopping the scan` before it on the serial line (live) | The scan's one mount point stayed busy | Reboot; report the device |
 | `Failed to set up a loop device for system.sfs`, `Failed to mount system.sfs` or `Error: /sbin/init not found in new root!` (live) | `dmesg` in the rescue shell, for read errors on the medium | The medium was found but its system image cannot be read: write the ISO to the stick again, or use another stick |
-| `Attempted to kill init` | The kernel panicked | After leaving the serial line's rescue shell, that was the shell exiting. Otherwise `init` itself died: boot the `KDOS (verbose)` entry and read the messages above the panic |
+| `Attempted to kill init` | The kernel panicked | `init` itself died: boot the `KDOS <version> (verbose)` entry and read the messages above the panic |
 
 The stage the splash stopped on narrows it down; see
 [When a boot stops](../../kdos/03-architecture/boot-and-init.md#when-a-boot-stops).

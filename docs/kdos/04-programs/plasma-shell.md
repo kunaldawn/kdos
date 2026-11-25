@@ -50,17 +50,21 @@ room left over to the applets that fill: the task manager's launchers are whole 
 a sparkline, because a KDOS Meters strip prefers its width without sparklines and fills only up to
 its width with them. Short of room it takes the sparklines first, then narrows the task manager's
 launchers, while every figure stays whole. What still does not fit is cut off at the screen's edge,
-clock and Show Desktop first. Everything on the KDOS desk but the pinned applications is about 69
-grid units wide, roughly 1,240 logical pixels without the pinned applications, which bring it to the
-78-grid-unit threshold, so its script reads the screen's logical width when it lays the panel out:
-under 78 grid units (1,400 logical pixels at the default font) Start has no label and the network
-meter is left out, under 64 (1,150) the pager is left out as well, and under 50 (900) nothing more
-gives way and the Dock or Tiling desk is the one that fits. A change of scale, resolution or font
-size later does not lay the panel out again; `kdos desk kdos` lays it out for the new width. The
-network meter alone follows the screen's logical width as it is: the script sets its face's
-`stepOutBelow` to 78, and the face draws it one pixel wide while the screen is narrower than that,
-so a 1920×1080 screen raised to 150 % (1,280 logical pixels) gives its room to the task manager and
-at 125 % shows it again.
+clock and Show Desktop first. Everything on the KDOS desk but the task manager is about 64 grid
+units wide (roughly 1,150 logical pixels), the network meter 11 of them, and each task takes about
+3, so the four pinned applications bring it to about 76 and the script's threshold for the full
+desk is 78. The script reads the screen's logical width when it lays the panel out: under 78 grid
+units (1,400 logical pixels at the default font) Start has no label and the network meter is left
+out, under 64 (1,150) the pager is left out as well, and under 50 (900) nothing more gives way and
+the Dock or Tiling desk is the one that fits. A change of scale, resolution or font size later does
+not lay the panel out again; `kdos desk kdos` lays it out for the new width. The network meter
+alone follows the panel's logical width as it is: the script sets its face's `stepOutBelow` to 82,
+the desk's width with six tasks (about 1,480 logical pixels), and the face draws the meter one pixel
+wide while the panel is narrower than that, read again whenever the panel is resized, a change of
+display scale included. The face reads the setting again from the applet's configuration at each
+resize, so a desk laid out in the running session steps the meter out at the next change of panel
+width. A screen between 78 and 82 grid units wide gets the meter laid out and
+stepped out.
 
 ### How a desk is laid out
 
@@ -137,7 +141,7 @@ screen), each only while something is capturing it, and names what is: "Firefox 
 |---|---|
 | Click a lamp | Mutes every microphone capture, or unmutes them when all already are; stops every camera or screen capture that can be stopped |
 | Middle click, or Show What Is Capturing in its menu | Opens the list, with a Mute or Stop button for each capture |
-| Hover | A tooltip naming every capture |
+| Hover | A tooltip naming every capture, while the list is closed |
 
 What is capturing comes from `kdos privacy --watch --json`, which prints one line of JSON at once
 and another each time a capture starts, stops or is muted. It reads PipeWire's streams for the
@@ -262,15 +266,20 @@ none is a dependency, and a missing one fails only its row.
 The runner `kdos-library` (object `/library`) searches the offline library: headings of this book
 under `/usr/share/doc`, and of *KDOS from Scratch* once `sudo kdos update install kdos-kfs` has
 put it there, each opened in the browser at its heading and subtitled with its chapter and book
-(*Administration · KDOS book*; a chapter's own title reads *KDOS book* alone), since a heading such
-as *The firewall* recurs across chapters, the
+(*Administration · KDOS book*; a chapter's own title reads *KDOS book* alone), the
 `kdos*` manual pages, each opened by `man` in Konsole, the entries of every Zeal
 docset, a typed coordinate as a `geo:` link, title suggestions from every ZIM file `kiwix-serve`
 serves on `127.0.0.1:8080`, and resources from Kolibri on `127.0.0.1:8081`. Its rows rank below
 everything else, and `kdos-library` is not among krunnerrc's favourites. For the whole title of a
 KDOS settings page its rows rank at most 0.42, below the palette's row for that page, and whatever
 the query, a library row that reads a page's name is titled `<name> in <source>`, the source being its subtitle up to the ` · `, such as *KDOS
-Look in KDOS book*. Each heading opens its own page at its anchor. The palette's
+Look in KDOS book*. A heading such as *The firewall* recurs across chapters and KRunner shows a
+subtitle only on the selected row, so every library row whose title another row of the same answer
+shares is titled `<title> in <source>` by the same rule (*The firewall in Administration*, *The
+firewall in The security model*), and a title no other row shares stays bare. Two headings of one
+name in one chapter both read `<title> in <chapter>`, the chapter being the finest source a row
+carries. Each heading opens
+its own page at its anchor. The palette's
 `lib <words>` asks the library alone: its row calls KRunner's `querySingleRunner` with
 `kdos-library` and the words, so KRunner opens again showing only the library. The book index is
 built in a child process once per install of `kdos-doc` or `kdos-kfs` and kept in
@@ -481,7 +490,7 @@ which puts the KDOS mark and the "Plasma by KDE" credit on its first page.
 | Help | This book and *KDOS from Scratch* in the browser; the *KDOS from Scratch* button is greyed, with `sudo kdos update install kdos-kfs` beside it, while `kdos-kfs` is not installed, which the page looks at when it loads |
 | Getting Started | The [checklist](#getting-started) |
 | Make It Yours | The groups of programs of `/ports/groups`, from `kdos update groups --json`: each one installed or not, and what installing it downloads; ticked ones are installed prebuilt, one at a time, with a line saying which and how far; then Discover for everything else. The last KDOS page; Plasma's own Enjoy It! page follows it and ends the tour. See [Make It Yours](#make-it-yours) |
-| What's New | Never part of the tour; the Release Notes entry in the application menu (`io.kdos.releasenotes.desktop`, found by typing `release notes`) opens it whenever Welcome Center is not already running — a second start of Welcome Center only raises its open window, so with the tour open it brings the tour forward — and `kdos-notice` opens it as `plasma-welcome --pages 90-WhatsNew.qml` once a login is confirmed, when the running version differs from the one this account last recorded in `$XDG_STATE_HOME/kdos/whatsnew`: after an update, or after going back by hand from a newer version this account used. An account's first login, a fresh install's included, records the version and opens nothing, and a rollback from a candidate that never confirmed opens nothing either, since the running version is the one already recorded. It reads `kdos update notes --json`: after a fallback it says which version the machine went back to and that the later one did not start or was not kept, after an update the version it came from, on the live medium (`"live": true`, no slots) only the running version, with no System Versions button, and on a fresh install only the running version, claiming no update |
+| What's New | Never part of the tour; the Release Notes entry in the application menu (`io.kdos.releasenotes.desktop`, found by typing `release notes`) opens it, alone with Finish as its one button, or, while the tour is open, over the tour in the raised window, where Back returns to the tour (a second start of Welcome Center hands its `--pages` to the running window, which shows them as layers) — and `kdos-notice` opens it as `plasma-welcome --pages 90-WhatsNew.qml` once a login is confirmed, when the running version differs from the one this account last recorded in `$XDG_STATE_HOME/kdos/whatsnew`: after an update, or after going back by hand from a newer version this account used. An account's first login, a fresh install's included, records the version and opens nothing, and a rollback from a candidate that never confirmed opens nothing either, since the running version is the one already recorded. It reads `kdos update notes --json`: after a fallback it says which version the machine went back to and that the later one did not start or was not kept, after an update the version it came from, on the live medium (`"live": true`, no slots) only the running version, with no System Versions button, and on a fresh install only the running version, claiming no update |
 
 The Accessibility page is numbered `00-`, and a patch to plasma-welcome shows pages numbered `00-`
 to `09-` straight after the welcome page, before Plasma's own. A page's description is its first
@@ -609,7 +618,8 @@ they are. Its preferred and least width is the same without the sparklines, and 
 full width: a panel gives the sparklines only the room its other applets leave, and one narrower
 than a grid unit is not drawn, so the figures stay whole and the task manager's launchers keep their
 size. With its `stepOutBelow` setting above 0 (0 by default) the strip is one pixel wide and draws
-nothing in a horizontal panel on a screen narrower than that many grid units of logical width. Its
+nothing in a horizontal panel while the panel is narrower than that many grid units of logical
+width, the setting read again from the applet's configuration whenever the panel is resized. Its
 `sensorPattern` setting follows every sensor whose id matches a regular expression as sensors come
 and go, so a box started after the face loaded gets a row; a stock face resolves its list once,
 when it loads. The KDOS page has four sections: Overview (this machine, all boxes, the system),

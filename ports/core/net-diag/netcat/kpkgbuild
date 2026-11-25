@@ -10,7 +10,7 @@
 
 name        = netcat
 version     = 1.238
-release     = 1
+release     = 2
 
 debrev      = 1
 _alpine_rev = 8351754aab5744e775900b2a313cd5bcaebc91a3
@@ -23,5 +23,5 @@ sha256      = 8c98b4f1c5ba66d17ce72a07bf31d0932c10798a624ca26b1780a83b6dac8fb0  
 sha256      = 9dc47d8e013881d3372319c209dcbaa3a09dbaf440fbfa503b554ce2998b5fa6  base64.c
 description = OpenBSD's netcat, reading and writing data over TCP and UDP connections
 homepage    = https://salsa.debian.org/debian/netcat-openbsd
-license     = BSD-3-Clause AND BSD-2-Clause
+license     = BSD-3-Clause AND BSD-2-Clause AND ISC AND LicenseRef-IBM-DNS
 depends     = libbsd

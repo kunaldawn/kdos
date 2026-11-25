@@ -90,9 +90,9 @@ private:
     bool m_pending = false;
     bool m_force = false;
     bool m_timedOut = false;
-    /* No marker at load, and no evaluation yet in this session: the
-     * account's first login. */
-    bool m_firstLogin = false;
+    /* An evaluation has run in this session; the first one decides the
+     * account's first login and writes its marker. */
+    bool m_evaluated = false;
     /* The accent of the last failed run and the accent file's time when it
      * failed: the failure stands until a run succeeds or the file is
      * rewritten, which is `kdos theme` having been run by hand. */

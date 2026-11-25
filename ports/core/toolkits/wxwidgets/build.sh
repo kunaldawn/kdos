@@ -53,6 +53,9 @@ ninja -C _build
 DESTDIR=$PKG ninja -C _build install
 
 install -Dm644 wxwin.m4 "$PKG/usr/share/aclocal/wxwin.m4"
+for f in licence.txt lgpl.txt preamble.txt; do
+	install -Dm644 "docs/$f" "$PKG/usr/share/licenses/$name/$f"
+done
 
 for lib in webview gl media; do
 	test -e "$PKG/usr/lib/libwx_gtk3u_$lib-3.2.so"

@@ -44,14 +44,17 @@ Discover's "Runs in a box" badge links to it. For one box it shows:
 | Section | What it holds |
 |---|---|
 | Lifecycle | Start, stop, restart, Open Terminal, recreate, remove, and export as a `.ktar` set; Create and Delete Settings for a box with no container |
-| Colour | The title-bar colour KWin gives the box's windows: one swatch per installed KDOS colour scheme, and Neutral, the default. Each swatch is a small title bar in its scheme's own colours: the background, a sample of the title text and a stripe of the scheme's accent |
-| Permissions | Network, the home folder and what the box writes, devices, the graphics card and sound, memory, processor and process limits, when it stops while idle, whether its windows show, when it may use the X11 display, and which desktop-wide Wayland and bus grants it holds |
+| Colour | The title-bar colour KWin gives the box's windows: one swatch per installed KDOS colour scheme, and Neutral, the default. Each swatch is a small title bar in its scheme's own colours: the background, a sample of the title text and a stripe of the scheme's accent. A profile naming an accent no swatch shows has Neutral selected, the colour KWin then paints |
+| Permissions | Network, the home folder and what the box writes, devices, the graphics card and sound, memory, processor and process limits, when it stops while idle, whether its windows show, when it may use the X11 display, and which desktop-wide Wayland and bus grants it holds. A limit is typed with its unit (`512m`, `1.5g`, `2 cores`, `90m`) and taken on Return or when the field is left, then shown in its own spelling, and Reset and Defaults set a typed limit back as they do a stepped one; a memory limit under 6 MiB, podman's floor, is raised to it |
 | Confinement | While the box runs, which boundary held for it, and why |
 
 The page reads the box's profile, `~/.config/kdos/boxes/<box>.conf`, and shows beside each control
 what `kdos-box profile <box>` says enforces that key, with every `!` line about a value the box
-cannot be given. The words are kdos-box's; the page sets them as prose, with a capital first word
-and each quoted word or `key=value` in code. A change runs `kdos-box profile <box> key=value` for
+cannot be given, all of one key's `!` lines in one warning. A `!` line that names the profile file, an unknown key or a value its key does
+not take, sits at the top of the page under no control, and the note on what holds the limits sits
+under the first limit it names, memory before processor before process. The mouse wheel scrolls the page over a
+list or a limit and changes neither; the arrow keys step a limit. The words are kdos-box's; the page sets
+them as prose, with a capital first word and each quoted word or `key=value` in code. A change runs `kdos-box profile <box> key=value` for
 each key that changed; lifecycle buttons run `kdos-box` and `kdos-appbox` the same way, as the user
 and without root. A command that fails says so with the last line it printed as the reason, and
 with no reason when it printed nothing; the busy line shows only the running command's output,
@@ -63,7 +66,13 @@ A box with no container reads "Removed — settings kept" when `kdos-box remove`
 (the profile then opens with the line `# kept by kdos-box remove`), and "Not created" when it was
 described and never made, a create that failed included. Neither offers Start, which `kdos-box
 start` refuses without a container: both offer Create, which runs `kdos-box create <box>` over the
-profile, and Delete Settings, which runs `kdos-box remove <box> --purge`. A box with a container
+profile, and Delete Settings, which runs `kdos-box remove <box> --purge`. The one exception is a
+box on a store image whose application is uninstalled, the application's own box or one made with
+`base=image:kdos/<id>` (`kdos-box list --json` reports its `image` as `absent`): its image is built
+only by installing the application, which `kdos-box create` refuses to stand in for, so the page
+offers neither Create nor Export as Archive, which flattens that image, and says instead "Its application is not installed.
+Installing it again from Discover makes this box with these settings; Delete Settings removes
+them." A box with a container
 offers Open Terminal, which runs `kdos-box enter <box> --window`: a Konsole window in the box's
 colours with a shell inside it, as KRunner's `box enter` verb opens.
 
@@ -80,11 +89,22 @@ desktop-wide grants, which KWin reads from the same file, in [KWin](kwin.md#what
 A namespace, a volume or a podman limit cannot change on a running container, so a change to the
 network, the home folder, what the box writes, devices, the graphics card, the init process or a
 limit, on a box that has a container, is written at once and takes effect only when the box is
-created again. The page remembers such changes in `$XDG_STATE_HOME/kcm_kdos_boxesstaterc` and shows
-a Recreate banner until the box has been made again; Recreate stops, removes and creates the box.
-While the banner shows, the `!` line `kdos-box profile` prints for a profile written after its
-container was made is not shown beside it, since the two say the same thing; after a recreate,
-create or remove the page reads the report again.
+created again. The page remembers the changes made on it in `$XDG_STATE_HOME/kcm_kdos_boxesstaterc`,
+and reads the ones made with `kdos-box profile <box> key=value` from the `!` line `kdos-box
+profile` prints for a profile written after its container was made, which names the keys that
+differ. Either shows a Recreate banner, which lists those settings after "Changed since the box
+was created" ("network and shared memory"), until the box has been made again;
+Recreate stops, removes and creates the box. A setting the page sets back to what the container
+was made with leaves the list, since `kdos-box profile` says it "is what the box was created
+with". For a container labelled with what it was made from, the report's `created = matches`
+or `created = differs` line makes the report the whole truth: each time the page reads it, a
+remembered setting the `!` line does not name leaves the list, so one set back with
+`kdos-box profile` in a terminal is gone the next time the box is opened. A container with no
+label, such as one `distrobox create` made by itself, reports `created = unrecorded`, and a
+remembered setting stays listed until the box is made again, because the page's memory of its
+own change is all there is to go on. While the banner shows, that `!` line is not shown
+beside it, since the two say the same thing; after a recreate, create or remove the page reads the
+report again.
 Only a pack box keeps its writes outside its container. Any other box keeps them inside it, so
 recreating or removing one deletes them, and the confirmation says so. The colour and the grants
 apply to the next window the box opens.
@@ -106,7 +126,11 @@ first word, unless it opens with a program name, a path or a profile key, and a 
 label comes from `kdos-box list --json`'s `manager` field. kdos-box makes its own boxes with
 `distrobox create` as well, so they carry the same label, but each has a profile, which may unshare
 what a distrobox shares; such a box with no record reads as unknown. A box that is not running, or
-any other box with no record, reads as unknown, and the page says it cannot tell: no file is never read as confined. The same state draws the
+any other box with no record, reads as unknown: no file is never read as confined. A running box
+with no record shows an information banner, with no security level, saying "Nothing has been
+launched in this box through KDOS yet (an exported launcher or kdos-box run), so how its windows
+are confined is not recorded."; only those launches write the record, and a box started by
+`kdos-box start` or entered with `kdos-box enter` has none. The same state draws the
 [sandbox badge](kwin.md#the-sandbox-badge) in the box's title bars.
 
 ## Firewall
@@ -203,13 +227,21 @@ prompt, when `kdos-getty` loads the `/etc/vtrgb` that `kdos-bootctl theme` rewro
 and where `/boot/efi` exists the boot menu, at the next boot. The hint under the swatches says the
 same. Each swatch is painted from its own `KDOS<Title>.colors`, and the list is the
 one `kdos theme list` prints, so the page offers no accent the command would refuse; an accent whose
-scheme is not installed is listed and cannot be picked. The swatches are one radio group: a screen
+scheme is not installed is listed and cannot be picked. A frame marks the current accent, and a
+ring in the focus colour outside it marks the swatch the keyboard is on. The swatches are one radio group: a screen
 reader hears each as a radio button, checked where it is the current accent, Tab stops once in the
-group, on the current accent, and the arrow keys move the focus between them, wrapping and skipping one that cannot be picked, without applying
+group, on the current accent (a swatch that holds the focus when the accent changes elsewhere keeps its stop until the focus leaves it), and the arrow keys move the focus between them, wrapping and skipping one that cannot be picked, without applying
 anything; Space or Enter on the focused swatch applies it, as a click does. There is no Apply: an accent is a command
 that repaints the machine, and one runs at a time. A second click while one is running is refused
 rather than queued, and so is any click while [kded-kdos](plasma-shell.md#kded-kdos) is running
-`kdos theme`, because two runs at once would write the same files in an order nobody chose. What
+`kdos theme`, because two runs at once would write the same files in an order nobody chose. The
+swatches stay enabled while a run goes, with the busy line under them saying so, so the focus
+stays on the swatch a key applied and a screen reader hears no state change on the other seven
+while it runs; a refused press is announced to the screen reader ("Not applied:" and what is
+running). A refresh that finds `kdos theme list` unchanged leaves the swatches as they are. The
+refresh that brings the new current accent updates them in place, so the focus stays on the
+swatch it was on; a list that adds, drops or reorders an accent rebuilds them, and the focus goes
+back to the swatch in the place the focused one held, so it stays in the group. What
 setting an accent changes is in [The kdos command](kdos-command.md#kdos-theme).
 
 **Where the accent is held.** Below the swatches the page compares the three places an accent
@@ -243,7 +275,42 @@ The page never writes `kwinrc`, `kdeglobals` or a Konsole profile itself.
 
 ## System Versions
 
-System Versions shows KDOS's root slots, with the version, build date, tree commit and kernel each
+System Versions shows the versions of KDOS kept on this computer and which one is running. A
+computer installed with two slots, A and B, keeps two whole systems: an update goes into the one
+not in use, and the computer can go back to the other. Each slot has a form with its version, the
+date it was built, its kernel and its state, in these words:
+
+| The page says | What it means |
+|---|---|
+| Running now · Confirmed: the version this computer starts | This is the version in use, and the one every restart starts. |
+| On trial: kept once this session is confirmed | A new version is running for the first time; it is kept once a session has run for a minute, or, on a computer that logs nobody in automatically, once the login screen has. |
+| Starts once at the next restart | The next restart tries this version once. |
+| Running for this boot only: the computer starts slot A next time | This version was picked at the boot menu; the next restart goes back to the version named. |
+| Set aside: you started the other version from the boot menu | A version waiting to be tried was skipped by picking the other at the boot menu. Nothing went wrong with it. |
+| Did not start: the computer went back to the other version | A version on trial did not start properly, and the computer went back by itself. A banner above the forms says so. |
+| Incomplete | An update stopped while writing this slot; the line below the state says how to write it again. |
+| Installed, not in use / Empty | The slot holds a version nobody is running, or nothing. |
+
+Where there are two versions, the one that is not running carries the page's one button, Start
+This Version Next Time, unless it is already set to start next or an update left it incomplete. It
+starts that version once at the next restart: the previous version after
+an update, or the new one again after going back. The page asks first, and says that the version is
+kept when a session runs for a minute, or, without autologin, when the login screen does, and
+that a version that does not get that far is undone by itself. Programs
+installed and settings changed in one version are not in the other, but everything under `/home`
+is the same in both. A banner then offers Restart Now, or Keep followed by the current version's
+name to call the restart off.
+
+Under Updates the page says where updates come from (the KDOS releases, a folder or removable
+medium, or another address), whether one is available or ready to install, and why the last one
+stopped. Updates are installed from Discover, and the page's Discover button opens it. On a
+computer installed with one version the page has no Discover button, and the Updates section names
+the terminal commands that install an update. Installing
+software chooses whether programs are downloaded prebuilt or built on this computer (below).
+
+### How the page works
+
+The page shows KDOS's root slots, with the version, build date, tree commit and kernel each
 holds and the state each is in: confirmed, on trial, visiting, failed, set aside (`abandoned`),
 installed, incomplete or empty. A slot running but neither confirmed nor on trial, picked at the
 boot menu, is visiting and reads "Running for this boot only: the computer starts slot A next time"
@@ -253,25 +320,20 @@ use. "Running now" is put in front of the confirmed state alone, since every oth
 on trial or visiting.
 Only a trial that ended unconfirmed, `failed`, is reported as a version that did not start
 properly. A trial set aside by picking the confirmed version at the boot menu is not one:
-`kdos-sysupdated` reports that slot as installed, so it reads "Installed, not in use" and no banner
-says it did not start. The page reads a `ListSlots` entry carrying `abandoned` (or the state
-`abandoned`) as "Set aside: you started the other version from the boot menu", in the ordinary
-text colour; `kdos-sysupdated` sends neither. A machine
+`kdos-sysupdated` passes `kdos-bootctl`'s `abandoned` state on in `ListSlots` (`abandoned` true,
+`state` "abandoned"), and the page reads it as "Set aside: you started the other version from the
+boot menu", in the ordinary text colour, with no banner. `kdos-bootctl`'s `visiting` state reaches
+`ListSlots` the same way, as the state "visiting". A machine
 installed with two slots shows both, A and B; one installed with a single slot shows that one,
 under "This computer has one version of KDOS" (below). Only where there are two does the page carry
-its one button, Start This Version Next Time, which arms a one-boot trial of the other slot: the
-previous version after an update, or the new one again after a rollback. The page's settings are where `kdos update` takes a
-newer release from (the KDOS releases, a folder or removable medium, or another address) and how
-software is installed (below). Beside it
-the page shows what the update service reports (an update available, one already prepared in the
-other slot and waiting to be installed from Discover, and why the last one stopped) and opens
-Discover to act on it. The Discover buttons and Install KDOS start their program through KIO under
-its desktop name (`org.kde.discover`, `kdos-installer`), so its window comes to the front, a
-Discover window already open included. Start This Version Next Time asks first, in a prompt titled
-"Start Next Time?", at most 24 grid units wide, whose sentences wrap inside. They name the version
-the next restart starts once, say that it is kept when a session runs for a minute, or, on a
-computer SDDM does not log in automatically, when the login screen does, that a version that does
-not start goes back to the confirmed one by itself, and that programs installed and settings
+Start This Version Next Time, which arms a one-boot trial of the other slot. The update source is
+the `tree =` line `kdos update` reads. The Discover buttons and Install KDOS start their program
+through KIO under its desktop name (`org.kde.discover`, `kdos-installer`), so its window comes to
+the front, a Discover window already open included. Start This Version Next Time asks first, in a
+prompt titled "Start Next Time?", at most 24 grid units wide, whose sentences wrap inside. They name
+the version the next restart starts once, say that it is kept when a session runs for a minute, or,
+on a computer SDDM does not log in automatically, when the login screen does, that a version that
+does not start goes back to the confirmed one by itself, and that programs installed and settings
 changed in the confirmed version since the last update are not in the other: each slot is a whole
 system, and what is under `/home` is the same in both.
 The prompt is a dialog window of System Settings: modal to the whole program, kept above its
@@ -301,9 +363,10 @@ installing it, written over the running system and taking effect after a restart
 version to go back to. On such a machine `kdos-sysupdated` fetches only the binary-host index of
 the tree in place and prepares no update, so Discover installs none, and the page shows no
 Discover button; `apply` alone installs nothing newer than the tree already in `/ports`, so the
-fetch comes first. A machine with two slots is told instead
-that an update goes into the slot not in use and that the computer goes back by itself if it does
-not start properly.
+fetch comes first. A machine with two slots is told instead: "It goes into the slot not in use and starts after a
+restart. It is kept when a session runs for a minute, or, on a computer that logs nobody in
+automatically, when the login screen does; a version that does not get that far is undone by
+itself."
 
 A slot an update began writing and did not finish is incomplete. When `ListSlots` marks a slot so
 (`incomplete`, or the state `incomplete`), its form is titled "Slot B" (or "Slot A"), its State
@@ -400,7 +463,7 @@ unchanged:
 | Page or program | Uses |
 |---|---|
 | System Settings → Date & Time | timedate1, and nothing else: the zone, the clock and network time |
-| The login screen's KWin, run with `--locale1` | locale1's keyboard layout, followed when it changes; `startplasma` copies it into a session whose account's `kxkbrc` names no layout, and an account that has its own keeps it. A new account's first session also writes the layout of `/etc/kdos/xkb.conf` into the `~/.config/fcitx5/profile` it creates, because fcitx5 writes that profile's layout into `kxkbrc` when *Allow Overriding System XKB Settings* is on, which `/etc/xdg/fcitx5/conf/wayland.conf` turns off and the Input Method page can turn back on; see [Input methods](../03-architecture/session.md#input-methods) |
+| The login screen's KWin, run with `--locale1` | locale1's keyboard layout, followed when it changes; `startplasma` copies it into a session whose account's `kxkbrc` names no layout, and an account that has its own keeps it. System Settings → Keyboard reads the same `kxkbrc` cascade, so it shows an empty layout list only when neither `~/.config/kxkbrc` nor `/etc/xdg/kxkbrc` names a layout, and turning that list on starts it from the layouts the session runs, so a layout added there joins the session's rather than replacing it. The system `/etc/xdg/kxkbrc`, which a session and its lock screen read before that copy, is written by the installer and rewritten by `kdos-settingsd` on every locale1 layout change, so plasma-setup's choice on an OEM first boot replaces the installer's. A new account's first session also writes the layout of `/etc/kdos/xkb.conf` into the `~/.config/fcitx5/profile` it creates, because fcitx5 writes that profile's layout into `kxkbrc` when *Allow Overriding System XKB Settings* is on, which `/etc/xdg/fcitx5/conf/wayland.conf` turns off and the Input Method page can turn back on; see [Input methods](../03-architecture/session.md#input-methods) |
 | plasma-setup, on an OEM first boot | all three |
 | System Monitor's system sensors | hostname1 |
 

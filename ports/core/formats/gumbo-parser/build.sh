@@ -18,3 +18,4 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dpython=false
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+install -Dm644 doc/COPYING "$PKG/usr/share/licenses/$name/COPYING"

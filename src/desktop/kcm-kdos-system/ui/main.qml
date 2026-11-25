@@ -102,7 +102,7 @@ KCM.SimpleKCM {
             position: Kirigami.InlineMessage.Position.Header
             visible: kcm.available && kcm.rolledBackTitle !== ""
             type: Kirigami.MessageType.Warning
-            text: i18nc("@info %1 version that failed, %2 version running", "%1 did not start properly, so KDOS went back to %2.", kcm.rolledBackTitle, kcm.fallbackTitle)
+            text: i18nc("@info %1 version that failed, %2 version running", "%1 did not start properly, so the computer went back to %2.", kcm.rolledBackTitle, kcm.fallbackTitle)
         }
 
         Kirigami.InlineMessage {
@@ -251,6 +251,7 @@ KCM.SimpleKCM {
 
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 24
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 24
                 /* A one-slot install has no slot to write into but the
                  * running one: kdos-sysupdated fetches only the binhost
@@ -262,7 +263,7 @@ KCM.SimpleKCM {
                  * already in /ports. */
                 text: root.oneSlot
                     ? i18nc("@info", "Whatever the source, an update is installed only if it carries the KDOS release signature. On this computer it is installed from a terminal: “sudo kdos update fetch” downloads it and “sudo kdos update apply” installs it. It is written over the running system and takes effect after a restart, and there is no previous version to go back to if it does not start properly.")
-                    : i18nc("@info", "Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart; if it does not start properly, the computer goes back by itself.")
+                    : i18nc("@info", "Whatever the source, an update is installed only if it carries the KDOS release signature. It goes into the slot not in use and starts after a restart. It is kept when a session runs for a minute, or, on a computer that logs nobody in automatically, when the login screen does; a version that does not get that far is undone by itself.")
                 wrapMode: Text.Wrap
                 font: Kirigami.Theme.smallFont
             }

@@ -26,7 +26,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/termusic.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Music
+Name=Termusic
 GenericName=Music Player
 Comment=Play a music library
 Exec=termusic

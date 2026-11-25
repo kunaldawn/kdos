@@ -84,23 +84,24 @@ the next.
 
 ### The repository
 
-<!-- kfs:include script/chroot/exec.sh lines=121-164 pin=badafa5a1317 -->
+<!-- kfs:include script/chroot/exec.sh lines=121-166 pin=64a1382a8fc0 -->
 
 The repository is bound at `/kdos` and `build/` at `/kdos/build`, writable, and `ports/` at
 `/ports`, the path every phase's `PORT_REPO` and kpkg's own configuration name. A bind mount of a
 directory does not carry the mounts beneath it, and in the container `script/`, `src/`, `fs/`,
-`docs/`, `testing/`, the `Makefile` and the `Dockerfile` are separate read-only mounts, so each is
-bound again explicitly. `docs/`, `testing/` and the two files are remounted read-only. `docs/` is
+`docs/`, `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` are separate read-only mounts, so
+each is bound again explicitly. `docs/`, `testing/` and the three files are remounted read-only. `docs/` is
 read by the two ports that render the books, `kdos-doc` for the KDOS book and `kdos-kfs` for this
 one. `testing/` is read by the checks the image phase's `087_gates.sh` runs from `/kdos`, and
 `ports/` is bound once more at `/kdos/ports` because those checks, and `kdos-kfs`, read the recipes
 there. The `Makefile` and the `Dockerfile` are read by `kdos-kfs` again, for the listings of
 [Part I](../01-preparing/host-container.md), and by `110_iso.sh`, the image step that copies the
-sources onto a developer medium.
+sources onto a developer medium. `LICENSE` is read by `105_ports.sh`, which installs it as the MIT text
+of KDOS's own packages and stops the image without it.
 
 ### The open-files limit
 
-<!-- kfs:include script/chroot/exec.sh lines=166-177 pin=5442fd7ffe9b -->
+<!-- kfs:include script/chroot/exec.sh lines=168-179 pin=5442fd7ffe9b -->
 
 Both the hard and the soft limit on open files are raised to at least 4096. QtWebEngine's link runs
 `ulimit -n 4096` itself and fails when the hard limit is lower. A limit already that high is left
@@ -108,7 +109,7 @@ alone, and one that cannot be raised is noted in `build/logs/chroot.log`.
 
 ### The package store
 
-<!-- kfs:include script/chroot/exec.sh lines=179-183 pin=899f3439074f -->
+<!-- kfs:include script/chroot/exec.sh lines=181-185 pin=899f3439074f -->
 
 `make build KDOS_PKG_STORE=1` or `=check` turns on the [package store]{.idx}, and the script turns that into
 the two variables kpkg itself reads: the store's directory as the chroot sees it, and whether to
@@ -116,7 +117,7 @@ build every hit anyway and compare.
 
 ### The command, in an empty environment
 
-<!-- kfs:include script/chroot/exec.sh lines=250-277 pin=a37bc871a11f -->
+<!-- kfs:include script/chroot/exec.sh lines=254-281 pin=a37bc871a11f -->
 
 `chroot` makes `build/fs` the root and runs the tree's own `/usr/bin/env -i`, which clears the
 environment completely and sets only the variables listed. Then the tree's bash changes to `/kdos`,
@@ -224,6 +225,7 @@ docker run --rm -it --network none --privileged \
     -v "$PWD/script:/workspace/script:ro" -v "$PWD/ports:/workspace/ports:ro" \
     -v "$PWD/docs:/workspace/docs:ro" -v "$PWD/testing:/workspace/testing:ro" \
     -v "$PWD/Makefile:/workspace/Makefile:ro" -v "$PWD/Dockerfile:/workspace/Dockerfile:ro" \
+    -v "$PWD/LICENSE:/workspace/LICENSE:ro" \
     os-dev script/chroot/exec.sh bash
 ```
 

@@ -10,7 +10,7 @@
 
 name        = kcm-kdos-look
 version     = 1.0.0
-release     = 1
+release     = 2
 description = System Settings KDOS Look page — one accent everywhere, and Phosphor mode
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT

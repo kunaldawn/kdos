@@ -426,12 +426,22 @@ QString Backend::partitionText(const QVariantMap &p)
 {
     const QString fstype = p.value(QStringLiteral("fstype")).toString();
     const QString label = p.value(QStringLiteral("label")).toString();
+    const QString remap = p.value(QStringLiteral("remap")).toString();
+    const QString size = KFormat().formatByteSize(p.value(QStringLiteral("sectors")).toDouble() * 512, 1);
+    /* A partition whose node points at another device is named for what
+     * it is, as ki_disk_contents() names it: what the node reads is not
+     * the partition's. */
+    if (remap == QLatin1String("ventoy")) {
+        return i18nc("@item %1 size", "Ventoy's boot partition %1", size);
+    }
+    if (!remap.isEmpty()) {
+        return i18nc("@item %1 device-mapper name %2 size", "mapped to %1 %2", remap, size);
+    }
     const QString kind = p.value(QStringLiteral("esp")).toBool()       ? i18nc("@item a partition type", "EFI system")
                        : p.value(QStringLiteral("bios_boot")).toBool() ? i18nc("@item a partition type", "BIOS boot")
                        : fstype == QLatin1String("LVM2_member")        ? pvText(p.value(QStringLiteral("vg")).toString())
                        : !fstype.isEmpty()                             ? fstype
                                                                        : i18nc("@item no filesystem", "empty");
-    const QString size = KFormat().formatByteSize(p.value(QStringLiteral("sectors")).toDouble() * 512, 1);
     return label.isEmpty() ? i18nc("@item %1 type %2 size", "%1 %2", kind, size)
                            : i18nc("@item %1 type %2 label %3 size", "%1 “%2” %3", kind, label, size);
 }
@@ -588,6 +598,43 @@ QStringList Backend::timeZones() const
 {
     static const QStringList zones = readZones(Zone1970);
     return zones;
+}
+
+/* One KEY=value of an os-release style file, its quotes dropped; "" when
+ * the file or the key is missing. */
+static QString releaseField(const QString &path, const QString &key)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    const QString prefix = key + QLatin1Char('=');
+    for (const QString &line : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))) {
+        if (line.startsWith(prefix)) {
+            QString v = line.mid(prefix.size()).trimmed();
+            v.remove(QLatin1Char('"'));
+            return v;
+        }
+    }
+    return QString();
+}
+
+QString Backend::readRelease(const QString &root)
+{
+    const QString version = releaseField(root + QStringLiteral("/etc/kdos-release"), QStringLiteral("VERSION"));
+    if (!version.isEmpty()) {
+        return version;
+    }
+    const QString osRelease = root + QStringLiteral("/etc/os-release");
+    const QString id = releaseField(osRelease, QStringLiteral("VERSION_ID"));
+    const QString build = releaseField(osRelease, QStringLiteral("BUILD_ID"));
+    return id.isEmpty() || build.isEmpty() ? id : id + QLatin1Char('+') + build;
+}
+
+QString Backend::release() const
+{
+    static const QString r = readRelease(QString());
+    return r;
 }
 
 /* The running system's zone where the list offers it, else UTC: an alias
@@ -784,8 +831,11 @@ QString Backend::installSize(const QVariantMap &probe)
     }
     const double store = probe.value(QStringLiteral("copy_store_bytes")).toDouble();
     const QString sys = KFormat().formatByteSize(system.toDouble(), 1);
-    if (store <= 0) {
-        return sys;
+    /* The split is named for a store of 1 MiB or more, the precision of the
+     * probe's own "appbox <n> MB": a store below that is the store's empty
+     * directories and holds no box. */
+    if (store < 1048576.0) {
+        return KFormat().formatByteSize(system.toDouble() + store, 1);
     }
     return i18nc("@info %1 the whole copy %2 the system's part %3 the box store's", "%1 — %2 system and %3 boxed-app store",
                  KFormat().formatByteSize(system.toDouble() + store, 1), sys, KFormat().formatByteSize(store, 1));

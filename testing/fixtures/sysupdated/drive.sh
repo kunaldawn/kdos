@@ -176,9 +176,9 @@ want_re "$F/state.txt" '"phase" s "armed" "version" s "0.2.14"'
 prop TrySlot > "$F/tryslot.txt"
 want "$F/tryslot.txt" 's "b"'
 bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/slots.txt"
-want_re "$F/slots.txt" '^aa\{sv\} 2 17 "id" s "a" "title" s "KDOS 0.2.13 \(slot A\)" "present" b true "version" s "0.2.13"'
+want_re "$F/slots.txt" '^aa\{sv\} 2 18 "id" s "a" "title" s "KDOS 0.2.13 \(slot A\)" "present" b true "version" s "0.2.13"'
 want_re "$F/slots.txt" '"id" s "b" "title" s "KDOS 0.2.14 \(slot B\)" "present" b true "version" s "0.2.14"'
-want_re "$F/slots.txt" '"confirmed" b true "trial" b false "failed" b false "incomplete" b false "bootable" b false "reason" s "This is already the version the computer starts." "state" s "confirmed"'
+want_re "$F/slots.txt" '"confirmed" b true "trial" b false "failed" b false "abandoned" b false "incomplete" b false "bootable" b false "reason" s "This is already the version the computer starts." "state" s "confirmed"'
 want_re "$F/slots.txt" '"trial" b true .* "state" s "trial"'
 [ "$fail" = 0 ] || exit 1
 echo "  after Install: try = b, the logout entry, CheckNew empty, Slots1 armed"
@@ -665,6 +665,25 @@ mv "$F/bootstate.saved" "$KDOS_BOOTSTATE"
 [ "$fail" = 0 ] || exit 1
 echo "  the live medium fetches the binhost index, is named as such, offered nothing and told to install KDOS"
 
+# ── a trial set aside at the boot menu, and a root picked for one boot ─────
+# kdos-bootctl's own `abandoned` and `visiting` reach ListSlots as the slot's
+# state: neither is a failure, and the KCM and kdos-notice say so.
+kdos-bootctl cancel >/dev/null
+kdos-bootctl try b 1 >/dev/null || { echo "  FAIL  kdos-bootctl try b was refused"; exit 1; }
+kdos-bootctl select a >/dev/null 2>&1 || { echo "  FAIL  kdos-bootctl select a was refused"; exit 1; }
+start_daemon
+bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/abandoned.txt"
+want_re "$F/abandoned.txt" '"id" s "b" .* "trial" b false "failed" b false "abandoned" b true "incomplete" b false .* "state" s "abandoned"'
+stop_daemon
+printf 'kdos_slot=b root=UUID=BBBB-2222 rw\n' > "$F/cmdline"
+start_daemon
+bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/visiting.txt"
+want_re "$F/visiting.txt" '"id" s "b" .* "running" b true "confirmed" b false "trial" b false .* "state" s "visiting"'
+stop_daemon
+printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$F/cmdline"
+[ "$fail" = 0 ] || exit 1
+echo "  a trial set aside at the boot menu is abandoned, not failed; a root picked for one boot is visiting"
+
 # ── a slot an update stopped writing ───────────────────────────────────────
 # `kdos-bootctl unfill b`, as `kdos update` marks the slot before its first
 # byte: Slots1 reports it incomplete, not bootable, until a deploy clears it.
@@ -672,7 +691,7 @@ kdos-bootctl cancel >/dev/null
 kdos-bootctl unfill b >/dev/null || { echo "  FAIL  kdos-bootctl unfill b was refused"; exit 1; }
 start_daemon
 bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/unfilled.txt"
-want_re "$F/unfilled.txt" '"id" s "b" .* "incomplete" b true "bootable" b false "reason" s "An update stopped while writing this slot\. The next update writes it again\." "state" s "incomplete"'
+want_re "$F/unfilled.txt" '"id" s "b" .* "incomplete" b true "bootable" b false "reason" s "An update stopped while writing this slot\. The next update writes it again; to write it at once, run kdos update apply --mount as root\." "state" s "incomplete"'
 want_re "$F/unfilled.txt" '"id" s "a" .* "incomplete" b false .* "id" s "b"'
 stop_daemon
 [ "$fail" = 0 ] || exit 1

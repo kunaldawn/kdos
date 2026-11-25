@@ -812,17 +812,24 @@ static int append_slot(sd_bus_message *r, int i)
 	int trial = su.trying[0] == id[0];
 	int failed = su.failed[0] == id[0];
 	int incomplete = present && !strcmp(bstate, "incomplete");
+	/* kdos-bootctl's own word for the two states that no field here
+	 * derives: `visiting` (running for this boot alone) and `abandoned`
+	 * (a trial set aside at the boot menu, which is not a failure). */
+	int visiting = present && !strcmp(bstate, "visiting");
+	int abandoned = present && !strcmp(bstate, "abandoned");
 	const char *reason = !present ? "This slot has no system in it."
 			   : incomplete ? "An update stopped while writing "
 					  "this slot. The next update writes "
-					  "it again."
+					  "it again; to write it at once, run "
+					  "kdos update apply --mount as root."
 			   : confirmed ? "This is already the version the "
 					 "computer starts."
 			   : !kernel[0] ? "Its kernel is not on the boot "
 					  "partition."
 			   : "";
-	const char *state = trial ? "trial" : incomplete ? "incomplete"
-			  : failed ? "failed"
+	const char *state = trial ? "trial" : visiting ? "visiting"
+			  : incomplete ? "incomplete" : failed ? "failed"
+			  : abandoned ? "abandoned"
 			  : confirmed ? "confirmed" : present ? "installed"
 			  : "empty";
 	if (!present) {
@@ -849,6 +856,7 @@ static int append_slot(sd_bus_message *r, int i)
 	KV("confirmed", "b", confirmed);
 	KV("trial", "b", trial);
 	KV("failed", "b", failed);
+	KV("abandoned", "b", abandoned);
 	KV("incomplete", "b", incomplete);
 	KV("bootable", "b", !reason[0] && !trial);
 	KV("reason", "s", reason);

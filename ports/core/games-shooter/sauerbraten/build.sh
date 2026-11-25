@@ -27,6 +27,10 @@ install -d "$PKG/usr/share/sauerbraten"
 cp -R data packages server-init.cfg "$PKG/usr/share/sauerbraten/"
 install -d "$PKG/usr/share/doc/sauerbraten"
 cp -R docs README.html "$PKG/usr/share/doc/sauerbraten/"
+install -Dm644 src/readme_source.txt "$PKG/usr/share/licenses/$name/readme_source.txt"
+install -Dm644 src/enet/LICENSE "$PKG/usr/share/licenses/$name/enet-LICENSE"
+install -Dm644 data/license.txt "$PKG/usr/share/licenses/$name/data-license.txt"
+install -Dm644 README.html "$PKG/usr/share/licenses/$name/README.html"
 install -Dm644 data/cube.png \
 	"$PKG/usr/share/icons/hicolor/256x256/apps/sauerbraten.png"
 

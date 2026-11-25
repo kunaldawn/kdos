@@ -4,7 +4,8 @@ claims the device's IPP interfaces through [libusb](#port-libusb), relays them t
 localhost, and announces them with DNS-SD through [avahi](#port-avahi). [CUPS](#port-cups) then
 finds the printer driverless, the same way it finds one on the network.
 `/etc/init.d/82_ipp-usb.sh` runs `ipp-usb standalone`, which stays up and serves each such
-device as it is plugged in.
+device as it is plugged in. It runs only while `cupsd` does: `80_cups.sh` starts it after `cupsd`,
+unless `/etc/service.disabled/ipp-usb` exists, and stops it before `cupsd`.
 
 ## Flags
 - `CGO_ENABLED=1` — Build with cgo, because ipp-usb's libusb and Avahi bindings are C. The

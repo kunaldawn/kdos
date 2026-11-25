@@ -32,10 +32,12 @@ A graphical login runs this chain. Each step is a different program, and each wr
 ```
 SDDM (root, tty1)                     /var/log/sddm.log
   └─ sddm-helper: PAM session `sddm` or `sddm-autologin`
-       │   pam_unix, pam_limits, pam_turnstile, pam_elogind, pam_kwallet5
+       │   pam_unix, pam_limits, pam_turnstile, pam_elogind,
+       │   pam_kwallet5
        │   (turnstiled starts the user's services on the first login;
        │    elogind registers the session on seat0)
-       └─ kdos-session-wrapper        ~/.local/share/sddm/wayland-session.log
+       └─ kdos-session-wrapper
+            │                 ~/.local/share/sddm/wayland-session.log
             └─ plasma-dbus-run-session-if-needed
                  └─ startplasma-wayland
                       ├─ plasma-workspace/env/*.sh, sourced
@@ -43,7 +45,7 @@ SDDM (root, tty1)                     /var/log/sddm.log
                            └─ plasma_session
                                 ├─ kded6, ksmserver
                                 ├─ plasmashell
-                                └─ XDG autostart entries, in three phases
+                                └─ XDG autostart, in three phases
 ```
 
 1. **SDDM** shows the login screen on tty1 (see
@@ -564,12 +566,13 @@ Wayland does the same under `GTK_USE_PORTAL=1`, on the host and in every box, ex
 groups. `gtk-modules` and `gtk-fontconfig-timestamp` are not portal keys; GDK reads them from
 kde-gtk-config's `org.gtk.Settings`, and the host's gtk3 is patched to open that service beside
 the portal, so `colorreload-gtk-module` loads and a running GTK 3 program repaints on a colour
-change. A box's own GTK 3 is not patched and never opens the service, but every GTK 3 also loads
-`~/.config/gtk-3.0/settings.ini` as its defaults, and kde-gtk-config writes
-`gtk-modules=colorreload-gtk-module:window-decorations-gtk-module`. A box that shares your home
-reads that line, no launch environment can take a key out of the file, and the box's runtime
-carries neither module, so a boxed GTK 3 program prints `Gtk-Message: Failed to load module` for
-each of the two and runs without them. `gtk-im-module` GTK 3 sets
+change. GDK on Wayland answers `gtk-modules` itself from `org.gtk.Settings`, and that screen
+answer outranks the `gtk-modules=colorreload-gtk-module:window-decorations-gtk-module` line
+kde-gtk-config writes to `~/.config/gtk-3.0/settings.ini`. The box's bus proxy does not pass the
+service, and a box's own GTK 3 is not patched and does not ask for it while the Settings portal
+answers, so the answer is empty: a boxed GTK 3
+program looks for neither module, prints nothing about them and runs without them, and the box's
+runtime carries neither. `gtk-im-module` GTK 3 sets
 itself to `wayland` on a compositor that offers `text-input-v3`, above the portal's empty value
 (see [Input methods](#input-methods)). Where both
 backends answer a key, as for `org.freedesktop.appearance`, the front end takes the KDE one's.
@@ -714,7 +717,18 @@ KWin offers the input-method protocol to that one process and to no other client
 engines are set on System Settings' Input Method page (`fcitx5-configtool`), and the Virtual
 Keyboard page chooses between fcitx5 and an on-screen keyboard.
 
-KWin owns the keyboard layout list. fcitx5's Wayland module, when its *Allow Overriding System
+KWin owns the keyboard layout list. It reads the kxkbrc cascade, `~/.config/kxkbrc` then
+`/etc/xdg/kxkbrc`, before the `XKB_DEFAULT_*` environment startplasma builds from locale1's
+layout, and the lock screen checks a password against the same list. The system
+`/etc/xdg/kxkbrc` is written by the installer and rewritten by `kdos-settingsd` on every locale1
+layout change, so the layout plasma-setup picks on an OEM machine, or the Region and Keyboard
+settings set through locale1, reaches the session and its lock screen and not only the login
+screen. No `kxkbrc` is seeded for an account: KWin takes a `LayoutList` whatever `Use` says, so a
+seeded list would pin the session against locale1. System Settings → Keyboard reads the same
+cascade, so it opens the system list when `/etc/xdg/kxkbrc` names one, and an empty list when
+neither file names a layout; turning an empty list on fills it with the layouts KWin runs
+(`org.kde.keyboard` `/Layouts`, with the variants of `XKB_DEFAULT_VARIANT`), so a layout added
+joins the session's instead of replacing it. fcitx5's Wayland module, when its *Allow Overriding System
 XKB Settings* is on (its compiled default), writes the current group's layout into
 `~/.config/kxkbrc` at every start and on every input-method change, which would put the
 profile's layout over the one the installer, locale1 or System Settings → Keyboard set, and

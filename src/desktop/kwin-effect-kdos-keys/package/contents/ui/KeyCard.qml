@@ -25,7 +25,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
-import org.kde.kwin
+import org.kde.kwin as KWinComponents
 import org.kde.plasma.components as PC3
 import org.kde.plasma.extras as PlasmaExtras
 
@@ -35,7 +35,7 @@ import "keys.js" as CardModel
 FocusScope {
     id: root
 
-    readonly property var keycard: SceneView.effect
+    readonly property var keycard: KWinComponents.SceneView.effect
     readonly property var sections: CardModel.sections(keycard.allRows, Groups.groups, keycard.query)
     // As many columns as fit at a readable width.
     readonly property int columnCount: Math.max(1, Math.floor((plate.width + Kirigami.Units.gridUnit) / (Kirigami.Units.gridUnit * 23)))

@@ -8,16 +8,19 @@
  * ---------------------------------
  *   95-MakeItYours.qml — whole sets of programs, prebuilt, the last KDOS page of the tour
  *
- * The base system carries the desktop and a few applications; everything
- * else KDOS ports is in the release's binhost. This page lists the groups of
+ * The base system carries the desktop and a few applications; everything else
+ * KDOS ports is in the release's binhost. This page lists the groups of
  * /ports/groups as `kdos update groups --json` reports them (installed, how
  * many members are missing, what installing the rest downloads), lets the
  * person tick some, and installs them one at a time through
- * `pkexec /usr/libexec/kdos-discover/kdos-ports-helper install <id>`:
- * Discover's prebuilt helper, whose `kdos update install --prebuilt` takes a
- * group id as well as a port, under the polkit action io.kdos.ports.install
- * (the password is asked once and kept for the session's next ones). The
- * rules (which group is installable, the queue) are kdos/groups.js, which
+ * `pkexec /usr/libexec/kdos-discover/kdos-ports-helper install <id>`: Discover's
+ * prebuilt helper, whose `kdos update install --prebuilt` takes a group id as
+ * well as a port, under the polkit action io.kdos.ports.install (the password
+ * is asked once and kept for the session's next ones). Closing Welcome Center
+ * mid-install closes the helper's standard input, which stops the group being
+ * installed (kdos-ports-helper's CANCEL IS STDIN CLOSING); the groups before
+ * it, and that group's packages already in, stay installed. The rules (which
+ * group is installable, the queue) are kdos/groups.js, which
  * tests/tst_groups.qml tests.
  *
  * A GROUP WITH NO SIZE IS NOT OFFERED. The size is null when the signed
@@ -26,16 +29,14 @@
  * index needs root and this page has no root path but the helper's, so with
  * no index at all the page says to connect and press Refresh on Discover's
  * Updates page, which fetches it, and offers to look again. When the command
- * also says nothing names a binhost for this tree and no refresh can name
- * one (`binhost` false: the last refresh found none, the published tree is
- * older, or there is no second slot to take a tree into), the page says
- * instead that this release
- * installs no group ready-made and Discover can build programs here, and
- * the page's header drops its "downloaded ready to run" for the same
- * sentence about Discover, so the header never promises what the message
- * under it takes back. A
- * group that is not all prebuilt is left to Discover, which can build it
- * here.
+ * also says nothing names a binhost for this tree and no refresh can name one
+ * (`binhost` false: the last refresh found none, the published tree is older,
+ * or there is no second slot to take a tree into), the page says instead that
+ * this release installs no group ready-made and Discover can build programs
+ * here, and the page's header drops its "downloaded ready to run" for the
+ * same sentence about Discover, so the header never promises what the message
+ * under it takes back. A group that is not all prebuilt is left to Discover,
+ * which can build it here.
  *
  * On the live medium an install goes into the session's memory and is gone
  * at the next start, and the page says so.

@@ -25,13 +25,21 @@
  * launchers as dots.
  *
  * A strip whose stepOutBelow setting is more than 0 steps out of a
- * horizontal panel on a screen narrower than that many grid units: one
- * pixel wide and drawing nothing, so its room goes to the task manager.
- * The width is the screen's logical width at the time, so a change of
- * display scale brings the strip back or takes it away with no new layout.
- * The KDOS desk's layout.js sets it to 78, the desk's own threshold for
- * its full width, on its network meter alone; a strip a person adds keeps
- * the default 0 and never steps out.
+ * horizontal panel narrower than that many grid units: one pixel wide and
+ * drawing nothing, so its room goes to the task manager. The width is the
+ * panel window's own logical width, the room the applets share, and it is
+ * read again whenever the panel is resized, by a change of display scale or
+ * resolution as much as by a move to another screen. In a horizontal
+ * panel the setting is read again from the applet's configuration at each
+ * resize, before the width decides: the face's property map follows the
+ * applet's configuration only when the applet reloads it, so a value
+ * written there after the face loaded (as by a desk laid out in the
+ * running session) takes effect at the next change of panel width. The
+ * reload rebuilds every binding on faceConfiguration, so it is left out
+ * of any other form factor, where the strip never steps out. The KDOS
+ * desk's layout.js sets it to 82, the width of its full desk with six
+ * tasks, on its network meter alone; a strip a person adds keeps the
+ * default 0 and never steps out.
  */
 
 pragma ComponentBehavior: Bound
@@ -50,8 +58,16 @@ Faces.CompactSensorFace {
     readonly property real stripWidth: Math.ceil(meters.implicitWidth) + Kirigami.Units.largeSpacing
     readonly property real narrowWidth: root.stripWidth - Math.floor(meters.lineRoom)
     readonly property int stepOutBelow: root.controller.faceConfiguration.stepOutBelow || 0
-    readonly property bool stepsOut: root.horizontalFormFactor && root.stepOutBelow > 0 && Screen.width > 0
-                                     && Screen.width < Kirigami.Units.gridUnit * root.stepOutBelow
+    readonly property bool stepsOut: root.horizontalFormFactor && root.stepOutBelow > 0 && Window.width > 0
+                                     && Window.width < Kirigami.Units.gridUnit * root.stepOutBelow
+
+    Connections {
+        target: root.Window.window
+        enabled: root.horizontalFormFactor
+        function onWidthChanged() {
+            root.controller.reloadFaceConfiguration();
+        }
+    }
 
     Layout.fillWidth: root.horizontalFormFactor && !root.stepsOut
     Layout.minimumWidth: !root.horizontalFormFactor ? Kirigami.Units.gridUnit * 5

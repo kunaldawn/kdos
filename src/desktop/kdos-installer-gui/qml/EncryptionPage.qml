@@ -33,6 +33,7 @@ WizardPage {
               || (pass.text.length > 0 && pass.text === again.text && page.answers.fitsAnswerFile(pass.text))
     problem: !answers.luks ? ""
            : pass.text.length === 0 ? i18n("Type a passphrase, or turn encryption off.")
+           : again.text.length === 0 ? i18n("Type the passphrase again.")
            : pass.text !== again.text ? i18n("The two passphrases do not match.")
            : i18n("A passphrase cannot start or end with a space here.")
 
@@ -95,7 +96,7 @@ WizardPage {
             onTextChanged: page.answers.luksPassphrase = text
         }
         StrengthLabel {
-            visible: pass.text.length > 0
+            visible: page.answers.luks
             secret: pass.text
             field: pass
             available: page.availableWidth

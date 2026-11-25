@@ -88,7 +88,7 @@ packages.
 
 This is the whole of the `make build` target, with the release tag it works out first:
 
-<!-- kfs:include Makefile lines=191-243 pin=4af3b4998aa9 -->
+<!-- kfs:include Makefile lines=191-244 pin=0946b76e92c4 -->
 
 ### The meaning of the switches
 
@@ -204,6 +204,7 @@ docker run --rm -it --network none --privileged \
     -v "$PWD/script:/workspace/script:ro" -v "$PWD/ports:/workspace/ports:ro" \
     -v "$PWD/docs:/workspace/docs:ro" -v "$PWD/testing:/workspace/testing:ro" \
     -v "$PWD/Makefile:/workspace/Makefile:ro" -v "$PWD/Dockerfile:/workspace/Dockerfile:ro" \
+    -v "$PWD/LICENSE:/workspace/LICENSE:ro" \
     os-dev bash
 ```
 

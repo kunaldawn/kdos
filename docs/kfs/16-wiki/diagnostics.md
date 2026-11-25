@@ -221,8 +221,8 @@ the disk.
 - Most `kdos` subcommands share one exit-status convention: 0 nothing found, 1 something found or
   failed, 2 used wrongly, 127 the program it hands over to is missing. A subcommand that differs
   says so in its section of [The kdos command](../../kdos/04-programs/kdos-command.md).
-- `kdos oracle` prints one reason and its citation; the login banner shows the same reason
-  without the citation. It stays the same all day and changes after a reboot.
+- `kdos oracle` prints one reason and its citation. It stays the same all day and changes after a
+  reboot.
 - `kdos doctor` checks the setuid bit on the helpers that need one. A lost bit fails silently
   elsewhere: the lock screen refuses every password (`unix_chkpwd`), or no box starts
   (`newuidmap`). It names the repair.

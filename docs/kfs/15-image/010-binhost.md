@@ -130,7 +130,10 @@ verifies it against the same keys. The step writes it as `swcatalog--xml--kdos-b
 name, because a GitHub release asset cannot sit in a directory, and it writes it with `kdos-discover-catalog --origin kdos-binhost`, from
 the [kdos-discover](#port-kdos-discover) port, naming each package the index lists that this tree
 has installed: a package file in the directory whose package this tree does not have stays in the
-index and gets no component. `kpkg sign` signs it with the index's key. A tree without
+index and gets no component. Each component carries its icon from this tree's hicolor theme or `/usr/share/pixmaps`, base64 in
+the custom value `KDOS::IconData`: the icon its metainfo names, else its desktop entry's `Icon=`, at
+64x64, else 48x48, else scalable, else a larger PNG scaled to 64x64, else a smaller PNG, none over 32 KiB, since the machine reading the catalogue has not installed the package that icon
+comes in; Discover writes it to its icon cache. `kpkg sign` signs it with the index's key. A tree without
 `kdos-discover-catalog` gets an index and no catalogue, and Discover then offers nothing from the
 binhost. How each component is read is on [The software catalogue](086-swcatalog.md).
 
@@ -159,7 +162,7 @@ is what a machine whose `/ports` names no release calls its tree; `kdos update` 
 whose version differs from its tree's. `kpkg sign` signs it with the binhost key and `kpkg verify-pkg` reads it back against that key alone, so a
 machine trusting `kdos-binhost.pub` takes the directory, copied to a stick or served as it is, as
 the place `binhost =` names in `/etc/kdos/update.conf`. The format, and the published form whose
-files are in releases `binhost-<version>-01`, `-02`, … of at most 1,000 assets each, are in
+files are in releases `binhost-<tag>-01`, `-02`, … of at most 1,000 assets each, are in
 [The release index](../../kdos/03-architecture/packaging.md#the-release-index) and
 [Publishing a release](../../kdos/03-architecture/packaging.md#publishing-a-release).
 

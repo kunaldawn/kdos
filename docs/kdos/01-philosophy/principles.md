@@ -190,8 +190,8 @@ Where Plasma has to behave differently on KDOS, its own configuration is used fi
 defaults are files in `/usr/share/kdos/xdg`, which comes after `/etc/xdg` in the configuration
 search path, so the machine owner's files and each user's own override them. A `.patch` against a
 KDE module is carried only where no option exists, under the rule for patches in [Writing
-ports](../05-developer/writing-ports.md), and it is offered upstream at the same time; the port's
-notes name the merge request. The CRT effect behind Phosphor mode is one: KWin refuses an effect
+ports](../05-developer/writing-ports.md), and it is to be offered upstream; the port's
+notes name the merge request once one is opened. The CRT effect behind Phosphor mode is one: KWin refuses an effect
 built outside it for any other KWin version, point releases included, so the effect is built into
 KWin by a patch and can only fail to build, never fail to load.
 

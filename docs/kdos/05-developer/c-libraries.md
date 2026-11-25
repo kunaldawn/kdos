@@ -156,7 +156,9 @@ variants. KDOS's Qt code keeps the same rule with `QProcess` and an argument lis
 [Writing desktop software](writing-desktop-software.md#starting-a-program).
 
 The process helpers send a child's error output to `/dev/null` unless `kb_proc_verbose` is set, so
-anything whose failure is diagnosed by the child's own message has to turn that on.
+anything whose failure is diagnosed by the child's own message has to turn that on. Every helper
+flushes the caller's `stdout` and `stderr` before it forks, so a partial line printed before a
+`kb_run` comes out ahead of the child's output and never twice.
 
 A secret reaches a child on a descriptor and never in `argv`, because `/proc/<pid>/cmdline` is
 world-readable for the life of the process. The four feeding forms differ in what happens to the
@@ -394,21 +396,28 @@ The Linux VT sends F1 to F5 in a form of its own, `ESC [ [ A` to `ESC [ [ E`, an
 reads it as those keys. Read as an ordinary CSI, the second `[` would end the sequence and the
 letter after it would be typed into the field with the focus.
 
+On a terminal with `TERM=linux` the library finds the VT behind it once, when it takes the
+terminal, and holds that descriptor until it shuts down. `/dev/tty` is not a VT under `sudo`,
+which runs its command on a pseudo-terminal of its own while the screen stays the console, and
+every console ioctl fails there. The library therefore tries the terminal itself (`KDGKBTYPE`
+succeeds only on a VT), then the VT `sudo` was started from (`SUDO_TTY`, when it names
+`/dev/ttyN`), then `/dev/tty0` when standard input is a pseudo-terminal under a `sudo` that set no
+`SUDO_TTY`. A `sudo` whose `SUDO_TTY` names a pseudo-terminal, a pseudo-terminal outside `sudo`,
+such as an ssh login with `TERM=linux`, and any other `TERM` are not on this machine's screen and
+get no VT.
+
 The console keymap sends a plain Tab for `Shift+Tab`: keycode 15 has no shifted string, so the
-`ESC [ Z` a terminal emulator or an ssh session sends never arrives on a VT. When a Tab arrives
-and standard input is a VT (`KDGKBTYPE` succeeds), the decoder asks the kernel which modifiers are
-held (`TIOCLINUX`, `TIOCL_GETSHIFTSTATE`) and reports `KT_K_BTAB` while Shift is down. Anywhere
-else a Tab is a Tab.
+`ESC [ Z` a terminal emulator or an ssh session sends never arrives on a VT. When a Tab arrives and
+the library holds a VT, the decoder asks that VT which modifiers are held (`TIOCLINUX`,
+`TIOCL_GETSHIFTSTATE`) and reports `KT_K_BTAB` while Shift is down, so `Shift+Tab` moves back under
+`sudo kinstall` on tty2 as well as on a VT a program owns. On a VT that is not the caller's
+controlling terminal the kernel answers only a caller with `CAP_SYS_ADMIN`, so an unprivileged
+program there gets a plain Tab. Anywhere without a VT a Tab is a Tab.
 
 On the Linux VT the library sets the console's colour map to the theme's eight slots for as long as
 it owns the screen, and puts back the map it found (the `/etc/vtrgb` palette `kdos-getty` loaded)
-when it hands the screen back. The map is set through a VT descriptor, and `/dev/tty` is not one
-under `sudo`, which runs its command on a pseudo-terminal of its own while the screen stays the
-console. The library therefore tries the terminal itself, then the VT `sudo` was started from
-(`SUDO_TTY`, when it names `/dev/ttyN`), then `/dev/tty0` when standard input is a pseudo-terminal
-under a `sudo` that set no `SUDO_TTY`. A `sudo` whose `SUDO_TTY` names a pseudo-terminal, and a
-pseudo-terminal outside `sudo`, such as an ssh login with `TERM=linux`, are not on this machine's
-screen and leave its palette alone. Without the map, the screen keeps the login
+when it hands the screen back. The map is console-wide, so it is set through the VT descriptor
+above; with no VT, the palette is left alone. Without the map, the screen keeps the login
 palette, whose blue, magenta and cyan sit where the theme's rules and hints belong.
 
 A frame is bracketed where that bit is set: `CSI ? 2026 h` before the diff and `CSI ? 2026 l`

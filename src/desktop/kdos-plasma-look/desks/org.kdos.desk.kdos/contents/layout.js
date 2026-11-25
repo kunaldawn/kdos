@@ -16,17 +16,23 @@
  * A panel does not wrap or scroll. Short of room it takes the meters'
  * lines first, then narrows the pinned apps; what still does not fit is
  * cut off at the screen's edge, the clock and Show Desktop first.
- * Everything but the pinned apps is about 69 grid units wide at its
- * preferred width; the pinned apps bring the full desk to about 78. A
- * screen narrower in logical pixels than that drops parts of it when it is
- * laid out: under 78 grid units the Start label and the network meter,
- * under 64 the pager as well. Under 50 grid units even that does not fit,
- * and the Dock or Tiling desk is the one to use. These widths are the
- * screen's when the desk is laid out, and `kdos desk kdos` lays it out
- * again after a change of scale. The network meter of a full desk also
- * steps out at run time: its face, org.kdos.meters, is given stepOutBelow
- * 78 and draws it one pixel wide while the screen is narrower than that,
- * so a scale raised after the layout leaves its room to the task manager.
+ * Everything but the task manager is about 64 grid units wide at its
+ * preferred width, the network meter 11 of them, and each task takes about
+ * 3: the four pinned apps bring the full desk to about 76, and six tasks
+ * to about 82. A screen narrower in logical pixels than 78 grid units
+ * drops parts of the desk when it is laid out: the Start label and the
+ * network meter, and under 64 the pager as well. Under 50 grid units even
+ * that does not fit, and the Dock or Tiling desk is the one to use. These
+ * widths are the screen's when the desk is laid out, and `kdos desk kdos`
+ * lays it out again after a change of scale. The network meter of a full
+ * desk also steps out at run time: its face, org.kdos.meters, is given
+ * stepOutBelow 82 and draws it one pixel wide while the panel is narrower
+ * than that, so a desk with up to six tasks keeps every task at full size
+ * on a panel too narrow for the meter beside them. The face reads the
+ * setting again from the applet's configuration at each resize, so a desk
+ * laid out in the running session steps the meter out at the next change
+ * of panel width. Between 78 and 82 grid units the meter is laid out and
+ * stays stepped out.
  *
  * THE PINNED APPS ARE THE FIRST WORDS OF ~/.config/kdos/favorites. That file
  * is also the list of boxes warmed at login, and a launcher here that it does
@@ -54,9 +60,18 @@ var favorites = [
 // subtext is "<sensor name>: <value>" of the first total sensor and empty
 // without one, and a screen reader reads the panel button as "Open " and
 // that subtext. The stock network preset names none. The entry is a JSON
-// array, as the face controller reads it.
-function addMeter(panel, plugin, face, total) {
+// array, as the face controller reads it. A face setting lives in the
+// applet's [<face id>][General] group, where the face controller's config
+// loader reads its main.xml keys, and the face's settings are written
+// before its chartFace, so the group holds them whenever the face reads it.
+function addMeter(panel, plugin, face, total, settings) {
     var meter = panel.addWidget(plugin);
+    if (settings) {
+        meter.currentConfigGroup = [face, "General"];
+        for (var key in settings) {
+            meter.writeConfig(key, settings[key]);
+        }
+    }
     meter.currentConfigGroup = ["Appearance"];
     meter.writeConfig("chartFace", face);
     meter.currentConfigGroup = ["Sensors"];
@@ -126,15 +141,12 @@ for (var s = 0; s < screenCount; s++) {
 
     panel.addWidget("org.kde.plasma.marginsseparator");
 
-    // The meter strip's face is ksystemstats-kdos's org.kdos.meters. A face
-    // setting lives in the applet's [<face id>][General] group, where the
-    // face controller's config loader reads its main.xml keys.
+    // The meter strip's face is ksystemstats-kdos's org.kdos.meters.
     addMeter(panel, "org.kde.plasma.systemmonitor.cpu", "org.kdos.meters", "cpu/all/usage");
     addMeter(panel, "org.kde.plasma.systemmonitor.memory", "org.kdos.meters", "memory/physical/used");
     if (full) {
-        var net = addMeter(panel, "org.kde.plasma.systemmonitor.net", "org.kdos.meters", "network/all/download");
-        net.currentConfigGroup = ["org.kdos.meters", "General"];
-        net.writeConfig("stepOutBelow", 78);
+        addMeter(panel, "org.kde.plasma.systemmonitor.net", "org.kdos.meters", "network/all/download",
+                 {stepOutBelow: 82});
     }
 
     // KDE's own rule for the input-method panel, by the locale's language.

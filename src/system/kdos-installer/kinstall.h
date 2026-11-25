@@ -45,6 +45,8 @@ int page_index(const char *id);
 void page_goto(int n);
 void nav_next(void);
 void nav_back(void);
+/* F1's key card, centred over whatever the frame has drawn (pages.c). */
+void ki_draw_help(void);
 
 extern int ki_quit;
 extern int ki_help;

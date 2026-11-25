@@ -90,7 +90,7 @@ the same, so the bar stands at 99% with its leading segment pulsing until the de
 never moves backwards at the login; a `kdos-splash.c` whose hold or bar
 `genlook.py` cannot read fails the build. Its text is set in `Terminus (TTF)`, the scalable face
 of the Terminus font the boot splash's `splash.psf` is, sized so a column is the boot splash's
-8-pixel glyph; without that face it falls back to the fixed-width font. The motion is KDOS Modern's, a fade out of black with the mark flat; in Phosphor mode the
+8-pixel glyph; without that face it falls back to the fixed-width font. KSplash has no entrance: it draws the settled frame's mark and bar at once, without the stage rows or the release, adds KDE's credit, and takes the wordmark's lower half from the scheme's roles; its only motion is the bar's pulsing segment; in Phosphor mode the
 CRT pass is KWin's and lies over the splash like everything else. The recipe hash covers this
 port and `src/libs`, not `src/art/kdos-splash`, so a new penguin reaches the splash when this port
 is next rebuilt.

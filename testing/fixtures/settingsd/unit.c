@@ -553,6 +553,36 @@ static void keyboards(void)
 	      strstr(s, "# AN EMPTY XKBLAYOUT FOLLOWS THE CONSOLE"),
 	      "xkb.conf keeps its explanation around the new values");
 	free(s);
+
+	/* The system kxkbrc, which the session reads before xkb.conf. */
+	CHECK(!kb_path_exists(tp("etc/xdg")), "the shipped tree has no etc/xdg");
+	memset(&x, 0, sizeof(x));
+	strcpy(x.layout, "de");
+	CHECK(ks_set_kxkbrc(&x) == 0, "a system kxkbrc is written, etc/xdg made");
+	s = slurp("etc/xdg/kxkbrc");
+	CHECK(!strcmp(s, "[Layout]\nLayoutList=de\nVariantList=\nUse=true\n"),
+	      "in the shape kinstall writes, LayoutList=de and Use=true");
+	free(s);
+	strcpy(x.variant, "nodeadkeys");
+	strcpy(x.model, "pc105");
+	strcpy(x.options, "ctrl:nocaps");
+	CHECK(ks_set_kxkbrc(&x) == 0, "a rewrite with every field succeeds");
+	s = slurp("etc/xdg/kxkbrc");
+	CHECK(!strcmp(s, "[Layout]\nLayoutList=de\nVariantList=nodeadkeys\n"
+			 "Model=pc105\nOptions=ctrl:nocaps\n"
+			 "ResetOldOptions=true\nUse=true\n"),
+	      "and replaces the file whole, options with ResetOldOptions");
+	free(s);
+	strcpy(x.options, "a\nUse=false");
+	CHECK(ks_set_kxkbrc(&x) != 0, "a field with a line break is refused");
+	s = slurp("etc/xdg/kxkbrc");
+	CHECK(strstr(s, "Options=ctrl:nocaps\n") && !strstr(s, "Use=false"),
+	      "and the file is as it was");
+	free(s);
+	x.layout[0] = 0;
+	CHECK(ks_set_kxkbrc(&x) == 0 && !kb_path_exists(tp("etc/xdg/kxkbrc")),
+	      "an empty layout removes it");
+	CHECK(ks_set_kxkbrc(&x) == 0, "and removing an absent one succeeds");
 	ks_set_keymap("us");
 }
 

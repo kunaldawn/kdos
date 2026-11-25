@@ -28,12 +28,23 @@
  * answered waits half a second more rather than the full three: Avahi's cache
  * holds every address record the responder sent with the first answer.
  *
+ * BOTH FAMILIES AT ONCE. A question for one family also asks Avahi for the
+ * other, with no client waiting on it, and every answer and miss is kept for
+ * MD_TTL seconds in a table of the last MD_MAX. A later question whose name and
+ * family are in the table is answered from it at once, and one whose family's
+ * question is still open without a client takes that question over instead of
+ * opening another. musl's `getent hosts` asks AAAA and only after its miss A,
+ * so without this a name nothing answers would cost two full waits, one after
+ * the other.
+ *
  * Each question has its own non-blocking connection to Avahi and poll()
  * waits on all of them, so a name that never answers holds up nothing else;
- * at most MD_MAX are open, and a question past that is SERVFAIL. A question
- * Avahi cannot be reached for, or whose connection Avahi ends before a reply
- * line, is SERVFAIL too: "try again", not "no host", which dnsmasq would
- * cache. MD_MAX stays below avahi-daemon's own 50 simple-protocol clients,
+ * at most MD_MAX are open, and a question past that is SERVFAIL. The other
+ * family's question counts against MD_MAX, is not asked when no slot is free,
+ * and gives its slot up to a client's question that finds none free, so it
+ * never costs a client a SERVFAIL. A question Avahi cannot be reached for, or
+ * whose connection Avahi ends before a reply line, is SERVFAIL too: "try
+ * again", not "no host", which dnsmasq would cache. MD_MAX stays below avahi-daemon's own 50 simple-protocol clients,
  * which it refuses by closing the connection.
  *
  * It binds the port as root from 45_mdns.sh and drops to `nobody` before it
@@ -309,6 +320,7 @@ static int md_reply(const struct md_query *q, const char *line,
 struct md_pend {
 	int fd;			/* -1: the slot is free */
 	int reading;
+	int client;		/* 0: asked for the table alone, no one to answer */
 	struct sockaddr_in peer;
 	struct md_query q;
 	char cmd[300];
@@ -319,6 +331,18 @@ struct md_pend {
 };
 
 static struct md_pend pend[MD_MAX];
+
+/* Avahi's last answers by name and family: an address or a miss. */
+struct md_seen {
+	char name[256];
+	uint16_t qtype;		/* 0: the slot is empty */
+	int hit;
+	unsigned char addr[16];
+	long long expires;
+};
+
+static struct md_seen seen[MD_MAX];
+static unsigned seen_next;
 static int udp = -1;
 static const char *avahi_path = MD_SOCKET;
 
@@ -332,10 +356,56 @@ static void send_answer(const struct sockaddr_in *peer,
 	       sizeof *peer);
 }
 
-/* verdict MD_ASK with addr NULL is a miss, -1 is SERVFAIL. */
+static struct md_seen *seen_find(const char *name, uint16_t qtype)
+{
+	long long now = now_ms();
+	for (int i = 0; i < MD_MAX; i++)
+		if (seen[i].qtype == qtype && seen[i].expires > now &&
+		    !strcasecmp(seen[i].name, name))
+			return &seen[i];
+	return NULL;
+}
+
+/* Keeps one verdict; the same name and family replaces its old entry, and a
+ * new one replaces the oldest. */
+static void seen_keep(const struct md_query *q, const unsigned char *addr)
+{
+	struct md_seen *s = NULL;
+	for (int i = 0; i < MD_MAX && !s; i++)
+		if (seen[i].qtype == q->qtype && !strcasecmp(seen[i].name, q->name))
+			s = &seen[i];
+	if (!s)
+		s = &seen[seen_next++ % MD_MAX];
+	kb_strlcpy(s->name, q->name, sizeof s->name);
+	s->qtype = q->qtype;
+	s->hit = addr != NULL;
+	if (addr)
+		memcpy(s->addr, addr, q->qtype == T_A ? 4 : 16);
+	s->expires = now_ms() + MD_TTL * 1000LL;
+}
+
+/* The open question for q's name and family, with or without a client. */
+static struct md_pend *pend_find(const struct md_query *q, uint16_t qtype,
+				 int client)
+{
+	for (int i = 0; i < MD_MAX; i++) {
+		struct md_pend *e = &pend[i];
+		if (e->fd >= 0 && e->q.qtype == qtype &&
+		    (client < 0 || e->client == client) &&
+		    !strcasecmp(e->q.name, q->name))
+			return e;
+	}
+	return NULL;
+}
+
+/* verdict MD_ASK with addr NULL is a miss, -1 is SERVFAIL, which is not kept:
+ * it means "try again". */
 static void finish(struct md_pend *e, int verdict, const unsigned char *addr)
 {
-	send_answer(&e->peer, &e->q, verdict, addr);
+	if (verdict == MD_ASK)
+		seen_keep(&e->q, addr);
+	if (e->client)
+		send_answer(&e->peer, &e->q, verdict, addr);
 	close(e->fd);
 	e->fd = -1;
 }
@@ -355,17 +425,26 @@ static void hurry_peers(const struct md_pend *done)
 	}
 }
 
-static void start_question(const struct sockaddr_in *peer,
-			   const struct md_query *q)
+/* Opens a connection to Avahi for q; peer NULL asks for the table alone.
+ * A client's question with no slot free closes one asked for the table alone
+ * and takes its slot. NULL when no slot can be had or Avahi cannot be
+ * reached. */
+static struct md_pend *open_question(const struct sockaddr_in *peer,
+				     const struct md_query *q,
+				     long long deadline)
 {
 	struct md_pend *e = NULL;
 	for (int i = 0; i < MD_MAX && !e; i++)
 		if (pend[i].fd < 0)
 			e = &pend[i];
-	if (!e) {
-		send_answer(peer, q, -1, NULL);
-		return;
-	}
+	for (int i = 0; i < MD_MAX && !e && peer; i++)
+		if (!pend[i].client) {
+			e = &pend[i];
+			close(e->fd);
+			e->fd = -1;
+		}
+	if (!e)
+		return NULL;
 
 	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
 	struct sockaddr_un sa = { .sun_family = AF_UNIX };
@@ -374,19 +453,58 @@ static void start_question(const struct sockaddr_in *peer,
 		       errno != EINPROGRESS)) {
 		if (fd >= 0)
 			close(fd);
-		send_answer(peer, q, -1, NULL);
-		return;
+		return NULL;
 	}
 	e->fd = fd;
 	e->reading = 0;
-	e->peer = *peer;
+	e->client = peer != NULL;
+	if (peer)
+		e->peer = *peer;
 	e->q = *q;
 	e->cmdlen = (size_t)snprintf(e->cmd, sizeof e->cmd,
 				     "RESOLVE-HOSTNAME-IPV%c %s\n",
 				     q->qtype == T_A ? '4' : '6', q->name);
 	e->cmdoff = 0;
 	e->rlen = 0;
-	e->deadline = now_ms() + MD_WAIT_MS;
+	e->deadline = deadline;
+	return e;
+}
+
+static void start_question(const struct sockaddr_in *peer,
+			   const struct md_query *q)
+{
+	struct md_seen *s = seen_find(q->name, q->qtype);
+	if (s) {
+		send_answer(peer, q, MD_ASK, s->hit ? s->addr : NULL);
+		return;
+	}
+
+	/* The other family's question, asked for the table, gets this client;
+	 * its query keeps the name as it was first asked. */
+	struct md_pend *e = pend_find(q, q->qtype, 0);
+	if (e) {
+		e->client = 1;
+		e->peer = *peer;
+		e->q.id = q->id;
+		e->q.flags = q->flags;
+		memcpy(e->q.qwire, q->qwire, q->qwlen);
+		e->q.qwlen = q->qwlen;
+		e->q.local_off = q->local_off;
+		return;
+	}
+
+	long long deadline = now_ms() + MD_WAIT_MS;
+	if (!open_question(peer, q, deadline)) {
+		send_answer(peer, q, -1, NULL);
+		return;
+	}
+
+	uint16_t other = q->qtype == T_A ? T_AAAA : T_A;
+	if (!seen_find(q->name, other) && !pend_find(q, other, -1)) {
+		struct md_query c = *q;
+		c.qtype = other;
+		open_question(NULL, &c, deadline);
+	}
 }
 
 static void on_writable(struct md_pend *e)

@@ -10,8 +10,11 @@
 # Every desktop default is /usr/share/kdos/xdg/kde-mimeapps.list; this list
 # holds the handlers that are not a desktop application's, for types nothing
 # in that list opens. The lookup reads this directory before
-# /usr/share/kdos/xdg, so a type is named in one of the two and never both:
-# named in both, this row would win and the other would never be read.
+# /usr/share/kdos/xdg, so a type's default is named in one of the two and
+# never both: named in both, this row would win and the other would never be
+# read. The removed associations are here because a desktop-named list such
+# as kde-mimeapps.list cannot carry one: KService and GLib read an added or a
+# removed association only from a list named mimeapps.list.
 #
 # A person's own choices live in their config directory and outrank every row
 # here, which is what makes this a default rather than a policy.
@@ -25,3 +28,46 @@
 # a row for a type the image cannot produce is one nobody can tell is dead.
 application/x-cb7=kdos-openarchive.desktop
 application/vnd.comicbook-rar=kdos-openarchive.desktop
+
+[Removed Associations]
+# OFFICE DOCUMENTS ARE NOT ARCHIVES. shared-mime-info makes every OpenDocument
+# and Office Open XML type a subclass of application/zip, which Ark claims, so
+# until the office group is installed an office document would open in Ark as
+# an archive of its parts. These rows keep Ark out of KService's offers for
+# each type; GLib honours a removed row only for the type it names and still
+# walks on to application/zip, so kdos-nooffice.desktop claims every type
+# listed here, and KIO and GLib alike open its note naming the office group.
+# A claim on the type itself outranks a claim on its parent in both lookups.
+# kdos-nooffice is named under no [Default Applications]: a default in this
+# file would outrank LibreOffice's in kde-mimeapps.list, which replaces the
+# note once the office group is installed. A type added here is added to the
+# entry's MimeType= too.
+application/vnd.oasis.opendocument.text=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.text-template=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.spreadsheet=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.spreadsheet-template=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.presentation=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.presentation-template=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.graphics=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.graphics-template=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.formula=org.kde.ark.desktop;
+application/vnd.oasis.opendocument.formula-template=org.kde.ark.desktop;
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=org.kde.ark.desktop;
+application/vnd.openxmlformats-officedocument.wordprocessingml.template=org.kde.ark.desktop;
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=org.kde.ark.desktop;
+application/vnd.openxmlformats-officedocument.spreadsheetml.template=org.kde.ark.desktop;
+application/vnd.openxmlformats-officedocument.presentationml.presentation=org.kde.ark.desktop;
+application/vnd.openxmlformats-officedocument.presentationml.template=org.kde.ark.desktop;
+application/vnd.ms-word.document.macroEnabled.12=org.kde.ark.desktop;
+application/vnd.ms-excel.sheet.macroEnabled.12=org.kde.ark.desktop;
+application/vnd.ms-powerpoint.presentation.macroEnabled.12=org.kde.ark.desktop;
+
+# AN INVITATION IS NOT PLAIN TEXT. shared-mime-info makes text/calendar a
+# subclass of text/plain, and the base's two plain-text claimants, Kate and
+# Okular's hidden text generator entry, would each take it: Default
+# Applications would name Kate as the calendar, or an invitation would open
+# in Okular as a page of text. With both removed nothing on the base claims
+# the type and KIO shows its Open With chooser. A calendar installed later
+# (Thunderbird, Merkuro, KOrganizer) claims the type through its own entry;
+# a plain-text claimant added to the base needs its row here too.
+text/calendar=org.kde.kate.desktop;okularApplication_txt.desktop;

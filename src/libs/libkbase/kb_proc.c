@@ -75,9 +75,21 @@ void kb_argv_end(KbArgv *a)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* Flush before the fork: a line still in this process's buffer would
+ * otherwise be written after the child's output, or twice if the child
+ * leaves through stdio. Every fork in this file calls it first. */
+static void flush_stdio(void)
+{
+	fflush(stdout);
+	fflush(stderr);
+}
+
 static pid_t spawn(const KbArgv *a, int outfd)
 {
-	pid_t pid = fork();
+	pid_t pid;
+
+	flush_stdio();
+	pid = fork();
 	if (pid < 0)
 		kb_die("fork: %s", strerror(errno));
 	if (pid == 0) {
@@ -157,6 +169,7 @@ static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
 	 * the pipe open and the child never sees EOF on stdin. */
 	fcntl(fd[1], F_SETFD, FD_CLOEXEC);
 
+	flush_stdio();
 	pid = fork();
 	if (pid < 0)
 		kb_die("fork: %s", strerror(errno));
@@ -295,6 +308,7 @@ int kb_run_feed_env(const KbArgv *a, const char *const *env, int nenv,
 	fcntl(fd[1], F_SETFD, FD_CLOEXEC);
 	fcntl(ep[0], F_SETFD, FD_CLOEXEC);
 
+	flush_stdio();
 	pid = fork();
 	if (pid < 0)
 		kb_die("fork: %s", strerror(errno));
@@ -391,7 +405,10 @@ int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n)
 
 int kb_run_tty(const KbArgv *a)
 {
-	pid_t pid = fork();
+	pid_t pid;
+
+	flush_stdio();
+	pid = fork();
 	if (pid < 0)
 		kb_die("fork: %s", strerror(errno));
 	if (pid == 0) {
@@ -423,6 +440,7 @@ void kb_notify(const char *app, const char *summary, const char *body)
 	if (!summary || !*summary || !kb_have_prog("gdbus"))
 		return;
 
+	flush_stdio();
 	pid_t p = fork();
 
 	if (p < 0)
@@ -599,7 +617,10 @@ void kb_child_reset_signals(void)
 
 void kb_run_detach(const KbArgv *a)
 {
-	pid_t pid = fork();
+	pid_t pid;
+
+	flush_stdio();
+	pid = fork();
 	if (pid < 0)
 		return;
 	if (pid == 0) {

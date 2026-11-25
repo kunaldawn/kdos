@@ -1,0 +1,22 @@
+Subject: shell: title a desktop view with the shell package's name alone
+
+DesktopView::setScreenToFollow() titles the window "<name> @ <QDebug of
+the screen geometry>", and a screen reader, which speaks the window title
+as the frame's accessible name, reads "Desktop @ QRect(0,0 1920x1080)" each
+time focus returns to the desktop. The title is the shell package's name,
+the one the constructor already sets before a screen is followed; the
+screen a view follows stays readable from screenToFollow().
+
+--- a/shell/desktopview.cpp	2026-11-23 11:00:01.433082671 +0530
++++ b/shell/desktopview.cpp	2026-11-23 11:00:01.443175939 +0530
+@@ -118,9 +118,7 @@
+         setVisible(true);
+     }
+ 
+-    QString rectString;
+-    QDebug(&rectString) << screen->geometry();
+-    setTitle(QStringLiteral("%1 @ %2").arg(corona()->kPackage().metadata().name()).arg(rectString));
++    setTitle(corona()->kPackage().metadata().name());
+     adaptToScreen();
+     Q_EMIT screenToFollowChanged(screen);
+ }

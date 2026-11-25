@@ -166,7 +166,8 @@ void ki_dump_probe_text(void)
 		       d->model[0] ? d->model : "-",
 		       d->removable ? "  removable" : "",
 		       d->readonly ? "  read-only" : "",
-		       d->is_boot_media ? "  BOOT MEDIA" : "");
+		       d->is_boot_media ? "  BOOT MEDIA" :
+		       d->is_boot_copy ? "  BOOT MEDIA (copy)" : "");
 		if (d->fstype[0])
 			printf("    whole disk: %s%s%s%s%s\n", d->fstype,
 			       d->label[0] ? " " : "", d->label,
@@ -177,10 +178,11 @@ void ki_dump_probe_text(void)
 			printf("    one slot: too small for two\n");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
-			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s%s%s\n",
+			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s%s%s%s%s\n",
 			       p->path, p->sectors / 2048,
 			       p->fstype[0] ? p->fstype : "-",
 			       p->label[0] ? p->label : "",
+			       p->remap[0] ? "  remap " : "", p->remap,
 			       p->is_esp ? "  ESP" : "",
 			       p->is_bios_boot ? "  BIOS boot" : "",
 			       p->vg[0] ? "  volume group " : "", p->vg,
@@ -252,12 +254,13 @@ void ki_dump_probe_json(void)
 		kb_buf_printf(&b, ",\n     \"sectors\": %llu, "
 			      "\"sector_size\": %d, \"rotational\": %s, "
 			      "\"removable\": %s, \"readonly\": %s, "
-			      "\"boot_media\": %s,\n",
+			      "\"boot_media\": %s, \"boot_copy\": %s,\n",
 			      d->sectors, d->sector_size,
 			      d->rotational ? "true" : "false",
 			      d->removable ? "true" : "false",
 			      d->readonly ? "true" : "false",
-			      d->is_boot_media ? "true" : "false");
+			      d->is_boot_media ? "true" : "false",
+			      d->is_boot_copy ? "true" : "false");
 		/* `fits`: the install can go on this disk; `problem` says why
 		 * not. `ab_fits`: erased on LVM, it holds two slots. */
 		kb_buf_printf(&b, "     \"bytes\": %llu, \"fits\": %s, "
@@ -299,6 +302,11 @@ void ki_dump_probe_json(void)
 			 * none can be read. */
 			kb_buf_str(&b, ", \"vg\": ");
 			kb_json_str(&b, p->vg);
+			/* What the partition's node points at when it is not
+			 * the partition ("ventoy" for Ventoy's mapping), ""
+			 * otherwise; Part.remap. */
+			kb_buf_str(&b, ", \"remap\": ");
+			kb_json_str(&b, p->remap);
 			kb_buf_printf(&b, ", \"esp\": %s, \"bios_boot\": %s, "
 				      "\"mounted\": %s",
 				      p->is_esp ? "true" : "false",

@@ -20,7 +20,8 @@ supervision after `80_cups.sh`; it never forks, so it needs no foreground flag.
   scheduler on the socket the [cups](#port-cups) port's `cupsd` listens on.
 
 ## Notes
-cups-browsed adds queues to `cupsd` and does nothing without it, so the init script prints
-`[SKIP] cups-browsed: CUPS is disabled (/etc/service.disabled/cups)` and starts nothing while
-the `cups` service is disabled. CUPS is on in a default install; a machine where it was turned off
-and is enabled again by hand runs `service start cups-browsed` (or reboots) to start it.
+cups-browsed adds queues to `cupsd` and does nothing without it, so it runs only while `cupsd`
+does. `80_cups.sh` starts it once `cupsd` is supervised, unless
+`/etc/service.disabled/cups-browsed` exists, and stops it before `cupsd`; `sudo service start
+cups` brings both up. Started on its own while `cupsd` is not supervised, the init script prints
+`[SKIP] cups-browsed: CUPS is off` and starts nothing.

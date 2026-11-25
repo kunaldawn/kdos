@@ -228,9 +228,20 @@ QString KdosResource::origin() const
     return originOf(m_entry.lane, m_entry.packOrigin);
 }
 
+// A `deb` row is built in a box like any store-lane row, so it keeps that
+// origin for the filter and the sidebar; only its name says whose package it
+// is, since no Debian package is behind it. The name opens with the
+// publisher, its `about` row's author or else the application's name: a
+// proper noun reads right both alone in the source list and inside
+// Discover's "Install from %1".
 QString KdosResource::displayOrigin() const
 {
-    return KdosBackend::originName(origin());
+    const QString o = origin();
+    if (m_entry.lane == Lane::Catalogue && m_entry.vendorDeb && o == "kdos-store"_L1) {
+        const QString publisher = m_entry.author.isEmpty() ? name() : m_entry.author;
+        return i18nc("@info:source %1 is the application's publisher", "%1's own package, built in a box", publisher);
+    }
+    return KdosBackend::originName(o);
 }
 
 QString KdosResource::section()
@@ -371,10 +382,17 @@ void KdosResource::invokeApplication() const
 
     KService::Ptr service;
     if (m_entry.lane == Lane::Port || m_entry.lane == Lane::PortSource) {
-        QString id = m_entry.desktopId;
-        if (id.endsWith(".desktop"_L1))
-            id.chop(8);
-        service = KService::serviceByDesktopName(id);
+        // The entry chosen when the listing was read may not have been
+        // installed then; the first of the component's entries installed
+        // now is the one launched.
+        QStringList ids = m_entry.desktopIds;
+        ids.prepend(m_entry.desktopId);
+        for (QString id : std::as_const(ids)) {
+            if (id.endsWith(".desktop"_L1))
+                id.chop(8);
+            if (!id.isEmpty() && (service = KService::serviceByDesktopName(id)))
+                break;
+        }
     } else {
         service = boxedLauncher(m_entry.box);
     }
@@ -446,6 +464,8 @@ QString KdosResource::kdosNotice() const
             return i18n("Installs from the pack already in the pack store; no network connection is needed.");
         if (e.packOrigin == "medium"_L1)
             return i18n("Installs from the pack on the KDOS medium; no network connection is needed.");
+        if (e.vendorDeb)
+            return i18n("Built on this computer, in a box of its own, from its publisher's .deb release and the Debian packages it needs. This needs a network connection. The size is an estimate, and counts the shared base and runtime when this computer has not built them yet.");
         return i18n("Built on this computer from Debian packages, in a box of its own. This needs a network connection. The size is an estimate, and counts the shared base and runtime when this computer has not built them yet.");
     case Lane::Debian:
         if (e.state != EntryState::None)
@@ -469,7 +489,7 @@ QString KdosResource::kdosNotice() const
         if (e.state == EntryState::None)
             return i18n("Downloads the prebuilt package from the signed KDOS binary host into this version of the system, and the next system update keeps it. It downloads only what the binary host cache does not already hold; nothing is built. Before it asks for the administrator password it says how many packages it installs and how much of that it downloads.");
         if (e.removable)
-            return i18n("Installed on request. Removing it takes out this package alone; what it brought with it stays.");
+            return i18n("Installed on request. Removing it also takes out what it brought that nothing else installed needs.");
         if (!e.neededBy.isEmpty())
             return i18n("Needed by %1, which is installed, so it is not removed on its own.", e.neededBy);
         return i18n("Part of the KDOS system: it is updated with the system and is not removed on its own.");

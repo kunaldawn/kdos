@@ -315,6 +315,9 @@ QList<BoxRow> BoxListModel::parseListing(const QString &output)
                                         "It is a distrobox, which shares your home and the session's runtime directory, display and bus.");
         }
         r.kept = !r.hasContainer() && profileIsKept(r.name);
+        /* Only a store box's row carries `image`; "absent" is an image
+         * its application's uninstall released, which no create fetches. */
+        r.imageMissing = o.value(u"image"_s).toString() == "absent"_L1;
         rows << r;
     }
     return rows;

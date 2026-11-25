@@ -19,3 +19,4 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Drecollq=true -Dindexer=true -Drclgrep=true -Dext4-birthtime=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+install -Dm644 COPYING "$PKG/usr/share/licenses/$name/COPYING"

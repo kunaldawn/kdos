@@ -60,6 +60,13 @@ if(BUILD_TESTING)
         TEST_NAME kdosplugintest
         LINK_LIBRARIES kdosstats Qt6::Network Qt6::Test KF6::ConfigCore KF6::CoreAddons KF6::I18n KSysGuard::SystemStats KSysGuard::Formatter)
     target_include_directories(kdosplugintest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # The face from its source, loaded by libksysguard's controller.
+    find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Quick)
+    find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Config)
+    ecm_add_test(tests/metersfacetest.cpp
+        TEST_NAME metersfacetest
+        LINK_LIBRARIES Qt6::Test Qt6::Quick KF6::ConfigCore KSysGuard::SensorFaces)
+    target_compile_definitions(metersfacetest PRIVATE METERS_FACE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/face")
 endif()
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)

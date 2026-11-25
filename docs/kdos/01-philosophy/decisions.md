@@ -106,7 +106,7 @@ The compositor is KWin, Plasma's own, built from its release tarball with the op
 and a small number of carried patches. KDOS does not fork it. KWin's behaviour is set through its
 configuration (defaults for `kwinrc`, `kwinrulesrc` and `kglobalshortcutsrc` in
 `/usr/share/kdos/xdg`), through KWin scripts and effects, and through window rules; what none of
-those reaches is a `.patch` with a `Subject:` line, offered upstream when it is written.
+those reaches is a `.patch` with a `Subject:` line, to be offered upstream.
 
 A fork of the compositor was the alternative, and it would let KDOS change anything. It was not
 taken because a fork stops receiving upstream's fixes, and a compositor's fixes are security and
@@ -128,8 +128,8 @@ Two needs show where the line falls:
   desktop-shell interfaces and lets a box's profile grant one back by name.
 
 The cost is a rebase of every patch at every Plasma release, and a set of KDOS plugins tied to
-KWin's internal interfaces that are rebuilt with it. Each patch's merge request is named in the KWin
-port's notes, and a patch upstream accepts is dropped at the release that carries it.
+KWin's internal interfaces that are rebuilt with it. Each patch is to be offered upstream, its merge request named in the KWin
+port's notes once opened, and a patch upstream accepts is dropped at the release that carries it.
 
 ## SDDM with a Wayland greeter
 

@@ -1,6 +1,7 @@
 # bash completion for the kdos umbrella command.
 
 _kdos_accents="phosphor amber ice bone norton borland perfect paper"
+_kdos_kpkg_db=/var/lib/kpkg/db
 
 _kdos() {
     local cur prev
@@ -108,6 +109,22 @@ _kdos() {
                 *) COMPREPLY=($(compgen -W "--dry-run --json --all --root" -- "$cur")) ;;
             esac ;;
         verify)   COMPREPLY=($(compgen -W "--notify" -- "$cur") $(compgen -f -- "$cur")) ;;
+        why)
+            # An absolute path, or an installed port: the package database
+            # holds one file per installed package. `kdos why` takes only a
+            # word that starts with `/` as a path and looks any other up as a
+            # port, so a relative file name is never offered.
+            [ "$COMP_CWORD" -eq 2 ] || return
+            if [ "${cur#/}" != "$cur" ]; then
+                compopt -o filenames 2>/dev/null
+                COMPREPLY=($(compgen -f -- "$cur"))
+                return
+            fi
+            local ports="" d
+            for d in "$_kdos_kpkg_db"/*; do
+                [ -f "$d" ] && ports="$ports ${d##*/}"
+            done
+            COMPREPLY=($(compgen -W "$ports" -- "$cur")) ;;
         *)        COMPREPLY=() ;;
     esac
 }

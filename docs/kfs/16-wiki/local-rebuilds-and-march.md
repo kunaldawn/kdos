@@ -18,7 +18,9 @@ the commands of [`kpkg`]{.idx} itself are on [kpkg](kpkg.md).
   ([squashfs-tools](#port-squashfs-tools)), `xorriso` ([libisoburn](#port-libisoburn)) and
   `mkfs.fat` ([dosfstools](#port-dosfstools)) that is missing, because without all three no ISO
   comes out. The base the ISO carries has those three and no toolchain: `sudo kdos update install
-  build-tools` adds the assembler, the linker, `make` and the build systems, and restores the
+  build-tools` adds the assembler, the linker, `make`, the build systems and
+  [fortify-headers](#port-fortify-headers) (the `/usr/include/fortify` the build's flags include),
+  and restores the
   development files of `gcc`, `musl` and `linux`, so `cc` is there with the C library's and the
   kernel's headers.
   A port whose recipe needs a compiler the base leaves out, such as `rust`, `go` or `nodejs`,
@@ -84,7 +86,7 @@ per build, default 5), `KDOS_MARCH_LEVEL` (the level to measure against) and `KD
 `KDOS_ISO_SOURCES=1` makes the image's last step copy the tree onto the medium beside the system
 image, and write a stamp `kdos rebuild` prints before it starts:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=207-230 pin=0b3f5e742938 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=214-237 pin=0b3f5e742938 -->
 
 ## Usage
 

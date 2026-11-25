@@ -1,0 +1,84 @@
+# bash completion for kdos-box.
+
+# The profile keys `create` and `profile` take as key=value.
+_kdos_box_keys="base= image= accent= grant= persistence= network= ipc= devices= processes= home= init= wayland= audio= gpu= x11= export= display= render= memory= cpus= pids= autostop="
+
+# The names `kdos-box list` prints: a profile under ~/.config/kdos/boxes, and
+# every container podman lists. They are read where `list` reads them, not
+# through it, because `list` measures every box's disk use first.
+_kdos_box_names() {
+    local f
+    for f in "$HOME"/.config/kdos/boxes/*.conf; do
+        [ -f "$f" ] || continue
+        f=${f##*/}
+        printf '%s\n' "${f%.conf}"
+    done
+    command -v podman >/dev/null 2>&1 &&
+        podman ps --all --format '{{.Names}}' 2>/dev/null
+}
+
+_kdos_box() {
+    local cur prev cmd at=1
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        COMPREPLY=($(compgen -W "list create enter run apps export unexport freeze import clone snapshot snapshots rollback start restart stop remove profile gc help" -- "$cur"))
+        return
+    fi
+
+    cmd=${COMP_WORDS[1]}
+    # run takes `-l <launcher-id>` before the box, which moves the box to
+    # word 4.
+    [ "$cmd" = run ] && [ "${COMP_WORDS[2]}" = -l ] && at=4
+    case "$cmd" in
+        list|ls) COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
+        create)
+            [ "$COMP_CWORD" -gt 2 ] && {
+                compopt -o nospace 2>/dev/null
+                COMPREPLY=($(compgen -W "$_kdos_box_keys" -- "$cur"))
+            } ;;
+        profile)
+            if [ "$COMP_CWORD" -eq 2 ]; then
+                COMPREPLY=($(compgen -W "$(_kdos_box_names)" -- "$cur"))
+            else
+                compopt -o nospace 2>/dev/null
+                COMPREPLY=($(compgen -W "$_kdos_box_keys" -- "$cur"))
+            fi ;;
+        enter)
+            if [ "$COMP_CWORD" -eq 2 ]; then
+                COMPREPLY=($(compgen -W "$(_kdos_box_names)" -- "$cur"))
+            elif [ "$COMP_CWORD" -eq 3 ]; then
+                COMPREPLY=($(compgen -W "--window" -- "$cur"))
+            fi ;;
+        run)
+            if [ "$COMP_CWORD" -eq 2 ]; then
+                COMPREPLY=($(compgen -W "-l $(_kdos_box_names)" -- "$cur"))
+            elif [ "$prev" = -l ]; then
+                COMPREPLY=()
+            elif [ "$COMP_CWORD" -eq "$at" ]; then
+                COMPREPLY=($(compgen -W "$(_kdos_box_names)" -- "$cur"))
+            fi ;;
+        apps|freeze|snapshot|snapshots|rollback|start|export|unexport)
+            [ "$COMP_CWORD" -eq 2 ] &&
+                COMPREPLY=($(compgen -W "$(_kdos_box_names)" -- "$cur"))
+            [ "$cmd" = freeze ] && [ "$COMP_CWORD" -eq 3 ] &&
+                COMPREPLY=($(compgen -f -- "$cur")) ;;
+        clone)
+            [ "$COMP_CWORD" -eq 2 ] &&
+                COMPREPLY=($(compgen -W "$(_kdos_box_names)" -- "$cur")) ;;
+        stop|restart)
+            COMPREPLY=($(compgen -W "$(_kdos_box_names)" -- "$cur")) ;;
+        remove)
+            COMPREPLY=($(compgen -W "--force --purge $(_kdos_box_names)" -- "$cur")) ;;
+        import)
+            if [ "$COMP_CWORD" -eq 2 ]; then
+                COMPREPLY=($(compgen -f -- "$cur"))
+            elif [ "$COMP_CWORD" -eq 3 ]; then
+                COMPREPLY=($(compgen -W "as" -- "$cur"))
+            fi ;;
+        gc) COMPREPLY=($(compgen -W "--dry-run --session-end" -- "$cur")) ;;
+        *) COMPREPLY=() ;;
+    esac
+}
+complete -F _kdos_box kdos-box

@@ -1,0 +1,101 @@
+# bash completion for kdos-appbox.
+
+# The commands `kdos-appbox apps` lists, its first column.
+_kdos_appbox_apps() {
+    kdos-appbox apps 2>/dev/null | while read -r app _; do
+        printf '%s\n' "$app"
+    done
+}
+
+# The boxes kdos-box lists: a profile under ~/.config/kdos/boxes, and every
+# container podman lists; read directly, since `list` first measures each
+# box's disk use.
+_kdos_appbox_boxes() {
+    local f
+    for f in "$HOME"/.config/kdos/boxes/*.conf; do
+        [ -f "$f" ] || continue
+        f=${f##*/}
+        printf '%s\n' "${f%.conf}"
+    done
+    command -v podman >/dev/null 2>&1 &&
+        podman ps --all --format '{{.Names}}' 2>/dev/null
+}
+
+# Store ids and groups, from `kdos-appbox catalogue`; with an argument, only
+# the ids that row calls installed.
+_kdos_appbox_ids() {
+    local id name cat bytes parent state _
+    kdos-appbox catalogue 2>/dev/null |
+        while IFS=$'\t' read -r id name cat bytes parent state _; do
+            [ -z "$1" ] || [ "$state" = installed ] && printf '%s\n' "$id"
+        done
+    kdos-appbox catalogue --groups 2>/dev/null | while IFS=$'\t' read -r id _; do
+        printf '%s\n' "$id"
+    done
+}
+
+_kdos_appbox() {
+    local cur prev cmd i at=0
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # The options before the command word: --box and --launcher take a value.
+    for ((i = 1; i < COMP_CWORD; i++)); do
+        case "${COMP_WORDS[i]}" in
+            -b|--box|-l|--launcher) ((i++)) ;;
+            -*) ;;
+            *) at=$i; break ;;
+        esac
+    done
+
+    case "$prev" in
+        -b|--box)
+            COMPREPLY=($(compgen -W "$(_kdos_appbox_boxes)" -- "$cur"))
+            return ;;
+        -l|--launcher) COMPREPLY=(); return ;;
+    esac
+
+    if [ "$at" -eq 0 ]; then
+        COMPREPLY=($(compgen -W "run open throwaway warmup status session list apps catalogue install uninstall export import genlaunchers --box --launcher --verbose --help" -- "$cur"))
+        return
+    fi
+
+    cmd=${COMP_WORDS[at]}
+    case "$cmd" in
+        run) [ "$COMP_CWORD" -eq $((at + 1)) ] &&
+                 COMPREPLY=($(compgen -W "$(_kdos_appbox_apps)" -- "$cur")) ||
+                 COMPREPLY=($(compgen -f -- "$cur")) ;;
+        open)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--print --choose" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -f -- "$cur")) ;;
+            esac ;;
+        throwaway)
+            case "$prev" in
+                --pack) COMPREPLY=($(compgen -W "$(_kdos_appbox_ids)" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "--pack" -- "$cur") $(compgen -f -- "$cur")) ;;
+            esac ;;
+        session) [ "$COMP_CWORD" -eq $((at + 1)) ] &&
+                     COMPREPLY=($(compgen -W "save restore" -- "$cur")) ;;
+        catalogue) COMPREPLY=($(compgen -W "--groups --chain" -- "$cur")) ;;
+        install)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--dry-run" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_appbox_ids)" -- "$cur")) ;;
+            esac ;;
+        uninstall) COMPREPLY=($(compgen -W "$(_kdos_appbox_ids installed)" -- "$cur")) ;;
+        export|import)
+            if [ "$COMP_CWORD" -eq $((at + 1)) ]; then
+                COMPREPLY=($(compgen -f -- "$cur"))
+            else
+                COMPREPLY=($(compgen -W "$(_kdos_appbox_ids)" -- "$cur"))
+            fi ;;
+        genlaunchers)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--packs --packs-dir --user" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -d -- "$cur")) ;;
+            esac ;;
+        *) COMPREPLY=() ;;
+    esac
+}
+complete -F _kdos_appbox kdos-appbox

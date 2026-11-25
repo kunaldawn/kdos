@@ -41,7 +41,7 @@
  * trial"; kdos-notice posts that notice from the same State. A slot armed
  * at the running version or an older one is such a switch, not an update:
  * Discover would answer it with "Restart is required … for the updates to
- * take effect" and "Update and Restart", so it is no pending restart here.
+ * take effect", so it is no pending restart here.
  * ---------------------------------
  */
 

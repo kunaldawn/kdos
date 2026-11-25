@@ -22,12 +22,12 @@
  */
 
 import QtQuick
-import org.kde.kwin
+import org.kde.kwin as KWinComponents
 
 import "groups.js" as Groups
 import "keys.js" as CardModel
 
-SceneEffect {
+KWinComponents.SceneEffect {
     id: effect
 
     // Every row, unfiltered; the delegate filters by `query` as it draws.
@@ -133,7 +133,7 @@ SceneEffect {
         status = "ready";
     }
 
-    ShortcutHandler {
+    KWinComponents.ShortcutHandler {
         name: "KDOS Key Card"
         text: i18nd("kdos-kwin-effect-keys", "Show Key Card")
         sequence: "Meta+F1"
@@ -143,6 +143,6 @@ SceneEffect {
     Component {
         id: dbusCall
 
-        DBusCall {}
+        KWinComponents.DBusCall {}
     }
 }

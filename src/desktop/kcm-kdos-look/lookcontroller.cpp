@@ -47,6 +47,25 @@ KPluginMetaData fineTunePlugin()
  * files finish before the page reads them. */
 constexpr int SettleMs = 400;
 
+/* Whether two accent lists hold the same rows, every role alike. */
+bool sameAccents(const QAbstractItemModel &a, const QAbstractItemModel &b)
+{
+    if (a.rowCount() != b.rowCount()) {
+        return false;
+    }
+    const QList<int> roles = a.roleNames().keys();
+    for (int row = 0; row < a.rowCount(); ++row) {
+        const QModelIndex ia = a.index(row, 0);
+        const QModelIndex ib = b.index(row, 0);
+        for (int role : roles) {
+            if (a.data(ia, role) != b.data(ib, role)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 QString userAccentDir()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/kdos");
@@ -449,7 +468,18 @@ void LookController::onFinished(const KdosCommand::Result &result)
 {
     if (result.arguments == ThemeList) {
         if (result.started && result.exitCode == 0) {
-            m_accent = m_accents->setFromList(result.out);
+            /* One accent change brings several refreshes (the run's end,
+             * kded-kdos's, kdeglobals, the watched files), and most find
+             * the list as it stands. Every row change reaches each swatch
+             * and its accessible object, and a screen reader may speak
+             * for each, so a list that changed nothing leaves the model
+             * alone. */
+            AccentModel probe;
+            const QString accent = probe.setFromList(result.out);
+            if (!sameAccents(probe, *m_accents)) {
+                m_accents->setFromList(result.out);
+            }
+            m_accent = accent;
         } else {
             setError(failureText(result));
         }

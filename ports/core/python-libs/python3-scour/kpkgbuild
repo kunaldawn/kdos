@@ -10,7 +10,7 @@
 
 name        = python3-scour
 version     = 0.38.2
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/s/scour/scour-$version.tar.gz
 sha256      = 6881ec26660c130c5ecd996ac6f6b03939dd574198f50773f2508b81a68e0daf  python3-scour-0.38.2.tar.gz
 description = SVG optimiser — the scour command and Inkscape's Optimized SVG output

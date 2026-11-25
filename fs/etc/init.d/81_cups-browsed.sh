@@ -10,11 +10,13 @@ case "$1" in
             echo "[SKIP] $NAME: $DAEMON not found"
             exit 0
         fi
-        # It adds the printers it finds to cupsd and does nothing else, so
-        # with cups disabled it does not start. Whoever enables cups later
-        # starts it by hand (service start cups-browsed) or reboots.
-        if [ -e /etc/service.disabled/cups ]; then
-            echo "[SKIP] $NAME: CUPS is disabled (/etc/service.disabled/cups)"
+        # It adds the printers it finds to cupsd and does nothing else, so it
+        # runs only while cupsd does. A running cupsd decides, not the cups
+        # marker: `service start cups` runs on a machine whose marker exists,
+        # and 80_cups.sh starts this script once cupsd is supervised and stops
+        # it before cupsd.
+        if ! ksvc check cupsd >/dev/null 2>&1; then
+            echo "[SKIP] $NAME: CUPS is off"
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."

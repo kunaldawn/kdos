@@ -11,7 +11,7 @@
 
 name        = meshtastic-firmware
 version     = 2.7.26
-release     = 1
+release     = 2
 _rev        = 54e0d8d
 _url        = https://github.com/meshtastic/firmware/releases/download/v$version.$_rev
 source      = $name-esp32-$version.zip::$_url/firmware-esp32-$version.$_rev.zip

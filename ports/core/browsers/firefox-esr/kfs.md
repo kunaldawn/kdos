@@ -102,7 +102,7 @@ on GTK 3 with both its Wayland and X11 backends; the session's `MOZ_ENABLE_WAYLA
 After `mach install`, `build.sh` adds what makes the package KDOS's:
 
 - `distribution/policies.json`, Firefox's enterprise policies, which turn off telemetry,
-  studies, remote improvements and remote settings, application and system add-on updates, the
+  studies, remote improvements, application and system add-on updates, the
   feedback commands, Firefox accounts, the default-browser check, captive portal detection,
   network prediction, search suggestions, IP Protection, the terms-of-use prompt, the first-run
   and post-update pages, the weather, sponsored and recommended content on the new tab page and in
@@ -122,8 +122,25 @@ After `mach install`, `build.sh` adds what makes the package KDOS's:
   first by [geoclue](#port-geoclue), on the base for `xdg-desktop-portal`, whose wifi source asks
   BeaconDB and falls back to the IP address, and then by Google's geolocation service, the
   default `geo.provider.network.url`. With all four the region follows the locale and Firefox
-  has no network location source, so a page's location request fails, which is what the
-  Welcome tour's "Nothing on KDOS phones home" claims of the default browser;
+  has no network location source, so a page's location request fails. It sets
+  `app.normandy.enabled` and `app.shield.optoutstudies.enabled` to false and empties
+  `app.normandy.api_url`: the policies already turn studies off, and the prefs leave Normandy's
+  recipe client nothing to fetch when its timer fires. It sets
+  `network.connectivity-service.enabled` to false, which stops the network connectivity
+  service's probes of `detectportal.firefox.com`, `example.org`, `cloudflare-dns.com` and
+  `ipv4only.arpa` at start and on every network change; `CaptivePortal` turns off only the
+  captive-portal check, a separate service. Safe Browsing stays on, so Firefox keeps its
+  malware, phishing and tracking-protection lists current from `safebrowsing.googleapis.com`
+  and `shavar.services.mozilla.com`; those requests carry list versions and hash prefixes, not
+  the pages visited. Remote settings stay on (`firefox.settings.services.mozilla.com` and its
+  attachments CDN): they carry the certificate revocations, intermediate certificates and
+  add-on blocklist, and `DisableRemoteSettingsAndAcceptSecurityConsequences` would stop those
+  updates while its attachment downloads still contact the server. The push connection
+  (`push.services.mozilla.com`) stays on for site notifications, and the add-on update check
+  (`services.addons.mozilla.org`, `versioncheck-bg.addons.mozilla.org`) stays on so an add-on
+  with a known vulnerability is updated; it runs on its own timer on a fresh profile too, with
+  no add-on of the user's installed. The Welcome tour's Privacy page says that KDOS itself
+  phones home for nothing and names each of these;
 - the branding PNGs installed as `firefox-esr` icons in hicolor, and `firefox-esr.desktop`, named
   plain `Firefox`.
 

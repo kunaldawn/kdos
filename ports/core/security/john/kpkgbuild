@@ -10,7 +10,7 @@
 
 name        = john
 version     = 1.9.0.jumbo1
-release     = 1
+release     = 2
 _tag        = 1.9.0-Jumbo-1
 source      = $name-$version.tar.gz::https://github.com/openwall/john/archive/refs/tags/$_tag.tar.gz
 sha256      = 16bfecad0cddad146564abb76b6e6b28a71653670c2799d60ca4035db5f3b9c4  john-1.9.0.jumbo1.tar.gz

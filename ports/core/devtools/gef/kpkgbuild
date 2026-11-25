@@ -10,7 +10,7 @@
 
 name        = gef
 version     = 2026.01
-release     = 1
+release     = 2
 source      = $name-$version.py::https://raw.githubusercontent.com/hugsy/gef/$version/gef.py
 sha256      = 04cdfe961f1e9151933d32cf6b548d9e6a76a1aef8b27c020c575b8d4264ed20  gef-2026.01.py
 description = GDB extension with context, heap and ROP views

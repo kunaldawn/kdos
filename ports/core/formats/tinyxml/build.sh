@@ -25,6 +25,8 @@ ln -s libtinyxml.so.0.$version "$PKG/usr/lib/libtinyxml.so.0"
 ln -s libtinyxml.so.0.$version "$PKG/usr/lib/libtinyxml.so"
 install -Dm644 tinyxml.h "$PKG/usr/include/tinyxml.h"
 install -Dm644 tinystr.h "$PKG/usr/include/tinystr.h"
+install -d "$PKG/usr/share/licenses/$name"
+head -n 23 tinyxml.h > "$PKG/usr/share/licenses/$name/LICENSE"
 
 install -d "$PKG/usr/lib/pkgconfig"
 cat > "$PKG/usr/lib/pkgconfig/tinyxml.pc" <<EOF

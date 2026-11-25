@@ -230,6 +230,7 @@ Emptied at every boot.
 | Path | Holds |
 |---|---|
 | `/var/lib/sddm/` | The `sddm` account's home: the greeter's `kdeglobals`, `plasmarc` and `kcminputrc` in the accent, and `kdos-background.png`. The image ships the default accent's; the installer and `kdos-powerd` (as that account) replace them |
+| `/var/log/kdos-build/<port>.log` | Every line of the last `kdos update install --source <port>` Discover's `kdos-ports-builder` ran, kept when it failed or was cancelled and readable by everyone; a run that succeeds removes it |
 | `/var/log/kdos-update-check.log` | Every line of the last slot check `kdos update apply` ran (`kpkg check --all --log`), each `config` and `unowned` file included; the apply itself prints only the faults and the summary |
 | `/var/log/sddm.log`, `sddm.log.old` | SDDM's own log; a session's output is in its user's `~/.local/share/sddm/wayland-session.log` |
 | `/var/lib/elogind/linger/` | One file per user whose services keep running with nobody logged in (`loginctl enable-linger`) |
@@ -523,8 +524,8 @@ Neither configuration nor storage: these files are how one program tells another
 | `/var/lib/kdos/update.json` | The update-check timer, and `kdos update fetch` and `apply` when they finish | Discover's update notifier, `kdos-sysupdated`, the System Versions page and `kdos-notice` |
 | `/run/kdos/bootstate.json`, `/run/kdos/bootstate.txt` | `kdos-bootctl`, at every change of boot state | `kdos-notice` and the System Versions page (the JSON); a user's `kdos-bootctl status` (the text) |
 | `/run/kdos/bless/*` | The end of `rcS` (`userspace`); `kdos-sysupdated` for a session's `Bless` or a greeter that stayed up (`graphical`), and after `mark-good` (`confirmed`) | `kdos-sysupdated` |
-| `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | About this System, `kdos version` (`VERSION_ID` and `BUILD_ID`), `ports/publish --release` (`VERSION_ID` against the tag), and anything else that identifies the system |
-| `/etc/kdos-release` | The build, and `kdos image unpack` with each slot it writes | `kdos update`, `kdos-bootctl` (copied to the ESP as each slot's `release`, which names the slot's release in the boot menu), the installer's first boot menu and the About page's slot row |
+| `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | About this System, `kdos version`, the splash, the installer and the greeter when there is no `/etc/kdos-release` (`VERSION_ID` and `BUILD_ID`), `ports/publish --release` (`VERSION_ID` against the tag), and anything else that identifies the system |
+| `/etc/kdos-release` | The build, and `kdos image unpack` with each slot it writes | `kdos update`, `kdos-bootctl` (copied to the ESP as each slot's `release`, which names the slot's release in the boot menu), the installer's first boot menu and the About page's slot row; its `VERSION` is the release `kdos version`, What's New, the splash (from the initramfs's copy), the installer's Welcome page and the greeter's footer name |
 | `<file>.kdos-new` under `/etc`, `.<file>.kdos-new` inside a directory whose name ends in `.d` | `kdos image carry`, when a file you edited has a newer default in the new slot | You: the new default, beside your copy, to compare. Inside a `.d` directory it is a dotfile, because a program that reads every file of the directory (SDDM's `sddm.conf.d`, `cron.d`) would read the new default after your copy and take it |
 | `/boot/initramfs.modules` | The initramfs build step, one module per line | The `linux` package's post-install, which carries a new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
 | `/boot/initramfs-kdos.cpio.gz` | The `linux` post-install: the image's initramfs with the new kernel's modules appended | `kdos-bootctl deploy` and `kinstall`, which use it in place of `/boot/initramfs.cpio.gz` |
@@ -532,12 +533,12 @@ Neither configuration nor storage: these files are how one program tells another
 | `EFI/kdos/trial/` on the EFI system partition: a copy of the loader and a `limine.conf` defaulting to the candidate slot | `kdos-bootctl try` on UEFI; removed by every state that is not a pending trial | The firmware, for the one boot `BootNext` asks for |
 | `Boot####` "KDOS update trial" and `BootNext` in `efivarfs` | `kdos-bootctl try` on UEFI; removed by `kdos-bootctl mark-good` | The firmware, once |
 
-**What a release carries for an update.** Beside the ISO, the release `<version>` holds the signed
+**What a release carries for an update.** Beside the ISO, the release `<tag>` holds the signed
 recipe tree `kdos-ports.tar.xz` with its `.sig`, and the signed release index `kdos-update.idx` with
 its `.sig`. The slot image (`kdos-image.manifest` with its `.sig`, the whole image as
 `kdos-image-<version>.full.NNN` parts, and a delta from each earlier version,
-`kdos-image-<version>.from-<previous>.delta`) is in the pre-release `image-<version>`, and the
-binhost, every name flat, in the pre-releases `binhost-<version>-01`, `-02`, … of at most 1,000
+`kdos-image-<version>.from-<previous>.delta`) is in the pre-release `image-<tag>`, and the
+binhost, every name flat, in the pre-releases `binhost-<tag>-01`, `-02`, … of at most 1,000
 assets each. `kdos update fetch` finds each file through the index and nowhere else;
 `ports/publish --release` writes the index and uploads all of it. See
 [Publishing a release](../03-architecture/packaging.md#publishing-a-release).
@@ -571,6 +572,8 @@ set only between KDOS's own programs are left out.
 | `KDOS_UPDATE_IMAGE=<url or dir>` | Where the release index the slot image is found by is, overriding `image =` |
 | `KDOS_TREE_KEYS=<dir>` | The keyring `kdos update fetch` verifies a tree against, instead of `/etc/kdos/keys/tree` |
 | `KDOS_UPDATE_STATE=<file>` | Where `kdos update` records and reads its outcome, instead of `/var/lib/kdos/update.state`; set, `fetch` and `apply` leave the update document alone |
+| `KDOS_UPDATE_FRONT=discover` | `kdos update install` words a cut download's next step as pressing Install again, not running the command again; Discover's ports helpers set it |
+| `KDOS_UPDATE_LOG=<file>` | The file the run's output is kept in: a failed build's line ends `the build's log is in <file>` in place of `the log is above`; `kdos-ports-builder` sets it to `/var/log/kdos-build/<port>.log` |
 | `KPKG_FETCH=1` | Every `kpkg` build downloads the sources it lacks before verifying them; `kdos update apply --source` sets it |
 | `KPKG_CLEAN_FAILED` | Set to anything but `0`, a `kpkg` build that fails removes its work directory `$WORK_DIR/<name>`, says so, and writes `<name> <free bytes> <total bytes>` of the work directory's filesystem, measured before the removal, to `$WORK_DIR/.kpkg-failed`. `kdos update` sets it for every build it starts; unset, a failed build keeps its directory |
 | `KDOS_SOURCES=<dir>` | The KDOS tree `kdos rebuild` builds from; otherwise the first of `/mnt/iso/sources`, `/kdos` and the current directory that is one |

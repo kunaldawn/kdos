@@ -1617,6 +1617,49 @@ int ks_set_xkb(const KsXkb *x)
 	return r;
 }
 
+/*
+ * /etc/xdg/kxkbrc IS THE SESSION'S LAYOUT. KWin and the keyboard KCM read
+ * the kxkbrc cascade before the XKB_DEFAULT_* environment startplasma hands
+ * KWin, so a system kxkbrc naming one layout outranks xkb.conf for every
+ * account that has no kxkbrc of its own, the lock screen included. The file
+ * is written whole, in the shape kinstall writes it, and an empty layout
+ * removes it, which leaves the session on xkb.conf's console-following
+ * layout. Every field has passed ks_xkb_check or comes from the console
+ * table, so no value can carry a line break into the file; the character
+ * check below keeps that true for any later caller.
+ */
+int ks_set_kxkbrc(const KsXkb *x)
+{
+	char p[KS_PATH], dir[KS_PATH];
+	KbBuf b = { 0 };
+	int r;
+
+	if (!ks_etc_path(p, sizeof(p), "xdg/kxkbrc") ||
+	    !ks_etc_path(dir, sizeof(dir), "xdg"))
+		return -1;
+	if (!x->layout[0])
+		return unlink(p) == 0 || errno == ENOENT ? 0 : -1;
+	if (!in_set(x->layout, KS_XKB_CHARS, KS_XKB_MAX - 1) ||
+	    !in_set(x->model, KS_XKB_CHARS, KS_XKB_MAX - 1) ||
+	    !in_set(x->variant, KS_XKB_CHARS, KS_XKB_MAX - 1) ||
+	    !in_set(x->options, KS_XKB_CHARS, KS_XKB_MAX - 1)) {
+		errno = EINVAL;
+		return -1;
+	}
+	kb_buf_printf(&b, "[Layout]\nLayoutList=%s\nVariantList=%s\n",
+		      x->layout, x->variant);
+	if (x->model[0])
+		kb_buf_printf(&b, "Model=%s\n", x->model);
+	if (x->options[0])
+		kb_buf_printf(&b, "Options=%s\nResetOldOptions=true\n",
+			      x->options);
+	kb_buf_str(&b, "Use=true\n");
+	kb_mkdir_p(dir);
+	r = kb_write_file_atomic(p, b.p);
+	kb_buf_free(&b);
+	return r;
+}
+
 /* Is `name` a row of `! <section>` in a rules list? For a variant the row's
  * description starts `<layout>:`, which is how the list says whose it is. */
 static bool lst_has(const char *buf, const char *section, const char *name,

@@ -173,8 +173,8 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `78_maddy` *(maddy)* | The maddy mail server, as the `maddy` account, skipped until `/var/lib/maddy/credentials.db` holds an account (running `maddy creds create <address>` and `maddy imap-acct create <address>` as the `maddy` account, with `sudo -u maddy`, makes one). Open the `mail` firewall name for other machines |
 | `79_ngircd` *(ngircd)* | The ngIRCd chat server, as the `ngircd` account, skipped until a non-empty `/etc/ngircd.conf` exists; `/usr/share/doc/ngircd/sample-ngircd.conf` is the template. Open the `irc` firewall name for other machines |
 | `80_cups` | Printing, on by default |
-| `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear. Skipped while `cups` is disabled |
-| `82_ipp-usb` | Driverless printing and scanning over USB: each IPP-over-USB device is served on localhost as it is plugged in. Skipped while `cups` is disabled, so an IPP-over-USB scanner also needs `cups` enabled |
+| `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear. Runs only while `cupsd` does: `80_cups` starts and stops it with `cupsd`, and it skips with `CUPS is off` otherwise |
+| `82_ipp-usb` | Driverless printing and scanning over USB: each IPP-over-USB device is served on localhost as it is plugged in. Runs only while `cupsd` does, started and stopped with it by `80_cups`, so an IPP-over-USB scanner also needs CUPS running |
 | `83_samba` *(samba)* | `smbd`, skipped until some account can share: the `sambashare` group has a member, `/var/lib/samba/usershares` (which it makes at every boot) holds a usershare, or `/etc/samba/smb.conf` defines a share. An account just added to `sambashare` starts it at its next login. Open the `smb` firewall name for other machines |
 | `84_minidlna` *(minidlna)* | MiniDLNA, the media server for televisions and players on the LAN, skipped until a non-empty `/etc/minidlna.conf` exists; the template is in `/usr/share/doc/minidlna`. Open the `dlna` firewall name for other machines |
 | `85_crond` | cronie, for each user's own crontab (`crontab -e`, or System Settings' Task Scheduler). The jobs the system ships are not cron's; see [Periodic jobs](#periodic-jobs) |
@@ -1064,16 +1064,17 @@ to every reader's name, through pcsc-lite's `PCSCLITE_FILTER_IGNORE_READER_NAMES
 
 CUPS is the print system, started by `80_cups`. It is on by default, on the live medium and on an
 installed machine; the installer's service list turns it off, and so does
-`sudo service disable cups` followed by `sudo service stop cups`. While it is disabled
-`81_cups-browsed` and `82_ipp-usb` skip at boot, since both exist to hand printers to `cupsd`; a scanner
-that reaches SANE over IPP-over-USB goes with `ipp-usb`, so it also needs `cups` enabled. A
-machine where it is off, which includes one installed from KDOS 0.2, turns it back on with:
+`sudo service disable cups` followed by `sudo service stop cups`. `81_cups-browsed` and
+`82_ipp-usb` follow `cupsd`, since both exist to hand printers to it: `80_cups` starts them once
+`cupsd` is up and stops them before it, so `sudo service start cups` and `sudo service stop cups`
+take all three, and while CUPS is off they skip with `CUPS is off`. A companion with its own marker
+(`sudo service disable cups-browsed`) stays off when CUPS starts. A scanner that reaches SANE over
+IPP-over-USB goes with `ipp-usb`, so it also needs CUPS running. A machine where CUPS is off, which
+includes one installed from KDOS 0.2, turns it back on with:
 
 ```sh
 sudo service enable cups
 sudo service start cups
-sudo service start cups-browsed
-sudo service start ipp-usb
 ```
 
 System Settings → Printers adds, configures and removes printers, makes one the default and shows
@@ -1215,9 +1216,12 @@ console (`Ctrl+Alt+F2`) does the same where the desktop cannot open System Setti
 An update that stops while it is writing the other slot (cancelled, or ended by a full disk or a
 power cut) leaves that slot *incomplete*, so a half-written system is never started: the boot
 menu has no entry for it, `kdos-bootctl status` reports `unfilled b: an update stopped while
-writing it; it is not tried until an update writes it again`, and starting it next time is
-refused, from System Versions or with `sudo kdos-bootctl try b`. The next update writes it
-again.
+writing this slot. The next update writes it again; to write it at once, run kdos update apply
+--mount as root`, and starting it next time is refused, from System Versions or with
+`sudo kdos-bootctl try b`. The next update writes it again. With no newer release,
+`sudo kdos update apply --mount` finishes it at once: the slot gets its menu entry and its
+Start This Version Next Time button back, holding the version you run, and nothing is put on
+trial.
 
 System Settings → System Versions lists both slots, with the version, build date, tree and kernel
 each holds, and its one button, **Start This Version Next Time**, boots the other slot once: the
@@ -1242,7 +1246,7 @@ sudo kdos update install <port>   # one more port, or a group; see Installing ho
 |---|---|
 | `kdos update fetch` | Downloads the latest release's ports tree, checks its signature against `/etc/kdos/keys/tree` and installs it as `/ports`; beside it, the release's signed index of where every update file is, `kdos-update.idx`, and through it alone the signed binary-package index into `/var/lib/kdos/binhost` and the signed slot-image manifest into `/var/lib/kdos/image/offer`, each checked against `/etc/kdos/keys` and against the size and hash the index gives before it is kept. A tree older than the installed one is refused. `--from URL` or `--from DIR` (a stick holding the release's files) reads it from elsewhere |
 | `kdos update check` | Lists installed packages whose version and release are older than the ports tree's, which of them the signed binary index covers, whether a newer signed slot image exists, what is offered, and the last problem: no tree, no network, a fetch, a signature or an apply that failed; a signature that does not verify names `/etc/kdos/keys` and the release's public keys to put there. It asks no server: it reads what the last `fetch` left, and on a machine that has never fetched it says `no fetch is recorded yet`, so run `sudo kdos update fetch` (or `sudo kdos update check --fetch`) first to learn whether a newer release is published. `--json` prints JSON and `--out PATH` writes it to a file, for Discover and the update tray. `--fetch` runs `fetch` first |
-| `kdos update apply` | Writes the next release into the inactive slot and arms it, by one of three lanes (below). `--mount` mounts the inactive slot at `/run/kdos/slot-<x>` for the run; without it, a slot nobody has mounted (as on a fresh install) is refused with `slot b … is not mounted, so there is nowhere to install the candidate`. `--acquire` and `--arm` run its two halves separately, as Discover does; `--dry-run` says what would happen, and with `--mount` says which slot it would mount and stops there; `--in-place` updates the running root of a machine with one slot, and gives up the rollback |
+| `kdos update apply` | Writes the next release into the inactive slot and arms it, by one of three lanes (below). `--mount` mounts the inactive slot at `/run/kdos/slot-<x>` for the run; without it, a slot nobody has mounted (as on a fresh install) is refused with `slot b … is not mounted, so there is nowhere to install the candidate`. `--acquire` and `--arm` run its two halves separately, as Discover does; `--dry-run` says what would happen, and with `--mount` says which slot it would mount and stops there, adding that an update stopped while writing it and `--mount` finishes it when the boot state marks that slot unfilled; `--in-place` updates the running root of a machine with one slot, and gives up the rollback |
 | `kdos update install <port\|group>` | Installs one port, or every member of a group, and every package it lacks, into the running system: prebuilt from the release's signed binaries, or built here with `--source`. Discover's host-software installs run it |
 | `kdos update groups` | Lists every native group, whether it is installed, the members missing, and its download size from the cached index |
 | `kdos update theme` | Re-runs the theme generators for your home directory after an artwork upgrade |
@@ -1357,13 +1361,18 @@ or an update that builds, estimates it from the source archives (about six times
 largest build, plus the other archives once, plus 512 MiB) and refuses when the root has less
 free, the dry run too, with `building <ports> needs about <size> in /var/cache/kpkg/work and the
 root has <size> free` (`the slot` for an update into the other slot); `--dry-run` prints the
-estimate as `build-space <bytes>`. The estimate is checked once on the archives already on the
-machine and again once every source is fetched. A build that fails anyway removes its work
+estimate as `build-space <bytes>`. The estimate is checked once before anything is fetched, an
+archive not on the machine yet counted at the size the server it would be downloaded from gives,
+and again once every source is fetched. An archive no server gives a size for counts nothing in
+the first check, and the dry run names it: `the size of <n> source archive(s) (<files>) is not
+known until they are downloaded; the space is checked again after the download`. A build that fails anyway removes its work
 directory, so the space comes back, and says why: `<port> did not install: the root filled up
 while building it (<size> left), and its work directory was removed` when the root was full,
 `<port> did not install: its build failed; the log is above` for any other failed build, and
 `<port> did not install; the log is above` (`: the root is full (<size> left); the log is above`
-when it is) when the build succeeded and the install after it did not. Only that port is named: packages the run installed before it stay installed. A build
+when it is) when the build succeeded and the install after it did not; a build Discover started
+ends each of those with `the build's log is in /var/log/kdos-build/<port>.log` instead, the file
+Discover's builder keeps the run's output in. Only that port is named: packages the run installed before it stay installed. A build
 stopped with Ctrl-C keeps its directory, as a plain `kpkg install` keeps a failed one to read;
 delete `/var/cache/kpkg/work/<port>` yourself after either, or build the port again, which
 empties it first.
@@ -1377,7 +1386,8 @@ qt6-qtbase` alone leaves Qt's CMake files looking for the OpenGL headers of `lib
 The closure is the recipe's whole one, so it can be large (for Qt, `llvm`'s and `clang`'s
 development files are among it); `kdos update install --dry-run --dev --deps qt6-qtbase` prints
 each `dev` line and the total download first.
-`kdos update install build-tools` installs the compiler and build tools and restores the
+`kdos update install build-tools` installs the compiler and build tools, with the
+fortify-headers every build's `_FORTIFY_SOURCE` hardening needs on musl, and restores the
 development files of `gcc`, `musl` and `linux`, so `cc` builds a C program against the C library's
 and the kernel's headers. A build here first installs the members of the `build-tools` group it
 lacks, and brings back the development files of everything it compiles against. Groups, the routes and every output line are in

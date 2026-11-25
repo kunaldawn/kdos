@@ -1,4 +1,4 @@
-KDOS 0.2.1 is a KDE Plasma desktop on a small, signed base system. The image
+KDOS 0.2 is a KDE Plasma desktop on a small, signed base system. The image
 carries the base; applications, games, language packs and firmware install
 prebuilt from this release's packages, by name or as a group, in Discover, in
 the installer or with `kdos update install`.
@@ -49,13 +49,3 @@ uses it from the next restart. There is no previous version to go back to.
 
 What's New shows these notes after an update or a rollback; `kdos update
 notes`, or Release Notes in the menu, shows them at any time.
-
-## Coming from v0.2
-
-A machine installed from v0.2 takes this release's slot image from
-Discover's Updates page, or with `sudo kdos update fetch` and then
-`sudo kdos update apply --mount`: v0.2's `kdos` applies an image only once
-`fetch` has cached it, and writes the other slot only when it may mount it.
-Once it runs 0.2.1, delete the `binhost = …/v0.2` line from
-`/etc/kdos/update.conf` if you added it: 0.2.1 names its own release and
-finds its packages without it.

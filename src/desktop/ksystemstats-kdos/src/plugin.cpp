@@ -94,8 +94,14 @@ QString slotLabel(const QString &state)
     if (state == QLatin1String("running") || state == QLatin1String("confirmed")) {
         return i18nc("@info state of a system slot", "confirmed");
     }
+    if (state == QLatin1String("visiting")) {
+        return i18nc("@info state of a system slot", "running for this boot only");
+    }
     if (state == QLatin1String("failed")) {
         return i18nc("@info state of a system slot", "failed to start");
+    }
+    if (state == QLatin1String("abandoned")) {
+        return i18nc("@info state of a system slot", "set aside at the boot menu");
     }
     if (state == QLatin1String("incomplete")) {
         return i18nc("@info state of a system slot", "incomplete: an update stopped while writing it");

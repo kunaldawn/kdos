@@ -43,7 +43,7 @@ unless the medium has a persistence store; see [Live persistence](live-persisten
 SDDM reads `/etc/sddm.conf.d/00-kdos.conf`. Its `[Wayland]` group names the greeter's compositor
 and the command a session is started with, and its `[X11]` group offers no X session at all:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=42-60 pin=4e0a28063e89 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=46-64 pin=4e0a28063e89 -->
 
 SDDM runs `kdos-session-wrapper` as the user, after PAM has opened the session, with the
 `Exec=` line of `plasma.desktop` as its one argument. The wrapper re-runs itself as a login shell
@@ -56,7 +56,7 @@ session when it does not, so the greeter comes back; settles the environment bef
 reads it; and refuses an `Exec=` line whose first word names no program, from
 `fs/usr/local/bin/kdos-session-wrapper`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=266-284 -->
+<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=266-284 pin=2bcd5ab2b77c -->
 
 `kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below);
 `kdos_session_live_data`, on the live medium alone, puts `/usr/share/kdos/data-live` in front of
@@ -114,7 +114,7 @@ reads. `startplasma` sources every `plasma-workspace/env/*.sh` along `XDG_CONFIG
 person's own `~/.config/plasma-workspace/env/` last, and takes every variable they leave set into
 the session:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=31-56 pin=8763d484354f -->
+<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=34-59 pin=8763d484354f -->
 
 `kdos-shortcuts.sh` beside it copies the KDOS global shortcuts into a person's
 `~/.config/kglobalshortcutsrc` once each; see
@@ -143,8 +143,11 @@ other system account gets none.
 The layout the login screen and every new session start with is the machine's, in
 [`/etc/kdos/xkb.conf`]{.idx}, which [kdos-settingsd](#port-kdos-settingsd) serves as
 `org.freedesktop.locale1`. The greeter's KWin reads it before anybody types, and `startplasma`
-copies it into each session; a person's layout on the Keyboard page of System Settings, saved in
-`~/.config/kxkbrc`, comes after it and wins. From `fs/etc/kdos/xkb.conf`:
+copies it into each session. Inside a session KWin and the lock screen read
+[`/etc/xdg/kxkbrc`]{.idx} before that copy: the installer writes it, and kdos-settingsd rewrites
+it with the same layout on every locale1 layout change (plasma-setup's on an OEM machine
+included) and removes it for an empty one. A person's layout on the Keyboard page of System
+Settings, saved in `~/.config/kxkbrc`, comes after both and wins. From `fs/etc/kdos/xkb.conf`:
 
 <!-- kfs:include fs/etc/kdos/xkb.conf -->
 

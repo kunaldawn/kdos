@@ -28,11 +28,14 @@
 #include <KTar>
 
 #include <algorithm>
+#include <functional>
 
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QNetworkInformation>
@@ -76,6 +79,7 @@ private Q_SLOTS:
     void removeRuns();
     void offlineRefuses();
     void debianNameMatch();
+    void debianNameTwin();
     void refusals();
     void urlBeforeFirstRefresh();
     void boxesCategoryNeedsABox();
@@ -85,8 +89,13 @@ private Q_SLOTS:
     void cancelClosesHelperStdin();
     void shippedExclusions();
     void searchRanking();
+    void featuredIcons();
+    void featuredComplete();
+    void vendorDebRow();
 
 private:
+    void withFeatured(const std::function<void(const QJsonArray &)> &check);
+    KdosResource *featuredResource(const QJsonValue &link);
     QList<KdosResource *> find(const Filters &filter);
     KdosResource *resource(const QString &lane, const QString &id);
     void writeTool(const QString &name, const QByteArray &body);
@@ -461,7 +470,7 @@ void BackendTest::debianLane()
     // Debian's stock icons are not installed: an icon the theme lacks gives
     // way to the icon of the application's category.
     if (!QIcon::hasThemeIcon(u"inkscape"_s))
-        QCOMPARE(ink.first()->entry().icon, u"image-x-generic"_s);
+        QCOMPARE(ink.first()->entry().icon, u"kcolorchooser"_s);
 
     // A package the exclusion list names is never offered, by search, by
     // category or by link.
@@ -700,8 +709,9 @@ static const char ListingCatalogue[] = R"(<?xml version="1.0" encoding="utf-8"?>
     <pkgname>librewolf</pkgname>
     <name>LibreWolf</name>
     <project_license>MPL-2.0</project_license>
+    <icon type="stock">kdos-test-no-such-icon</icon>
     <launchable type="desktop-id">librewolf.desktop</launchable>
-    <custom><value key="KDOS::Version">147.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+    <custom><value key="KDOS::Version">147.0-1</value><value key="KDOS::BareEntry">1</value><value key="KDOS::IconData">iVBORw0KGgoAAAANSUhEUg==</value></custom>
   </component>
   <component type="desktop-application">
     <id>org.example.fooview.desktop</id>
@@ -860,6 +870,11 @@ void BackendTest::hostCatalogueListing()
     QVERIFY(wolf->installedVersion().isEmpty());
     QVERIFY(wolf->kdosNotice().contains(u"binary host"_s));
     QVERIFY(!wolf->canExecute());
+    // Its stock icon is in no theme here, so the file the catalogue carries
+    // is written to the icon cache and drawn instead of its category's.
+    const QString wolfIcon = wolf->entry().icon;
+    QVERIFY2(wolfIcon.endsWith(u"/binhost-librewolf.desktop-147.0-1.png"_s), qPrintable(wolfIcon));
+    QVERIFY(QFileInfo::exists(wolfIcon));
     KdosResource *wolfBuilt = resource(u"port-source"_s, u"librewolf"_s);
     QVERIFY(wolfBuilt);
     QCOMPARE(wolfBuilt->state(), AbstractResource::None);
@@ -1316,6 +1331,92 @@ void BackendTest::debianNameMatch()
     QVERIFY(!debianMatches(c, {}));
 }
 
+// A binhost catalogue whose ports Debian's DEP-11 lists under ids of its
+// own: Schism Tracker by another package stem and desktop id, and a
+// Calculator and a Notes that are other programs than Debian's, the Notes
+// on the same code-hosting site as Debian's.
+static const char NameTwinCatalogue[] = R"(<?xml version="1.0" encoding="utf-8"?>
+<components version="1.0" origin="kdos-binhost">
+  <component type="desktop-application">
+    <id>schismtracker.desktop</id>
+    <pkgname>schismtracker</pkgname>
+    <name>Schism Tracker</name>
+    <summary>Compose music in the Impulse Tracker style</summary>
+    <launchable type="desktop-id">schismtracker.desktop</launchable>
+    <custom><value key="KDOS::Version">20250825-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.kde.kalk</id>
+    <pkgname>kalk</pkgname>
+    <name>Calculator</name>
+    <summary>Convergent calculator</summary>
+    <url type="homepage">https://apps.kde.org/kalk</url>
+    <launchable type="desktop-id">org.kde.kalk.desktop</launchable>
+    <custom><value key="KDOS::Version">26.08.2-1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.github.jotter.Jotter</id>
+    <pkgname>jotter</pkgname>
+    <name>Notes</name>
+    <summary>Keep notes</summary>
+    <url type="homepage">https://github.com/jotter-app/jotter</url>
+    <launchable type="desktop-id">io.github.jotter.Jotter.desktop</launchable>
+    <custom><value key="KDOS::Version">1.0-1</value></custom>
+  </component>
+</components>
+)";
+
+void BackendTest::debianNameTwin()
+{
+    const QString root = m_dir.filePath(u"binhost-nametwin"_s);
+    QVERIFY(QDir().mkpath(root + u"/swcatalog/xml"_s));
+    QFile cat(root + u"/swcatalog/xml/kdos-binhost.xml"_s);
+    QVERIFY(cat.open(QIODevice::WriteOnly));
+    cat.write(NameTwinCatalogue);
+    cat.close();
+    const QByteArray binhost = qgetenv("KDOS_BINHOST_CACHE");
+    qputenv("KDOS_BINHOST_CACHE", root.toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    const auto restore = qScopeGuard([&] {
+        delete std::exchange(m_backend, shared);
+        qputenv("KDOS_BINHOST_CACHE", binhost);
+    });
+    m_backend->setName(u"kdos-backend"_s);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"debian"_s, u"gimp"_s), 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+
+    auto lanesOf = [this](const QString &term) {
+        Filters f;
+        f.search = term;
+        QStringList got;
+        for (KdosResource *r : find(f))
+            got << (r->entry().lane == Lane::Debian ? u"debian/"_s : u"host/"_s) + r->entry().id;
+        return got;
+    };
+    // The same name and package stems of which one begins the other: the
+    // port alone, never Debian's build in a box.
+    const QStringList schism = lanesOf(u"schism"_s);
+    QVERIFY2(schism.contains(u"host/schismtracker"_s), qPrintable(schism.join(u' ')));
+    QVERIFY2(!schism.contains(u"debian/schism"_s), qPrintable(schism.join(u' ')));
+    // The same name and nothing else in common: both programs.
+    const QStringList calculator = lanesOf(u"calculator"_s);
+    QVERIFY2(calculator.contains(u"host/kalk"_s), qPrintable(calculator.join(u' ')));
+    QVERIFY2(calculator.contains(u"debian/gnome-calculator"_s), qPrintable(calculator.join(u' ')));
+    // The same name and the same code-hosting site, but another project on
+    // it: both programs.
+    const QStringList notes = lanesOf(u"xpad"_s);
+    QVERIFY2(notes.contains(u"debian/xpad"_s), qPrintable(notes.join(u' ')));
+    // A link to Debian's twin opens the port.
+    Filters link;
+    link.resourceUrl = QUrl(u"appstream://schism.desktop"_s);
+    const QList<KdosResource *> byLink = find(link);
+    QVERIFY(!byLink.isEmpty());
+    for (KdosResource *r : byLink) {
+        QVERIFY(r->entry().lane != Lane::Debian);
+        QCOMPARE(r->entry().id, u"schismtracker"_s);
+    }
+}
+
 void BackendTest::refusals()
 {
     KdosResource *kate = resource(u"port"_s, u"kate"_s);
@@ -1685,7 +1786,249 @@ static const QByteArray RankingCatalogue = R"(<?xml version="1.0" encoding="utf-
     <keywords><keyword>mail</keyword><keyword>email</keyword></keywords>
     <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
   </component>
+  <component type="desktop-application">
+    <id>org.example.evolution.desktop</id>
+    <pkgname>rank-evolution</pkgname>
+    <name>Evolution</name>
+    <summary>Manage your email, contacts and schedule</summary>
+    <categories><category>Office</category><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.geary.desktop</id>
+    <pkgname>rank-geary</pkgname>
+    <name>Geary</name>
+    <summary>Send and receive email</summary>
+    <categories><category>Network</category><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.mailnag.desktop</id>
+    <pkgname>rank-mailnag</pkgname>
+    <name>Mailnag</name>
+    <summary>An extensible mail notification daemon</summary>
+    <categories><category>Network</category><category>Email</category></categories>
+    <keywords><keyword>mail</keyword><keyword>notify</keyword><keyword>notification</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.birdtray.desktop</id>
+    <pkgname>rank-birdtray</pkgname>
+    <name>Birdtray</name>
+    <summary>System tray new mail notification for Thunderbird</summary>
+    <categories><category>Email</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.kontact.desktop</id>
+    <pkgname>rank-kontact</pkgname>
+    <name>Kontact</name>
+    <summary>Handle all your emails, calendars, contacts and more within a single window</summary>
+    <categories><category>Qt</category><category>KDE</category><category>Office</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.glabels.desktop</id>
+    <pkgname>rank-glabels</pkgname>
+    <name>gLabels</name>
+    <summary>Design and print labels, business cards and envelopes</summary>
+    <categories><category>Office</category></categories>
+    <keywords><keyword>label</keyword><keyword>mail merge</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.importwizard.desktop</id>
+    <pkgname>rank-importwizard</pkgname>
+    <name>KMail Import Wizard</name>
+    <summary>Launch the import wizard to migrate data from mailer as thunderbird/evolution etc.</summary>
+    <categories><category>Office</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.ymuse.desktop</id>
+    <pkgname>rank-ymuse</pkgname>
+    <name>Ymuse</name>
+    <summary>Easy, functional, and snappy GTK client for Music Player Daemon</summary>
+    <categories><category>Audio</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.strawberry.desktop</id>
+    <pkgname>rank-strawberry</pkgname>
+    <name>Strawberry</name>
+    <summary>Play and organize your audio collection</summary>
+    <categories><category>Audio</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.sieveeditor.desktop</id>
+    <pkgname>rank-sieveeditor</pkgname>
+    <name>SieveEditor</name>
+    <summary>Editor for email filter Sieve scripts</summary>
+    <categories><category>Qt</category><category>KDE</category><category>Office</category><category>Network</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.cups.desktop</id>
+    <pkgname>rank-cups</pkgname>
+    <name>Manage Printing</name>
+    <summary>CUPS Web Interface</summary>
+    <categories><category>System</category><category>Settings</category><category>Printing</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.haruna.desktop</id>
+    <pkgname>rank-haruna</pkgname>
+    <name>Haruna</name>
+    <summary>Media player</summary>
+    <categories><category>AudioVideo</category><category>Video</category><category>Player</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.doomsetup.desktop</id>
+    <pkgname>rank-doomsetup</pkgname>
+    <name>Chocolate Doom Setup</name>
+    <summary>Controls, sound, video and network settings for Chocolate Doom</summary>
+    <categories><category>Settings</category><category>Game</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.kdenlive.desktop</id>
+    <pkgname>rank-kdenlive</pkgname>
+    <name>Kdenlive</name>
+    <summary>Video editor</summary>
+    <categories><category>AudioVideo</category><category>AudioVideoEditing</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.qv4l2.desktop</id>
+    <pkgname>rank-qv4l2</pkgname>
+    <name>Qt V4L2 test Utility</name>
+    <summary>Allow testing Video4Linux devices</summary>
+    <categories><category>AudioVideo</category></categories>
+    <keywords><keyword>video</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.celluloid.desktop</id>
+    <pkgname>rank-celluloid</pkgname>
+    <name>Celluloid</name>
+    <summary>Plays videos</summary>
+    <categories><category>AudioVideo</category><category>Video</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.qpwgraph.desktop</id>
+    <pkgname>rank-qpwgraph</pkgname>
+    <name>qpwgraph</name>
+    <summary>A PipeWire Graph Qt GUI Interface</summary>
+    <categories><category>AudioVideo</category><category>Audio</category><category>Video</category><category>Midi</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.callroom.desktop</id>
+    <pkgname>rank-callroom</pkgname>
+    <name>Callroom</name>
+    <summary>Voice calls and meetings</summary>
+    <categories><category>AudioVideo</category><category>Audio</category><category>Video</category><category>Network</category></categories>
+    <keywords><keyword>chat</keyword></keywords>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.chatnotifier.desktop</id>
+    <pkgname>rank-chatnotifier</pkgname>
+    <name>Chat Notifier</name>
+    <summary>Chat message notifier</summary>
+    <categories><category>Network</category><category>Chat</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.smplayer.desktop</id>
+    <pkgname>rank-smplayer</pkgname>
+    <name>SMPlayer</name>
+    <summary>A great media player</summary>
+    <categories><category>AudioVideo</category><category>Video</category><category>Audio</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.example.ffmpegthumbnailer.desktop</id>
+    <pkgname>rank-ffmpegthumbnailer</pkgname>
+    <name>FFmpeg Thumbnailer</name>
+    <summary>Video thumbnail generator</summary>
+    <categories><category>AudioVideo</category><category>Video</category></categories>
+    <custom><value key="KDOS::Version">1.0-1</value><value key="KDOS::BareEntry">1</value></custom>
+  </component>
 </components>
+)";
+
+// levenshteinDistance() of discover-6.8.2 libdiscover/resources/
+// ResourcesProxyModel.cpp:46-81.
+static int discoverDistance(QStringView source, QStringView target)
+{
+    if (source.compare(target, Qt::CaseInsensitive) == 0)
+        return 0;
+    const int sourceCount = source.size();
+    const int targetCount = target.size();
+    if (source.isEmpty())
+        return targetCount;
+    if (target.isEmpty())
+        return sourceCount;
+    QVector<int> column(targetCount + 1, 0);
+    QVector<int> previousColumn;
+    for (int i = 0; i < targetCount + 1; i++)
+        previousColumn.append(i);
+    for (int i = 0; i < sourceCount; i++) {
+        column[0] = i + 1;
+        for (int j = 0; j < targetCount; j++)
+            column[j + 1] = std::min({1 + column.at(j), 1 + previousColumn.at(1 + j),
+                                      previousColumn.at(j) + ((source.at(i).toUpper() == target.at(j).toUpper()) ? 0 : 1)});
+        column.swap(previousColumn);
+    }
+    return previousColumn.at(targetCount);
+}
+
+// SearchRelevanceRole of discover-6.8.2 libdiscover/resources/
+// ResourcesProxyModel.cpp:590-608, the role Discover sorts a search by, with
+// no rating: the test's resources have none. A backend rank that does not
+// outweigh the name terms here is reordered by them on screen.
+static qreal searchRelevance(const StreamResult &result, const QString &search)
+{
+    qreal reverseDistance = 0;
+    const QString name = result.resource->name();
+    const auto words = QStringView(name).split(QLatin1Char(' '));
+    for (QStringView word : words) {
+        const qreal maxLength = std::max(word.length(), search.length());
+        reverseDistance =
+            std::max(reverseDistance, (maxLength - std::min(reverseDistance, qreal(discoverDistance(word, search)))) / maxLength * 10.0);
+    }
+    qreal exactMatch = 0.0;
+    if (name.toUpper() == search.toUpper())
+        exactMatch = 10.0;
+    else if (name.contains(search, Qt::CaseInsensitive))
+        exactMatch = 5.0;
+    return qreal(result.sortScore) / 100 + reverseDistance + exactMatch;
+}
+
+// Debian's DEP-11 entry for the package of a catalogue row whose meta line
+// names AudioVideo alone, as trixie lists qpwgraph: the row takes Audio and
+// Video from it.
+static const QByteArray RankingComponents = R"(---
+File: DEP-11
+Version: '1.0'
+Origin: debian-trixie-ranking
+---
+Type: desktop-application
+ID: org.example.pwgraph
+Package: rank-pwgraph
+Name:
+  C: pwgraph
+Summary:
+  C: A PipeWire Graph Qt GUI Interface
+Categories:
+  - AudioVideo
+  - Audio
+  - Video
+  - Midi
 )";
 
 void BackendTest::searchRanking()
@@ -1696,28 +2039,55 @@ void BackendTest::searchRanking()
     QVERIFY(cat.open(QIODevice::WriteOnly));
     cat.write(RankingCatalogue);
     cat.close();
+    QVERIFY(QDir().mkpath(root + u"/debian/swcatalog/yaml"_s));
+    QFile components(root + u"/debian/swcatalog/yaml/debian-trixie-ranking.yml"_s);
+    QVERIFY(components.open(QIODevice::WriteOnly));
+    components.write(RankingComponents);
+    components.close();
+    // The fixture catalogue with a row that packs that package.
+    QFile shippedRows(m_fixtures + u"/catalogue"_s);
+    QVERIFY(shippedRows.open(QIODevice::ReadOnly));
+    const QString catalogue = root + u"/catalogue"_s;
+    QFile catalogueFile(catalogue);
+    QVERIFY(catalogueFile.open(QIODevice::WriteOnly));
+    catalogueFile.write(shippedRows.readAll() + "app app.rank-pwgraph rt-qt rank-pwgraph\n");
+    catalogueFile.close();
     // Catalogue rows name one main category, as the shipped catalogue does.
     const QString listing = root + u"/catalogue.tsv"_s;
     QFile rows(listing);
     QVERIFY(rows.open(QIODevice::WriteOnly));
     rows.write("app.rank-surf\tSurf\tNetwork\t275196928\trt-gtk\tavailable\tSimple web browser by the suckless community\n"
-               "app.rank-claws\tClaws Mail\tNetwork\t11681792\trt-gtk\tavailable\tA lightweight GTK email client\n");
+               "app.rank-claws\tClaws Mail\tNetwork\t11681792\trt-gtk\tavailable\tA lightweight GTK email client\n"
+               "app.rank-pwgraph\tpwgraph\tAudioVideo\t34401364\trt-qt\tavailable\tA PipeWire Graph Qt GUI Interface\n");
     rows.close();
     const QByteArray binhost = qgetenv("KDOS_BINHOST_CACHE");
+    const QByteArray swcatalog = qgetenv("KDOS_SWCATALOG");
+    const QByteArray catalogueEnv = qgetenv("KDOS_CATALOGUE");
     qputenv("KDOS_BINHOST_CACHE", root.toUtf8());
+    qputenv("KDOS_SWCATALOG", QByteArray(swcatalog + ':' + (root + u"/debian/swcatalog"_s).toUtf8()));
+    qputenv("KDOS_CATALOGUE", catalogue.toUtf8());
     qputenv("KDOS_TEST_CATALOGUE", listing.toUtf8());
     KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
     const auto restore = qScopeGuard([&] {
         delete std::exchange(m_backend, shared);
         qputenv("KDOS_BINHOST_CACHE", binhost);
+        qputenv("KDOS_SWCATALOG", swcatalog);
+        qputenv("KDOS_CATALOGUE", catalogueEnv);
         qunsetenv("KDOS_TEST_CATALOGUE");
     });
     m_backend->setName(u"kdos-backend"_s);
     QTRY_VERIFY_WITH_TIMEOUT(resource(u"port"_s, u"rank-chromium"_s), 30000);
     QTRY_VERIFY_WITH_TIMEOUT(resource(u"catalogue"_s, u"app.rank-surf"_s), 30000);
+    // The catalogue row takes Audio and Video from its Debian component
+    // once the AppStream pool has loaded.
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"catalogue"_s, u"app.rank-pwgraph"_s)
+                                 && resource(u"catalogue"_s, u"app.rank-pwgraph"_s)->entry().categories.contains(u"Video"_s)
+                                 && resource(u"catalogue"_s, u"app.rank-pwgraph"_s)->entry().categories.contains(u"Audio"_s),
+                             30000);
 
-    // The binary host's ports a search lists, in Discover's order: by score,
-    // then by name.
+    // The binary host's ports and the Debian fixture's rank- packages a
+    // search lists, in the order Discover shows them: by searchRelevance()
+    // highest first, then by name.
     auto ranked = [this](const QString &term) {
         Filters f;
         f.search = term;
@@ -1728,15 +2098,16 @@ void BackendTest::searchRanking()
         });
         for (int i = 0; stream && i < 500; i++)
             QTest::qWait(20);
-        std::stable_sort(got.begin(), got.end(), [](const StreamResult &a, const StreamResult &b) {
-            if (a.sortScore != b.sortScore)
-                return a.sortScore > b.sortScore;
+        std::stable_sort(got.begin(), got.end(), [&term](const StreamResult &a, const StreamResult &b) {
+            const qreal ra = searchRelevance(a, term), rb = searchRelevance(b, term);
+            if (ra != rb)
+                return ra > rb;
             return a.resource->nameSortKey() < b.resource->nameSortKey();
         });
         QStringList ids;
         for (const StreamResult &r : std::as_const(got)) {
             auto *res = qobject_cast<KdosResource *>(r.resource);
-            if (res && res->entry().lane == Lane::Port && res->entry().id.startsWith("rank-"_L1))
+            if (res && (res->entry().lane == Lane::Port || res->entry().lane == Lane::Debian) && res->entry().id.startsWith("rank-"_L1))
                 ids << res->entry().id.mid(5);
             else if (res && res->entry().lane == Lane::Catalogue && res->entry().id.startsWith("app.rank-"_L1))
                 ids << res->entry().id.mid(9);
@@ -1759,6 +2130,8 @@ void BackendTest::searchRanking()
     // though it carries the keyword.
     QVERIFY2(before(ids, u"falkon"_s, u"w3m"_s), qPrintable(ids.join(u' ')));
     QVERIFY2(before(ids, u"surf"_s, u"w3m"_s), qPrintable(ids.join(u' ')));
+    // A summary that says "web" for what a program serves is not a browser's.
+    QVERIFY2(!ids.contains(u"cups"_s) || before(ids, u"w3m"_s, u"cups"_s), qPrintable(ids.join(u' ')));
     // A keyword that is the whole term before a name it is part of.
     ids = ranked(u"chrome"_s);
     QVERIFY2(!ids.isEmpty() && ids.first() == "chromium"_L1, qPrintable(ids.join(u' ')));
@@ -1769,11 +2142,404 @@ void BackendTest::searchRanking()
     // The mail clients lead the applications that only file themselves under
     // Email: a summary that says mail, and a name that holds it, rank higher.
     ids = ranked(u"mail"_s);
-    QVERIFY2(ids.mid(0, 3) == (QStringList{u"claws"_s, u"kmail"_s, u"thunderbird"_s}), qPrintable(ids.join(u' ')));
+    QVERIFY2(ids.mid(0, 2) == (QStringList{u"claws"_s, u"kmail"_s}), qPrintable(ids.join(u' ')));
     QVERIFY2(before(ids, u"thunderbird"_s, u"accountwizard"_s), qPrintable(ids.join(u' ')));
     QVERIFY2(before(ids, u"ktnef"_s, u"aerc"_s), qPrintable(ids.join(u' ')));
+    // An application whose summary says mail but that files itself only under
+    // Office lists with the mail applications, before a name or a keyword
+    // that merely holds the term.
+    QVERIFY2(before(ids, u"kontact"_s, u"importwizard"_s), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"kontact"_s, u"glabels"_s), qPrintable(ids.join(u' ')));
+    // Only the head of the summary counts: an editor for email filters is
+    // not a mail application.
+    QVERIFY2(before(ids, u"importwizard"_s, u"sieveeditor"_s), qPrintable(ids.join(u' ')));
+    // A notifier or tray icon of the category, whose keyword the term is,
+    // after the category's applications, and first for its own name.
+    for (const QString &client : {u"evolution"_s, u"geary"_s, u"thunderbird"_s}) {
+        QVERIFY2(ids.indexOf(client) >= 2 && ids.indexOf(client) < 5, qPrintable(client + u": "_s + ids.join(u' ')));
+        QVERIFY2(before(ids, client, u"mailnag"_s), qPrintable(ids.join(u' ')));
+        QVERIFY2(before(ids, client, u"birdtray"_s), qPrintable(ids.join(u' ')));
+    }
     ids = ranked(u"aerc"_s);
     QVERIFY2(!ids.isEmpty() && ids.first() == "aerc"_L1, qPrintable(ids.join(u' ')));
+    ids = ranked(u"mailnag"_s);
+    QVERIFY2(!ids.isEmpty() && ids.first() == "mailnag"_L1, qPrintable(ids.join(u' ')));
+    // A client for a daemon is an application, not an accessory: Ymuse,
+    // whose summary says music, before Strawberry, whose summary does not.
+    ids = ranked(u"music"_s);
+    QVERIFY2(before(ids, u"ymuse"_s, u"strawberry"_s), qPrintable(ids.join(u' ')));
+    // "video" in a settings page's summary does not stand in for the category.
+    QTRY_VERIFY_WITH_TIMEOUT(ranked(u"video"_s).contains(u"lightvideo"_s), 30000);
+    ids = ranked(u"video"_s);
+    QVERIFY2(before(ids, u"haruna"_s, u"doomsetup"_s), qPrintable(ids.join(u' ')));
+    // The category's native applications before a Debian build in a box
+    // whose name and keyword are the word; an application filed under
+    // AudioVideo and a narrower category, whose summary says video, is one.
+    QVERIFY2(before(ids, u"celluloid"_s, u"lightvideo"_s), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"kdenlive"_s, u"lightvideo"_s), qPrintable(ids.join(u' ')));
+    // A keyword that is the whole term does not outrank the category: a
+    // program outside it lists after every member, boxed ones included.
+    QVERIFY2(before(ids, u"lightvideo"_s, u"qv4l2"_s), qPrintable(ids.join(u' ')));
+    QVERIFY2(before(ids, u"haruna"_s, u"qv4l2"_s), qPrintable(ids.join(u' ')));
+    // Within one rank a port lists before a Debian build: Haruna and Light
+    // Video both take the category's base rank.
+    QVERIFY2(before(ids, u"haruna"_s, u"lightvideo"_s), qPrintable(ids.join(u' ')));
+    // A thumbnailer is an accessory: below every application of the
+    // category, although it files itself there and its summary says video.
+    QVERIFY2(before(ids, u"haruna"_s, u"ffmpegthumbnailer"_s), qPrintable(ids.join(u' ')));
+    // A patchbay filed under Audio and Video whose summary names no medium
+    // is media plumbing: below every video application, a Debian build
+    // included, while a "media player" filed the same way stays a player.
+    // The catalogue row, whose Audio and Video come from Debian's
+    // component, ranks the same as a port filed that way.
+    for (const QString &patchbay : {u"qpwgraph"_s, u"pwgraph"_s}) {
+        QVERIFY2(before(ids, u"lightvideo"_s, patchbay), qPrintable(patchbay + u": "_s + ids.join(u' ')));
+        QVERIFY2(before(ids, u"haruna"_s, patchbay), qPrintable(patchbay + u": "_s + ids.join(u' ')));
+    }
+    QVERIFY2(before(ids, u"smplayer"_s, u"lightvideo"_s), qPrintable(ids.join(u' ')));
+    ids = ranked(u"music"_s);
+    for (const QString &patchbay : {u"qpwgraph"_s, u"pwgraph"_s}) {
+        QVERIFY2(before(ids, u"ymuse"_s, patchbay), qPrintable(patchbay + u": "_s + ids.join(u' ')));
+        QVERIFY2(before(ids, u"strawberry"_s, patchbay), qPrintable(patchbay + u": "_s + ids.join(u' ')));
+        QVERIFY2(before(ids, u"smplayer"_s, patchbay), qPrintable(patchbay + u": "_s + ids.join(u' ')));
+    }
+    // Media plumbing is a rank of the AudioVideo terms alone: for "chat" a
+    // calling application filed under Audio and Video, whose keyword the
+    // term is, lists before an accessory of the category.
+    ids = ranked(u"chat"_s);
+    QVERIFY2(before(ids, u"callroom"_s, u"chatnotifier"_s), qPrintable(ids.join(u' ')));
+}
+
+// Debian's DEP-11 entries for the packages of the featured applications,
+// their icons as trixie lists them (a stock name and the cached file the
+// host never has), with the licence, developer, project group and
+// description each carries. ParaView's two components stand in the
+// opposite order to trixie's, the one with a licence first: the package
+// keeps the richer of the two whichever the pool lists last.
+static const QByteArray FeaturedComponents = R"(---
+File: DEP-11
+Version: '1.0'
+Origin: debian-trixie-featured
+---
+Type: desktop-application
+ID: org.kde.kstars.desktop
+Package: kstars
+ProjectLicense: GPL-2.0+
+Name:
+  C: KStars
+Description:
+  C: <p>KStars is free, open source, cross-platform Astronomy Software.</p>
+ProjectGroup: KDE
+Icon:
+  stock: kstars
+  cached:
+    - name: kstars_kstars.png
+      width: 64
+      height: 64
+---
+Type: desktop-application
+ID: org.kde.okteta.desktop
+Package: okteta
+ProjectLicense: GPL-2.0 OR GPL-3.0
+Name:
+  C: Okteta
+Description:
+  C: <p>Okteta is a simple editor for the raw data of files.</p>
+ProjectGroup: KDE
+Icon:
+  stock: okteta
+  cached:
+    - name: okteta_okteta.png
+      width: 64
+      height: 64
+---
+Type: desktop-application
+ID: com.github.xournalpp.xournalpp
+Package: xournalpp
+ProjectLicense: GPL-2.0
+Name:
+  C: Xournal++
+Description:
+  C: <p>Xournal++ is a hand note taking software.</p>
+Developer:
+  name:
+    C: Xournalpp Developers
+Icon:
+  stock: com.github.xournalpp.xournalpp
+---
+Type: desktop-application
+ID: io.github.Hexchat
+Package: hexchat
+ProjectLicense: GPL-2.0+
+Name:
+  C: HexChat
+Description:
+  C: <p>HexChat is an easy to use graphical IRC chat client.</p>
+Developer:
+  name:
+    C: HexChat
+Icon:
+  stock: io.github.Hexchat
+---
+Type: desktop-application
+ID: org.gnome.Chess
+Package: gnome-chess
+ProjectLicense: GPL-3.0+
+Name:
+  C: Chess
+Description:
+  C: <p>GNOME Chess is a simple chess game.</p>
+ProjectGroup: GNOME
+Developer:
+  name:
+    C: The GNOME Project
+Icon:
+  stock: org.gnome.Chess
+---
+Type: desktop-application
+ID: org.gnome.Meld.desktop
+Package: meld
+ProjectLicense: GPL-2.0+
+Name:
+  C: Meld
+Description:
+  C: <p>Meld is a visual diff and merge tool targeted at developers.</p>
+ProjectGroup: GNOME
+Developer:
+  name:
+    C: The GNOME Project
+Icon:
+  stock: org.gnome.Meld
+---
+Type: desktop-application
+ID: org.gnu.pspp
+Package: pspp
+ProjectLicense: GPL-3.0+
+Name:
+  C: GNU PSPP
+Description:
+  C: <p>GNU PSPP is a program for statistical analysis of sampled data.</p>
+Developer:
+  name:
+    C: Free Software Foundation
+Icon:
+  stock: org.gnu.pspp
+---
+Type: desktop-application
+ID: org.paraview.ParaView
+Package: paraview
+ProjectLicense: BSD-3-Clause
+Name:
+  C: ParaView
+Description:
+  C: <p>ParaView is a data analysis and visualization application.</p>
+Icon:
+  stock: paraview
+---
+Type: desktop-application
+ID: paraview.desktop
+Package: paraview
+Name:
+  C: ParaView
+Description:
+  C: <p>ParaView allows viewing of large data sets.</p>
+Icon:
+  stock: paraview
+---
+Type: desktop-application
+ID: hugin.desktop
+Package: hugin
+Name:
+  C: Hugin
+Icon:
+  stock: hugin
+---
+Type: desktop-application
+ID: meshlab.desktop
+Package: meshlab
+Name:
+  C: MeshLab
+Icon:
+  stock: meshlab
+)";
+
+// Discover's Home page, as the image ships it: the featured list's links,
+// and ParaView's, resolved against the shipped catalogue and the components
+// above, with an icon theme holding only the stock names breeze-icons ships
+// of those components. check runs on the featured list once every row has
+// taken its component.
+void BackendTest::withFeatured(const std::function<void(const QJsonArray &)> &check)
+{
+    const QString featuredPath = QFINDTESTDATA("../data/featured.json");
+    const QString cataloguePath = QFINDTESTDATA("../../../system/kdos-appbox/catalogue");
+    QVERIFY(!featuredPath.isEmpty());
+    QVERIFY(!cataloguePath.isEmpty());
+    QFile featuredFile(featuredPath);
+    QVERIFY(featuredFile.open(QIODevice::ReadOnly));
+    const QJsonArray featured = QJsonDocument::fromJson(featuredFile.readAll()).array();
+    QCOMPARE(featured.size(), 7);
+
+    // The listing `kdos-appbox catalogue` prints for those rows, from the
+    // catalogue's app and meta rows.
+    QFile catalogue(cataloguePath);
+    QVERIFY(catalogue.open(QIODevice::ReadOnly));
+    QHash<QString, QString> parent;
+    QHash<QString, QStringList> meta;
+    for (const QByteArray &raw : catalogue.readAll().split('\n')) {
+        const QString line = QString::fromUtf8(raw);
+        const QStringList w = line.split(QRegularExpression(u"\\s+"_s), Qt::SkipEmptyParts);
+        if (w.size() >= 3 && w[0] == "app"_L1)
+            parent.insert(w[1], w[2]);
+        else if (w.size() >= 3 && w[0] == "meta"_L1)
+            meta.insert(w[1], line.section(QRegularExpression(u"\\s+"_s), 2).trimmed().split(u'|'));
+    }
+    const QString root = m_dir.filePath(u"featured"_s);
+    QVERIFY(QDir().mkpath(root + u"/swcatalog/yaml"_s));
+    QVERIFY(QDir().mkpath(root + u"/icons/kdos-featured/apps/48"_s));
+    QStringList ids;
+    for (const QJsonValue &v : featured)
+        ids << QUrl(v.toString()).path().mid(1);
+    for (const QString &extra : {u"app.paraview"_s, u"app.vscodium"_s}) {
+        if (!ids.contains(extra))
+            ids << extra;
+    }
+    QByteArray listing;
+    for (const QString &id : std::as_const(ids)) {
+        QVERIFY2(parent.contains(id), qPrintable(id));
+        const QStringList m = meta.value(id);
+        QVERIFY2(m.size() == 4, qPrintable(id));
+        listing += QStringList{id, m[0], m[1], m[2], parent.value(id), u"available"_s, m[3]}.join(u'\t').toUtf8() + '\n';
+    }
+    QFile rows(root + u"/catalogue.tsv"_s);
+    QVERIFY(rows.open(QIODevice::WriteOnly));
+    rows.write(listing);
+    rows.close();
+    QFile components(root + u"/swcatalog/yaml/debian-trixie-featured.yml"_s);
+    QVERIFY(components.open(QIODevice::WriteOnly));
+    components.write(FeaturedComponents);
+    components.close();
+    QFile index(root + u"/icons/kdos-featured/index.theme"_s);
+    QVERIFY(index.open(QIODevice::WriteOnly));
+    index.write("[Icon Theme]\nName=kdos-featured\nDirectories=apps/48\n\n[apps/48]\nSize=48\nContext=Applications\nType=Fixed\n");
+    index.close();
+    for (const char *name : {"kstars", "okteta"}) {
+        QFile svg(root + u"/icons/kdos-featured/apps/48/"_s + QLatin1StringView(name) + u".svg"_s);
+        QVERIFY(svg.open(QIODevice::WriteOnly));
+        svg.write(R"(<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48"/></svg>)");
+    }
+
+    const QStringList searchPaths = QIcon::themeSearchPaths();
+    const QString themeName = QIcon::themeName();
+    QIcon::setThemeSearchPaths({root + u"/icons"_s});
+    QIcon::setThemeName(u"kdos-featured"_s);
+    QVERIFY(QIcon::hasThemeIcon(u"kstars"_s));
+    const QByteArray swcatalog = qgetenv("KDOS_SWCATALOG");
+    const QByteArray catalogueEnv = qgetenv("KDOS_CATALOGUE");
+    qputenv("KDOS_SWCATALOG", QByteArray(swcatalog + ':' + (root + u"/swcatalog"_s).toUtf8()));
+    qputenv("KDOS_CATALOGUE", cataloguePath.toUtf8());
+    qputenv("KDOS_TEST_CATALOGUE", (root + u"/catalogue.tsv"_s).toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    const auto restore = qScopeGuard([&] {
+        delete std::exchange(m_backend, shared);
+        qputenv("KDOS_SWCATALOG", swcatalog);
+        qputenv("KDOS_CATALOGUE", catalogueEnv);
+        qunsetenv("KDOS_TEST_CATALOGUE");
+        QIcon::setThemeSearchPaths(searchPaths);
+        QIcon::setThemeName(themeName);
+    });
+    m_backend->setName(u"kdos-backend"_s);
+    // The second refresh is the one after the AppStream pool: KStars takes
+    // its stock icon only from the pool.
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"debian"_s, u"gimp"_s), 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_backend->fetchingUpdatesProgress() == 100, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(resource(u"catalogue"_s, u"app.kstars"_s) ? resource(u"catalogue"_s, u"app.kstars"_s)->entry().icon : QString(),
+                              u"kstars"_s, 10000);
+    check(featured);
+}
+
+// The resource a featured link opens.
+KdosResource *BackendTest::featuredResource(const QJsonValue &link)
+{
+    Filters f;
+    f.resourceUrl = QUrl(link.toString());
+    const QList<KdosResource *> found = find(f);
+    return found.size() == 1 ? found.first() : nullptr;
+}
+
+void BackendTest::featuredIcons()
+{
+    // A featured card shows the application's own icon or its category's,
+    // never the Graphics colour wheel, which is KColorChooser's icon, nor
+    // applications-other, the icon of no category.
+    withFeatured([this](const QJsonArray &featured) {
+        for (const QJsonValue &v : featured) {
+            KdosResource *res = featuredResource(v);
+            QVERIFY2(res, qPrintable(v.toString()));
+            const QString icon = res->entry().icon;
+            QVERIFY2(icon != "kcolorchooser"_L1 && icon != "applications-other"_L1, qPrintable(v.toString() + u": "_s + icon));
+        }
+    });
+}
+
+void BackendTest::featuredComplete()
+{
+    // Every featured page names an author, a licence and a description:
+    // an empty author reads "Unknown author" and an empty licence
+    // "Licenses: Unknown". KStars and Okteta name only their project group.
+    // The summary is the card's second line and the page's heading, under
+    // the name: one holding the name, or opening with its first word, says
+    // it twice and is cut off on the card. Whole words only, so a name that
+    // begins a longer word does not count.
+    withFeatured([this](const QJsonArray &featured) {
+        for (const QJsonValue &v : featured) {
+            KdosResource *res = featuredResource(v);
+            QVERIFY2(res, qPrintable(v.toString()));
+            const Entry &e = res->entry();
+            QVERIFY2(!e.author.isEmpty(), qPrintable(v.toString()));
+            QVERIFY2(!e.license.isEmpty(), qPrintable(v.toString()));
+            QVERIFY2(!e.description.isEmpty(), qPrintable(v.toString()));
+            QVERIFY2(!e.summary.isEmpty(), qPrintable(v.toString()));
+            const QRegularExpression name(u"(?<!\\w)"_s + QRegularExpression::escape(e.name) + u"(?!\\w)"_s,
+                                          QRegularExpression::CaseInsensitiveOption);
+            const QRegularExpression first(u"^"_s + QRegularExpression::escape(e.name.section(u' ', 0, 0))
+                                               + u"(?!\\w)"_s,
+                                           QRegularExpression::CaseInsensitiveOption);
+            QVERIFY2(!e.summary.contains(name), qPrintable(e.summary));
+            QVERIFY2(!e.summary.contains(first), qPrintable(e.summary));
+        }
+        QCOMPARE(resource(u"catalogue"_s, u"app.kstars"_s)->entry().author, u"KDE"_s);
+        QCOMPARE(resource(u"catalogue"_s, u"app.meld"_s)->entry().author, u"The GNOME Project"_s);
+        // ParaView's package keeps the component with the licence.
+        KdosResource *paraview = resource(u"catalogue"_s, u"app.paraview"_s);
+        QVERIFY(paraview);
+        QCOMPARE(paraview->entry().license, u"BSD-3-Clause"_s);
+    });
+}
+
+void BackendTest::vendorDebRow()
+{
+    // The shipped catalogue's VSCodium is a `deb` row, its publisher's own
+    // .deb, which no Debian component describes: its `about` row gives the
+    // page its licence, author, homepage and description, and the Install
+    // button names the publisher, not Debian. Meld, a plain row, keeps
+    // Debian's name and its component's author.
+    withFeatured([this](const QJsonArray &) {
+        KdosResource *code = resource(u"catalogue"_s, u"app.vscodium"_s);
+        QVERIFY(code);
+        QCOMPARE(code->origin(), u"kdos-store"_s);
+        QCOMPARE(code->displayOrigin(), u"VSCodium's own package, built in a box"_s);
+        QCOMPARE(code->entry().license, u"MIT"_s);
+        QCOMPARE(code->entry().author, u"VSCodium"_s);
+        QCOMPARE(code->homepage(), QUrl(u"https://vscodium.com/"_s));
+        QVERIFY(code->entry().description.contains(u"telemetry"_s));
+        QVERIFY(code->kdosNotice().contains(u".deb"_s));
+        QVERIFY(code->kdosNotice().contains(u"network"_s));
+
+        KdosResource *meld = resource(u"catalogue"_s, u"app.meld"_s);
+        QVERIFY(meld);
+        QCOMPARE(meld->displayOrigin(), u"Debian, built in a box"_s);
+        QVERIFY(!meld->kdosNotice().contains(u".deb"_s));
+    });
 }
 
 int main(int argc, char **argv)

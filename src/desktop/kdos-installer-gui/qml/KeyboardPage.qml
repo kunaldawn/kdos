@@ -17,8 +17,9 @@
  * kept.
  *
  * The list opens on the chosen layout, centred, and comes back to it when
- * the search is emptied. From the keyboard, Tab reaches the list and the
- * arrow keys choose as they move.
+ * the search is emptied. A search that matches no layout says so in the
+ * list's place. From the keyboard, Tab reaches the list and the arrow keys
+ * choose as they move.
  *
  * The form under the list is one fixed width, so its labels stay put as the
  * layout changes: a field as wide as its text would move them with every
@@ -71,6 +72,19 @@ WizardPage {
         Layout.fillWidth: true
         placeholderText: i18nc("@info:placeholder", "Search layouts…")
         Accessible.name: i18nc("@label:textbox", "Search keyboard layouts")
+        /* Alt with a printable key types nothing here: Alt+letter is a
+         * shortcut chord everywhere else, and a stray "q" would empty the
+         * list. Only Alt alone counts. Under xkb's default level-3 key
+         * (lv3:ralt_switch) AltGr reaches Qt as a level-3 shift, not as
+         * Qt.AltModifier, so AltGr+Q still types "@" on German; an option
+         * that maps right Alt to Alt (lv3:ralt_alt) would make AltGr type
+         * nothing here.
+         * The Test field and the password fields keep every key. */
+        Keys.onPressed: event => {
+            if (event.modifiers === Qt.AltModifier && event.text.length > 0 && event.text.charCodeAt(0) >= 0x20) {
+                event.accepted = true;
+            }
+        }
         /* After the proxy has filtered, which the same change drives. */
         onTextChanged: Qt.callLater(() => {
             if (search.text.length === 0) {
@@ -91,6 +105,7 @@ WizardPage {
 
             ListView {
                 id: list
+                objectName: "layouts"
                 clip: true
                 activeFocusOnTab: true
                 keyNavigationEnabled: true
@@ -142,6 +157,15 @@ WizardPage {
                     }
                 }
             }
+        }
+
+        Kirigami.PlaceholderMessage {
+            objectName: "noMatch"
+            anchors.centerIn: parent
+            width: parent.width - Kirigami.Units.gridUnit * 4
+            visible: list.count === 0 && search.text.length > 0
+            text: i18nc("@info:placeholder %1 is the search text", "No layout matches “%1”", search.text)
+            explanation: i18nc("@info:placeholder", "Search by the layout's English name, such as German or French.")
         }
     }
 

@@ -100,7 +100,10 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   `kdos-ports-helper` checks the name, clears the environment pkexec handed it and runs `kdos
   update install --prebuilt <port>`; `kdos-ports-builder` does the same with `--source`, passing
   `--build-deps=` only when given one, so `build-deps =` in `/etc/kdos/update.conf` decides
-  otherwise. `kdos update install` owns the route: the binhost download and its checks, the
+  otherwise. Both set `KDOS_UPDATE_FRONT=discover`, so a cut download's words name the Install
+  button, and the builder copies the run's output into `/var/log/kdos-build/<port>.log`, kept
+  on a failure and named under `KDOS_UPDATE_LOG` at the end of the failed build's line, since a
+  failed build's work directory is removed. `kdos update install` owns the route: the binhost download and its checks, the
   build under `/etc/kdos/chroot.env`'s environment, the origin file and the world set. Then the
   helper writes the catalogue again. The helpers are separate programs because pkexec's grant
   names a program and at most its first argument: granting `/usr/bin/kdos` would grant every
@@ -138,7 +141,10 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   desktop-entry reader. The image step runs it once over the finished tree. A component with no
   licence or homepage takes its recipe's `license =` and `homepage =` from the first `kpkgbuild`
   of the port under `<root>/ports/core`, `<root>/ports/src` or `<root>/kdos/src` (the 70_image
-  chroot binds the ports tree at `/ports` and the repository at `/kdos`). Every component read
+  chroot binds the ports tree at `/ports` and the repository at `/kdos`). A component with no
+  untranslated name takes its desktop entry's `Name` (for metainfo, the first entry it launches);
+  one with no summary takes the entry's `Comment`, else a `GenericName` that is not its name, else
+  the recipe's `description =`, read from the same `kpkgbuild`. Every component read
   from a bare desktop entry carries the custom value `KDOS::BareEntry=1` and no other component
   carries the key, and in a catalogue with any such value the backend tells a suite's face,
   LibreOffice's start centre, by that mark alone, never by a missing licence, which no component

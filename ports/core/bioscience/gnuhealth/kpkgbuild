@@ -10,7 +10,7 @@
 
 name        = gnuhealth
 version     = 5.0.7
-release     = 1
+release     = 2
 source      = https://codeberg.org/gnuhealth/his/archive/$version.tar.gz
 sha256      = 12d5c10c82797bcedefc2a90147331b4018fc8a540a33fba08a136bd4c8a13c6  gnuhealth-5.0.7.tar.gz
 sha256      = 6a8a23e0690f2be83914b774e0f11067ce7b6c5edc2b7fd147494a5da0678e86  gnuhealth-vendor-5.0.7.tar.xz

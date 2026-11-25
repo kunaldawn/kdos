@@ -44,7 +44,7 @@ The host ring, for a [binary host]{.idx}'s index and for a package's own `.sig` 
 The image step that fills it, from `script/phases/70_image/105_ports.sh`, empties it of keys and
 installs each of the build's two public keys it finds:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=194-202 pin=d1eaf4c2d7e4 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=195-203 pin=d1eaf4c2d7e4 -->
 
 Every `*.pub` directly in the directory is trusted; the loader does not descend into `packs/` or
 `tree/`, which is what keeps the three rings apart. `KPKG_KEYRING` names another directory for one
@@ -73,7 +73,7 @@ The ring `kdos update fetch` checks a published ports tree's `kdos-ports.tar.xz.
 
 The image step that fills it, from `script/phases/70_image/105_ports.sh`:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=184-193 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=185-194 pin=68e72034c604 -->
 
 Where `fetch` looks for the tree is [`/etc/kdos/update.conf`]{.idx}, which is not shipped; see
 [/etc/kdos/update.conf](../../kdos/06-reference/configuration.md#etckdosupdateconf).

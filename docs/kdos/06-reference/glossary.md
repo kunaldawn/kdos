@@ -70,7 +70,7 @@ pack `kdos`. See [Packs and boxes](../03-architecture/packs-and-boxes.md#the-cat
 
 The **binary host**: a directory of prebuilt host packages with a signed index. `kpkg binhost`
 installs from one on a local path, such as a USB stick or an NFS mount, and `kdos update` takes one
-from a release's `binhost-<version>-NN` releases, or from `binhost =` in `/etc/kdos/update.conf`,
+from a release's `binhost-<tag>-NN` releases, or from `binhost =` in `/etc/kdos/update.conf`,
 each file found through the release's signed *release index*, `kdos-update.idx`. A package from
 it is used only when its architecture, its *build-config hash* and its *recipe hash* all equal this
 machine's, and once installed it is recorded as that recipe's build, so the next build does not

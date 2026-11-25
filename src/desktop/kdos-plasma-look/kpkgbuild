@@ -10,8 +10,8 @@
 
 name        = kdos-plasma-look
 version     = 1.0.0
-release     = 1
+release     = 2
 description = KDOS Modern for Plasma — eight global themes, the kdos Plasma style, the desks, KSplash
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
-depends     = kdos-theme python3 libjpeg-turbo plasma-workspace plasma-desktop libksysguard ksystemstats-kdos breeze kdos-icons kdos-wallpapers konsole qt5ct ttf-jetbrains-mono noto-fonts krohnkite
+depends     = kdos-theme python3 libjpeg-turbo plasma-workspace plasma-desktop libksysguard ksystemstats-kdos breeze kdos-icons kdos-wallpapers konsole qt5ct ttf-jetbrains-mono noto-fonts terminus-ttf krohnkite

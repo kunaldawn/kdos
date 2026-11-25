@@ -1,0 +1,87 @@
+Subject: KCModuleQml: Shift+Tab into a QML module lands on its last control
+
+--- a/src/kcmoduleqml.cpp
++++ b/src/kcmoduleqml.cpp
+@@ -97,16 +97,10 @@
+                 });
+                 return true;
+             } else if (focusEvent->reason() == Qt::BacktabFocusReason) {
+-                // this can either happen from backtabbing in qml or from backtabbing
+-                // from qwidgets past the focusproxy (e.g. from the kcm buttons).
+-                if (!m_module->d->rootPlaceHolder->hasActiveFocus()) {
+-                    // we're in widgets, enter qml from reverse in the focus chain in the same way as above
+-                    QTimer::singleShot(0, this, [this] {
+-                        QQuickItem *nextItem = m_module->d->rootPlaceHolder->nextItemInFocusChain(false);
+-                        if (nextItem) {
+-                            nextItem->forceActiveFocus(Qt::TabFocusReason);
+-                        }
+-                    });
++                // A backtab entering from the widgets (e.g. from the kcm buttons) is
++                // finished by enterBackward(); QQuickWidget's own focusInEvent may land
++                // on the root while doing it, and that is not a focus leaving qml.
++                if (m_backtabEntry) {
+                     return true;
+                 }
+                 // we're coming from qml, so we focus the widget outside. This also needs singleShot;
+@@ -119,11 +113,53 @@
+                 return true;
+             }
+         }
++        // A FocusIn on the QQuickWidget is the widget focus arriving from outside it.
++        // On a backtab QQuickWidget::focusInEvent moves the qml focus to the scene's
++        // last item before the widget focus is announced, so a screen reader hears the
++        // unnamed QQuickWidget last and not the control. enterBackward() moves the qml
++        // focus again once the widget holds the focus, as the Tab path above does.
++        if (event->type() == QEvent::FocusIn && watched == m_module->d->quickWidget
++            && static_cast<QFocusEvent *>(event)->reason() == Qt::BacktabFocusReason) {
++            m_backtabEntry = true;
++            QTimer::singleShot(0, this, [this] {
++                enterBackward();
++            });
++        }
+         return QWidget::eventFilter(watched, event);
+     }
+ 
+ private:
++    // The last control of the module in the qml focus chain, never the root. The
++    // chain already passes over items that are hidden, disabled or not a tab stop,
++    // and it comes back to the root when the module has no control.
++    QQuickItem *lastTabStop() const
++    {
++        QQuickItem *root = m_module->d->rootPlaceHolder;
++        QQuickItem *item = root->nextItemInFocusChain(false);
++        return item == root ? nullptr : item;
++    }
++
++    void enterBackward()
++    {
++        m_backtabEntry = false;
++        if (!m_module->d->quickWidget->hasFocus()) {
++            return;
++        }
++        // The focus goes through the root first: forceActiveFocus on the item already
++        // holding the focus announces nothing, and the focus chain read from a focus
++        // scope that holds the focus skips that scope.
++        m_module->d->rootPlaceHolder->forceActiveFocus(Qt::OtherFocusReason);
++        QQuickItem *target = lastTabStop();
++        if (!target) {
++            // a module with no control is passed through
++            focusNextPrevChild(false);
++            return;
++        }
++        target->forceActiveFocus(Qt::BacktabFocusReason);
++    }
++
+     KCModuleQml *m_module;
++    bool m_backtabEntry = false;
+ };
+ 
+ KCModuleQml::KCModuleQml(KQuickConfigModule *configModule, QWidget *parent)
+@@ -168,6 +204,7 @@
+     d->quickWindow = d->quickWidget->quickWindow();
+     d->quickWindow->setColor(Qt::transparent);
+     d->widget->setFocusProxy(d->quickWidget);
++    d->quickWidget->installEventFilter(d->widget);
+ 
+     QQmlComponent *component = new QQmlComponent(d->configModule->engine().get(), this);
+     // activeFocusOnTab is required to have screen readers not get confused

@@ -141,6 +141,23 @@ private Q_SLOTS:
         QVERIFY(Kdos::startAllowed(starts, 200000, 5, 60000));
         QCOMPARE(starts.size(), 1);
     }
+
+    /* A home as /etc/skel leaves it carries an accent file and no marker:
+     * the accent file says nothing about whether the account has logged in. */
+    void accountOnlyRun()
+    {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        write(home.path() + QStringLiteral("/.config/kdos/accent"), "bone\n");
+        const QString marker = home.path() + QStringLiteral("/.local/state/kdos/accent-synced");
+
+        QVERIFY(Kdos::accountOnlyRun(marker, true, false));
+        QVERIFY(!Kdos::accountOnlyRun(marker, true, true));
+        QVERIFY(!Kdos::accountOnlyRun(marker, false, false));
+
+        write(marker, QByteArray());
+        QVERIFY(!Kdos::accountOnlyRun(marker, true, false));
+    }
 };
 
 QTEST_GUILESS_MAIN(LogicTest)

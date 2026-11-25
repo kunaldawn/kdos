@@ -1661,7 +1661,10 @@ fi
 # finds the release index of its binhost; and RELEASE, the commit's
 # ports/RELEASE, which `kdos update notes` and What's New read from the
 # fetched tree (a tree without it shows no notes); and buildonly, which
-# `kdos update` reads to keep build-only ports out of a prebuilt plan.
+# `kdos update` reads to keep build-only ports out of a prebuilt plan; and
+# buildheaders, which `kdos update` reads to install, prebuilt, the build-only
+# ports that installed packages' headers include before a build (a tree
+# without it installs none, and a build against libX11 misses X11/X.h).
 # script/book is there because kdos-kfs's `book` link (../../../script/book)
 # points into it: the recipe hash follows that link, and with the link
 # dangling the fetched tree hashes kdos-kfs differently from the tree its
@@ -1673,9 +1676,9 @@ release_tree() {
     local c=$1 out=$2 tag=$3 d=$TMP/tree t
     rm -rf "$d"; mkdir -p "$d/raw" "$d/ports/script"
     git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx ports/groups ports/RELEASE ports/buildonly \
-        src docs script/book | tar -x -C "$d/raw" || return 1
+        ports/buildheaders src docs script/book | tar -x -C "$d/raw" || return 1
     mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/raw/ports/groups" \
-        "$d/raw/ports/RELEASE" "$d/raw/ports/buildonly" "$d/ports/" || return 1
+        "$d/raw/ports/RELEASE" "$d/raw/ports/buildonly" "$d/raw/ports/buildheaders" "$d/ports/" || return 1
     mv "$d/raw/src" "$d/ports/src" || return 1
     mv "$d/raw/docs" "$d/ports/docs" || return 1
     mv "$d/raw/script/book" "$d/ports/script/book" || return 1
@@ -1899,16 +1902,21 @@ pub_keyid() { cut -d' ' -f2 "$1" | xxd -r -p | sha256sum | cut -c1-16; }
 # It leads with the tag's ports/RELEASE, the same text `kdos update notes`
 # and What's New show on a machine running the release, under "About this
 # release" with each of its headings one level down, so its sections sit
-# inside that one. When RELEASE has a "What it needs" section, that section
-# is the release's requirements and RELEASE names the live account: the
-# script's own sentences about the machine, the disk two slots need and the
-# live password are left out, and only the medium the ISO fits goes under
-# Download, so the page states each requirement once.
+# inside that one. RELEASE's opening paragraph says what the image carries
+# and what installs from the release's packages, so with RELEASE present the
+# script's own sentence about the base system is left out of Download. When
+# RELEASE has a "What it needs" section, that section is the release's
+# requirements and RELEASE names the live account: the script's own sentences
+# about the machine, the disk two slots need and the live account and
+# password are left out, and only the medium the ISO fits goes under
+# Download, so the page states each fact once. With no RELEASE at the commit
+# the script writes every one of those sentences.
 release_notes() {
-    local medium account needs=0 blob="https://github.com/$KDOS_REPO/blob/$tag/docs/kdos/02-user-guide"
+    local medium account has_release=0 needs=0 blob="https://github.com/$KDOS_REPO/blob/$tag/docs/kdos/02-user-guide"
     echo "KDOS $tag, built from commit $commit."
     echo
     if git -C "$REPO_ROOT" cat-file -e "$commit:ports/RELEASE" 2>/dev/null; then
+        has_release=1
         echo "## About this release"
         echo
         git -C "$REPO_ROOT" show "$commit:ports/RELEASE" | awk '
@@ -1921,12 +1929,12 @@ release_notes() {
     fi
     echo "## Download"
     echo
-    account="logged in as \`kdos\` (password \`kdos\`, also root's)"
-    [ "$needs" = 0 ] || account="logged in as \`kdos\`"
+    account=", logged in as \`kdos\` (password \`kdos\`, also root's),"
+    [ "$needs" = 0 ] || account=""
     if [ "$nparts" = 1 ]; then
-        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, $account, and installs KDOS from there."
+        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium$account and installs KDOS from there."
     else
-        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium, $account, and installs KDOS from there. GitHub holds no file of 2 GiB or more, so it is stored in $nparts parts; download every \`$iso_name.partNN\` and join them in order:"
+        echo "The live ISO is \`$iso_name\` ($(human "$iso_size")). It starts a full KDOS desktop from the medium$account and installs KDOS from there. GitHub holds no file of 2 GiB or more, so it is stored in $nparts parts; download every \`$iso_name.partNN\` and join them in order:"
         echo
         echo '```'
         echo "cat $iso_name.part* > $iso_name"
@@ -1947,7 +1955,11 @@ release_notes() {
         echo "An x86-64 machine with UEFI or BIOS firmware and 4 GB of memory. Secure Boot must be off: the boot loader is unsigned and KDOS enrols no keys, so a machine with Secure Boot on does not start the stick."
         echo
     fi
-    echo "The image carries the base system; the desktop applications, games, language packs and the rest install prebuilt from this release's packages, by name or as a group, from the installer or later with \`kdos update install\`. Write it to $medium."
+    if [ "$has_release" = 0 ]; then
+        echo "The image carries the base system; the desktop applications, games, language packs and the rest install prebuilt from this release's packages, by name or as a group, from the installer or later with \`kdos update install\`. Write it to $medium."
+    else
+        echo "Write it to $medium."
+    fi
     echo
     if [ "$needs" = 0 ] && [ -n "$need_ab" ]; then
         echo "Installing needs a disk of about $(gib "$need_ab") or more for the two system slots that updates switch between, with the default $(gib_round "$need_swap") swap (about $(gib "$need_noswap") with no swap). A smaller disk gets one slot and no rollback, and one smaller than about $(gib "$need_one") is refused."

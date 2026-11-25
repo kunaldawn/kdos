@@ -48,7 +48,10 @@ Settings*, since System Settings lists the page under its bare name too; the lib
 for that title at most 0.42, by the one test of a title that both share. Whatever the query,
 `KDOS Lo` as much as `KDOS Look`, a library row that reads a page's name is retitled `<name> in <source>`, its subtitle up to the
 ` · ` (*KDOS Look in KDOS book* for a chapter titled *KDOS Look*), since System Settings' runner lists the page under its bare name for a part of the
-title too, so no two rows of the popup share a title. `lib <words>` is a `querySingleRunner` call
+title too. Any other title two library rows of one answer share is retitled the same way (*The
+firewall in Administration*, *The firewall in The security model*), since KRunner shows a subtitle
+on the selected row alone, so no two rows of different sources share a title; two headings of one
+name in one chapter both read `<heading> in <chapter>`. `lib <words>` is a `querySingleRunner` call
 naming `kdos-library`, KRunner's own single-runner mode: a `?` prefix cannot exclude other runners,
 and KRunner reads it as its help trigger.
 

@@ -9,10 +9,11 @@
 # THE FAKE AVAHI is a unix socket speaking the simple protocol: a name
 # starting `slow` is never answered, `v4only` answers IPv4 and holds IPv6,
 # `drop` is hung up on before a reply line, and every other name answers
-# both. The daemon runs as whoever runs the suite on a port the kernel
-# picks; as root it drops to `nobody`, which cannot reach a socket under the
-# suite's 0700 scratch directory, so then the socket goes in a directory of
-# its own that `nobody` may enter.
+# both; every command it reads is kept in `asked`. The daemon runs as
+# whoever runs the suite on a port the kernel picks; as root it drops to
+# `nobody`, which cannot reach a socket under the suite's 0700 scratch
+# directory, so then the socket goes in a directory of its own that `nobody`
+# may enter.
 import os, shutil, socket, struct, subprocess, sys, tempfile, threading, time
 binary, tmp = sys.argv[1], sys.argv[2]
 
@@ -109,12 +110,14 @@ srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 srv.bind(sock); srv.listen(64)
 os.chmod(sock, 0o777)
 held = []
+asked = []
 def serve():
     while True:
         try: c, _ = srv.accept()
         except OSError: return
         line = c.makefile("rb").readline().decode().split()
-        cmd, host = line[0], line[1]
+        cmd, host = line[0], line[1].lower()
+        asked.append((cmd, host))
         if host.startswith("slow") or (host.startswith("v4only") and cmd.endswith("6")):
             held.append(c); continue
         if host.startswith("drop"):
@@ -154,7 +157,7 @@ try:
     u.sendto(query("example.com", qid=5), ("127.0.0.1", port))
     need(decode(u.recv(512))[1] == 5, "the daemon did not refuse a name outside .local")
     u.sendto(b"\x00\x01garbage", ("127.0.0.1", port))
-    u.sendto(query("fast.local", 28, qid=6), ("127.0.0.1", port))
+    u.sendto(query("fast6.local", 28, qid=6), ("127.0.0.1", port))
     got = decode(u.recv(512))
     need(got[0] == 6 and got[4] == [(28, 10, "fec0::5")],
          "the daemon stopped answering after a broken packet")
@@ -162,9 +165,60 @@ try:
     got = decode(u.recv(512))
     need(got[0] == 7 and got[1] == 2 and got[4] == [],
          "a connection Avahi ended before a reply was not SERVFAIL: %r" % (got,))
+    # getent hosts: AAAA, and only after its miss A. The A must not wait again.
+    t0 = time.monotonic()
+    u.sendto(query("slowmiss.local", 28, qid=8), ("127.0.0.1", port))
+    got = decode(u.recv(512))
+    need(got[0] == 8 and got[2] == 0 and 2.5 < time.monotonic() - t0 < 4,
+         "slowmiss.local's AAAA was not a miss at three seconds")
+    t1 = time.monotonic()
+    u.sendto(query("SlowMiss.local", 1, qid=9), ("127.0.0.1", port))
+    got = decode(u.recv(512))
+    took = time.monotonic() - t1
+    need(got[0] == 9 and got[1] == 0 and got[2] == 0 and took < 0.1,
+         "an A question after its name's AAAA miss waited %.2f s again" % took)
+    # An IPv4-only name: the AAAA question asked Avahi for IPv4 as well, and
+    # the A question after the AAAA miss is answered from that, not asked again.
+    u.sendto(query("v4only-late.local", 28, qid=10), ("127.0.0.1", port))
+    got = decode(u.recv(512))
+    need(got[0] == 10 and got[2] == 0, "v4only-late.local's AAAA was answered")
+    n4 = asked.count(("RESOLVE-HOSTNAME-IPV4", "v4only-late.local"))
+    need(n4 == 1, "the AAAA question did not ask Avahi for IPv4 too (%d times)" % n4)
+    t1 = time.monotonic()
+    u.sendto(query("v4only-late.local", 1, qid=11), ("127.0.0.1", port))
+    got = decode(u.recv(512))
+    took = time.monotonic() - t1
+    need(got[0] == 11 and got[4] == [(1, 10, "10.0.2.15")] and took < 0.1,
+         "an IPv4-only name's A after its AAAA miss did not come from the "
+         "first question (%.2f s, %r)" % (took, got))
+    need(asked.count(("RESOLVE-HOSTNAME-IPV4", "v4only-late.local")) == 1,
+         "the A question asked Avahi again")
+    # musl's getaddrinfo: A and AAAA together. The AAAA takes over the
+    # question the A opened for IPv6 and gets its own id and spelling back.
+    t0 = time.monotonic()
+    u.sendto(query("slowX.local", 1, qid=12), ("127.0.0.1", port))
+    time.sleep(0.05)
+    u.sendto(query("SLOWX.local", 28, qid=13), ("127.0.0.1", port))
+    a = u.recv(512); b = u.recv(512)
+    took = time.monotonic() - t0
+    if decode(a)[0] == 13: a, b = b, a
+    need(decode(a)[0] == 12 and decode(b)[0] == 13 and 2.5 < took < 3.5,
+         "A and AAAA asked together were not both misses at three seconds "
+         "(%.2f s, ids %d %d)" % (took, decode(a)[0], decode(b)[0]))
+    need(name("SLOWX.local") in b, "the AAAA did not echo its own spelling")
+    n6 = asked.count(("RESOLVE-HOSTNAME-IPV6", "slowx.local"))
+    need(n6 == 1, "Avahi was asked for slowx.local's IPv6 %d times" % n6)
+    # A burst of distinct names under MD_MAX: the other families' questions
+    # give their slots up, so no client question is SERVFAIL.
+    for i in range(30):
+        u.sendto(query("slowburst%d.local" % i, 1, qid=100 + i),
+                 ("127.0.0.1", port))
+    rcodes = [decode(u.recv(512))[1] for _ in range(30)]
+    need(rcodes.count(2) == 0,
+         "%d of 30 distinct names in one burst were SERVFAIL" % rcodes.count(2))
     need(d.poll() is None, "the daemon exited")
     print("  the daemon answers one name while another is pending, times out at 3 s,")
-    print("  and says SERVFAIL when Avahi hangs up")
+    print("  says SERVFAIL when Avahi hangs up, and asks both families at once")
 finally:
     d.kill(); d.wait(); srv.close()
     for c in held: c.close()

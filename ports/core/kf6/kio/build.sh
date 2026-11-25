@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/kiod6-desktop-exec-path.patch"
+patch -p1 -i "$PORT_SRC/places-size-hint.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

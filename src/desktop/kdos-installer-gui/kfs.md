@@ -54,7 +54,7 @@ an inactive volume group named kdos on another disk, which the install refuses. 
 swap check runs the plan as the user, and Next waits for it. The user's payload walk cannot enter
 what only root may and measures less than root's, so the last root probe's `payload_kb` and
 `appbox_kb` are given (`--payload-kb`, `--appbox-kb`) to every plan and to every probe as the
-user, and the Disk page and the Summary name the same largest swap. A root probe is given none and
+user, and the Disk page and the Summary advise the same swap size. A root probe is given none and
 measures again, so Look Again takes in a tree that has grown. A probe asked for while the first
 root probe runs waits for it rather than replacing it, so its payload is kept; until one is kept,
 the Disk page's swap check runs as root too. A root dump superseded by a newer one is detached

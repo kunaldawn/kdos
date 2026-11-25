@@ -458,21 +458,26 @@ static int csi_mods(int p)
 /*
  * THE LINUX CONSOLE KEYMAP SENDS TAB FOR SHIFT+TAB. Its keycode 15 has no
  * shifted string, so ESC [ Z never arrives on a VT and Shift+Tab would move
- * the focus forward. On a VT the kernel reports the modifiers held right now
+ * the focus forward. The kernel reports the modifiers held right now
  * (TIOCLINUX, TIOCL_GETSHIFTSTATE), and a Tab read while Shift is down is the
- * back-tab. <linux/keyboard.h>, which names the bit, is not included: its
- * KT_ key-type names collide with libktui's. KDGKBTYPE succeeds only on a
- * VT, so a terminal emulator or an ssh session — which send ESC [ Z
- * themselves — never ask.
+ * back-tab. The question goes to the VT ktui_term found, not to standard
+ * input: under `sudo` standard input is a pts and every console ioctl fails
+ * there. On a VT that is not the caller's controlling terminal TIOCLINUX
+ * needs CAP_SYS_ADMIN, so `sudo kinstall` gets the back-tab and an unprivileged
+ * program on such a VT gets a plain Tab. <linux/keyboard.h>, which names the
+ * bit, is not included: its KT_ key-type names collide with libktui's.
+ * KDGKBTYPE answers only on a VT, so a terminal emulator or an ssh session —
+ * which send ESC [ Z themselves and get no VT descriptor — never ask.
  */
 static int vt_shift_held(void)
 {
+	int fd = ktui_term_vt_fd();
 	char type;
 	char sub = TIOCL_GETSHIFTSTATE;
 
-	if (ioctl(0, KDGKBTYPE, &type) < 0)
+	if (fd < 0 || ioctl(fd, KDGKBTYPE, &type) < 0)
 		return 0;
-	if (ioctl(0, TIOCLINUX, &sub) < 0)
+	if (ioctl(fd, TIOCLINUX, &sub) < 0)
 		return 0;
 	return (sub & 1) != 0;	/* bit KG_SHIFT, either Shift key */
 }

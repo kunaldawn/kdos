@@ -64,6 +64,14 @@ typedef struct {
 	 * physical volume's is ("" otherwise), so a front end names the
 	 * group an erase destroys. */
 	char vg[64];
+	/* The node /dev/<name> answers for another device than sysfs's
+	 * partition: Ventoy's hook makes its boot partition's node the
+	 * ISO's dm device. "ventoy" for Ventoy's mapping, the dm name (or
+	 * kernel name) of the device it points at otherwise, "" for a node
+	 * that is its partition. A remapped partition is never read through
+	 * its node — that would read the other device — and is never an
+	 * ESP. */
+	char remap[32];
 } Part;
 
 typedef struct {
@@ -77,6 +85,7 @@ typedef struct {
 	int removable;
 	int readonly;
 	int is_boot_media;	/* the stick we are running from           */
+	int is_boot_copy;	/* another disk holding that medium's id   */
 	char table[8];		/* gpt, dos, -                             */
 	Part part[MAX_PARTS];
 	int nparts;
@@ -352,10 +361,29 @@ void ki_groups_collect(void);
 int  ki_groups_chosen(void);
 
 void probe_part(const char *path, Part *p);
+/* The facts of partition p (p->path its node) for the probe, given the
+ * node's device number `node_mm` and sysfs's `sys_mm` ("8:2"): where they
+ * agree, sniffed from the node, with udev's record run/udev/data/b<sys_mm>
+ * under `root` ("" on a live system) for an exFAT label or a type no
+ * signature matches; where they differ, p->remap names what the node points
+ * at, read through sys/dev/block/<node_mm> and sys/class/block/<kname>/dm/name
+ * under `root`, and the filesystem is read from `disk`, the whole disk, at
+ * the partition's own offset p->start * 512. */
+void ki_part_facts(Part *p, const char *node_mm, const char *sys_mm,
+		   const char *root, const char *disk);
+/* The medium id in the ISO 9660 image on the whole of `path` (its Volume Set
+ * Identifier, 16 hex digits) into `out`: 1, or 0 when it carries none. A
+ * `path` that cannot be opened is read from its udev record `rec` (its
+ * ID_FS_PUBLISHER_ID); "" or NULL for none. */
+int  ki_medium_id(const char *path, const char *rec, char *out, size_t cap);
+/* Marks is_boot_copy on every disk, not is_boot_media, whose image carries
+ * the id `cmdline`'s kdos.medium= names; none when it names none. `root`
+ * stands for / under sysfs and udev's records ("" on a running system). */
+void ki_mark_boot_copies(const char *cmdline, const char *root);
 /* The table type of `d` into d->table ("gpt", "dos" or "-"), and the ESP
  * and BIOS boot partitions among the d->part[] already listed, matched by
- * start: GPT type GUIDs, or MBR primary entries typed 0xef. A disk it
- * cannot open keeps udev's table type. */
+ * start: GPT type GUIDs, or MBR primary entries typed 0xef; a remapped
+ * partition is neither. A disk it cannot open keeps udev's table type. */
 void ki_disk_table(Disk *d);
 /* The whole-device signature of a disk into d->fstype and d->label, a
  * physical volume's group into d->vg (from the active volumes' `slaves` in
@@ -371,7 +399,9 @@ void ki_disk_table(Disk *d);
 void ki_disk_signature(Disk *d);
 /* What an erase of `d` destroys, as the Summary names it: its partitions
  * as `<type> "<label>" <size>` joined by ", " (an LVM physical volume as
- * "LVM physical volume (volume group <vg>)"), or the whole-device
+ * "LVM physical volume (volume group <vg>)", a remapped node's partition
+ * as "Ventoy's boot partition <size>" or "mapped to <remap> <size>"), or
+ * the whole-device
  * signature of a disk with none; a disk whose iso_image is set as
  * `ISO 9660 image "<label>" on the whole disk, <size>`, its hybrid
  * windows unnamed; "" for an empty disk. At most `max`
@@ -610,6 +640,11 @@ unsigned long long ki_need_bytes(void);
  * holds the install and nothing more is full at the first login, and every
  * write in the session then fails with ENOSPC. */
 #define KI_ROOT_FREE_MB 2048ULL
+/* The smallest swap any front end offers, in MiB, and the step of the
+ * graphical size field: a swap size the core advises is a multiple of it,
+ * and a disk with less room than this beside the install is told to have
+ * none, since the graphical field cannot hold a smaller size. */
+#define KI_SWAP_MIN_MB 256ULL
 /* The least size of a reused root: ki_need_bytes() and KI_ROOT_FREE_MB. */
 unsigned long long ki_root_need_bytes(void);
 /* What a whole disk must hold for one root: ki_root_need_bytes() and
@@ -688,8 +723,8 @@ int ki_name_reserved(const char *s);
 int ki_answers_check(char *err, size_t n);
 
 /*
- * WHETHER A DISK CAN TAKE THE INSTALL AT ALL: not the medium this runs from,
- * not read-only, and at least ki_disk_need_bytes(). 0 when it can; otherwise the reason, which the Disk pages
+ * WHETHER A DISK CAN TAKE THE INSTALL AT ALL: not the medium this runs from
+ * or a copy of it, not read-only, and at least ki_disk_need_bytes(). 0 when it can; otherwise the reason, which the Disk pages
  * show beside the disk.
  */
 int ki_disk_check(const Disk *d, char *err, size_t n);
@@ -896,6 +931,15 @@ void install_abort(void);
 int install_child_main(int wfd, int from_step);	/* runs in the child       */
 void install_log(const char *line);
 const char *ki_state_name(int st);
+/* <src> to <dst>, 0644, as the Bootloader step places a file on the ESP: 0,
+ * or -1 when either cannot be opened, a read fails, a write is short or
+ * fails, or the close fails (a full vfat reports it there). Each outcome is a
+ * log line. A dry run copies nothing and returns 0. */
+int ki_copy_file(const char *src, const char *dst);
+/* 1 with the entry number in num when an efibootmgr line is a stale KDOS
+ * entry (install.c, ki_nvram_stale). */
+int ki_nvram_stale(const char *line, const char *byuuid, const char *esp,
+		   char num[5]);
 
 /* Each protocol line the child sends, before the step table takes it in: the
  * events stream's tap on the run. NULL leaves the table the only reader. */

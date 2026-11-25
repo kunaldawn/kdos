@@ -72,8 +72,9 @@ cd /kdos
 rc=0
 
 # Ports whose sources hold no licence text: public-domain and CC0 code and
-# data, and data published under terms no file of the source carries.
-LICENCE_TEXTLESS="sqlite snooze iana-etc debian-dep11 fwupd-snapshot"
+# data, data published under terms no file of the source carries, and code
+# published with no licence at all.
+LICENCE_TEXTLESS="sqlite snooze iana-etc debian-dep11 fwupd-snapshot librfnm"
 
 echo "[gates] unowned files"
 python3 testing/unowned.py --root / --fs /kdos/fs \

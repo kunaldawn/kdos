@@ -18,6 +18,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.plasmoid
+import plasma.applet.org.kdos.privacy as Privacy
 
 PlasmaExtras.Representation {
     id: full
@@ -27,10 +28,12 @@ PlasmaExtras.Representation {
     Layout.preferredHeight: Kirigami.Units.gridUnit * 16
     collapseMarginsHint: true
 
+    readonly property Privacy.PrivacyApplet privacy: Plasmoid as Privacy.PrivacyApplet
+
     property string failure: ""
 
     Connections {
-        target: Plasmoid
+        target: full.privacy
         function onActionFailed(message: string): void {
             full.failure = message;
         }
@@ -50,7 +53,7 @@ PlasmaExtras.Representation {
         ListView {
             id: list
 
-            model: Plasmoid.captures
+            model: full.privacy.captures
             focus: true
             clip: true
             spacing: Kirigami.Units.smallSpacing
@@ -59,9 +62,9 @@ PlasmaExtras.Representation {
 
             header: Kirigami.InlineMessage {
                 width: list.width
-                visible: full.failure.length > 0 || (!Plasmoid.available && Plasmoid.problem.length > 0)
+                visible: full.failure.length > 0 || (!full.privacy.available && full.privacy.problem.length > 0)
                 type: full.failure.length > 0 ? Kirigami.MessageType.Error : Kirigami.MessageType.Warning
-                text: full.failure.length > 0 ? full.failure : Plasmoid.problem
+                text: full.failure.length > 0 ? full.failure : full.privacy.problem
                 showCloseButton: full.failure.length > 0
                 onVisibleChanged: if (!visible) full.failure = ""
             }
@@ -125,7 +128,7 @@ PlasmaExtras.Representation {
                                                   : i18ndc("kdos-plasmoid-privacy", "@action:button", "Mute")
                         Accessible.name: row.modelData.muted ? i18ndc("kdos-plasmoid-privacy", "@action:button %1 a program", "Unmute %1", row.modelData.label)
                                                              : i18ndc("kdos-plasmoid-privacy", "@action:button %1 a program", "Mute %1", row.modelData.label)
-                        onClicked: Plasmoid.setMuted(row.modelData.id, !row.modelData.muted)
+                        onClicked: full.privacy.setMuted(row.modelData.id, !row.modelData.muted)
                     }
 
                     PlasmaComponents.ToolButton {
@@ -133,7 +136,7 @@ PlasmaExtras.Representation {
                         icon.name: "media-playback-stop-symbolic"
                         text: i18ndc("kdos-plasmoid-privacy", "@action:button", "Stop")
                         Accessible.name: i18ndc("kdos-plasmoid-privacy", "@action:button %1 a program", "Stop %1 capturing", row.modelData.label)
-                        onClicked: Plasmoid.stop(row.modelData.id)
+                        onClicked: full.privacy.stop(row.modelData.id)
                     }
                 }
             }

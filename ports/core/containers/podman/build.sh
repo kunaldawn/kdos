@@ -9,10 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-export BUILDTAGS="seccomp libsqlite3 exclude_graphdriver_btrfs"
+patch -Np1 -i "$PORT_SRC/0001-exclude-systemd-commands-build-tag.patch"
+
+export BUILDTAGS="seccomp libsqlite3 exclude_graphdriver_btrfs exclude_systemd_commands"
+export REMOTETAGS="remote containers_image_openpgp exclude_graphdriver_btrfs exclude_systemd_commands"
 
 export GOFLAGS="$GOFLAGS \"-ldflags=-s -w\""
 make BUILDTAGS="$BUILDTAGS" \
+	REMOTETAGS="$REMOTETAGS" \
 	EXTRA_LDFLAGS="-s -w" \
 	PREFIX=/usr \
 	ETCDIR=/etc \
@@ -28,8 +32,8 @@ make DESTDIR=$PKG \
 	LIBEXECPODMAN=/usr/lib/podman \
 	install.bin install.remote install.man install.completions install.docker
 
-rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/tmpfiles.d" "$PKG/usr/share/user-tmpfiles.d"
-rm -f "$PKG/etc/profile.d/podman-docker.csh"
+rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/tmpfiles.d" "$PKG/usr/share/user-tmpfiles.d" "$PKG/usr/lib/podman/quadlet"
+rm -f "$PKG/etc/profile.d/podman-docker.csh" "$PKG"/usr/share/man/man5/podman-*.unit.5 "$PKG"/usr/share/man/man5/quadlet.5 "$PKG"/usr/share/man/man1/podman-generate-systemd.1 "$PKG"/usr/share/man/man1/podman-quadlet*.1 "$PKG"/usr/share/man/man7/podman-quadlet*.7 "$PKG/usr/bin/podmansh" "$PKG/usr/share/man/man1/podmansh.1" "$PKG/usr/share/man/man1/podman-auto-update.1"
 
 install -d "$PKG/usr/bin"
 cat > "$PKG/usr/bin/kdos-podman-api" <<'KDOS_SH'

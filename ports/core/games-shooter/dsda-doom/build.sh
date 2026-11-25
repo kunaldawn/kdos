@@ -24,6 +24,7 @@ cmake -S prboom2 -B build -G Ninja \
 	-DWITH_XMP=ON
 cmake --build build
 DESTDIR=$PKG cmake --install build
+install -Dm644 prboom2/COPYING "$PKG/usr/share/licenses/$name/COPYING"
 
 install -d "$PKG/usr/share/icons/hicolor/256x256/apps"
 rsvg-convert -w 256 -h 256 prboom2/ICONS/dsda-doom.svg \

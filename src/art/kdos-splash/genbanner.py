@@ -40,7 +40,7 @@ PNG  = os.path.join(ROOT, "fs", "usr", "share", "kdos", "boot", "kdos-banner.png
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
 # What the boot screen says. THIS is the line to edit.
-TITLE    = "KD's Homebrew Linux Distro"
+TITLE    = "Kool Desktop Operating System"
 SUBTITLE = "musl · GNU · KDE Plasma · no systemd"
 
 # Measured off the shipped banner, not chosen: the fitted DejaVu Sans Mono

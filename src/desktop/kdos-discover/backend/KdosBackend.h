@@ -70,6 +70,16 @@ namespace Kdos
 class KdosResource;
 class KdosTransaction;
 
+// One host desktop application as a Debian component of the same name is
+// compared with it (hostTwinByName): its package, the package's stem (its
+// leading run of ASCII letters, case-folded) and its homepage as
+// homepageHost gives it.
+struct HostFace {
+    QString package;
+    QString stem;
+    QString homepage;
+};
+
 class KdosBackend : public AbstractResourcesBackend
 {
     Q_OBJECT
@@ -143,6 +153,7 @@ private:
     QHash<QString, AppStream::Component> m_portsByPackage;
     QHash<QString, AppStream::Component> m_binhostByPackage;
     QSet<QString> m_hostIds; // every component id and desktop-id launchable of the kdos-ports and kdos-binhost catalogues, without a trailing .desktop
+    QHash<QString, QList<HostFace>> m_hostNames; // the desktop applications of the same catalogues, by case-folded name
     std::unique_ptr<AppStream::Pool> m_pool;
     bool m_poolReady = false;
     bool m_valid = false;

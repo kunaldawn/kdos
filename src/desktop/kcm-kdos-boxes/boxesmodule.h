@@ -64,6 +64,11 @@ class BoxesModule : public KQuickConfigModule
     Q_PROPERTY(QString currentBox READ currentBox NOTIFY currentBoxChanged)
     Q_PROPERTY(QVariantMap current READ current NOTIFY currentChanged)
     Q_PROPERTY(bool needsRecreate READ needsRecreate NOTIFY currentChanged)
+    /* The create-time keys the box was not made with: those this page
+     * changed (BoxProfile::pendingRecreate) and those kdos-box's report
+     * names (BoxProfile::staleKeys), for a change made with `kdos-box
+     * profile`. What the Recreate banner lists. */
+    Q_PROPERTY(QStringList recreateKeys READ recreateKeys NOTIFY currentChanged)
     Q_PROPERTY(QString initialBox READ initialBox CONSTANT)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(QString progressText READ progressText NOTIFY progressTextChanged)
@@ -93,6 +98,7 @@ public:
     QString currentBox() const;
     QVariantMap current() const;
     bool needsRecreate() const;
+    QStringList recreateKeys() const;
     QString initialBox() const;
     bool isBusy() const;
     QString progressText() const;

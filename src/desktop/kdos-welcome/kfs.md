@@ -15,9 +15,10 @@ the live medium a page that keeps the session's changes on the stick, and a What
 after an update, or after going back by hand from a newer version this account used. The port
 also installs `io.kdos.releasenotes.desktop`, the Release Notes entry in the application menu,
 which Kickoff and KRunner find under "release notes", "what's new" and "changelog". It opens What's
-New whenever Welcome Center is not already running: Welcome Center is a unique D-Bus application,
-and a second start only raises the open window, ignoring `--pages`, so with the tour open the
-entry brings the tour forward.
+New on its own, with Finish as its one button, or, while the tour is open, raises the tour's
+window with What's New over it, where Back returns to the tour: Welcome Center is a unique D-Bus
+application, and [plasma-welcome](#port-plasma-welcome)'s `release-notes-pages.patch` has the
+running window show the pages a second start names.
 
 ## Flags
 

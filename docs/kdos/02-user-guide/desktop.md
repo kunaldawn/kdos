@@ -77,9 +77,10 @@ under 1,400 logical pixels (1920 wide at 150%, 1366×768 at 100%) Start shows th
 network meter is left out, and under 1,150 (1920 wide at 175% or 200%, 1024 wide at 100%) the pager
 is left out too. Under 900 logical pixels the panel does not fit at all; use the Dock or Tiling desk
 there. The width is the one the screen has when the desk is laid out, with one exception: a network
-meter the desk was laid out with follows the screen as it is, so switch a 1920-pixel screen to 150%
-and the meter goes, leaving its room to the pinned and running applications, and back to 125% and it
-returns. When the screen later becomes narrower, through its scale, its resolution or a larger font,
+meter the desk was laid out with follows the panel's width as it is: while the panel is narrower than
+about 1,480 logical pixels (82 grid units, room for six applications in the task manager) the meter
+steps aside and leaves its room to the pinned and running applications, and it returns when the panel
+is wide enough again. When the screen later becomes narrower, through its scale, its resolution or a larger font,
 the panel first takes the meters' charts, then shrinks the pinned applications' icons, the figures
 staying whole; what still does not fit is cut off at the right edge, the clock and Show Desktop
 first, so a 1920-pixel screen switched to 200% loses both. Run `kdos desk kdos` to lay the panel out
@@ -454,7 +455,8 @@ PDF in Okular, text in Kate, pictures in Gwenview, music in Elisa, video in Haru
 in Firefox ESR; the installation medium carries all of them, and VLC, which Elisa plays through,
 takes video when Haruna is removed. E-books open in Calibre's viewer once it is
 installed. Office documents open in LibreOffice and mail links in Thunderbird once those are
-installed; nothing on the medium handles either, so until then opening one shows the chooser. The
+installed; nothing on the medium handles either, so until then opening one shows a note naming the
+group to install. The
 full table is in
 [Default applications](applications.md#default-applications). Right-click a file for **Open With**
 and *Other Application…*, where *Set as default app to open … files* makes the choice the default

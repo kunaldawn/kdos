@@ -22,6 +22,7 @@ autoreconf -fi
 make
 make DESTDIR=$PKG install
 rm -rf "$PKG/usr/share/doc"
+install -Dm644 COPYING "$PKG/usr/share/licenses/$name/COPYING"
 install -Dm644 icons/hicolor/gnome-mime-chemical.svg \
 	"$PKG/usr/share/icons/hicolor/scalable/mimetypes/gnome-mime-chemical.svg"
 grep -q 'chemical/x-cml' "$PKG/usr/share/mime/packages/chemical-mime-data.xml"

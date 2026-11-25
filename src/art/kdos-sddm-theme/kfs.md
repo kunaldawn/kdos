@@ -46,14 +46,22 @@ the scheme's Window ground is drawn under it, so a greeter that finds no such fi
 accent's ground instead of an empty window. The clock is set in the fixed-width face (a new
 `MonoClock.qml`, Breeze's clock with the family changed, and the time's no-break spaces made plain
 ones: `en_US` and other locales put U+202F before AM or PM, JetBrains Mono has no glyph for it,
-and the fallback face's taller line pushes the date down), the footer carries "KDOS · Plasma by
-KDE", Meta+Alt+S starts Orca as it does in a session (the greeter's KWin runs without global
+and the fallback face's taller line pushes the date down), the footer carries "KDOS 0.2.1 · Plasma
+by KDE", Meta+Alt+S starts Orca as it does in a session (the greeter's KWin runs without global
 shortcuts, so the greeter binds it), and the screen fades in out of black and back to black on a
 login, so the mode set either side of the greeter falls inside a black frame. The Hibernate button
 is shown only where `sddm.canHibernate` holds (Breeze only disables it, and draws it dimmed): KDOS
 turns hibernation off in `/etc/elogind/sleep.conf.d/50-kdos.conf`, because its swap is zram, so
 elogind answers `CanHibernate` with `no` and the action row shows Sleep, Restart and Shut Down.
 It is KDOS's own and not for upstream.
+
+**The footer names the release** in the form `kdos version`, the boot menu and the splash give:
+`VERSION` from `/etc/kdos-release` (`0.2.1`, or `0.2.1+<BUILD_ID>` on any build but a release
+one), or on a root with no record `/etc/os-release`'s `VERSION_ID`, with `+BUILD_ID` when it has
+one. QML reads them with `XMLHttpRequest`, which Qt refuses for a local file unless
+`QML_XHR_ALLOW_FILE_READ=1` is in the environment; `/etc/sddm.conf.d/00-kdos.conf` puts it in
+`GreeterEnvironment`. A file that cannot be read leaves "KDOS · Plasma by KDE". `genpreview.py`
+draws that release-free credit, since the preview stands for the theme and not one image.
 
 **The lock screen as the login.** On a machine that logs in automatically into a locked session,
 the stock Breeze lock screen is the first thing shown, and it is drawn from the same

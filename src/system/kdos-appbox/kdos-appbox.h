@@ -128,15 +128,23 @@ typedef struct {
 	char cpus[16];   /* --cpus                                            */
 	/* What `profile_print` reports it could NOT enforce. A setting that
 	 * silently does nothing is worse than an absent one, so an unknown key
-	 * is kept here and named rather than dropped. */
+	 * is kept here and named rather than dropped, and so is a value its
+	 * key does not take, as `key=value`, the field left as it was. */
 	char unknown[8][64];
 	int  nunknown;
+	char badvalue[8][96];
+	int  nbad;
 } Profile;
 
 void  profile_defaults(Profile *p, const char *box);
 int   profile_load(Profile *p, const char *box);
 int   profile_save(const Profile *p);
+/* 0 when set, -1 for no key=value or an unknown key, -2 for a value the key
+ * does not take (recorded in badvalue[], the field unchanged). */
 int   profile_set(Profile *p, const char *kv);
+/* The values <key> takes, as a phrase ("host, private or none"); NULL for a
+ * key whose value is free text. */
+const char *profile_value_rule(const char *key);
 void  profile_print(const Profile *p);
 /* An accent as a person reads it: `none` for no accent, whose stored token is
  * `session`. */
@@ -192,8 +200,8 @@ void profile_mark_kept(const char *box);
  * THE KEYS A CONTAINER IS MADE FROM, recorded on it. Every create of a box
  * labels the container `io.kdos.profile=<digest>`, where the digest is one
  * 8-hex-digit hash per create-time key in PROFILE_CREATE_KEYS' order after a
- * `v1.`; profile_print compares the profile with the label key by key and
- * names the keys that differ. The keys a launch reads (accent, grant, x11,
+ * `v1.`; profile_print and the report of a `kdos-box profile` write compare
+ * the profile with the label key by key and name the keys that differ. The keys a launch reads (accent, grant, x11,
  * autostop, wayland, audio, render, display, export) are not in it: a change
  * to one of them applies at the box's next launch. Only letters, digits and
  * dots, so the value passes distrobox's `eval` of --additional-flags as one
@@ -206,6 +214,12 @@ void profile_create_digest(const Profile *p, char *out, size_t n);
  * separated, into `out`; returns how many. A digest of another version or
  * length counts every key as changed. */
 int  profile_digest_diff(const char *a, const char *b, char *out, size_t n);
+/* The digest the box's container was created with, its BOX_PROFILE_LABEL,
+ * "" when it has none or podman could not say. */
+void box_profile_label(const char *box, char *out, size_t n);
+/* 1 when `b` differs from `a` in a key a launch reads: every create-time key
+ * of the digest and the accent are left out of the comparison. */
+int  profile_launch_differs(const Profile *a, const Profile *b);
 /* 1 when the process is in the foreground of the terminal `fd` is: what an
  * exec needs before it hands podman the terminal (`--tty`), since a
  * background job that sets a terminal's modes is stopped by SIGTTOU. */

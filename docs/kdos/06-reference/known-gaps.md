@@ -33,6 +33,44 @@ for SDDM as not yet for final users. KDOS has no X server to fall back to. That 
 logs a person in and out, switches user, locks and survives a suspend has not been shown on real
 hardware. See [Boot and init](../03-architecture/boot-and-init.md).
 
+### The screen is black with the pointer before KSplash
+
+Between the boot splash and KSplash the screen shows only the pointer on black. On an unloaded
+host with plain virtio-vga it lasts about 1.3 to 1.5 seconds on a live boot, 2.9 to 3.6 seconds
+on the first login at the greeter after a boot, and 1.6 to 2.7 seconds on a later login; a loaded
+host stretches each of them. On a live boot it runs from `kwin_wayland`'s first mode set to
+`ksplashqml`'s first buffer; after a greeter login it runs from the start of the greeter's fade,
+which adds the fade and the greeter compositor's exit. Plasma's `plasma_session` starts KWin's
+wrapper, waits only until the wrapper's name, `org.kde.KWinWrapper`, is on the session bus, which
+takes milliseconds, and then starts `ksplashqml` side by side with KWin's own start. The interval
+is therefore `ksplashqml`'s start to its first buffer, about half a second with its files in the
+page cache, less KWin's start to its mode set, and most of it is that start reading Qt, Qt Quick,
+Kirigami and Mesa cold from the disk or the squashfs. The first login after a boot is the
+longest, and cold reads are only part of its excess over a later login: warming the page cache
+from `rcS` before the service walk takes about 0.65 seconds off an excess of 1.3 to 2 seconds and
+starts the greeter about 2 seconds later, because the greeter's own compositor reads most of the
+same files, so no warm-up is shipped. The KDOS splash theme's share is about 0.1 seconds with the
+files cached: `ksplashqml` reaches its first buffer in about 0.49 seconds with the shipped theme
+against 0.39 seconds with a theme of one rectangle. The theme's 0.1 seconds is the only part
+of the interval a KDOS file sets. KWin 6.8 has no setting that changes the rest: it clears an
+output with no window on it to black in its renderer's code, a step from the boot splash's
+`(10,10,9)` floor, and a matching colour would still leave a blank screen without the mark and
+the bar; none of its `KWIN_DRM_*` variables keeps the framebuffer it takes over; and
+it draws the pointer from its first frame. `ksplashqml` cannot start sooner, because it is a
+client of the compositor that starts beside it. Closing the interval would take a frame the
+compositor draws itself until the first client's buffer arrives, which neither KWin nor
+plasma-workspace has.
+
+KSplash's first frame carries the boot splash's settled frame's mark, rule and bar, the bar at
+its hold, but it is not the same frame. The mark stays on the same pixels, and so do the rule
+and the bar while the release shares the name's line; a release on a line of its own, on a
+screen too narrow for both, leaves with its line, and the rule and the bar move up two lines.
+The release leaves the name line, so the name re-centres; the stage rows go; "Plasma by KDE"
+appears at the bottom right; and the wordmark's lower half takes its shade from the colour scheme, its focus role mixed towards its
+hover role, where the boot splash mixes the accent towards `libkcolor`'s dim slot, which no KDE
+colour role carries, so on some accents, Bone among them, that shade changes across the
+handover. See [Boot and init](../03-architecture/boot-and-init.md).
+
 ### A greeter that keeps failing is not seen by `kdos-dm`
 
 `kdos-dm` gives a password prompt on `tty1` when SDDM is missing or exits three times in a minute.
@@ -82,15 +120,6 @@ provides `org.freedesktop.secrets` there, so `secret-tool`, KeepSecret and any o
 QtKeychain program, and the secret portal, report that the service is missing, and KWallet Manager
 offers only to turn the wallet on. See
 [The security model](../03-architecture/security-model.md).
-
-### Dolphin's Places panel cuts its longer labels
-
-Dolphin opens its Places panel at the panel's own default width, whatever the window's size, so
-*Recent Locations* and *Removable Devices* end in an ellipsis even in a maximised window. The window
-memory grows Dolphin's first window but cannot reach a panel inside it, and Dolphin keeps the panel
-width only inside the binary window state it writes to `~/.local/state/dolphinstaterc`, which no
-shipped default can set. Dragging the panel's edge wider once fixes it: Dolphin keeps that width
-from then on. See [Placement](../03-architecture/window-model.md#placement).
 
 ### System Monitor's Applications page lists nothing
 
@@ -168,11 +197,8 @@ KDE's platform theme and the Breeze widget style exist for Qt 6 only. A Qt 5 pro
 KeePassXC, LMMS, Mumble and the rest) loads qt5ct under the same platform theme name, `kde`, and
 draws in the Fusion style with the accent's palette, the KDOS icons and the desktop's fonts, which
 `kdos theme` keeps in step; its widgets are Fusion's shapes, not Breeze's. Its Open and Save
-dialogs are Qt's own widget dialog, not KDE's: qt5ct's `standard_dialogs=default` leaves them to
-Qt. The portal's dialog theme, `xdgdesktopportal`, builds its base theme from the desktop's theme
-names, and under `XDG_CURRENT_DESKTOP=KDE` that name is `kde`, the key qt5ct answers, so naming it
-in qt5ct.conf makes each copy of qt5ct load another and every Qt 5 program dies of a stack overflow
-at start.
+dialogs are KDE's: qt5ct's `standard_dialogs=xdgdesktopportal` sends them to the file-chooser
+portal.
 
 ### Tk, FLTK and Java programs keep their own colours
 
@@ -373,9 +399,11 @@ A boxed GTK program is given its theme as `GTK_THEME` when it starts, and with t
 follows no later change of theme or of the dark preference, whatever theme name the settings portal
 announces. Its colours are the `colors.css` it read
 at start: `colorreload-gtk-module`, which repaints a running GTK 3 program on the host, is not in
-any box's runtime. A boxed GTK 3 program that shares your home reads the `gtk-modules` line
-kde-gtk-config writes to `~/.config/gtk-3.0/settings.ini`, so it prints `Failed to load module`
-for that module and for `window-decorations-gtk-module` and runs without them.
+any box's runtime, and a boxed GTK 3 program does not look for it: GDK on Wayland answers
+`gtk-modules` itself from `org.gtk.Settings`, above the line kde-gtk-config writes to
+`~/.config/gtk-3.0/settings.ini`, and the box's bus proxy does not pass that service, so the
+answer is empty and the program runs without that module
+and `window-decorations-gtk-module` and prints nothing about either.
 An accent switch, or a switch between dark and light, therefore reaches a boxed GTK program when it
 next starts.
 
@@ -547,6 +575,18 @@ a host's IPv6 link-local address is not answered, because a DNS record cannot ca
 it belongs to. A name nothing answers takes three seconds to fail.
 See [Avahi and mDNS](../../kfs/16-wiki/avahi-and-mdns.md#resolving-a-local-name).
 
+### A job for a busy network printer waits in five-second steps
+
+A printer that `cups-browsed` adds from the network is a local queue with an `implicitclass://`
+device, and `cups-browsed` runs with upstream's `LoadBalancing QueueOnClient`: a job is sent on
+only while the printer reports itself idle. When the job starts while the printer is still printing
+the one before it, the backend exits with status 7 and CUPS starts it again, so the job reaches
+the printer up to five seconds after the printer goes idle, and nothing is lost; with
+`cupsctl --debug-logging`, `/var/log/cups/error_log` shows each wait as `No free destination host
+found by cups-browsed, retrying in 5 sec.` KDOS ships `/etc/cups/cups-browsed.conf` as upstream
+does; `LoadBalancing QueueOnServers` there hands every job to the printer at once and lets the
+printer queue it, at the cost of losing jobs still queued on a printer that leaves the network.
+
 ### An NFSv3 mount needs `-o nolock`
 
 NFSv4 mounts and the v4-only server (`72_nfsd`) work. There is no `rpcbind` port, so `rpc.statd`
@@ -615,6 +655,18 @@ of ports in `/ports/groups`, such as `office`, `graphics` and `internet`, have n
 Discover, so a group is installed with `sudo kdos update install <group>` or in the installer
 ([Native groups](../02-user-guide/applications.md#native-groups)); Discover installs each member
 from its own page.
+
+### A Debian application's summary can be in another language
+
+Discover shows a Debian application's text in the session's language when the DEP-11 catalogue
+has it, and otherwise the catalogue's untagged `C` text, which is not always English. MystiQ Video
+Converter's `C` summary in the trixie catalogue is "Convertir entre formatos de archivos
+multimedia": its upstream desktop entry's untagged `Comment=` is Spanish, and the catalogue has no
+English summary to prefer, though its description has one. Debian's 20.03.23-4 (sid and forky)
+replaces that desktop entry with an English one, so the summary turns English when the
+`debian-dep11` port moves to a catalogue built from that package. Guessing a
+summary's language, or keeping a table of corrected summaries, would be wrong for other
+applications, so the backend shows the catalogue's text as it is.
 
 ### Krita's welcome page says "DEV BUILD"
 
@@ -935,81 +987,31 @@ ISO Image Writer has written only to an emulated USB stick, never to a real one.
 
 ### A Ventoy stick boots in normal mode only, and holds no persistence store
 
-Ventoy 1.1.18's normal mode has started KDOS under UEFI and BIOS on virtual firmware, and an
-install from it has finished, on an image whose medium scan mounted the stick partition node
-that Ventoy's hook points at the ISO. The scan in this tree mounts Ventoy's `/dev/mapper/ventoy`
-mapping first, and that path has not been booted: neither the live session from it, the udev
-rule that hides it, nor the installer's refusal of the stick beneath it is measured. Its grub2 and memdisk modes stop before the desktop: grub2 mode
-finds no boot file, and memdisk mode leaves the ISO in memory where the initramfs's medium scan
-does not look. Ventoy's Secure Boot mode has not been tried, and the installed machine would
-not start under Secure Boot in any case (see [Secure Boot is not supported](#secure-boot-is-not-supported)).
-A Ventoy stick's KDOS is a file inside Ventoy's own partition, so it takes no persistence store:
-`kdos persist create` refuses it, and every live session from it starts fresh.
+Ventoy 1.1.18's normal mode starts KDOS to the desktop under UEFI and BIOS on virtual firmware.
+Under either firmware the live session mounts its medium from Ventoy's `/dev/mapper/ventoy`
+mapping, or from the stick's second-partition node, which Ventoy's hook points at the same
+mapping (device 253:0), whichever the medium scan reaches first. On both, the udev rule sets
+`UDISKS_IGNORE=1` on the mapping and on that node, so neither is listed as a removable drive,
+and the installer marks the stick `BOOT MEDIA` and refuses it. An install from the UEFI session
+finishes and the installed machine boots from its own disk; an install from the BIOS session has
+not been run. Its grub2 and memdisk modes stop before the desktop: grub2 mode finds no boot
+file, and memdisk mode leaves the ISO in memory where the initramfs's medium scan does not look.
+Ventoy's Secure Boot mode has not been tried, and the installed machine would not start under
+Secure Boot in any case (see [Secure Boot is not supported](#secure-boot-is-not-supported)). A
+Ventoy stick's KDOS is a file inside Ventoy's own partition, so it takes no persistence store,
+and every live session from it starts fresh. Under both firmwares `kdos persist` prints
+`The boot medium /dev/mapper/ventoy is a Ventoy stick, which cannot take a KDOS store`, and
+`kdos persist create` refuses the medium and the stick under it.
+
+### Two copies of one medium cannot be told apart
+
+With two copies of one build attached, such as a `dd` stick and the same image on a second disk,
+the initramfs mounts whichever answers first, not necessarily the one the firmware started: both
+carry one medium id, and nothing on either tells them apart. The installer refuses both, the
+mounted one as the boot medium and the other as a copy of it, so neither can be chosen to install
+on while the other is attached.
 
 ## Boot and updates
-
-### A v0.2 machine finds no prebuilt package until `update.conf` names the release
-
-The v0.2 image's `/ports/TREE` names its commit and no release, and the `kdos update` it carries
-keeps that tree when it fetches the published one of the same commit. On a v0.2 machine every
-prebuilt install, group, `--pending` list and `kdos firmware sync` therefore refuses with no signed
-binhost index, and `kdos update fetch --binhost-only` fetches nothing. Naming the release in
-`/etc/kdos/update.conf` repairs it:
-
-```
-binhost = https://github.com/kunaldawn/kdos/releases/download/v0.2
-```
-
-then `sudo kdos update fetch --binhost-only`. An image built from a clean checkout of a tagged
-commit names its release, and `kdos update fetch` replaces a same-commit tree that names none with
-the published one that does (see
-[Where the binary host comes from](../04-programs/kdos-command.md#kdos-update)).
-
-A v0.2 machine takes the v0.2.1 slot image from Discover's Updates page, or with
-`sudo kdos update fetch` and then `sudo kdos update apply --mount`, applied by its own v0.2 `kdos`:
-that `apply` takes an image only when `fetch` has cached and verified it, falls back to packages
-otherwise, and refuses an unmounted inactive slot without `--mount`. The image names `/boot/efi`,
-which that apply would otherwise delete from the new slot. Once the machine runs 0.2.1, delete the
-`binhost = …/v0.2` line: v0.2.1's `/ports/TREE` names its own release, and the line would keep the
-machine on v0.2's binary host.
-
-### An account made on v0.2 keeps the US keyboard layout
-
-On v0.2, fcitx5 wrote `LayoutList=us` into each account's `~/.config/kxkbrc` at login. v0.2.1
-ships `/etc/xdg/fcitx5/conf/wayland.conf`, which stops that write, but the file already written
-stays: it names a layout, so neither the installer's layout in `/etc/xdg/kxkbrc` nor locale1's
-reaches the session or the lock screen. After taking v0.2.1, set the layout once on System
-Settings → Keyboard, or delete `~/.config/kxkbrc` and log in again. An account made on v0.2.1
-starts with no `kxkbrc` and takes the system layout.
-
-### A v0.2 machine keeps a 7-bit console keymap
-
-The v0.2 installer took kbd's bare map for a layout before its `-latin1` one, so a v0.2 machine
-with a German, French, Danish, Norwegian, Swiss or Portuguese keyboard has `de`, `fr`, `dk`, `no`,
-`sg`, `fr_CH` or `pt` in `/etc/keymap`. The bare names are the 7-bit ISO-646 maps, on which the
-keys for ü ö ä ß type `@ [ ] \`, and `pt` is the OLPC laptop's. The update carries `/etc/keymap`
-as it is, and kdos-settingsd copies that name to `/boot/efi/EFI/kdos/keymap` for the passphrase
-prompt. After taking v0.2.1, `sudo kdos keymap <layout>-latin1` once (`sg-latin1` for Swiss German,
-`fr_CH-latin1` for Swiss French) sets the consoles and the prompt. A machine installed from v0.2.1
-gets the `-latin1` map from the installer.
-
-The ESP copy is first written when kdos-settingsd starts on the new slot, after the root is open,
-so on an encrypted v0.2 machine the first start of v0.2.1 asks for the passphrase with the kernel's
-US map, as v0.2 did. Every later start uses the machine's map.
-
-### A v0.2 machine has printing off
-
-The v0.2 installer disabled CUPS by default and wrote `/etc/service.disabled/cups`, and an
-update carries that file, which no package owns, into the new slot, so that machine still has
-printing off, and System Settings' Printers page says the print service is not available. A
-machine installed from v0.2.1 has printing on. After taking v0.2.1, run once:
-
-```sh
-sudo service enable cups
-sudo service start cups
-sudo service start cups-browsed
-sudo service start ipp-usb
-```
 
 ### A disk-encryption key is typed, not sealed in the TPM
 
@@ -1035,7 +1037,7 @@ two slots, the swap and a home of their own: it makes `root_a` and `root_b`, cop
 system into slot B, and records both. Two slots need each slot's 1.5 times the install or 30% of the room
 past the swap, at least 8 GiB, the swap and a 4 GiB home: about 24.5 GiB with the default 4 GiB
 swap, and 20.5 GiB with none, for the base: the size is figured on the walk's payload
-(`payload 5220 MB` in `kinstall --dump probe`), which counts every name of a hard-linked file,
+(the `payload` line of `kinstall --dump probe`, about 5.2 GB), which counts every name of a hard-linked file,
 while the installer's Welcome page and the copy's progress line give what the copy writes, 4.4 GiB
 (the probe's `copies` line). A disk
 too small for two slots, and every manual layout, get slot A only, and a second slot there is made,
@@ -1431,10 +1433,10 @@ installed after the importer; and a module a host program registers in-process, 
 ### No boot is timed per codec
 
 `110_iso.sh` fails a base ISO over 1,900 MiB. A base ISO with Orca, BRLTTY,
-plocate, ISO Image Writer and Adwaita measures 1,775,599,616 bytes (1,693 MiB) in the default
-zstd:19 (see [The codec](../05-developer/build-system.md#the-codec)), 207 MiB under the gate.
-`ports/base` also names noto-fonts-extra (Indic and Southeast Asian scripts, 13 MB unpacked,
-2.9 MB as an xz package), and no ISO carrying it has been measured. The ledger
+plocate, ISO Image Writer and Adwaita measures about 1,700 MiB (1,699 MiB measured) in the default
+zstd:19 (see [The codec](../05-developer/build-system.md#the-codec)), about 200 MiB under the gate,
+with the noto-fonts-extra that `ports/base` also names (Indic and Southeast Asian scripts, 13 MB
+unpacked, 2.9 MB as an xz package) counted in it. The ledger
 `088_ledger.sh` writes names the largest packages and why each is there, `KDOS_ISO_COMP=xz-bcj` is
 about 100 MiB smaller, and `KDOS_ISO_GATE=0` builds the same image as a developer one. The codec
 was chosen from decompression measured on one core, not from a boot to Plasma timed under QEMU, so

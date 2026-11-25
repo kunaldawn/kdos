@@ -128,7 +128,7 @@ the installer offers the same ones (see [Installation](installation.md#8-applica
 | `science` | Octave, QGIS, Stellarium, FreeCAD, KiCad, OpenSCAD |
 | `development` | Rust, Go, Node.js, Zig, gdb, Valgrind, strace, LLDB |
 | `windows` | Wine |
-| `build-tools` | GCC with binutils' assembler and linker, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex; it also restores the development files of `gcc`, `musl` and `linux`, so `cc` and the C library's and kernel's headers are there |
+| `build-tools` | GCC with binutils' assembler and linker, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex, and fortify-headers, which a build's `_FORTIFY_SOURCE` hardening needs on musl; it also restores the development files of `gcc`, `musl` and `linux`, so `cc` and the C library's and kernel's headers are there |
 | `lang-zh`, `lang-ja`, `lang-ko` | Chinese, Japanese or Korean input for fcitx5 (the Chinese addons, Anthy, Hangul), its GTK modules and Noto CJK fonts. The base's fonts draw Latin, Greek, Cyrillic, Arabic, Hebrew, Armenian, Georgian, the Indic scripts, Sinhala, Thai, Lao, Khmer, Myanmar and Ethiopic but no CJK face, so Chinese, Japanese and Korean text, a web page's included, shows as boxes until one of these groups is installed |
 
 ```sh
@@ -146,10 +146,11 @@ memory, like anything else installed there.
 A native group is installed at a terminal or in the installer, and not from Discover: Discover
 installs a group's members one at a time, each from its own page. What Discover lists under
 **Sets**, such as *Office set* or *Creative set*, are the [catalogue's](#what-the-catalogue-carries)
-sets of boxed applications, which install boxes, not ports. A native group is named in lower case
-in `kdos update groups`; a set's name ends in "set", and each of its applications shows a boxed
-origin on its page (*KDOS packs*, *Debian, built in a box* or the boot medium) where a port shows
-*KDOS system* or *KDOS, built on this computer*.
+sets of boxed applications, which install boxes, not ports. A native group is named in lower case in
+`kdos update groups`; a set's name ends in "set", and each of its applications shows a boxed origin
+on its page (*KDOS packs*, *Debian, built in a box*, *VSCodium's own package, built in a box*, which
+names the publisher, or the boot medium) where a port shows *KDOS system* or *KDOS, built on this
+computer*.
 
 ### Removing a port
 
@@ -169,7 +170,12 @@ next update does not bring it back. The packages the port brought go with it: ea
 install added (one with a line in `/var/lib/kdos/origin`) that is not in the world set, is not a
 package of the running image and that nothing installed but what is being removed depends on,
 packages that depend on each other in a cycle included; the dry run lists every package it takes,
-one `remove <package>` line each, and Discover's question counts them. A package of the image is
+one `remove <package>` line each, and Discover's question counts them. "Depends on" is what a
+prebuilt install follows: a package's need of a build-only port (one `ports/buildonly` lists, such
+as boost) counts only where its binhost stanza's `N:` line names that port, or where that stanza
+is for another version or release than the one installed, so an image package
+that only compiled against boost's headers does not keep the boost, numpy and OpenBLAS an
+application brought. A package of the image is
 one with no origin line, or one the image record the system slot was written from
 (`/var/lib/kdos/image/MANIFEST`) holds: a package an install brought keeps its origin line when a
 newer release adds it to the base, and stays. Then the downloaded package file, signature, cut
@@ -231,10 +237,10 @@ Open and Save dialogs are KDE's in Qt 6 and KDE applications, which draw them th
 platform theme, and in the applications that ask the desktop's file-chooser portal for theirs: GTK
 4 applications, GTK 3 applications that use GTK's native chooser (`GtkFileChooserNative`, which the
 login profile's `GTK_USE_PORTAL=1` sends to the portal), Firefox ESR and LibreWolf through their
-shipped preferences, Thunderbird through `GTK_USE_PORTAL`, and LibreOffice. The portal is `xdg-desktop-portal-kde`, so they
-get KDE's dialog. A GTK 3 application that builds GTK's own dialog widget keeps GTK's: GIMP,
-Inkscape and AbiWord do. A Qt 5 application (SMPlayer, VLC, KeePassXC) shows Qt's own widget
-dialog, because qt5ct, its platform theme, asks no portal. A boxed application reaches the same
+shipped preferences, Thunderbird through `GTK_USE_PORTAL`, LibreOffice, and Qt 5 applications
+(SMPlayer, VLC, KeePassXC), whose platform theme, qt5ct, hands its dialogs to the portal. The
+portal is `xdg-desktop-portal-kde`, so they get KDE's dialog. A GTK 3 application that builds GTK's
+own dialog widget keeps GTK's: GIMP, Inkscape and AbiWord do. A boxed application reaches the same
 portal. Qt applications read the palette, fonts and icons of the global
 theme in force (`QT_QPA_PLATFORMTHEME=kde`), and GTK applications take the same colours through
 Breeze's GTK theme; how each toolkit takes the accent is in [Theming](theming.md).
@@ -263,7 +269,7 @@ and KWin applies it. The tables name the Gear applications beside the rest; the 
 
 | Application | What it is for |
 |---|---|
-| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks, its default preferences turn off the region lookup by IP address and every network location source (Google's service and geoclue), so a page asking for the location gets none, and the Plasma Browser Integration extension is installed beside it, so its media and downloads reach Plasma's applets |
+| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and application updates, its default preferences turn off Normandy's remote recipes, the region lookup by IP address and every network location source (Google's service and geoclue), so a page asking for the location gets none. Its connectivity probes are off; Safe Browsing, remote settings (certificate revocations and blocklists), add-on update checks and the push connection for site notifications stay on, and the Welcome tour names each. The Plasma Browser Integration extension is installed beside it, so its media and downloads reach Plasma's applets |
 | Chromium | Chromium's browser, on GTK 3 |
 | LibreWolf | A Firefox derivative with privacy defaults |
 | Falkon | KDE's browser, on QtWebEngine |
@@ -692,8 +698,12 @@ and in VLC once Haruna is removed, with nothing else to change. A default outsid
 Thunderbird or LibreOffice, takes effect once its port is installed. Until then, and after its
 application is removed, a row falls through to another installed application that claims the type.
 No office application is on the base. OpenDocument and Office Open XML files are zip files
-underneath, and their types are subclasses of `application/zip`, which Ark claims, so until the
-`office` group is installed an office document opens in Ark as an archive of its parts. A `mailto:`
+underneath, and `/etc/xdg/mimeapps.list` removes Ark from those types, so until the `office` group
+is installed opening one, from Dolphin or from a GTK application, shows a note that no office
+program is installed and that LibreOffice is in the `office` group, from Discover or with
+`sudo kdos update install office`. It also removes Kate and Okular's text
+viewer from `text/calendar`, which both claim as plain text, so until a calendar program is
+installed an invitation shows the Open With chooser and the Default Applications page names no calendar. A `mailto:`
 link opens a note that no mail program is installed and that Thunderbird is in the `internet`
 group, from Discover or with `sudo kdos update install internet`; until then the Email client row
 of the Default Applications page shows that note's entry, *No Mail Program*. Once the `office` or
@@ -1222,8 +1232,10 @@ podman image prune                    # the untagged layers a pull or a build le
 `--purge` releases the image only when no other box's profile names it and no container still
 uses it, and says which it did. `podman rmi` refuses an image a container still uses. Leave the
 `kdos/…` images to `kdos app`: a boxed application installed from Discover or with
-`kdos app install` is removed with `kdos app remove <id>`, which releases its own images, and the
-store's base image `debian:trixie-slim` is what every one of them is built on.
+`kdos app install` is removed with `kdos app remove <id>`, which releases its own images. The
+store's base, `kdos/base` and the `debian:trixie-slim` it is built on (about 550 MB together), is
+kept, since every store application is built on it; removing the last one, a `deb:` one too, says
+so and names the `podman rmi kdos/base debian:trixie-slim` that gives that space back.
 
 ### A pack box's writable layer
 
@@ -1276,7 +1288,9 @@ with `kdos-box stop <name>`, or pass `--force`. Then:
 - for an application's pack box, the next launch creates the box again from the kept profile;
 - for a store box, the next launch creates the box again over the image it was built on, with an
   empty writable layer; `kdos app install <id>` does the same, finding every image already built and
-  creating only the box;
+  creating only the box. Once the application is uninstalled its image is gone, so only
+  installing it again, from Discover or with `kdos app install <id>`, makes the box from the kept
+  profile: `kdos-box create` refuses, and its page in System Settings offers no Create and no Export as Archive;
 - for any other box, such as one made with `kdos-box create <name> base=image:<ref>`, nothing
   launches it again: `kdos-box create <name>` makes it again from the kept profile, and so does
   the Create button on its page in System Settings, where the box reads "Removed — settings kept".

@@ -432,7 +432,7 @@ only Plasma:
 |---|---|
 | `/etc/xdg/kdeglobals` | `LookAndFeelPackage=org.kdos.bone.desktop`, so a program run outside the session, under `sudo` or `pkexec`, still wears the KDOS look. The installer rewrites it with the accent you choose |
 | `/etc/xdg/konsolerc` | Konsole's default profile, `KDOS Bone` when Plasma is dark and `KDOS Paper` when it is light |
-| `/etc/xdg/mimeapps.list` | The handlers for the types no desktop application opens: `kdos-openarchive` for comic books packed as 7z or rar. |
+| `/etc/xdg/mimeapps.list` | The handlers for the types no desktop application opens, `kdos-openarchive` for comic books packed as 7z or rar, and the removed associations KDOS ships: Ark off the OpenDocument and Office Open XML types, which are zip files underneath, and Kate and Okular's text viewer off `text/calendar`, which both claim as plain text. Until an office program is installed, an office document opens the note of `kdos-nooffice.desktop`, which claims those types so that GLib, which honours a removed row only for the type it names, does not fall through to Ark's `application/zip`; until a calendar program is installed, an invitation shows the *Open With* chooser and Default Applications names no calendar. |
 | `/etc/xdg/fcitx5/config` | The keys that move between input-method groups, `Super+Alt+Space` and `Super+Alt+Shift+Space` |
 | `/etc/xdg/fcitx5/conf/wayland.conf` | `Allow Overriding System XKB Settings=False`, so fcitx5 never writes its group's layout into `~/.config/kxkbrc` and the layout list stays KWin's: the installer's, locale1's and the Keyboard page's |
 | `/etc/xdg/autostart/kdos-boxes-restore.desktop` | `kdos-appbox session restore` at login: the boxes that were running when the last session ended |
@@ -443,7 +443,9 @@ only Plasma:
 
 The installer writes `/etc/xdg/kdeglobals`, `/etc/xdg/kdosrc` and `/etc/xdg/kxkbrc` with the
 accent, the desk and the keyboard chosen at install, so every account on the machine starts with
-them; `/etc/xdg/kdeglobals` is the only one of the three the image ships.
+them; `/etc/xdg/kdeglobals` is the only one of the three the image ships. `kdos-settingsd`
+rewrites `/etc/xdg/kxkbrc` on every locale1 layout change, and removes it for an empty layout, so
+the layout plasma-setup or the Keyboard page sets through locale1 replaces the installer's.
 
 ---
 
@@ -465,15 +467,18 @@ A box is made on one of two *lanes*, chosen by `base`: the *pack lane* (`pack:<i
 [kdos-appbox](../04-programs/kdos-appbox.md#two-ways-an-application-reaches-a-box) has the full
 flag-by-flag mapping.
 
-Namespace keys (`network`, `ipc`, `processes`, `devices`, `home`) are yes-or-no in effect: `private`
-(or any yes spelling) gives the box its own; anything else shares the host's.
+Namespace keys (`ipc`, `processes`, `devices`, `home`) are yes-or-no in effect: `private` (or any
+yes spelling) gives the box its own, and `shared` (or any no spelling) shares the host's. A value a
+key does not take is refused by `kdos-box create` and `kdos-box profile` with a line ending
+`nothing was written`, and in a hand-edited file the line is ignored, so the key keeps the value an
+earlier line gave it or its default, and the line is named under the profile; [kdos-appbox](../04-programs/kdos-appbox.md#box-profiles) lists each key's words.
 
 | Key | Default | Applies | Means |
 |---|---|---|---|
 | `base` | — | create time | `pack:<id>`, `image:<ref>` or `box:<name>`. `kdos-box create` resolves `box:<name>` to that box's own `pack:` or `image:` base and saves the result in the profile, so the new box starts from the same software with an empty writable layer; a box with neither base is refused |
 | `image` | — | create time | The registry reference of an image base. `kdos-box create` copies it from `base = image:<ref>`, replacing whatever the line held, so set `base` rather than this |
 | `persistence` | `persistent` | — | `persistent`, `ephemeral` or `frozen`. Recorded only: no launch reads it, and a box's writes land wherever its runtime puts them |
-| `network` | `host` | create time | `host`, `private`, or `none`. `none` is `--network none` on both lanes: a private namespace with no interface at all. A store-lane box with `private` gets `--unshare-netns`, its own namespace with an interface |
+| `network` | `host` | create time | `host`, `private`, or `none`; `no`, `off`, `0` and `false` are refused, since they could mean either `host` or `none`. `none` is `--network none` on both lanes: a private namespace with no interface at all. A store-lane box with `private` gets `--unshare-netns`, its own namespace with an interface |
 | `ipc` | shared | create time | IPC namespace |
 | `processes` | shared | create time | PID namespace |
 | `devices` | shared | create time | Whether the host's `/dev` and `/sys` are shared |
@@ -487,7 +492,7 @@ Namespace keys (`network`, `ipc`, `processes`, `devices`, `home`) are yes-or-no 
 | `cpus` | — | create time | CPU quota, as the engine's `--cpus` value, on both lanes, with the same store-lane check as `memory` |
 | `pids` | — | create time | Process-count limit (`--pids-limit`), on both lanes |
 | `autostop` | `0` | next collection | Running time, counted from when the box started, after which `kdos-box gc` stops it if none of its windows is open: `90s`, `30m`, `2h`, or bare seconds. `0` disables |
-| `accent` | `session` | immediate | The box's colour, an accent name. Its windows' title bars take that accent's colour scheme through the KWin window rule `kdos-box-<name>` in `kwinrulesrc`, which `kdos-box profile` and `kdos-appbox genlaunchers` rewrite; `session` gives them the scheme `KDOSBox`. A window that draws its own title bar takes no colour |
+| `accent` | `session` | immediate | The box's colour, an accent name. Its windows' title bars take that accent's colour scheme through the KWin window rule `kdos-box-<name>` in `kwinrulesrc`, which `kdos-box profile` and `kdos-appbox genlaunchers` rewrite; `session`, or `none`, which is stored as `session`, gives them the scheme `KDOSBox`. A window that draws its own title bar takes no colour |
 | `grant` | — | next client | Desktop features the sandbox otherwise refuses, comma-separated (see below). A running client keeps what it bound |
 | `export` | `manual` | — | Recorded only. `auto` does not create launchers by itself: `kdos-appbox genlaunchers` covers every installed pack and store box, and `kdos-box export` covers one application |
 | `display` | `window` | — | Recorded only; nothing on this desktop reads it. It is kept so that rewriting a profile does not drop it |
@@ -601,7 +606,7 @@ System Versions page writes `install` and `build-deps` through `kdos-sysupdated`
 | Key | Default | Means |
 |---|---|---|
 | `tree` | `https://github.com/kunaldawn/kdos/releases/latest/download` | Where `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` are: an `https://` or `file:///` URL, or a directory such as a USB stick or an NFS mount. `kdos update` fetches with curl `--proto =https,file`, so an `http://` address fails, and System Versions (`io.kdos.Slots1.SetChannel`) refuses one. It moves only the tree: `binhost` and `image` keep their own lines |
-| `binhost` | the release `<version>` of a tree whose stamp names its release | Where the signed release index `kdos-update.idx` is through which the binary host is found, whose packages `kdos update apply` and `kdos update install` take: an `https://` or `file:///` URL, or a directory such as `build/binhost` copied to a stick. `kdos update` fetches with curl `--proto =https,file`, so an `http://` address fails, and `kdos update fetch` says so on standard error with `binhost takes an https:// URL or a directory`; `kdos update check` keeps that reason on its `binhost-fetch-failed` line, and its `binhost:` line, like `kdos update install`'s refusal, asks for an `https://` URL or a directory instead of offering a fetch that would fail the same way. A directory or `https://` base where the last fetch found none published (`no binhost is published at <base>`, or `the release at <base> publishes no binhost`) is reported by `kdos update check` as a `binhost-absent` problem, and its `binhost:` line reads ``the last fetch found no binhost published at <base>; publish one there or name another with `binhost =` in /etc/kdos/update.conf`` instead of the fetch that would find none again. Every binhost result in `/var/lib/kdos/update.state` is kept with the base it was fetched from (its `binhost-at` line), and a result for a base other than the one named is not reported: after the line is changed or removed, `check` names no failure of the old address, and its `binhost:` line is about the base named now. A tree names its release when it is a published one or the image was built from a clean checkout of a tagged commit; on any other image prebuilt installs need this line, or `$KDOS_UPDATE_BINHOST`. The v0.2 image's tree names none, and `https://github.com/kunaldawn/kdos/releases/download/v0.2` is its release (see [Known gaps](known-gaps.md#a-v02-machine-finds-no-prebuilt-package-until-updateconf-names-the-release)) |
+| `binhost` | the release `<version>` of a tree whose stamp names its release | Where the signed release index `kdos-update.idx` is through which the binary host is found, whose packages `kdos update apply` and `kdos update install` take: an `https://` or `file:///` URL, or a directory such as `build/binhost` copied to a stick. `kdos update` fetches with curl `--proto =https,file`, so an `http://` address fails, and `kdos update fetch` says so on standard error with `binhost takes an https:// URL or a directory`; `kdos update check` keeps that reason on its `binhost-fetch-failed` line, and its `binhost:` line, like `kdos update install`'s refusal, asks for an `https://` URL or a directory instead of offering a fetch that would fail the same way. A directory or `https://` base where the last fetch found none published (`no binhost is published at <base>`, or `the release at <base> publishes no binhost`) is reported by `kdos update check` as a `binhost-absent` problem, and its `binhost:` line reads ``the last fetch found no binhost published at <base>; publish one there or name another with `binhost =` in /etc/kdos/update.conf`` instead of the fetch that would find none again. Every binhost result in `/var/lib/kdos/update.state` is kept with the base it was fetched from (its `binhost-at` line), and a result for a base other than the one named is not reported: after the line is changed or removed, `check` names no failure of the old address, and its `binhost:` line is about the base named now. A tree names its release when it is a published one or the image was built from a clean checkout of a tagged commit; on any other image prebuilt installs need this line, or `$KDOS_UPDATE_BINHOST`. |
 | `image` | the latest KDOS release | Where the signed release index is through which the slot image and its manifest are found, for `kdos update apply --image`: a URL, or a directory such as the one `script/release-image.sh` wrote |
 | `carry` | — | A path, relative to the root, that an armed slot keeps from the running one beyond what is always carried; repeatable. Never under `/etc`, which is carried file by file anyway |
 | `install` | `prebuilt` | The route `kdos update install` takes with neither `--prebuilt` nor `--source`: `prebuilt` from the release binhost, or `source`, built on this machine. Discover does not read it: each of its two origins names its route |
@@ -658,7 +663,7 @@ winning.
 
 | File | Sets |
 |---|---|
-| `00-kdos.conf` | The greeter on Wayland, under `kwin_wayland --no-global-shortcuts --no-lockscreen --inputmethod plasma-keyboard --locale1`; the greeter's environment (`GreeterEnvironment`), which its KWin and the on-screen keyboard KWin starts inherit: the layer-shell Wayland shell integration (`QT_WAYLAND_SHELL_INTEGRATION=layer-shell`), KDOS's `XDG_CONFIG_DIRS`, `QT_QPA_PLATFORMTHEME=kde`, so plasma-keyboard takes the `sddm` account's KDOS colours rather than Qt's light palette, and greyscale Qt Quick text; `kdos-session-wrapper` as every session's command; Wayland sessions only; accounts from UID 1000 to 60000; the last user and session remembered; the theme `kdos`, the Breeze cursor at 24 and Noto Sans 10 |
+| `00-kdos.conf` | The greeter on Wayland, under `kwin_wayland --no-global-shortcuts --no-lockscreen --inputmethod plasma-keyboard --locale1`; the greeter's environment (`GreeterEnvironment`), which its KWin and the on-screen keyboard KWin starts inherit: the layer-shell Wayland shell integration (`QT_WAYLAND_SHELL_INTEGRATION=layer-shell`), KDOS's `XDG_CONFIG_DIRS`, `QT_QPA_PLATFORMTHEME=kde`, so plasma-keyboard takes the `sddm` account's KDOS colours rather than Qt's light palette, greyscale Qt Quick text, and `QML_XHR_ALLOW_FILE_READ=1`, so the theme's footer can read the release from `/etc/kdos-release`; `kdos-session-wrapper` as every session's command; Wayland sessions only; accounts from UID 1000 to 60000; the last user and session remembered; the theme `kdos`, the Breeze cursor at 24 and Noto Sans 10 |
 | `kde_settings.conf` | Autologin: `[Autologin]` `User`, `Session=plasma` and `Relogin=true`. Ships naming `kdos`, the live medium's account |
 
 `kde_settings.conf` is the file System Settings' Login Screen page writes, and the installer
@@ -820,10 +825,13 @@ and Keyboard pages, `kdos locale`, `kdos keymap`) and by the installer.
 | `/etc/keymap` | The console keymap name; not shipped | `kdos-getty`, on every console it starts |
 | `/boot/efi/EFI/kdos/keymap` | The same name, one line, on the ESP; written by the installer and kept equal to `/etc/keymap` by `kdos-settingsd` | The initramfs, which loads it on `tty1` before the disk passphrase prompt |
 | `/etc/kdos/xkb.conf` | `XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT` and `XKBOPTIONS`, the graphical layout; ships with all four empty | `kdos-settingsd`, which answers `locale1`'s X11 properties from it; the login screen's KWin reads those. An empty layout follows `/etc/keymap` |
+| `/etc/xdg/kxkbrc` | `[Layout]` `LayoutList`, `VariantList`, `Use=true`, with `Model` and `Options` (and `ResetOldOptions=true`) when set: the same layout; not shipped. Written by the installer when a layout was named, rewritten by `kdos-settingsd` on every locale1 layout change and removed for an empty one | KWin and the lock screen, before the `XKB_DEFAULT_*` environment startplasma builds from `xkb.conf`, in every session of an account with no `~/.config/kxkbrc` |
 
 A person's own keyboard layout in Plasma is in `~/.config/kxkbrc`, and outranks these inside their
 session: the system layout reaches a session only for an account whose `kxkbrc` names no layout,
-so an account that has one keeps it when the system layout changes.
+so an account that has one keeps it when the system layout changes. The Keyboard page writes that
+file on Apply; turning its layout list on over an empty one starts the list from the layout the
+session runs, so adding German to a US session saves `LayoutList=us,de`.
 
 ### `/etc/hostname`, `/etc/machine-info` and the time zone
 
@@ -1197,7 +1205,7 @@ stream or file named in `video_source`. `x11.so` is not built. `fakevideo.so` (a
 | `~/.config/git/kdos-delta`, `~/.config/newsboat/kdos-colors`, `~/.config/aerc/stylesets/kdos`, `~/.config/yazi/theme.toml` | delta, newsboat, aerc and yazi |
 | `~/.local/share/mc/skins/kdos.ini`, and the `skin` key in `~/.config/mc/ini` | Midnight Commander |
 | The palette block in `~/.config/starship.toml` | The shell prompt, between its markers. The rest of the file is yours |
-| `~/.config/qt5ct/qt5ct.conf` | Qt 5 programs. Merged: the theme owns `color_scheme_path` and `icon_theme` under `[Appearance]` while they still name a KDOS file, and your other settings in it survive |
+| `~/.config/qt5ct/qt5ct.conf` | Qt 5 programs. Merged: while `color_scheme_path` names a KDOS palette or none, the theme sets `color_scheme_path`, `custom_palette`, `style`, `standard_dialogs` (`xdgdesktopportal`, KDE's dialog through the portal) and `icon_theme` under `[Appearance]` and `general` and `fixed` under `[Fonts]`, and your other settings in it survive |
 
 Plasma's own half of an accent is not generated here. Every colour scheme, Konsole profile, qt5ct
 palette, wallpaper and global theme was generated when the image was built, by `kdos-theme` and

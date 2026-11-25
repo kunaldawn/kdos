@@ -68,7 +68,7 @@
 
 import QtQuick
 import QtCore
-import org.kde.kwin
+import org.kde.kwin as KWinComponents
 
 import "memory.js" as Memory
 
@@ -143,7 +143,7 @@ Item {
     }
 
     function deskOf(window) {
-        return window.desktops.length > 0 ? window.desktops[0] : Workspace.currentDesktop;
+        return window.desktops.length > 0 ? window.desktops[0] : KWinComponents.Workspace.currentDesktop;
     }
 
     function settle(window, entry) {
@@ -155,7 +155,7 @@ Item {
             entry.grow = false;
             return;
         }
-        const area = Workspace.clientArea(Workspace.MaximizeArea, window.output, deskOf(window));
+        const area = KWinComponents.Workspace.clientArea(KWinComponents.Workspace.MaximizeArea, window.output, deskOf(window));
         const f = frame(window);
         const placed = Memory.recentre(f, area) || Memory.fit(f, area);
         const grown = entry.grow && Memory.growable(window) ? Memory.firstSize(placed || f, area) : null;
@@ -203,7 +203,7 @@ Item {
 
     function siblings(window, key) {
         const out = [];
-        const windows = Workspace.windows;
+        const windows = KWinComponents.Workspace.windows;
         for (let i = 0; i < windows.length; i++) {
             const other = windows[i];
             if (other !== window && !other.deleted && Memory.appKey(other) === key) {
@@ -214,7 +214,7 @@ Item {
     }
 
     function desktopById(id) {
-        for (const desktop of Workspace.desktops) {
+        for (const desktop of KWinComponents.Workspace.desktops) {
             if (desktop.id === id) {
                 return desktop;
             }
@@ -225,12 +225,12 @@ Item {
     // Gives a floating window the rectangle `record` asks for; false when
     // there is no screen or the place is taken by a sibling.
     function place(window, entry, record) {
-        const screens = Workspace.screens;
+        const screens = KWinComponents.Workspace.screens;
         const at = Memory.nearestScreen(record, screens.map(s => s.geometry));
         if (at < 0) {
             return false;
         }
-        const area = Workspace.clientArea(Workspace.MaximizeArea, screens[at], deskOf(window));
+        const area = KWinComponents.Workspace.clientArea(KWinComponents.Workspace.MaximizeArea, screens[at], deskOf(window));
         const target = Memory.restoreTarget(record, frame(window), scaleOf(screens[at]), area);
         if (Memory.originTaken(target.set, siblings(window, record.app))) {
             return false;
@@ -249,7 +249,7 @@ Item {
                 // view follows it, so the keyboard is never left on a window
                 // nobody can see.
                 if (window.active) {
-                    Workspace.currentDesktop = wanted;
+                    KWinComponents.Workspace.currentDesktop = wanted;
                 }
             }
         }
@@ -383,7 +383,7 @@ Item {
     }
 
     Connections {
-        target: Workspace
+        target: KWinComponents.Workspace
 
         function onWindowAdded(window) {
             root.opened(window);
@@ -396,7 +396,7 @@ Item {
 
     Component.onCompleted: {
         records = Memory.parse(store.value("records", "[]"));
-        const windows = Workspace.windows;
+        const windows = KWinComponents.Workspace.windows;
         for (let i = 0; i < windows.length; i++) {
             if (Memory.eligible(windows[i], exclude)) {
                 watch(windows[i], newEntry(windows[i], Memory.appKey(windows[i]), 0, false));

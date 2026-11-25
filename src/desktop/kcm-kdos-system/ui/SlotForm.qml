@@ -41,9 +41,16 @@ Kirigami.FormLayout {
         Kirigami.FormData.label: form.slotInfo.title
     }
 
+    /* A wrapped label's implicit width is its text on one line, and
+     * FormLayout, twinned with the page's other forms, keeps its label:value
+     * layout only while the widest implicit width fits: the state and the
+     * reason are bounded to the width of the page's help text, or a long
+     * sentence drops every form into the stacked layout and runs under the
+     * scroll bar. */
     QQC2.Label {
         Kirigami.FormData.label: i18nc("@label slot state", "State:")
         Layout.fillWidth: true
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 24
         text: form.slotInfo.stateText
         wrapMode: Text.Wrap
         color: form.slotInfo.failed || (form.slotInfo.present && !form.filled) ? Kirigami.Theme.negativeTextColor
@@ -105,13 +112,16 @@ Kirigami.FormLayout {
         text: i18nc("@action:button", "Start This Version Next Time…")
         icon.name: "system-reboot"
         Accessible.name: i18nc("@action:button %1 slot title", "Start %1 next time", form.slotInfo.title)
-        Accessible.description: form.slotInfo.bootable ? i18nc("@info:whatsthis", "The next restart starts this version once. It is kept only if it starts properly.") : form.slotInfo.reason
+        Accessible.description: form.slotInfo.bootable ? i18nc("@info:whatsthis", "The next restart starts this version once. It is kept when a session runs for a minute, or, on a computer that logs nobody in automatically, when the login screen does.") : form.slotInfo.reason
         onClicked: form.startRequested(form.slotInfo)
     }
 
     QQC2.Label {
+        objectName: "slotReason"
         visible: (startButton.visible || (form.slotInfo.present && !form.filled)) && !form.slotInfo.bootable && form.slotInfo.reason !== ""
         Layout.fillWidth: true
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 24
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 24
         text: form.slotInfo.reason
         wrapMode: Text.Wrap
         color: Kirigami.Theme.disabledTextColor

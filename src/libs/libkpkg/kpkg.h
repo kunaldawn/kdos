@@ -410,6 +410,9 @@ int kp_facets_left(const KpConf *c, const char *name, int facet);
  * minus `port`
  * itself. NULL-terminated, never NULL; kb_strv_free it. */
 char **kp_facet_wanted(const KpConf *c, const char *port);
+/* musl, linux and gcc, the ports kp_facet_wanted adds to every closure.
+ * NULL-terminated. */
+extern const char *const kp_facet_implicit[];
 
 /* ────────────────────────────────────────────────────────────────────────
  * Run-time needs (kp_needs.c)
@@ -506,7 +509,7 @@ void kp_forget_needs(const KpConf *c, const char *name);
 
 /* Bump whenever build.c, prune.c or lint.c changes what a package contains
  * or how it is packed for the same inputs: every stored entry then misses. */
-#define KP_STORE_FORMAT 4
+#define KP_STORE_FORMAT 5
 
 /* The environment names the key ignores: job counts, launchers, the store's
  * own knobs, kpkg's run options and the terminal. 1 when `name` is one. */

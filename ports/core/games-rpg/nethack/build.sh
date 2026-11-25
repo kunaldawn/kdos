@@ -64,6 +64,9 @@ rm -f "$PKG/usr/share/$name"/perm "$PKG/usr/share/$name"/record \
       "$PKG/usr/share/$name"/livelog
 rmdir "$PKG/usr/share/$name/save"
 
+install -Dm644 dat/license "$PKG/usr/share/licenses/$name/license"
+sed -n '/^\* Copyright (C)/,/^\*\*\*\*/p' "lib/lua-$_luaver/src/lua.h" > "$PKG/usr/share/licenses/$name/lua-COPYRIGHT"
+
 install -Dm644 doc/$name.6 "$PKG/usr/share/man/man6/$name.6"
 install -Dm644 doc/recover.6 "$PKG/usr/share/man/man6/$name-recover.6"
 

@@ -37,6 +37,12 @@ WizardPage {
     readonly property var answers: Backend.answers
     readonly property bool fresh: plan.disk !== undefined && plan.disk === answers.disk
     readonly property string refused: plan.refused || ""
+    /* The command that installs recorded groups, in the form the new
+     * system's first account can run: sudo for an administrator, which
+     * the setup wizard's account always is, root's password otherwise. */
+    readonly property string pendingCommand: plan.wheel || plan.oem
+        ? "sudo kdos update install --pending"
+        : "su -c 'kdos update install --pending'"
 
     /* The planned disk as the Disk page names it, and what erasing it
      * destroys; Backend.probe is read so a new probe names it again. */
@@ -224,9 +230,9 @@ WizardPage {
                   + (page.plan.binhost && page.plan.network === false
                      ? i18n("recorded; installed after the first boot once there is a network")
                      : page.plan.binhost ? i18n("downloaded during the install")
-                     : i18np("recorded; this installs it once a binary host answers:\nsudo kdos update install --pending",
-                             "recorded; this installs them once a binary host answers:\nsudo kdos update install --pending",
-                             page.plan.groups.length))
+                     : i18np("recorded; this installs it once a binary host answers:\n%2",
+                             "recorded; this installs them once a binary host answers:\n%2",
+                             page.plan.groups.length, page.pendingCommand))
             Accessible.name: i18nc("@info:whatsthis", "KDOS applications: %1", text)
         }
         Value {

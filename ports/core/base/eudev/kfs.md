@@ -42,6 +42,24 @@ by this port (see
   [kmod](#port-kmod), and configure stops when it is missing.
 - `--disable-selinux` — Build without libselinux, which is not a port in the tree.
 
+## Patches
+
+`watch-reread-changed-table.patch` changes `synthesize_change()` in `src/udev/udevd.c`, which
+runs when a program closes a watched disk it had open for writing (`60-block.rules` puts
+`OPTIONS+="watch"` on every `sd*`, `vd*` and `nvme*` disk). Upstream takes the disk's lock and
+asks the kernel to re-read its partition table (`BLKRRPART`) on every such close, and the re-read
+removes and re-adds every partition node even when the table is the same. The patch first reads
+the table on the disk with libblkid, read-only, and compares it with the kernel's partitions by
+number, start and size, and an extended partition by its start alone, because the kernel gives
+it a size of one or two sectors; when they match it skips the re-read and sends `change` for the disk and
+each partition, which re-runs the rules without touching the nodes. A table that differs, or one
+libblkid cannot read, is re-read as upstream does. Without it, a program that writes the whole
+disk, closes it and then opens one of its partitions finds the node gone while `udevd`'s own
+re-read runs: Ventoy's `Ventoy2Disk.sh -I` does that between cleaning its second partition and
+formatting the first with `mkexfatfs`, and loses `/dev/sda1` in a live session. The patch also
+gives `udevd` libblkid's compiler flags and library in `src/udev/Makefile.am`, which `autoreconf`
+carries into the build. It is to be offered upstream to eudev.
+
 ## Notes
 The source is a GitHub tag archive with no generated `configure`, so `build.sh` runs
 `autoreconf -f -i -s` first; the autotools are in the phase's opening run, ahead of every shelf.

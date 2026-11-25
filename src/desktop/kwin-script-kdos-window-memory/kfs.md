@@ -78,8 +78,8 @@ a border is grown; its record is dropped as a prelude's when it closes. The prog
 window is their design are in `keepOwnSize`: KCalc, Kalk, Qalculate, KColorChooser, KCharSelect,
 KTeaTime and KTimer, each by the application id its desktop file names. The grown rectangle is
 recorded when the window closes, like any other, so a size the person gives it wins from the next
-launch. The window size does not reach Dolphin's Places panel, which opens at its own width and
-cuts *Recent Locations* and *Removable Devices* even maximised.
+launch. The window size does not reach Dolphin's Places panel, which opens at the width its own
+size hint asks for (see [kio](#port-kio)).
 
 Two settings, in `kwinrc` under `[Script-kdos_window_memory]`: `Exclude`, a comma-separated list of
 application ids that replaces the built-in one, and `RememberDesktop`, off by default, which also

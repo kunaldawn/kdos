@@ -63,6 +63,7 @@ struct BoxRow {
     QString confinement;    /* confined | tagged | unconfined | "" */
     QString confinementReason; /* the launch's own sentence, "" if none */
     bool kept = false;      /* no container, and a profile remove kept */
+    bool imageMissing = false; /* a store box whose image the local store lacks */
     QStringList exports;    /* programs `kdos-box export` put in the menu */
 
     bool isRunning() const;

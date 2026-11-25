@@ -50,16 +50,16 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3753-3765 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3997-4009 pin=d5c38affc180 -->
 
 `slot_b` is empty unless the installer made the A/B layout. `kdos-bootctl` writes every later
 version, under a header of its own
 (`Written by kdos-bootctl; the initramfs reads it before it mounts a root filesystem.`), and adds
 five keys: `bootnext`, which is empty except during a UEFI trial, when it reads `yes`; `armed`, the
 kernel's boot id of the boot that armed the trial; `failed`, the slot whose last trial ended
-without being confirmed, until the next `try` or confirmation clears it; `abandoned`, the slot
-whose trial was set aside by picking the confirmed slot at the boot menu, cleared the same way and
-never reported as a failure; and `unfilled`, the slot
+without being confirmed, until the next `try`, a confirmation or an `unfill` of that slot clears
+it; `abandoned`, the slot whose trial was set aside by picking the confirmed slot at the boot menu,
+cleared the same way and never reported as a failure; and `unfilled`, the slot
 an update has begun writing and not yet deployed, until `kdos-bootctl deploy` into it clears it:
 
 ```text
@@ -109,12 +109,12 @@ that root's container, reads the console map for the passphrase prompt from `EFI
 unmounts it again. The `\$` in this excerpt is the generator's escaping:
 the init is written by a heredoc, and the generated script has a plain `$`.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=862-920 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=893-957 pin=ea319d41ab75 -->
 
 A boot is confirmed by two marks, both root's files under `/run/kdos/bless/`. The end of `rcS`,
 after every service script has run, writes the first:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=197-221 pin=de5053d13197 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=217-241 pin=de5053d13197 -->
 
 The second, `graphical`, is written by kdos-sysupdated when a Plasma session has answered for a
 minute: `/etc/xdg/autostart/kdos-session-good.desktop` runs `kdos-notice --bless` in the last
@@ -248,9 +248,16 @@ Discover shows a KDOS update beside the applications' and installs it into the i
    runs `kdos-bootctl unfill <x>`, so a slot left half-written by a power cut or a cancel is
    recorded as `incomplete`, loses its boot menu entry and is refused by `try` until an update
    writes it again; when that mark cannot be written, `apply` stops with
-   `slot <x> could not be marked as being written` and records `build-failed`.
+   `slot <x> could not be marked as being written` and records `build-failed`. With nothing
+   behind and the slot still marked, `apply` writes it again without a trial: it prints `slot <x>
+   holds every package of <version> but was left incomplete; finishing it`, checks the slot,
+   carries the configuration, records the version and deploys its kernel, which clears the mark and
+   brings its boot menu entry back, and ends with `slot <x> is complete again and holds <version>,
+   the version running; nothing is tried`. In both lines `<version>` is the version the slot
+   records, the name System Versions and `kdos-bootctl status` show.
    `kdos update apply --dry-run --mount` on an unmounted slot says what it would do, without
-   mounting it.
+   mounting it; when the boot state marks that slot unfilled it says `an update stopped while
+   writing it` and that `--mount` finishes it, and a plain `--dry-run` refusal says the same.
 3. Reboot. The candidate boots; once the boot is confirmed, `mark-good` makes it the active slot.
 4. Check the outcome: `sudo kdos-bootctl status`.
 
@@ -290,7 +297,10 @@ With UEFI variables available, `try` arms one boot through `BootNext` and prints
 The firmware then starts a load option labelled `KDOS update trial`, which loads
 `EFI/kdos/trial/BOOTX64.EFI` and its trial menu, whose `default_entry` is `KDOS <version> (slot B)`.
 The main menu's `default_entry` stays on the confirmed slot, and its `KDOS <version> (slot B)` entry
-is commented `The update, for one boot; then the confirmed version again`. The candidate's entry ends in
+is commented `The update, for one boot; then the confirmed version again` when slot B is newer than the
+confirmed slot (a later `TREE_TIME` in its `EFI/kdos/b/release`, or, where either record has no tree
+time, a version that sorts above), and `This version, for one boot; then the confirmed version again`
+when it is older or equal. The candidate's entry ends in
 `panic=10`, unless the command line already sets `panic=`, so a candidate whose kernel panics
 restarts on its own. While the trial is armed,
 `status` reads `trying   b once, through UEFI BootNext — any boot after that one starts a`. When
@@ -303,7 +313,8 @@ line,
 On a UEFI boot whose firmware variables cannot be written, which includes one with `efivarfs` not
 mounted, that line follows `bootctl: no UEFI BootNext — slot b is led by the menu instead`; with
 `efivarfs` not mounted both are preceded by `bootctl: cannot write Boot0000: No such file or directory`. The menu's first
-entry is then commented `Try the update (slot B, KDOS <version>)`, and `status` counts down
+entry is then commented `Try the update (slot B, KDOS <version>)`, or
+`Try this version (slot B, KDOS <version>)` for an older or equal slot, and `status` counts down
 `trying   b, 3 attempt(s) left`.
 
 `try` refuses the active slot (`bootctl: slot a is already active`), a slot with no root
@@ -316,7 +327,8 @@ so the next boot starts the confirmed slot. A trial the running boot is part of 
 it ends by its confirmation or its rollback.
 
 The System Versions page's **Start This Version Next Time** button arms the same one-boot trial
-of the other slot, through kdos-sysupdated and polkit (`io.kdos.slots.try`).
+of the other slot, through kdos-sysupdated and polkit (`io.kdos.slots.try`). Going back to an older
+or equal slot this way is no update, and the menu calls it this version.
 
 ### Rolling back
 
@@ -326,15 +338,24 @@ never comes up), the next boot starts the confirmed slot, the initramfs drops th
 the state records it as `failed`; the next session shows a notice that the update was rolled back.
 On a menu-led trial, the boot after the last attempt starts the confirmed slot.
 
+To set a UEFI trial aside at its one boot, stop the trial menu's countdown and pick its first
+entry, `KDOS <version>`, whose comment reads `The confirmed version: picking it sets the update aside`
+(`… sets the trial aside` when the candidate is older or equal).
+That entry and the two below it carry `kdos_menu=trial`, which tells the initramfs the person
+chose the confirmed slot: the state records the candidate as `abandoned`, not `failed`, and
+`kdos-bootctl status` and System Versions report it as in step 3 below.
+
 To leave a menu-led trial before its attempts are spent:
 
 1. Reboot and stop the menu's countdown.
 2. Pick `KDOS <version> (slot <X>)`, where `<X>` is the confirmed slot. Its comment reads
-   `The confirmed version: picking it sets the update aside`.
+   `The confirmed version: picking it sets the update aside`, or `… sets the trial aside` when the
+   candidate is older or equal.
 3. After the boot, `sudo kdos-bootctl status` reports
    `abandoned <x>: set aside at the boot menu` and
    `trying   nothing — this slot is confirmed good`. No notice says the update did not start, and
-   System Versions shows the slot as "Installed, not in use", with no banner.
+   System Versions shows the slot as "Set aside: you started the other version from the boot
+   menu", with no banner.
 
 A candidate that has already confirmed is the active slot. To go back to the other one, put it on
 trial: `sudo kdos-bootctl try a`.
@@ -376,13 +397,15 @@ slot's filesystem (the UUID is in the message) and run it again, or pass `--in-p
 
 **`kdos update apply` refuses: this boot runs the slot on trial.** While a trial is running, the
 other slot is the confirmed way back, and neither is written until the trial is confirmed or rolled
-back. Wait a minute into the session for the confirmation, or check
+back. Wait a minute into the session for the confirmation, or, on a machine SDDM does not log in
+automatically and before anyone has logged in, a minute at the login screen; or check
 `ls /run/kdos/bless/`: `userspace` and `graphical` both present and no `confirmed` means
 kdos-sysupdated has not run; see `service status sysupdated`.
 
 **A trial is rolled back although the system worked.** The boot was not confirmed. The session
-must stay up for a minute with `kdos-session-good.desktop` in `/etc/xdg/autostart`, and
-kdos-sysupdated must be running; `/run/kdos/bless/` after a minute shows which mark is missing.
+must stay up for a minute with `kdos-session-good.desktop` in `/etc/xdg/autostart`, or, on a
+machine SDDM does not log in automatically and before any login in that boot, the login screen
+must; kdos-sysupdated must be running; `/run/kdos/bless/` after a minute shows which mark is missing.
 The ESP must be mounted too: with `bootstate=` on the command line and no readable state,
 `kdos-bootctl mark-good` exits 1 with
 `bootctl: the command line names a boot state and <path> cannot be read — is the ESP mounted?`,
@@ -404,11 +427,11 @@ did not start or was not kept.` What's New does not open by itself here: no logi
 confirmed, so this account's recorded version is still <old>. Mount the candidate and read its logs from that boot only if it reached its own root:
 `/run` is a tmpfs, so the `/run/kdos-init.<name>.log` files of that boot are gone; its system log
 is in `<mount>/var/log/messages`. A boot that never reached the root left nothing on disk; boot the
-candidate's `KDOS (slot <x>)` entry and watch the splash, or use the verbose entry, to see where it
+candidate's `KDOS <version> (slot <x>)` entry and watch the splash, or use the verbose entry, to see where it
 stops.
 
 **A candidate kernel dies before its initramfs on a BIOS machine, and the menu keeps leading with
-it.** Limine counts nothing, so no attempt is spent. Pick the confirmed slot's `KDOS (slot <x>)`
+it.** Limine counts nothing, so no attempt is spent. Pick the confirmed slot's `KDOS <version> (slot <x>)`
 entry by hand.
 
 **The boot stops at `UNLOCKING` after a switch of slot.** The slot's container is recorded in the
@@ -433,7 +456,7 @@ or the live medium, and record it again with both UUIDs:
 - [kdos update](../../kdos/04-programs/kdos-command.md#kdos-update) and
   [kdos-bootctl](../../kdos/04-programs/kdos-command.md#kdos-bootctl)
 - [Keeping it current](../../kdos/02-user-guide/administration.md#keeping-it-current)
-- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): the `KDOS (slot <x>)`
+- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): the `KDOS <version> (slot <x>)`
   entry and what `kdos-bootctl` rewrites in `limine.conf`
 - [The initramfs and the rescue shell](initramfs-and-rescue.md): the initramfs each slot boots,
   and the shell it opens when a slot's root cannot be found

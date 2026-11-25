@@ -63,7 +63,6 @@ AccentSync::AccentSync(QObject *parent)
             });
 
     m_accent = readAccent(accentFile());
-    m_firstLogin = !QFileInfo::exists(decidedMarker());
 
     /* Once at load: a login whose scheme was chosen while this was not
      * running — a first login, a scheme set from a terminal — is brought into
@@ -114,10 +113,10 @@ QString AccentSync::decidedMarker()
 
 void AccentSync::markDecided()
 {
-    if (!m_firstLogin) {
+    if (m_evaluated) {
         return;
     }
-    m_firstLogin = false;
+    m_evaluated = true;
 
     /* A marker that cannot be written leaves the next session a first login
      * again; that one brings the account into step and nothing else, which
@@ -125,6 +124,9 @@ void AccentSync::markDecided()
     const QString path = decidedMarker();
     QFile f(path);
 
+    if (QFileInfo::exists(path)) {
+        return;
+    }
     if (!QDir().mkpath(QFileInfo(path).absolutePath()) || !f.open(QIODevice::WriteOnly)) {
         qCWarning(KDOS_KDED) << "cannot write" << path << f.errorString();
     }
@@ -166,8 +168,11 @@ void AccentSync::evaluate()
      * step and leaves the boot menu, splash and login screen on the accent
      * chosen for the machine. The accent file cannot tell: /etc/skel carries
      * one, so every new home starts with it. Every later evaluation, in this
-     * session or any other, runs the whole switch. */
-    const bool firstLogin = m_firstLogin;
+     * session or any other, runs the whole switch, and so does a forced
+     * one: it is a request to bring everything into step. Decided before
+     * markDecided() writes the marker, which would otherwise make every
+     * evaluation look like a later one. */
+    const bool account = accountOnlyRun(decidedMarker(), !m_evaluated, m_force);
 
     markDecided();
 
@@ -192,8 +197,6 @@ void AccentSync::evaluate()
 
     const bool force = m_force;
     const QString current = readAccent(accentFile());
-    /* A forced run is a request to bring everything into step. */
-    const bool account = firstLogin && !force;
 
     m_force = false;
     if (accent == current && !force) {

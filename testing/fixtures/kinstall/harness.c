@@ -49,9 +49,28 @@
  *       out of the image's MBR, the first holding <fstype> when named:
  *       `contents=<what the Summary names>`,
  *       then `--dump probe`'s text
+ *   harness remap <image> <root> <node-maj:min> <sys-maj:min> [<answers>]
+ *       a stick whose first partition's node is <image> itself, its
+ *       device number <node-maj:min> and sysfs's <sys-maj:min>, with
+ *       <root> standing for / under ki_part_facts and <image> its
+ *       disk: `remap=<remap> fstype=<type> label=<label>`,
+ *       `contents=<what the Summary names>`, then `--dump probe`'s text;
+ *       with <answers>, a reuse plan's verdict on a disk large enough for
+ *       the install instead: `ok`, or the refusal
+ *   harness medium <cmdline> <mounted-image> <other-image> [<root>]
+ *       two disks, fixture0 the mounted medium and fixture1, after
+ *       ki_mark_boot_copies has read <cmdline> with <root> standing for /
+ *       under sysfs and udev's records: ki_disk_check's verdict on the
+ *       second (`ok`, or the refusal), then `--dump probe`'s text and JSON
  *   harness udevmodel <udev-data-file> <sysfs-model>
  *       the model the probe shows for a disk whose sysfs model is
  *       <sysfs-model> and whose udev record is the file
+ *   harness copyfile <src> <dst>
+ *       ki_copy_file, as the Bootloader step places a file on the ESP:
+ *       exit 0 for a whole copy, 1 when it reports a failure
+ *   harness nvram <by-partuuid-dir> <esp> < listing
+ *       the boot numbers the Bootloader step deletes from an efibootmgr
+ *       listing before it creates the KDOS entry for <esp>, one per line
  *   harness reinstall
  *       a disk as a two-slot install leaves it (ESP, BIOS boot, an LVM
  *       physical volume of group kdos): its contents as the Summary names
@@ -349,6 +368,77 @@ int main(int argc, char **argv)
 		ki_dump_probe_text();
 		return 0;
 	}
+	if ((argc == 6 || argc == 7) && !strcmp(argv[1], "remap")) {
+		unsigned char mbr[512];
+		char what[512];
+		FILE *f = fopen(argv[2], "rb");
+		Disk *d;
+
+		if (!f || fread(mbr, 1, sizeof(mbr), f) != sizeof(mbr)) {
+			fprintf(stderr, "harness: cannot read %s\n", argv[2]);
+			return 1;
+		}
+		fseek(f, 0, SEEK_END);
+		fixture_disk((unsigned long long)ftell(f) / 512);
+		fclose(f);
+		d = &ki_disk[0];
+		kb_strlcpy(d->path, argv[2], sizeof(d->path));
+		for (int e = 0; e < 4; e++) {
+			const unsigned char *m = mbr + 446 + 16 * e;
+			Part *p = &d->part[d->nparts];
+
+			if (!m[4])
+				continue;
+			memset(p, 0, sizeof(*p));
+			snprintf(p->path, sizeof(p->path), "/dev/fixture0p%d", e + 1);
+			if (!d->nparts)
+				kb_strlcpy(p->path, argv[2], sizeof(p->path));
+			p->start = (unsigned long long)m[8] | (unsigned long long)m[9] << 8 |
+				   (unsigned long long)m[10] << 16 | (unsigned long long)m[11] << 24;
+			p->sectors = (unsigned long long)m[12] | (unsigned long long)m[13] << 8 |
+				     (unsigned long long)m[14] << 16 | (unsigned long long)m[15] << 24;
+			if (!d->nparts)
+				ki_part_facts(p, argv[4], argv[5], argv[3],
+					      argv[2]);
+			d->nparts++;
+		}
+		ki_disk_table(d);
+		if (argc == 7) {
+			if (conf_load(argv[6]) < 0)
+				return 2;
+			kb_strlcpy(cfg.disk, d->path, sizeof(cfg.disk));
+			d->sectors = 64ULL << 21;
+			if (ki_target_check(err, sizeof(err))) {
+				printf("%s\n", err);
+				return 1;
+			}
+			printf("ok\n");
+			return 0;
+		}
+		printf("remap=%s fstype=%s label=%s\n", d->part[0].remap,
+		       d->part[0].fstype, d->part[0].label);
+		ki_disk_contents(d, 0, what, sizeof(what));
+		printf("contents=%s\n", what);
+		ki_dump_probe_text();
+		return 0;
+	}
+	if ((argc == 5 || argc == 6) && !strcmp(argv[1], "medium")) {
+		fixture_disk(64ULL << 21);
+		ki_disk[1] = ki_disk[0];
+		kb_strlcpy(ki_disk[0].path, argv[3], sizeof(ki_disk[0].path));
+		kb_strlcpy(ki_disk[1].path, argv[4], sizeof(ki_disk[1].path));
+		kb_strlcpy(ki_disk[1].name, "fixture1", sizeof(ki_disk[1].name));
+		ki_disk[0].is_boot_media = 1;
+		ki_ndisk = 2;
+		ki_mark_boot_copies(argv[2], argc == 6 ? argv[5] : "");
+		if (ki_disk_check(&ki_disk[1], err, sizeof(err)))
+			printf("%s\n", err);
+		else
+			printf("ok\n");
+		ki_dump_probe_text();
+		ki_dump_probe_json();
+		return 0;
+	}
 	if (argc == 4 && !strcmp(argv[1], "udevmodel")) {
 		char model[48];
 
@@ -396,6 +486,17 @@ int main(int argc, char **argv)
 		ki_dump_probe_json();
 		return 0;
 	}
+	if (argc == 4 && !strcmp(argv[1], "nvram")) {
+		char line[1024], num[5];
+		while (fgets(line, sizeof(line), stdin)) {
+			line[strcspn(line, "\n")] = 0;
+			if (ki_nvram_stale(line, argv[2], argv[3], num))
+				printf("%s\n", num);
+		}
+		return 0;
+	}
+	if (argc == 4 && !strcmp(argv[1], "copyfile"))
+		return ki_copy_file(argv[2], argv[3]) < 0;
 	if (argc == 3 && !strcmp(argv[1], "check")) {
 		if (conf_load(argv[2]) < 0)
 			return 2;
@@ -412,6 +513,6 @@ int main(int argc, char **argv)
 		printf("%s\n", ki_root_cmd(argv[3]));
 		return 0;
 	}
-	fprintf(stderr, "usage: harness ab|write|xkb|check|rootcmd|target|swap|rootfree|copy|disksig|udevmodel|reinstall ...\n");
+	fprintf(stderr, "usage: harness ab|write|xkb|check|rootcmd|target|swap|rootfree|copy|copyfile|disksig|remap|medium|udevmodel|reinstall|nvram ...\n");
 	return 2;
 }

@@ -19,3 +19,4 @@ install -Dm644 "$name-$version.json" "$_dest/manifest.json"
 rm -f "$_dest"/*/*.bat
 find "$_dest" -type f -exec chmod 644 {} +
 find "$_dest" -type f -name '*.sh' -exec chmod 755 {} +
+install -Dm644 "$PORT_SRC/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"

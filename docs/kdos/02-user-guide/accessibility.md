@@ -62,6 +62,17 @@ field and its Show Password, Virtual Keyboard and user buttons, has one Tab stop
 and never reaches its Sleep and Switch User buttons; see
 [Known gaps](../06-reference/known-gaps.md#the-overview-is-silent-under-the-screen-reader-and-the-lock-screen-only-partly-read).
 
+In System Settings, Tab from a page's Help button returns to the sidebar; on a category's page list
+it lands on the list. Orca announces a list by its name ("Colors & Themes", or "Settings
+categories" on the first column) and then its current item, which shows a frame in the focus
+colour; the arrow keys move the frame, and Tab from the list returns to the page. The first column's section headings are read by their full text
+("Security & Privacy"). A mouse click on an item draws no frame. Shift+Tab from a page's first
+control reaches the sidebar's menu button, which Orca reads as "Show menu", the next Shift+Tab
+reaches Search (Back on the second column), and the one after leaves the sidebar for the page's
+Help button. A page opened alone with `kcmshell6` is read the same way, without the sidebar: Tab
+and Shift+Tab move between its controls and its Help and Close buttons, and Orca names the page
+once on each move into it ("KDOS Look panel").
+
 `Meta+Alt+S` starts and stops Orca, from the first login, as do the Screen Reader page of System
 Settings → Accessibility and the Welcome tour's Accessibility page. The same chord starts Orca on
 the login screen, but there it has no sound to speak through (see
@@ -329,7 +340,7 @@ beside it names the current layout and switches to the next.
 KDOS has eight colour schemes, called accents: `phosphor`, `amber`, `ice`, `bone` (the default),
 `norton`, `borland`, `perfect` and `paper`. `paper` is the only light one, dark text on a pale
 ground. On System Settings' KDOS Look page the accents are a radio group: Tab lands on the current accent, the arrow keys move
-between them without changing anything, and Space or Enter applies the focused one. Switch on that
+between them without changing anything, and Space or Enter applies the focused one; the installer's Look page groups its accent cards the same way. Switch on that
 page, on the Welcome tour's Accessibility page (which offers the
 highest-contrast dark accent and the light one), or from a terminal:
 

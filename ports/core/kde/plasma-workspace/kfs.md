@@ -150,6 +150,64 @@ would leave the button on a row that is no longer its last.
 
 It is to be offered upstream.
 
+`appstream-runner-name-match.patch` makes the Software Center runner in
+`runners/appstream/appstreamrunner.cpp`, which gives KRunner and Kickoff their "Get …" results,
+offer an application that is not installed only when every word of the query, case-folded, occurs
+in its name, id, package name or one of its keywords. AppStream's search also matches summaries
+and descriptions, and over the thousands of components of Debian's DEP-11 catalogue such a hit
+answers almost any query, arithmetic included: without the patch `12*7` offers Debian
+applications whose description holds the characters. It is the rule Discover's own search follows (see
+[Discover](../../../../docs/kdos/04-programs/discover.md)). The same patch narrows the runner's
+other gate: it offers nothing when an installed application or command is named exactly what was
+typed, case-insensitively, rather than on any `exec://` match another runner found. An application
+counts when a match's text is the query (the services runner's KCalc for `kcalc`); a command counts
+when the file name of a match's command, the first argument after `exec://`, is the query's first
+word (the shell runner's "Run gimp" for `gimp`, "Run htop" for `htop`, whose text is never the
+query). The services runner gives each application it matches an `exec://` id, its fuzzy matches
+included, so under the unpatched gate `galculator` finds KCalc and no "Get galculator…" row
+appears. It is to be offered upstream.
+
+`appstream-runner-icon.patch` gives each "Get …" result of the Software Center runner an icon
+it can draw. Upstream's `componentIcon()` adds a component's cached or local icon file whether or
+not it exists, and tries a stock name, with `QIcon::fromTheme`, only while no file was added.
+[debian-dep11](#port-debian-dep11) installs no icon files, so a Debian application such as
+galculator got a QIcon that is not null and draws nothing, an empty slot, and one whose stock name
+Breeze lacks, such as xdrawchem, got a placeholder. The patch adds a file only when it exists,
+takes the first stock name `QIcon::hasThemeIcon()` knows, and with neither takes the icon of the
+component's first main desktop-entry category, from the table
+[kdos-discover](#port-kdos-discover)'s backend files a Debian application by
+(`applications-utilities` for Utility, `applications-science` for Science, `kcolorchooser` for
+Graphics), and only then `package-x-generic`. KRunner and Discover then show one icon for a Debian
+application. It is to be offered upstream.
+
+`desktop-view-title.patch` titles each desktop window with the shell package's name alone,
+"Desktop", the title `shell/desktopview.cpp` already gives the view before it follows a screen.
+Upstream's `DesktopView::setScreenToFollow()` appends `@` and a `QDebug` dump of the screen's
+geometry. A screen reader takes the window title for the desktop's name, so Orca says "Desktop @
+QRect(0,0 1920x1080)" each time focus returns to the desktop; a Qt debug string is no name. The
+screen a view follows stays readable from `screenToFollow()`, and nothing on KDOS matches on the
+title. It is to be offered upstream.
+
+`timezone-selector-width.patch` sizes the floating toolbar under the time-zone map, in
+`components/timezoneselector/TimezoneSelector.qml`, to its row and its padding. Upstream sets the
+toolbar's width to the row's implicit width, so the row is laid out that width less the toolbar's
+left and right padding; the two combo boxes do not shrink below their implicit width, and the
+time-zone box overhangs the panel's right edge in plasma-setup's Time and Date page and wherever
+else the selector is used. The patch drops the width binding, so the toolbar takes its implicit
+width, and keeps the height binding. It gives the time-zone box the right margin the region box
+already has, so the row's two ends are the same distance from the panel's edges with and without
+the time-zone box shown. It is to be offered upstream.
+
+`kcm-colors-accent-names.patch` gives each accent colour swatch on the Colors settings page, in
+`kcms/colors/ui/AccentColorUI.qml`, a spoken name. The swatches are radio buttons with no text,
+built from a model of ten bare hex strings, and the colour-picker button beside them carries only
+its icon, so Orca reads each swatch as "not selected radio button" and the picker as an unnamed
+button. The patch adds a list of ten translated colour names in model order (Pink, Red, Orange,
+Yellow, Green, Teal, Blue, Purple, Violet, Gray) and sets each swatch's accessible name and
+tooltip from it; the custom-colour indicator is named "Custom accent color" and the picker
+"Choose a custom accent color…", which is also its tooltip. It adds no colour. It is to be offered
+upstream as a merge request against plasma/plasma-workspace.
+
 ## Notes
 
 `build.sh` builds the two generated headers `shell/qwayland-plasma-shell.h` and

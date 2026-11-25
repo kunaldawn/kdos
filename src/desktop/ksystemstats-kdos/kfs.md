@@ -21,8 +21,11 @@ no sparkline, and its text wraps after the name. In a horizontal panel a meter's
 by side, a download or read figure marked ↓ and an upload or write figure ↑. The sparklines get
 only the room the panel's other applets leave, down to none, before any figure narrows, and a
 meter whose `stepOutBelow` setting is above 0, as the KDOS desk sets its network meter's, is one
-pixel wide and draws nothing on a screen narrower than that many grid units of logical width, so
-the task manager keeps its launchers' size. Opened from a panel, the face is a popup chart whose
+pixel wide and draws nothing while its panel is narrower than that many grid units of logical
+width, so the task manager keeps its launchers' size. The width is read again whenever the panel
+is resized, and so is the setting, from the applet's configuration: the face's property map
+follows that configuration only when the applet reloads it, so a value written after the face
+loaded takes effect at the next change of panel width. Opened from a panel, the face is a popup chart whose
 sparklines share the popup's height. Its `sensorPattern` setting makes it follow every sensor whose id matches a regular expression as
 sensors come and go, which is how the KDOS page gives each box and each application a row of its
 own. The page has four parts: Overview (this machine, all boxes, the system), Boxes (CPU, memory

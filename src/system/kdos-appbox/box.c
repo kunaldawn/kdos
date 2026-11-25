@@ -58,10 +58,12 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -294,6 +296,161 @@ const char *persist_name(Persistence p)
 	}
 }
 
+/*
+ * THE WORDS EACH ENUMERATED KEY TAKES, and the one phrase that names them to a
+ * person. profile_set() refuses any other word rather than reading it as a
+ * default: a default is a reading of the word, and for `network` the default
+ * is the host's network, so a typo would widen the box. `pids` and `autostop`
+ * take numbers and are checked by value_ok() itself, as are `memory` (a size
+ * in podman's spelling: a number, a fraction allowed, then b, k, m, g or t,
+ * each with an optional trailing b, in either case, and bytes with no unit;
+ * at least 6 MiB, podman's own floor for a container) and `cpus` (a number of
+ * cores above zero). Each also takes its no-limit word in any case, and the
+ * empty value create stores, so a value podman would refuse at create time is
+ * refused when it is written.
+ *
+ * `network` takes the private synonyms `yes`, `on`, `1` and `true`, and
+ * refuses `no`, `off`, `0` and `false`: a refusal of a network could mean the
+ * host's or none at all, and reading it as either guesses the box's reach.
+ */
+#define VAL_SHARING "private yes on 1 true shared no off 0 false"
+static const struct {
+	const char *key;
+	const char *words; /* space-separated; NULL for a number */
+	const char *says;
+} PROFILE_VALUES[] = {
+	{ "persistence", "ephemeral frozen persistent",
+	  "ephemeral, frozen or persistent" },
+	{ "network",   "host shared private none yes on 1 true",
+	  "host, private or none" },
+	{ "ipc",       VAL_SHARING, "private or shared" },
+	{ "devices",   VAL_SHARING, "private or shared" },
+	{ "processes", VAL_SHARING, "private or shared" },
+	{ "home",      VAL_SHARING, "private or shared" },
+	{ "init",      VAL_SHARING, "yes or no" },
+	{ "wayland",   VAL_SHARING, "yes or no" },
+	{ "audio",     VAL_SHARING, "yes or no" },
+	{ "gpu",       VAL_SHARING, "yes or no" },
+	{ "x11",       "yes on 1 true no off 0 false", "yes or no" },
+	{ "export",    "auto manual", "auto or manual" },
+	{ "memory",    NULL, "a size of at least 6m, such as 512m or 4G, or unlimited" },
+	{ "cpus",      NULL, "a number of cores such as 2 or 1.5, or all" },
+	{ "pids",      NULL, "a whole number, 0 for no limit" },
+	{ "autostop",  NULL, "0 or a duration such as 90s, 30m or 2h" },
+	{ NULL, NULL, NULL }
+};
+
+const char *profile_value_rule(const char *key)
+{
+	for (int i = 0; PROFILE_VALUES[i].key; i++)
+		if (!strcmp(PROFILE_VALUES[i].key, key))
+			return PROFILE_VALUES[i].says;
+	return NULL;
+}
+
+static int word_in(const char *v, const char *list)
+{
+	size_t n = strlen(v);
+
+	if (!n)
+		return 0;
+	for (const char *w = list; *w;) {
+		size_t len = strcspn(w, " ");
+		if (len == n && !strncmp(w, v, n))
+			return 1;
+		w += len;
+		w += strspn(w, " ");
+	}
+	return 0;
+}
+
+/* A number with an optional fraction; *rest is what follows it. */
+static int decimal(const char *v, const char **rest)
+{
+	const char *c = v;
+
+	while (isdigit((unsigned char)*c))
+		c++;
+	if (c == v)
+		return 0;
+	if (*c == '.') {
+		const char *f = ++c;
+		while (isdigit((unsigned char)*c))
+			c++;
+		if (c == f)
+			return 0;
+	}
+	*rest = c;
+	return 1;
+}
+
+static int size_ok(const char *v)
+{
+	const char *u;
+
+	if (!*v || !strcasecmp(v, "unlimited"))
+		return 1;
+	double bytes;
+
+	if (!decimal(v, &u))
+		return 0;
+	bytes = strtod(v, NULL);
+	if (*u && strchr("bkmgtBKMGT", *u)) {
+		const char *at = strchr("bkmgt", tolower((unsigned char)*u));
+		for (const char *c = "bkmgt"; c < at; c++)
+			bytes *= 1024.0;
+		u++;
+		if (at[0] != 'b' && (*u == 'b' || *u == 'B'))
+			u++;
+	}
+	return !*u && bytes >= 6.0 * 1024 * 1024;
+}
+
+static int cores_ok(const char *v)
+{
+	const char *u;
+
+	if (!*v || !strcasecmp(v, "all"))
+		return 1;
+	return decimal(v, &u) && !*u && strtod(v, NULL) > 0.0;
+}
+
+/* 1 when <v> is a value <key> takes, and for a key with no table row. */
+static int value_ok(const char *key, const char *v)
+{
+	char *end;
+	long n;
+
+	if (!strcmp(key, "memory"))
+		return size_ok(v);
+	if (!strcmp(key, "cpus"))
+		return cores_ok(v);
+
+	for (int i = 0; PROFILE_VALUES[i].key; i++) {
+		if (strcmp(PROFILE_VALUES[i].key, key))
+			continue;
+		if (PROFILE_VALUES[i].words)
+			return word_in(v, PROFILE_VALUES[i].words);
+		if (!isdigit((unsigned char)*v))
+			return 0;
+		errno = 0;
+		n = strtol(v, &end, 10);
+		if (errno)
+			return 0;
+		if (!strcmp(key, "pids"))
+			return !*end && n <= INT_MAX;
+		/* duration() multiplies by up to 3600 into an int. */
+		return n <= INT_MAX / 3600 &&
+		       (!*end || (strchr("smhSMH", *end) && !end[1]));
+	}
+	return 1;
+}
+
+/*
+ * 0 when set; -1 for a line that is no key=value or names no known key; -2 for
+ * a value its key does not take. A refused value leaves the field as it was
+ * and is kept, as `key=value`, in badvalue[] for profile_print to name.
+ */
 int profile_set(Profile *p, const char *kv)
 {
 	const char *eq = strchr(kv, '=');
@@ -313,12 +470,25 @@ int profile_set(Profile *p, const char *kv)
 	while (*eq == ' ' || *eq == '\t')
 		eq++;
 
+	if (!value_ok(key, eq)) {
+		if (p->nbad < 8)
+			snprintf(p->badvalue[p->nbad++], sizeof(p->badvalue[0]),
+				 "%s=%s", key, eq);
+		return -2;
+	}
+
 	if (!strcmp(key, "image"))
 		snprintf(p->image, sizeof(p->image), "%s", eq);
 	else if (!strcmp(key, "base"))
 		snprintf(p->base, sizeof(p->base), "%s", eq);
 	else if (!strcmp(key, "accent"))
-		snprintf(p->accent, sizeof(p->accent), "%s", eq);
+		/* `none` is the word accent_shown() prints for no accent; it is
+		 * stored as `session`, the file's token, so a printed profile
+		 * can be written back. Every file this program saves holds
+		 * `session`, and the Boxes KCM reads a hand-written `none` as
+		 * `session` too. */
+		snprintf(p->accent, sizeof(p->accent), "%s",
+			 strcmp(eq, "none") ? eq : "session");
 	else if (!strcmp(key, "grant"))
 		snprintf(p->grant, sizeof(p->grant), "%s", eq);
 	else if (!strcmp(key, "persistence")) {
@@ -329,11 +499,11 @@ int profile_set(Profile *p, const char *kv)
 		else
 			p->persist = PERSIST_PERSISTENT;
 	} else if (!strcmp(key, "network")) {
-		/* host | private | none. `yes`, `on`, `1` and `true` read as
-		 * private and any other word, `shared` among them, as host.
-		 * `none` is private PLUS no interface at all, which is a
-		 * different thing from a namespace of one's own with a bridge
-		 * in it. */
+		/* host | private | none, with `shared` for host and `yes`,
+		 * `on`, `1` and `true` for private; PROFILE_VALUES refuses
+		 * every other word. `none` is private PLUS no interface at
+		 * all, which is a different thing from a namespace of one's
+		 * own with a bridge in it. */
 		p->netnone = !strcmp(eq, "none");
 		p->netns = p->netnone || truthy(eq);
 	} else if (!strcmp(key, "ipc"))
@@ -353,9 +523,9 @@ int profile_set(Profile *p, const char *kv)
 	else if (!strcmp(key, "gpu"))
 		p->gpu = truthy(eq) || !strcmp(eq, "shared");
 	else if (!strcmp(key, "x11")) {
-		/* yes | no. Only a plain refusal is a no: every other word is
-		 * the default, so a value nobody wrote on purpose leaves an
-		 * X11-only application its display. */
+		/* yes | no, each in its four spellings; PROFILE_VALUES refuses
+		 * every other word, so a value nobody meant changes neither
+		 * the display a box is handed nor its withholding. */
 		if (!strcmp(eq, "no") || !strcmp(eq, "off") ||
 		    !strcmp(eq, "0") || !strcmp(eq, "false"))
 			kb_strlcpy(p->x11, "no", sizeof(p->x11));
@@ -369,9 +539,15 @@ int profile_set(Profile *p, const char *kv)
 	else if (!strcmp(key, "render"))
 		snprintf(p->render, sizeof(p->render), "%s", eq);
 	else if (!strcmp(key, "memory"))
-		snprintf(p->memory, sizeof(p->memory), "%s", eq);
+		/* `unlimited` and `all`, in any case, are the words the
+		 * profile prints for no limit; they are stored empty, as
+		 * create stores it, so a printed profile written back
+		 * changes nothing and leaves the creation digest alone. */
+		snprintf(p->memory, sizeof(p->memory), "%s",
+			 strcasecmp(eq, "unlimited") ? eq : "");
 	else if (!strcmp(key, "cpus"))
-		snprintf(p->cpus, sizeof(p->cpus), "%s", eq);
+		snprintf(p->cpus, sizeof(p->cpus), "%s",
+			 strcasecmp(eq, "all") ? eq : "");
 	else if (!strcmp(key, "pids"))
 		p->pids = atoi(eq);
 	else if (!strcmp(key, "autostop"))
@@ -397,7 +573,7 @@ const char *accent_shown(const char *accent)
 int accent_known(const char *accent)
 {
 	return !accent[0] || !strcmp(accent, "session") ||
-	       kcol_find(accent) != NULL;
+	       !strcmp(accent, "none") || kcol_find(accent) != NULL;
 }
 
 int profile_load(Profile *p, const char *box)
@@ -419,6 +595,10 @@ int profile_load(Profile *p, const char *box)
 			line++;
 		if (*line == '#' || !*line)
 			continue;
+		/* A hand-edited file is read, not refused: an unknown key or
+		 * a refused value keeps the default and is named on a `!`
+		 * line by profile_print. Refusing the whole file would leave
+		 * the box no profile at all. */
 		profile_set(p, line);
 	}
 	return 1;
@@ -1277,6 +1457,28 @@ int profile_digest_diff(const char *a, const char *b, char *out, size_t n)
 	return changed;
 }
 
+int profile_launch_differs(const Profile *a, const Profile *b)
+{
+	Profile c = *b;
+
+	memcpy(c.base, a->base, sizeof(c.base));
+	memcpy(c.image, a->image, sizeof(c.image));
+	c.persist = a->persist;
+	c.netnone = a->netnone;
+	c.netns = a->netns;
+	c.ipc = a->ipc;
+	c.devsys = a->devsys;
+	c.process = a->process;
+	c.privhome = a->privhome;
+	c.init = a->init;
+	c.gpu = a->gpu;
+	memcpy(c.memory, a->memory, sizeof(c.memory));
+	memcpy(c.cpus, a->cpus, sizeof(c.cpus));
+	c.pids = a->pids;
+	memcpy(c.accent, a->accent, sizeof(c.accent));
+	return memcmp(&c, a, sizeof(c)) != 0;
+}
+
 int tty_foreground(int fd)
 {
 	pid_t fg;
@@ -1287,9 +1489,7 @@ int tty_foreground(int fd)
 	return fg >= 0 && fg == getpgrp();
 }
 
-/* The digest the box's container was created with, "" when it has none or
- * podman could not say. */
-static void box_profile_label(const char *box, char *out, size_t n)
+void box_profile_label(const char *box, char *out, size_t n)
 {
 	KbArgv a = {0};
 
@@ -1324,34 +1524,50 @@ void profile_print(const Profile *p)
 	else
 		printf("base        = (none yet — the first launch records the pack)\n");
 	/*
-	 * A PROFILE WHOSE CREATE-TIME KEYS DIFFER FROM ITS CONTAINER'S LABEL IS
-	 * NOT WHAT THE BOX RUNS: the lines below are the file's, and the
-	 * container was made from what the label recorded (BOX_PROFILE_LABEL).
-	 * The keys that differ are named. A box with no container prints
-	 * nothing, because its next create reads the file as it is now, and
-	 * nor does a container with no `v1.` label — one distrobox made by
-	 * itself — since nothing records what it was made from.
+	 * WHAT THE CONTAINER WAS MADE FROM, for a box that has one: `matches`
+	 * when its `v1.` label (BOX_PROFILE_LABEL) holds the file's create-time
+	 * keys, `differs` when it does not — the lines below are then the
+	 * file's, not what the box runs, and a `!` line names the keys — and
+	 * `unrecorded` for a container with no `v1.` label, one distrobox made
+	 * by itself, which records nothing to compare with. A box with no
+	 * container prints no line, because its next create reads the file as
+	 * it is now. The settings page takes `matches` and `differs` as the
+	 * whole truth about the container and drops any change it remembers
+	 * that the `!` line does not name, so the line is printed only from a
+	 * label this report has compared.
 	 */
 	{
 		char label[PROFILE_DIGEST_MAX + 32], now[PROFILE_DIGEST_MAX];
 		char keys[256];
-		int nk;
+		int nk = 0;
 
 		box_profile_label(p->name, label, sizeof(label));
-		profile_create_digest(p, now, sizeof(now));
-		if (!strncmp(label, "v1.", 3) &&
-		    (nk = profile_digest_diff(label, now, keys, sizeof(keys))) > 0)
-			printf("            ! the profile was written after this box"
-			       " was created: %s %s — %s once `kdos-box remove"
-			       " %s` has run and the box is made again\n", keys,
-			       nk == 1 ? "differs" : "differ",
-			       nk == 1 ? "it applies" : "they apply", p->name);
+		if (!strncmp(label, "v1.", 3)) {
+			profile_create_digest(p, now, sizeof(now));
+			nk = profile_digest_diff(label, now, keys, sizeof(keys));
+			printf("created     = %-11s %s\n", nk > 0 ? "differs" : "matches",
+			       nk > 0 ? "the container was made with other create-time"
+					" values (label " BOX_PROFILE_LABEL ")"
+				      : "the container was made with these create-time"
+					" values (label " BOX_PROFILE_LABEL ")");
+			if (nk > 0)
+				printf("            ! the profile was written after this box"
+				       " was created: %s %s — %s once `kdos-box remove"
+				       " %s` has run and the box is made again\n", keys,
+				       nk == 1 ? "differs" : "differ",
+				       nk == 1 ? "it applies" : "they apply", p->name);
+		} else if (box_exists(p->name)) {
+			printf("created     = %-11s %s\n", "unrecorded",
+			       "the container has no " BOX_PROFILE_LABEL " label,"
+			       " so nothing records what it was made with");
+		}
 	}
 	/*
 	 * THE TITLE BAR'S COLOUR IS A KWin RULE, written by rules.c for every
 	 * box the user has, and it is named here by the scheme it forces. No
-	 * accent is printed `none`: the file's token for it is `session`, which
-	 * reads as "the session's accent" and is the neutral KDOSBox scheme. A
+	 * accent is printed `none`, and `none` is accepted back and stored as
+	 * `session`, the file's token, which reads as "the session's accent"
+	 * and is the neutral KDOSBox scheme. A
 	 * name that is no libkcolor accent is said to be one, because the
 	 * rule falls back to the neutral scheme without a word.
 	 */
@@ -1677,6 +1893,17 @@ void profile_print(const Profile *p)
 	for (int i = 0; i < p->nunknown; i++)
 		printf("            ! boxes/%s.conf: unknown key '%s'\n", p->name,
 		       p->unknown[i]);
+	for (int i = 0; i < p->nbad; i++) {
+		char key[64];
+		const char *rule;
+
+		snprintf(key, sizeof(key), "%.*s",
+			 (int)strcspn(p->badvalue[i], "="), p->badvalue[i]);
+		rule = profile_value_rule(key);
+		printf("            ! boxes/%s.conf: '%s' — %s takes %s; the "
+		       "line is ignored\n", p->name, p->badvalue[i], key,
+		       rule ? rule : "another value");
+	}
 }
 
 int image_exists(const char *image)

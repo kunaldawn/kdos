@@ -745,7 +745,10 @@ int ki_seed_accent(const char *root, const char *kdos,
  * With an XKB layout, /etc/kdos/xkb.conf is kdos-settingsd's store for
  * locale1, which the login screen's KWin reads before anybody types and which
  * startplasma hands every session; /etc/xdg/kxkbrc is the same layout as the
- * Keyboard page of System Settings shows it. Without one, xkb.conf is left
+ * Keyboard page of System Settings shows it, and the one KWin and the lock
+ * screen read first. kdos-settingsd rewrites it on every locale1 layout
+ * change, so an OEM machine's wizard choice replaces it; a machine that never
+ * calls locale1 keeps the layout written here. Without one, xkb.conf is left
  * empty, which kdos-settingsd reads as "the layout nearest the console
  * keymap", and no kxkbrc is written.
  */

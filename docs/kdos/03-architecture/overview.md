@@ -123,7 +123,7 @@ initramfs init ─── splash, A/B slot selection, LUKS unlock, LVM, find and 
    ▼
 init (sysvinit, PID 1), reading /etc/inittab
    ├─ /etc/init.d/rcS ── fsck and mount, the numbered service scripts, then the
-   │                     splash fades to black and lets go of the screen
+   │                     splash stops drawing, its last frame held on screen
    ├─ kdos-dm tty1 → sddm ─────────────── the display manager
    │     ├─ the login screen: sddm-greeter-qt6 on a kwin_wayland of its own
    │     └─ after a login, through PAM (elogind, turnstile, the wallet):
@@ -156,8 +156,9 @@ From the initramfs until `rcS` finishes, `kdos-splash` draws the boot progress o
 framebuffer, and `rcS` reports one step to it per enabled service script. The passphrase prompt
 for an encrypted root is drawn through the splash. At its end `rcS` leaves the first of the two
 marks that confirm a tried A/B slot, then tells the splash to hand the screen over: the splash
-fades to black and lets go of the framebuffer before `rcS` returns, so the login screen's
-compositor, which `init` starts only after that, never competes with it for the display. The
+draws its settled frame once more and stops drawing before `rcS` returns, so the login screen's
+compositor, which `init` starts only after that, never competes with it for the display, and
+that frame stays on screen until the compositor's first frame replaces it. The
 second mark is written once a desktop session has answered for a minute, and `kdos-sysupdated`
 confirms the slot only when both exist. Where kernel messages go, how the splash survives the
 change of root, and how a slot is confirmed are in [The splash](boot-and-init.md#the-splash),

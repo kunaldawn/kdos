@@ -34,13 +34,14 @@ The live medium starts all three, and so does an installed system unless you tur
 the installer: in its list of service choices, the last field of each entry is whether it starts
 ticked, and CUPS starts ticked:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=09936ab49b18 -->
 
-Unticking it writes [`/etc/service.disabled/cups`]{.idx}. `81_cups-browsed` and `82_ipp-usb` read that
-marker too: while it is there each prints `[SKIP] <name>: CUPS is disabled
-(/etc/service.disabled/cups)` at boot and starts nothing, because both exist to hand printers to
-`cupsd`. A scanner that speaks IPP over USB reaches SANE only through `ipp-usb`, so it also needs
-`cups` enabled.
+Unticking it writes [`/etc/service.disabled/cups`]{.idx}, which covers the two companions as well:
+`81_cups-browsed` and `82_ipp-usb` exist to hand printers to `cupsd`, so they run only while it
+does. `80_cups.sh` starts each after `cupsd` unless that companion has a marker of its own, and
+stops both before `cupsd`; started any other way while `cupsd` is not supervised, each prints
+`[SKIP] <name>: CUPS is off` and starts nothing. A scanner that speaks IPP over USB reaches SANE only
+through `ipp-usb`, so it also needs CUPS running.
 
 ## Configuration
 
@@ -53,15 +54,15 @@ no flag; `ipp-usb` runs in `standalone` mode, which keeps it running between dev
 
 <!-- kfs:include fs/etc/init.d/82_ipp-usb.sh -->
 
-`81_cups-browsed.sh` has the same shape and the same CUPS check, and runs `cups-browsed` with no
-argument.
+`81_cups-browsed.sh` has the same shape and the same check for a running `cupsd`, and runs
+`cups-browsed` with no argument.
 
 ### Who may manage printers
 
 CUPS is configured with [`lpadmin`]{.idx} and `root` as its administrative groups, runs filters as `lp`, and listens
 on a local socket under [`/run/cups`]{.idx}:
 
-<!-- kfs:include ports/core/printing/cups/build.sh lines=23-28 pin=f36619f7c808 -->
+<!-- kfs:include ports/core/printing/cups/build.sh lines=26-31 pin=f36619f7c808 -->
 
 The `kdos` account is in `lpadmin`, in the shipped `/etc/group`:
 
@@ -70,7 +71,7 @@ The `kdos` account is in `lpadmin`, in the shipped `/etc/group`:
 A password asked for by the web interface is checked through PAM, with the file the cups port
 writes:
 
-<!-- kfs:include ports/core/printing/cups/build.sh lines=46-51 pin=06a021f5fcdc -->
+<!-- kfs:include ports/core/printing/cups/build.sh lines=49-54 pin=06a021f5fcdc -->
 
 ### /etc/cups/
 
@@ -116,16 +117,12 @@ drives over raw USB rather than through CUPS, go to `lpadmin` instead, in
 CUPS runs on an installed system by default. If printing was turned off in the installer, or a
 machine was installed from KDOS 0.2, whose installer left it off:
 
-1. Enable it for every boot, and start it with the two services that wait on it:
+1. Enable it for every boot, and start it; `cups-browsed` and `ipp-usb` start with it:
 
    ```bash
    sudo service enable cups
    sudo service start cups
-   sudo service start cups-browsed
-   sudo service start ipp-usb
    ```
-
-   `service start` takes one name at a time.
 
 2. Check it:
 
@@ -134,9 +131,8 @@ machine was installed from KDOS 0.2, whose installer left it off:
    lpstat -r
    ```
 
-To turn printing off, `sudo service disable cups` and `sudo service stop cups`; from the next boot
-`cups-browsed` and `ipp-usb` skip as well, and `sudo service stop cups-browsed` and `sudo service
-stop ipp-usb` stop them at once.
+To turn printing off, `sudo service disable cups` and `sudo service stop cups`; the stop takes
+`cups-browsed` and `ipp-usb` down first, and at the next boot both skip with `CUPS is off`.
 
 ### Adding a printer from the desktop
 
@@ -306,7 +302,9 @@ system groups, `lpadmin` and `root`: run it as a member of `lpadmin`, or with `s
 
 **A job stays in the queue.** `lpstat -t` shows the queue's state and the printer's last message.
 CUPS's log is `/var/log/cups/error_log`; for more detail, run `cupsctl --debug-logging`, print
-again, and read it.
+again, and read it. A job for a network printer that is still busy waits in five-second steps
+until the printer is idle; see
+[Known gaps](../../kdos/06-reference/known-gaps.md#a-job-for-a-busy-network-printer-waits-in-five-second-steps).
 
 **A USB printer is not found.** Ask `ipp-usb` what it sees:
 

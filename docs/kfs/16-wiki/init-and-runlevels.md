@@ -54,7 +54,12 @@ a boot are explained in
 `rcS` is the `sysinit` entry. After mounting the filesystems it runs every numbered service script,
 and this is the loop that does it:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=154-193 pin=403936cc08ac -->
+<!-- kfs:include fs/etc/init.d/rcS lines=173-213 pin=5e326058e8e1 -->
+
+The mark each stage gets on the splash comes from `stage_verdict`, defined near the top of `rcS`:
+`fail` for a non-zero exit, `skip` for a script that printed a `[SKIP]` line and started no
+supervised service, and `ok` otherwise. A failed stage also puts the last six lines of its log
+under the bar.
 
 ### /etc/init.d/rcK
 
@@ -135,7 +140,7 @@ sudo passwd root
 
 Then choose one of three ways in:
 
-1. **From the boot menu, on an installed system.** Pick the `KDOS (single user)` entry. `rcS` runs
+1. **From the boot menu, on an installed system.** Pick the `KDOS <version> (single user)` entry. `rcS` runs
    as on every boot, so every enabled service starts, and `sulogin` runs after it. The live medium's
    menu has no such entry: its entries are `KDOS Live`, `KDOS Live (clean session)`,
    `KDOS Live (verbose)` and the memory test.

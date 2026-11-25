@@ -73,3 +73,6 @@ chmod 644 "$PKG/usr/share/applications/kdos-help.desktop"
 
 install -Dm644 "$PORT_SRC/kdos.notifyrc" \
 	"$PKG/usr/share/knotifications6/kdos.notifyrc"
+
+install -Dm644 "$LIBS/libksig/monocypher/LICENCE.md" \
+	"$PKG/usr/share/licenses/$name/monocypher-LICENCE.md"

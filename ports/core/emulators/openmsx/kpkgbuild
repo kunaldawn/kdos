@@ -10,7 +10,7 @@
 
 name        = openmsx
 version     = 21.0
-release     = 1
+release     = 2
 _tag        = RELEASE_${version//./_}
 source      = $name-$version.tar.gz::https://github.com/openMSX/openMSX/releases/download/$_tag/openmsx-$version.tar.gz
 sha256      = 28838bfa974a0b769b04a8820ad7953a7ad0835eb5d1764db173deac75984b6f  openmsx-21.0.tar.gz
