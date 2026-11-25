@@ -9,14 +9,20 @@
  *   groups.js — the Make It Yours page's rules, apart from its controls
  *
  *   rows(value)          the groups `kdos update groups --json` printed, each
- *                        {id, title, installed, missing, packages, size};
- *                        size is null where the command could not size it.
+ *                        {id, title, installed, missing, packages, binhost,
+ *                        size}; size is null where the command could not
+ *                        size it, and binhost false only where the command
+ *                        said so: nothing names a binhost for this tree and
+ *                        no refresh can name one.
  *                        An entry whose id is not a port-name word is
  *                        dropped: the id becomes an argument of a root
  *                        command
  *   noIndex(list)        no group has a size: the release's binhost index
  *                        is not on this machine, and nothing installs
  *                        prebuilt until it is
+ *   noBinhost(list)      no group has a size and the command says nothing
+ *                        names a binhost and no refresh can: no group
+ *                        installs prebuilt on this release
  *   installable(g)       not installed, and sized, so every package of it
  *                        is prebuilt
  *   bytes(list, ids)     what the ticked installable groups download
@@ -43,12 +49,17 @@ function rows(value) {
             installed: g.installed === true,
             missing: typeof g.missing === "number" ? g.missing : 0,
             packages: typeof g.packages === "number" ? g.packages : 0,
+            binhost: g.binhost !== false,
             size: typeof g.size === "number" ? g.size : null,
         }));
 }
 
 function noIndex(list) {
     return list.length > 0 && list.every(g => g.size === null);
+}
+
+function noBinhost(list) {
+    return noIndex(list) && list.every(g => g.binhost === false);
 }
 
 function installable(g) {

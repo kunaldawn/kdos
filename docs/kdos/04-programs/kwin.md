@@ -199,12 +199,17 @@ off but named under `[Plugins]` in a KDOS `kwinrc`, as the auto-tiler is, counts
 it would take from a binding already in force fails the check until the shipped
 `kglobalshortcutsrc` unbinds it.
 
-A new account's first login runs every upgrade step KDE ships for `kconf_update`, while KWin is
-already up. One of them, KWin's `kwin-6.1-remove-gridview-expose-shortcuts`, deletes the Present
-Windows actions to drop Plasma 5's keys, and run then it deletes the ones the Window View effect
-has just registered, so Meta+F9, Meta+F10 and Meta+F7 would do nothing until the next login.
-`/usr/share/kdos/xdg/kconf_updaterc` records that step as done; `kconf_update` reads its record
-along `XDG_CONFIG_DIRS`, so no account runs it. fcitx5's own
+A new account's first login runs every upgrade step KDE ships for `kconf_update`, while KWin and
+plasmashell are already up. Two of them undo what that login sets up. KWin's
+`kwin-6.1-remove-gridview-expose-shortcuts` deletes the Present Windows actions to drop Plasma 5's
+keys, and run then it deletes the ones the Window View effect has just registered, so Meta+F9,
+Meta+F10 and Meta+F7 would do nothing until the next login. plasma-workspace's
+`migrate-calendar-plugins` empties and rewrites the panels file in the same second as the desk's
+first layout, and plasmashell can save over it, leaving the panels without the settings the desk
+wrote (see [How a desk is laid out](plasma-shell.md#how-a-desk-is-laid-out)).
+`/usr/share/kdos/xdg/kconf_updaterc` records both steps as done; `kconf_update` reads its record
+along `XDG_CONFIG_DIRS`, so no account runs them. A new account has nothing either step would
+migrate. fcitx5's own
 group-switch key is moved off Meta+Space by `/etc/xdg/fcitx5/config` for the same reason: KWin
 sees a chord first, so fcitx5's switch would otherwise stop working without a word.
 
@@ -216,7 +221,10 @@ it, the same keys close it, and Esc clears the search and then closes it. Tab, D
 from the search field through the rows with a visible focus frame, scrolling the list to keep the
 row in sight, and a screen reader speaks each row as "<action>: <keys>"; after a search it
 announces how many shortcuts are left. A chord too long for its column wraps inside its chip
-rather than being cut short. It is
+rather than being cut short. An action with several keys lists them in one order in every
+session: its default keys first, then the chord with fewer modifier keys (Meta, Ctrl, Alt, Shift,
+Num; the Plus key is a key, so Meta++ has one modifier), then plain text order, which does not
+depend on the locale. The spoken "<action>: <key> or <key>" follows the same order. It is
 `kwin-effect-kdos-keys`, a KWin effect written in QML and installed to
 `/usr/share/kwin/effects/kdos_keys/`.
 
@@ -259,9 +267,13 @@ configuration) leaves its error on screen; a window held after a normal quit kee
 the key raises it until it is closed. A KWin
 script cannot start a program, so each program has a key-less desktop entry in
 `/usr/share/kglobalaccel/`, and the script opens a window by invoking that entry's `_launch`
-action. The entries are listed on the Shortcuts page as "<program> in a New Window". A program
-that is not installed keeps its key; Konsole then says it was not found and starts a shell in its
-place.
+action. The entries are listed on the Shortcuts page as "<program> in a New Window", and the
+actions as "Raise or Open <program> (<what>)", such as "Raise or Open mc (files)".
+
+Only `lynx` is on the installation medium. The other six install with
+`sudo kdos update install mc aerc rmpc khal iamb micro`; `ikhal` comes with `khal`. Until a program
+is installed its key opens a Konsole window titled after the program and holding a shell: Konsole's
+"could not find" line comes before the shell's greeting, which scrolls it out of view.
 
 ## Window memory
 
@@ -286,7 +298,13 @@ is resized. A place remembered at another device pixel ratio is restored without
 the program picks for the ratio it is on. A window with no record that KWin centred while its size
 was a placeholder is centred again, inside the usable area, when it takes its real size within two
 seconds of opening, and one that opens larger than the usable area is moved and shrunk into it in
-the same two seconds.
+the same two seconds. A resizable window with no record whose first real size is under half the
+usable area in either direction — the widgets' minimum a KXmlGui program with no saved size opens
+at — is grown to at least 60% by 70% of the area and centred on its screen. A borderless window (a
+splash, a frameless notice, a program drawing its own title bar) is not, nor KCalc, Kalk,
+Qalculate, KColorChooser, KCharSelect, KTeaTime or KTimer, whose small window is their design; a
+splash with a border is grown on a launch with no record. What it closes at is recorded, so a size
+the person picks wins from the next launch on.
 
 | `kwinrc [Script-kdos_window_memory]` | Default | Effect |
 |---|---|---|

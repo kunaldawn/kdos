@@ -119,13 +119,13 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/aerc.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Mail
-GenericName=Email Client
-Comment=Read and send mail
+Name=aerc
+GenericName=Terminal Mail Client
+Comment=Read and send mail in a terminal
 Exec=aerc %u
 Icon=mail-message
 Terminal=true
-Categories=Network;Email;
+Categories=Network;Email;ConsoleOnly;
 Keywords=mail;email;imap;smtp;aerc;
 EOF
 chmod 644 "$PKG/usr/share/applications/aerc.desktop"

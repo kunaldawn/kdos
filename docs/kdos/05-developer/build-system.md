@@ -35,13 +35,14 @@ package the build made, and a bootable image at `build/iso-build/kdos.iso`, whic
    root filesystem through `script/chroot/exec.sh`.
 
 The container sees the repository at `/workspace`. `src/`, `fs/`, `script/`, `ports/`, `docs/`
-and `testing/`, the `Makefile` and the `Dockerfile` are mounted read-only and only `build/` is
+and `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` are mounted read-only and only `build/` is
 writable, so a build cannot modify its own sources; nothing else of the checkout, `.git`
 included, is mounted. The
-`Makefile` passes eighteen variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
+`Makefile` passes nineteen variables in: `HOST_UID` and `HOST_GID` (see [kdosbuild](#kdosbuild)),
 `KDOS_GIT_COMMIT` and `KDOS_GIT_DIRTY` (recorded in each snapshot and stamped into
 `/etc/os-release`), `KDOS_GIT_DATE` (the commit's date, stamped beside them), `KDOS_GIT_TIME` (the
-commit's time in Unix seconds, stamped into `/ports/TREE`), the job count `KDOS_JOBS`
+commit's time in Unix seconds, stamped into `/ports/TREE`), `KDOS_GIT_TAG` (the release tag, `v<digit>…`, on
+`HEAD`, see [The release tag](#the-release-tag)), the job count `KDOS_JOBS`
 (empty unless the developer set it), the `system.sfs` codec `KDOS_ISO_COMP` and block size
 `KDOS_ISO_BLOCK`, the release size gate's limit `KDOS_ISO_MAX` and switch `KDOS_ISO_GATE` (any
 value but a positive number, or `0` or `1`, stops `make build`), what the ISO carries,
@@ -120,7 +121,8 @@ The first two phases build a cross toolchain and use it to cross-compile a minim
 `build/fs`, including `kpkg`, the package manager, and `kinstall`, the installer. Both are compiled
 directly from `src/system/kdos-kpkg` and `src/system/kdos-installer` rather than installed as
 ports, because nothing can be installed as a port until `kpkg` exists. `kdos-kpkg` has no recipe
-at all, and `kdos-installer`'s recipe is named in no phase's list. The other ports of `src/system`
+at all; `kdos-installer`'s recipe is named in `41_system`'s list, and the package it builds there
+adopts the `/usr/bin/kinstall` the bootstrap left unowned. The other ports of `src/system`
 and `src/art` are built in `41_system`, `42_graphics`, `43_toolkits` and `50_desktop`, each where
 its dependencies first exist. From `20_selfhost` on, the
 build is self-hosting: the package phases are lists of ports that `kpkg` builds inside `build/fs`
@@ -240,13 +242,12 @@ Nine of the run's names repeat `20_selfhost`'s list: `fortify-headers`, `musl`, 
 `41_system` has no pinned run; a run goes there when a comment has to pin its order.
 No other userland phase has an order file.
 
-The lists install every recipe in the tree but two. `kdos-installer` is compiled directly by
-`10_bootstrap`, and `texlive-doc` is listed in `ports/unbuilt`, the recipes kept for a
-`kpkg install` on a machine that wants them and built by no phase; `040_orphans.sh` removes a
-package `ports/unbuilt` names from the image if an earlier build left it installed. The four ports
-no list names, `gmp`, `mpfr`, `mpc` and `xxhash`, are `20_selfhost`'s dependencies.
-`testing/bookcounts.py`, which `testing/docscheck.sh` runs, fails on a recipe no phase installs
-unless `ports/unbuilt` names it, and on a name there that a phase does install. [The ports
+The lists install every recipe in the tree. `ports/unbuilt` is the place for a recipe kept for a
+`kpkg install` on a machine that wants it and built by no phase, and it names none;
+`040_orphans.sh` removes a package `ports/unbuilt` names from the image if an earlier build left it
+installed. The four ports no list names, `gmp`, `mpfr`, `mpc` and `xxhash`, are `20_selfhost`'s
+dependencies. `testing/bookcounts.py`, which `testing/docscheck.sh` runs, fails on a recipe no
+phase installs unless `ports/unbuilt` names it, and on a name there that a phase does install. [The ports
 catalogue](../06-reference/ports-catalogue.md) lists every port by shelf with the phase that
 installs it. Shelves, and the recipe's own `group =` key, which is a different thing, are explained
 in [Packaging](../03-architecture/packaging.md#the-group-key).
@@ -488,7 +489,7 @@ The file is verbatim, escape sequences included. The full-screen interface keeps
 | File | Holds |
 |---|---|
 | `snapshots.log` | Every notice the build shows (snapshots taken, skipped or failed, restores, plans, stop requests), with a time stamp, so a notice survives the interface that displayed it |
-| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree, or a `docs/`, `testing/`, `Makefile` or `Dockerfile` it could not bind read-only, an open-files limit it could not raise |
+| `chroot.log` | Warnings from `script/chroot/exec.sh`: a cgroup tree, or a `docs/`, `testing/`, `Makefile`, `Dockerfile` or `LICENSE` it could not bind read-only, an open-files limit it could not raise |
 | `<phase>/expansion.log` | Why a package phase could not be resolved |
 
 Reading a failed step's log is covered in [Build troubleshooting](build-troubleshooting.md).
@@ -667,6 +668,8 @@ inside it:
 | `KDOS_PKG_STORE_MAX` | A size, default `60G` | `70_image/015_pkgstore.sh`, the cap the store is evicted down to |
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE` | The short commit, `1` when the tree had unrecorded changes, and the commit's date as `YYYY-MM-DD` | `70_image/045_identity.sh`, which stamps them into `/etc/os-release` |
 | `KDOS_GIT_TIME` | The commit's time in Unix seconds | `70_image/105_ports.sh`, which stamps it with the commit into `/ports/TREE` |
+| `KDOS_GIT_TAG` | The release tag (`v<digit>…`) on `HEAD`, or empty when it has none or `KDOS_GIT_TAG=none` was given | `70_image/105_ports.sh`, which stops the step with `FATAL: tag '<t>' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40` for a tag outside `ports/publish --release`'s alphabet, and otherwise only reports why `/ports/TREE` names no release |
+| `KDOS_GIT_RELEASE` | Set by `script/chroot/exec.sh` itself: `KDOS_GIT_TAG` when `KDOS_GIT_DIRTY` is `0`, else empty | `70_image/045_identity.sh`, which stops the build when it is not `/etc/os-release`'s `VERSION_ID` with a `v` before it, and `70_image/105_ports.sh`, which writes it into `/ports/TREE` as `version <tag>` |
 
 A variable the `Makefile` passes into the build container but `script/chroot/exec.sh` does not
 name reaches the container phases and none of the chroot ones. `70_image` is a chroot phase, so an
@@ -701,7 +704,8 @@ The phases from `20_selfhost` on run inside the target root filesystem, `build/f
    read-only at `/kdos/testing` and `ports/` again at `/kdos/ports` for `70_image`'s
    `087_gates.sh`, whose checks run from `/kdos` and read the recipes under it. The `Makefile` and
    the `Dockerfile` are bound read-only over their own paths under `/kdos`, for the listings
-   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium. The
+   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium, and
+   `LICENSE` beside them for the MIT text `105_ports.sh` installs. The
    repository bind mount does not carry the container's own mounts beneath it, so each directory
    and file a step needs is mounted explicitly. For a `70_image` step from `017_stage.sh` on under
    `KDOS_IMAGE=base`, all of this is mounted in the image stage instead of `build/fs` (see
@@ -844,7 +848,7 @@ the initramfs and ISO carry it into the image.
 
 | Step | Does |
 |---|---|
-| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, under a `PORT_REPO` of `/ports/core` and the four `src/` areas so a package of KDOS's own gets its recipe hash, making the key in `build/binhost-key/` on first use, then writes the AppStream catalogue and the directory's signed release index, `kdos-update.idx`, every name flat; without it, does nothing. The directory accumulates across runs and nothing empties it. The index gives the `E:` recipe hash only to the file whose version and release are the recipe's; a superseded file gets an empty one, stays in the directory and is left out of `kdos-update.idx`, so no release publishes it. A current package file larger than one release asset (`KDOS_PART_SIZE`, 1,900 MiB) fails the step. A package the build kept from an earlier recipe at the same version and release is indexed as if built from the current one. A complete binhost needs `build/binhost/` emptied by hand and then a build from nothing with the flag set: `--fresh` alone builds no port already installed in `build/fs`, so it makes no package for one (see [Building from scratch](developing.md#building-from-scratch)) |
+| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, under a `PORT_REPO` of `/ports/core` and the four `src/` areas so a package of KDOS's own gets its recipe hash, making the key in `build/binhost-key/` on first use, then writes the AppStream catalogue and the directory's signed release index, `kdos-update.idx`, every name flat; without it, does nothing. The directory accumulates across runs. The index gives the `E:` recipe hash only to the file whose version and release are the recipe's; a superseded file, or one of a port the tree has no recipe for, gets an empty one, and the step moves each such file and its `.sig` to `build/binhost-superseded/` and indexes again, so `PACKAGES`, the catalogue and `kdos-update.idx` name one set of files. A current package file larger than one release asset (`KDOS_PART_SIZE`, 1,900 MiB) fails the step. A package the build kept from an earlier recipe at the same version and release is indexed as if built from the current one. A binhost of nothing but this tree's builds needs `build/binhost/` emptied by hand and then a build from nothing with the flag set: `--fresh` alone builds no port already installed in `build/fs`, so it makes no package for one (see [Building from scratch](developing.md#building-from-scratch)) |
 | `015_pkgstore.sh` | With the package store on, runs `kpkg store gc` over `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used entries first; with it off, does nothing |
 | `017_stage.sh` | The first step in the [image stage](#the-image-stage). Refuses to run unless `/` is an overlay, checks `ports/base`, `ports/buildonly` and `ports/groups` with `script/lib/imageset.py --check`, removes every installed package `imageset.py --drop` names in one `kpkg remove` (whose index triggers rebuild the caches once for the trimmed tree), fails if any of them is still installed, prints the kept and dropped counts and sizes, and writes `build/image-stage.ok`. Under `KDOS_IMAGE=full` it does nothing |
 | `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below). Removes every file no package owns that the [size and language policy](writing-ports.md#size-and-language-policy) prunes from a package (a non-English message catalog, a translated manual page, an HTML or PDF manual under `/usr/share/doc`) and the gawk and binutils manuals those ports leave out, so a copy `10_bootstrap` installed and its port does not adopt never ships |
@@ -939,19 +943,21 @@ shows; none has been timed, so the default stays zstd:19. The write times are of
 vary by a fifth. The headers and static libraries compress far better than what stays: the
 facet cut takes 1.86 GB of files and 278 MiB of `system.sfs`.
 
-Those tables are of the whole earlier base, 1,004 packages. The base `ports/base` names now,
-853 packages with the run-time facets alone (the rules above and gcc's `facet_dev` line), is
-4.51 GB of files:
+Those tables are of a base of 1,004 packages. A base of 853 packages with the run-time facets
+alone (the rules above and gcc's `facet_dev` line), 4.51 GB of files, measured the same way:
 
 | Codec | Block | `system.sfs` | Write | Read (one core) |
 |---|---|---|---|---|
 | `zstd:19` | 1M | 1,781 MiB | 99 s | 4.2 s |
 | `xz-bcj` | 1M | 1,680 MiB | 212 s | 29.1 s |
 
-With the kernel, the initramfs, the boot loader and the `/ports` append beside it, about 90 MiB,
-the ISO is about 1,870 MiB at zstd:19: under the 1,900 MiB gate by about 30 MiB. A build that
-lands over it either cuts the base further, which the ledger guides, or sets
-`KDOS_ISO_COMP=xz-bcj`, about 100 MiB smaller.
+Both base sets are larger than the one the v0.2 image was built from: its `system.sfs` is
+1,517 MiB at zstd:19 and its ISO 1,573 MiB, 327 MiB under the 1,900 MiB gate, so the kernel,
+the initramfs, the boot loader and the `/ports` append beside `system.sfs` take about 56 MiB.
+The base with Orca, BRLTTY, plocate, ISO Image Writer, Adwaita and noto-fonts-extra (Indic and
+Southeast Asian scripts, 13 MB unpacked) added measures about 1,700 MiB (1,699 MiB measured) of
+ISO, about 200 MiB under the gate. A build that lands over the gate either cuts the base further,
+which the ledger guides, or sets `KDOS_ISO_COMP=xz-bcj`, about 6% smaller.
 
 ## Databases stamped into the image
 
@@ -1468,6 +1474,40 @@ is not mounted into the container, are recorded in each snapshot so the picker c
 commit it came from. Run outside the container, `kdosbuild` asks `git` instead. The same two, with
 `KDOS_GIT_DATE`, are what `70_image/045_identity.sh` stamps into the image's `/etc/os-release`;
 that step does not ask `git`, so an image built without `make build` is unstamped.
+
+### The release tag
+
+An image names the release it is in `/ports/TREE`, as `version <tag>`, and a machine finds that
+release's binhost by the name alone. `make build` takes the tag from `git tag --points-at HEAD
+--list 'v[0-9]*'`, so only a release tag, one named `v<digit>…`, names a release: the archive tags
+`ports/publish` makes (`sources-N`, `src-*`, `packs-*`) never do. A lightweight tag counts as well
+as an annotated one, `KDOS_GIT_TAG=<tag>` picks one when there are several, and
+`KDOS_GIT_TAG=none` builds a tagged commit as an unreleased one. Before it starts the container it
+stops on any of three faults:
+
+| Fault | Message |
+|---|---|
+| Several release tags on `HEAD` and no `KDOS_GIT_TAG` | `HEAD carries several release tags (<tags>): name the release with KDOS_GIT_TAG=<tag>, or KDOS_GIT_TAG=none for none` |
+| `KDOS_GIT_TAG` names a tag that is not a release tag on `HEAD` | `KDOS_GIT_TAG=<t> is not a release tag (v<digit>…) on HEAD` |
+| The tag is outside `^[A-Za-z0-9_+~][A-Za-z0-9._+~-]{0,39}$`, the names `ports/publish --release` accepts | `tag '<t>' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40` |
+
+`script/chroot/exec.sh` turns the tag into `KDOS_GIT_RELEASE` only when `KDOS_GIT_DIRTY` is `0`,
+and `git status --porcelain` counts an untracked file as a change: an image built from a checkout
+with changes carries packages that are not the release's, and naming the release would have
+machines install the release's packages over them. `70_image/105_ports.sh` prints which case it
+met:
+
+| Case | Line |
+|---|---|
+| A clean checkout of a tagged commit | `/ports/TREE names release <tag>` |
+| A tag, and changes in the checkout | `the checkout has changes: /ports/TREE does not name release <tag>` |
+| No tag on `HEAD` | `HEAD carries no tag: /ports/TREE names no release, and prebuilt installs need binhost = in update.conf` |
+
+The binhost the same build writes is not named by the tag: `70_image/010_binhost.sh` stamps its
+index `version` with the commit cut to 12 characters, and `kdos update` refuses an index whose
+version is not the tree's, so a machine running a named image cannot take `build/binhost` as its
+`binhost =`. The release's own index is written by `ports/publish --release`, under the tag; see
+[Cutting a release](developing.md#cutting-a-release).
 
 ### How the program is organised
 

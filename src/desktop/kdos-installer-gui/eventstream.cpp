@@ -96,20 +96,20 @@ QString EventStream::currentTitle() const
 
 double EventStream::overall() const
 {
-    int counted = 0;
+    double counted = 0;
     double done = 0;
     for (const Step &s : m_steps) {
         if (s.state == QLatin1String("skipped")) {
             continue;
         }
-        counted++;
+        counted += s.weight;
         if (s.state == QLatin1String("done")) {
-            done += 1;
+            done += s.weight;
         } else if (s.state == QLatin1String("running") && s.frac > 0) {
-            done += s.frac;
+            done += s.weight * qMin(s.frac, 1.0);
         }
     }
-    return counted ? done / counted : 0;
+    return counted > 0 ? done / counted : 0;
 }
 
 void EventStream::touch(int step)
@@ -169,8 +169,14 @@ bool EventStream::line(const QByteArray &l)
         const QJsonArray steps = o.value(QStringLiteral("steps")).toArray();
         for (const QJsonValue &v : steps) {
             const QJsonObject s = v.toObject();
-            m_steps.append({s.value(QStringLiteral("title")).toString(), s.value(QStringLiteral("detail")).toString(),
-                            s.value(QStringLiteral("state")).toString(), -1, QString()});
+            /* A weight that is missing, or not a positive number, is 1. */
+            const double weight = s.value(QStringLiteral("weight")).toDouble(1);
+            m_steps.append({s.value(QStringLiteral("title")).toString(),
+                            s.value(QStringLiteral("detail")).toString(),
+                            s.value(QStringLiteral("state")).toString(),
+                            -1,
+                            QString(),
+                            weight > 0 ? weight : 1});
         }
         endResetModel();
     } else if (t == QLatin1String("S")) {

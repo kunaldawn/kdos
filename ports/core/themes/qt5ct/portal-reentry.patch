@@ -1,0 +1,33 @@
+Subject: Load the dialog theme once when it loads this plugin again
+
+xdgdesktopportal builds its base theme from the desktop's theme names, and
+under KDE that name is the key this plugin answers, so its readSettings()
+would create another portal theme without end and overflow the stack.
+
+diff -ru a/src/qt5ct-qtplugin/qt5ctplatformtheme.cpp b/src/qt5ct-qtplugin/qt5ctplatformtheme.cpp
+--- a/src/qt5ct-qtplugin/qt5ctplatformtheme.cpp	2025-01-27 23:46:40.000000000 +0530
++++ b/src/qt5ct-qtplugin/qt5ctplatformtheme.cpp	2026-11-22 10:21:09.937276980 +0530
+@@ -278,9 +278,13 @@
+         m_palette = Qt5CT::loadColorScheme(schemePath, m_palette);
+     }
+     m_iconTheme = settings.value("icon_theme").toString();
+-    //load dialogs
+-    if(!m_update)
++    //load dialogs; a dialog theme that builds its own base theme (the
++    //portal's does, from the desktop's theme names) can load this plugin
++    //again, and that copy must not load another dialog theme
++    static bool loadingDialogs = false;
++    if(!m_update && !loadingDialogs)
+     {
++        loadingDialogs = true;
+         //do not mix gtk2 style and gtk3 dialogs
+         QStringList keys = QPlatformThemeFactory::keys();
+         QString name = settings.value("standard_dialogs", "default").toString();
+@@ -295,6 +299,7 @@
+             m_theme.reset(QPlatformThemeFactory::create("qt5gtk2"));
+         else if(name == QLatin1String("gtk3") && keys.contains("qt5gtk3"))
+             m_theme.reset(QPlatformThemeFactory::create("qt5gtk3"));
++        loadingDialogs = false;
+     }
+ 
+     settings.endGroup();

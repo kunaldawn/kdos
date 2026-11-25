@@ -581,8 +581,8 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 		printf("\n  %d checked, %d not in the database, %d behind a "
 		       "recorded fix\n", checked, unknown, nhit);
 		if (nbund)
-			printf("  %d bundled copies, %d not in the database\n",
-			       nbund, bunknown);
+			printf("  %d bundled cop%s, %d not in the database\n",
+			       nbund, nbund == 1 ? "y" : "ies", bunknown);
 		if (age > CVE_STALE_DAYS)
 			printf("  %sthe database is %d days old — a newer one "
 			       "arrives with kdos-tools (`kdos update`), or "

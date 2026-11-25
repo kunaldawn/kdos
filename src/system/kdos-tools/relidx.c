@@ -337,10 +337,84 @@ KdtRelIdx *kdt_relidx_load(const char *dir, const char *keys, char *why,
 	return ix;
 }
 
-/* curl, HTTPS or a local file:// path and nothing else, into `out`. One of
- * KDT_GOT_*: a name that did not resolve, a connection refused or a timeout
- * is OFFLINE; an answer that the file is not there is ABSENT. */
-int kdt_relidx_curl(const char *url, const char *out)
+/* 1 when one line of a /proc/net routing table is a usable default route:
+ * destination and prefix all zero, the route up (RTF_UP) and not a
+ * rejecting one (RTF_REJECT), on an interface other than lo. The IPv6
+ * table always holds an unreachable default on lo, which is no way out. */
+static int ri_default_line(const char *dst, const char *plen, unsigned flags,
+			   const char *dev)
+{
+	return strspn(dst, "0") == strlen(dst) && strspn(plen, "0") ==
+	       strlen(plen) && (flags & 0x1) && !(flags & 0x200) &&
+	       strcmp(dev, "lo");
+}
+
+int kdt_have_route(void)
+{
+	char line[512], dev[64], dst[64], plen[16], gw[64], mask[64];
+	unsigned flags;
+	int have = 0;
+	FILE *f = fopen("/proc/net/route", "r");
+
+	/* Iface Destination Gateway Flags RefCnt Use Metric Mask … */
+	if (f) {
+		while (!have && fgets(line, sizeof(line), f))
+			if (sscanf(line, "%63s %63s %63s %x %*s %*s %*s %63s",
+				   dev, dst, gw, &flags, mask) == 5)
+				have = ri_default_line(dst, mask, flags, dev);
+		fclose(f);
+	}
+	/* dest plen src splen nexthop metric refcnt use flags iface */
+	f = have ? NULL : fopen("/proc/net/ipv6_route", "r");
+	if (f) {
+		while (!have && fgets(line, sizeof(line), f))
+			if (sscanf(line, "%63s %15s %*s %*s %*s %*s %*s %*s %x "
+					 "%63s", dst, plen, &flags, dev) == 4)
+				have = ri_default_line(dst, plen, flags, dev);
+		fclose(f);
+	}
+	return have;
+}
+
+/* What a curl exit status says about the network. A name that did not
+ * resolve (5, 6) is OFFLINE; a connection refused (7) or a timeout (28) is
+ * OFFLINE only on a machine with no default route, and otherwise a server
+ * that did not answer, which no network setting changes. An answer that the
+ * file is not there is ABSENT. */
+static int ri_class(int rc)
+{
+	if (rc == 0)
+		return KDT_GOT_OK;
+	if (rc == 5 || rc == 6)
+		return KDT_GOT_OFFLINE;
+	if ((rc == 7 || rc == 28) && !kdt_have_route())
+		return KDT_GOT_OFFLINE;
+	return rc == 22 || rc == 37 ? KDT_GOT_ABSENT : KDT_GOT_FAILED;
+}
+
+/* `the server at <host> did not answer` into `why` for a FAILED refusal or
+ * timeout, with the host and port of `url` and no scheme or path; 0 when
+ * curl's `rc` is not one of those, and `why` is left alone. */
+static int ri_unanswered(const char *url, int rc, char *why, size_t wcap)
+{
+	if ((rc != 7 && rc != 28) || ri_class(rc) != KDT_GOT_FAILED)
+		return 0;
+	const char *h = strstr(url, "://");
+	h = h ? h + 3 : url;
+	size_t n = strcspn(h, "/?#");
+	const char *at = memchr(h, '@', n);
+	if (at) {
+		n -= (size_t)(at + 1 - h);
+		h = at + 1;
+	}
+	snprintf(why, wcap, "the server at %.*s did not answer", (int)n, h);
+	return 1;
+}
+
+/* curl into `out`, continuing a partial `out` when `resume` is set (`-C -`,
+ * a Range request from its size). The exit status in `*rc`; `out` is left
+ * as curl left it. */
+static int ri_curl(const char *url, const char *out, int resume, int *rc)
 {
 	KbArgv a = {0};
 	kb_argv_add(&a, "curl");
@@ -353,18 +427,28 @@ int kdt_relidx_curl(const char *url, const char *out)
 	kb_argv_add(&a, "2");
 	kb_argv_add(&a, "--connect-timeout");
 	kb_argv_add(&a, "30");
+	if (resume) {
+		kb_argv_add(&a, "-C");
+		kb_argv_add(&a, "-");
+	}
 	kb_argv_add(&a, "-o");
 	kb_argv_add(&a, out);
 	kb_argv_add(&a, "--");
 	kb_argv_add(&a, url);
 	kb_argv_end(&a);
-	int rc = kb_run(&a);
-	if (rc == 0)
-		return KDT_GOT_OK;
-	unlink(out);
-	if (rc == 5 || rc == 6 || rc == 7 || rc == 28)
-		return KDT_GOT_OFFLINE;
-	return rc == 22 || rc == 37 ? KDT_GOT_ABSENT : KDT_GOT_FAILED;
+	*rc = kb_run(&a);
+	return ri_class(*rc);
+}
+
+/* curl, HTTPS or a local file:// path and nothing else, into `out`, which
+ * a failure removes: KDT_GOT_*, as ri_class() reads the exit status. */
+int kdt_relidx_curl(const char *url, const char *out)
+{
+	int rc;
+	int got = ri_curl(url, out, 0, &rc);
+	if (got != KDT_GOT_OK)
+		unlink(out);
+	return got;
 }
 
 /*
@@ -390,22 +474,24 @@ KdtRelIdx *kdt_relidx_fetch(const char *place, const char *dir,
 	snprintf(sn, sizeof(sn), "%s.new", sp);
 	snprintf(op, sizeof(op), "%s/ORIGIN", dir);
 	snprintf(url, sizeof(url), "%s/" KDT_RELIDX_FILE ".sig", place);
-	int got = kdt_relidx_curl(url, sn);
+	int rc;
+	int got = ri_curl(url, sn, 0, &rc);
 	if (got == KDT_GOT_OK) {
 		snprintf(url, sizeof(url), "%s/" KDT_RELIDX_FILE, place);
-		got = kdt_relidx_curl(url, in);
+		got = ri_curl(url, in, 0, &rc);
 	}
 	if (got != KDT_GOT_OK) {
 		unlink(in);
 		unlink(sn);
 		*how = got;
-		snprintf(why, wcap, got == KDT_GOT_ABSENT
-			 ? "no release index is published at %s"
-			 : got == KDT_GOT_OFFLINE
-			 ? "the network could not be reached for the release "
-			   "index at %s"
-			 : "the release index at %s could not be downloaded",
-			 place);
+		if (!ri_unanswered(url, rc, why, wcap))
+			snprintf(why, wcap, got == KDT_GOT_ABSENT
+				 ? "no release index is published at %s"
+				 : got == KDT_GOT_OFFLINE
+				 ? "the network could not be reached for the "
+				   "release index at %s"
+				 : "the release index at %s could not be "
+				   "downloaded", place);
 		return NULL;
 	}
 	KdtRelIdx *ix = ri_verify(in, sn, keys, why, wcap);
@@ -438,24 +524,62 @@ static int ri_matches(const char *file, const char *sha, long long size)
 	       !strcmp(got, sha);
 }
 
+/* The size of `file`, or 0 when there is none. */
+static long long ri_size(const char *file)
+{
+	struct stat st;
+	return stat(file, &st) == 0 && S_ISREG(st.st_mode) ? st.st_size : 0;
+}
+
 /*
  * `path` from where the index says it is, into `out`: downloaded as
  * `<out>.part`, checked for the size and hash its line names, then renamed.
  * KDT_GOT_OK, or the failure with the reason in `why`: ABSENT when the index
  * names no such file, UNVERIFIED when what arrived is other bytes.
+ *
+ * With `keep`, A CUT DOWNLOAD IS CONTINUED, NOT STARTED AGAIN. A failed curl
+ * leaves the bytes that arrived in `<out>.part`, `*cut` says how many, and
+ * the next take of the same path asks for the rest with a Range request
+ * (`-C -`) when that part is smaller than the index's size; a server that
+ * cannot serve a range (curl exit 33) has the part discarded and the file
+ * downloaded whole. The hash check covers the joined file, so a part from
+ * other bytes is refused there and deleted, never kept for another try. A
+ * part of the full size or larger is no prefix of the file and is discarded
+ * first. Only a caller whose `out` is a path named for one version of one
+ * file (the package cache) may keep: a part under a fixed name would be
+ * resumed with another release's bytes, and one under a staging directory
+ * the next run removes would never be resumed. Without `keep`, a part left
+ * at `<out>.part` is discarded before the download and on every failure.
+ *
+ * `why` for a cut download states the cut and no next step: the caller
+ * knows whether running a command again continues it.
  */
-int kdt_relidx_take(const KdtRelIdx *ix, const char *path, const char *out,
-		    char *why, size_t wcap)
+static int ri_take(const KdtRelIdx *ix, const char *path, const char *out,
+		   int keep, long long *cutp, char *why, size_t wcap)
 {
 	char url[1600], sha[65], part[1100];
 	long long size;
+	int rc;
 
 	if (kdt_relidx_url(ix, path, url, sizeof(url), sha, &size) != 0) {
 		snprintf(why, wcap, "the signed release index names no %s", path);
 		return KDT_GOT_ABSENT;
 	}
+	if (cutp)
+		*cutp = 0;
 	snprintf(part, sizeof(part), "%s.part", out);
-	int got = kdt_relidx_curl(url, part);
+	if (!keep)
+		unlink(part);
+	long long had = ri_size(part);
+	if (had >= size) {
+		unlink(part);
+		had = 0;
+	}
+	int got = ri_curl(url, part, had > 0, &rc);
+	if (got != KDT_GOT_OK && had > 0 && rc == 33) {
+		unlink(part);
+		got = ri_curl(url, part, 0, &rc);
+	}
 	if (got != KDT_GOT_OK) {
 		/* A full disk fails curl the way a broken link does; the room
 		 * left beside `out` tells the two apart. */
@@ -465,19 +589,31 @@ int kdt_relidx_take(const KdtRelIdx *ix, const char *path, const char *out,
 		char *sl = strrchr(dir, '/');
 		if (sl)
 			*sl = 0;
-		unlink(part);
+		long long cut = ri_size(part);
 		if (got != KDT_GOT_OFFLINE && sl &&
 		    statvfs(dir[0] ? dir : "/", &vs) == 0 &&
-		    (long long)(vs.f_bavail * vs.f_frsize) < size) {
+		    (long long)(vs.f_bavail * vs.f_frsize) < size - cut) {
+			unlink(part);
 			snprintf(why, wcap, "no room for %s: it is %lld bytes "
 				 "and %s has %lld free", path, size,
 				 dir[0] ? dir : "/",
 				 (long long)(vs.f_bavail * vs.f_frsize));
 			return KDT_GOT_FAILED;
 		}
-		snprintf(why, wcap, got == KDT_GOT_OFFLINE
-			 ? "the network could not be reached for %s"
-			 : "%s could not be downloaded", path);
+		if (!keep || got == KDT_GOT_ABSENT || cut <= 0 ||
+		    cut >= size) {
+			unlink(part);
+			cut = 0;
+		}
+		if (cutp)
+			*cutp = cut;
+		if (cut > 0)
+			snprintf(why, wcap, "%s was cut off at %lld of %lld "
+				 "bytes (curl exit %d)", out, cut, size, rc);
+		else if (!ri_unanswered(url, rc, why, wcap))
+			snprintf(why, wcap, got == KDT_GOT_OFFLINE
+				 ? "the network could not be reached for %s"
+				 : "%s could not be downloaded", path);
 		/* A file the index names and the release lacks is a broken
 		 * release, not one that publishes nothing. */
 		return got == KDT_GOT_ABSENT ? KDT_GOT_FAILED : got;
@@ -494,6 +630,19 @@ int kdt_relidx_take(const KdtRelIdx *ix, const char *path, const char *out,
 		return KDT_GOT_FAILED;
 	}
 	return KDT_GOT_OK;
+}
+
+int kdt_relidx_take(const KdtRelIdx *ix, const char *path, const char *out,
+		    char *why, size_t wcap)
+{
+	return ri_take(ix, path, out, 0, NULL, why, wcap);
+}
+
+int kdt_relidx_take_resume(const KdtRelIdx *ix, const char *path,
+			   const char *out, long long *cut, char *why,
+			   size_t wcap)
+{
+	return ri_take(ix, path, out, 1, cut, why, wcap);
 }
 
 /* 1 when the local `file` is what the index names for `path`. */

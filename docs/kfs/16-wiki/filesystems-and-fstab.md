@@ -52,7 +52,9 @@ image.
 ## Configuration
 
 **`/etc/fstab`**, from `fs/etc/fstab`. The image's own table mounts only the kernel's
-pseudo-filesystems and the two temporary ones:
+pseudo-filesystems and the two temporary ones. Four of the pseudo-filesystems are ones the kernel
+does not mount by itself: tracefs, debugfs, securityfs, which is where `/sys/kernel/security/lsm`
+and `lockdown` are read, and bpffs:
 
 <!-- kfs:include fs/etc/fstab -->
 
@@ -63,7 +65,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1945-1978 pin=b7e79086c91c -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2891-2925 pin=3700d7bc6497 -->
 
 So an installed `fstab` begins with the root by its filesystem UUID and the EFI system partition
 at `/boot/efi` with `umask=0077` and pass 2. On the A/B layout, which an erased disk under LVM gets
@@ -71,18 +73,22 @@ when it has room for two root slots, the `home` volume follows at `/home`, and a
 `/home/.kdos/packs` on `/var/lib/kdos/packs`, so the packs and boxes live on the volume both slots
 share (see [A/B slots and rollback](ab-slots-and-rollback.md)). Any [swap]{.idx} partition or volume
 comes last; a swap file is offered only on a single-root layout, because a file inside one slot's
-root would not be there after a switch. The root's type, options and pass number come from one
+root would not be there after a switch. The swap file is made before the table is written, and its
+`/swapfile` line is written only when the file was made whole: a file that could not be made is
+deleted, the install warns that the machine has no swap, and the table names none. The root's type, options and pass number come from one
 table, from `src/system/kinstall-core/conf.c`:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=41-59 pin=2664f1a53985 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=45-63 pin=2664f1a53985 -->
 
 Only ext4 has pass 1; btrfs, xfs and f2fs have 0. See
 [The filesystem table](../../kdos/04-programs/kinstall.md#the-filesystem-table).
 
 **The boot's check and mount**, from `fs/etc/init.d/rcS`. `fsck -A -R -T -a` checks every entry with
-a non-zero pass except the root, and `mount -a` mounts every entry:
+a non-zero pass except the root, `mount -a` mounts every entry, and a remount gives the root the
+options its line names, such as `noatime`, which the initramfs's bare mount and `mount -a` both
+leave out; the live medium's overlay root has no line and is left as it is:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=60-85 pin=992729eea9fd -->
+<!-- kfs:include fs/etc/init.d/rcS lines=79-110 pin=fca23847e6c1 -->
 
 **The daily trim**, [`/etc/kdos/timers.d/20-fstrim.timer`]{.idx}, from `fs/etc/kdos/timers.d/20-fstrim.timer`:
 

@@ -13,7 +13,8 @@ assumes it.
 
 `kpkg` packages `postinstall.sh` into the package as a hook, with the recipe's metadata in front of
 it, so the script can read `$version`. kpkgadd runs the hook once the package's files are
-installed, with `PKG_ROOT` set to the root it installed into. A hook that fails is reported as a
+installed, with `PKG_ROOT` set to the root it installed into and `PKG_OLD_VERSION` to the
+`<version>-<release>` it replaced, empty on a first install. A hook that fails is reported as a
 warning and does not undo the install.
 
 `$version` is also the name of the module directory, `/lib/modules/$version`, which `uname -r`
@@ -99,6 +100,22 @@ and no other index. `depmod -b` writes them for the new version, in the root the
 into rather than in `/`. Without the index [`modprobe`]{.idx} finds no module by name, and udev loads
 nothing.
 
+## A kernel already on the ESP
+
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=67-95 pin=d6368ea49723 -->
+
+A source build restores the kernel package's development files by installing the same version
+again, and a forced reinstall does the same. When the package went into the running system, the
+version it replaced is its own, and the directory this boot came from on the ESP (the menu
+entry's `kdos_slot=`, or the flat `EFI/kdos/`) holds a `vmlinuz` byte-identical to
+`/boot/vmlinuz-kdos` beside an initramfs byte-identical to the one `kdos-bootctl deploy` would take
+(`/boot/initramfs-kdos.cpio.gz` where the root has one, else the image's `/boot/initramfs.cpio.gz`,
+which is all a freshly installed root has, and what the installer copied to the ESP), the script
+prints `linux <version> is already on the ESP` and stops. The prune and `depmod` above have run;
+the initramfs build and the deploy below would only write the same files to the ESP again. A
+kernel rebuilt at the same version, or an `initramfs-kdos` built and never deployed, differs from
+the ESP's copy and goes through both.
+
 ## The new kernel's initramfs
 
 The image ships one initramfs, `/boot/initramfs.cpio.gz`, built by `70_image` for the image's own
@@ -121,7 +138,7 @@ The set is the image's own list, `/boot/initramfs.modules`, which the image's in
 beside the initramfs. A root without that file takes the set the base itself carries, read out of
 the archive:
 
-<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=82-107 pin=0139d6ba7d9d -->
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=112-137 pin=0139d6ba7d9d -->
 
 The front of the base is one or more uncompressed `newc` cpio archives, the microcode, and the
 rest of the file is a gzip-compressed archive. The `while` loop walks the uncompressed ones header
@@ -140,7 +157,7 @@ copy.
 
 ### Building the archive
 
-<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=109-151 pin=7e8a1c726f2b -->
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=139-181 pin=7e8a1c726f2b -->
 
 `modprobe -d "$root" -S "$version" --show-depends` prints, for each module in the set, an `insmod`
 line for it and for every module it needs, in the order they load, as found in the new kernel's
@@ -153,7 +170,7 @@ indexes the scratch tree on its own. The tree is written as a `newc` archive, co
 
 ### Keeping it, or removing the old one
 
-<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=156-163 pin=95bc937213d2 -->
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=186-193 pin=95bc937213d2 -->
 
 The result is written beside the target and renamed over [`/boot/initramfs-kdos.cpio.gz`]{.idx}, so a
 failure part-way never leaves a truncated file under the real name. A build that fails removes the
@@ -170,7 +187,7 @@ so the medium carries only the kernel and initramfs built together.
 
 ## Putting the kernel on the ESP
 
-<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=170-182 pin=4b79b322d608 -->
+<!-- kfs:include ports/core/boot/linux/postinstall.sh lines=200-212 pin=4b79b322d608 -->
 
 The last step depends on the root the package went into:
 

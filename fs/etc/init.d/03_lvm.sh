@@ -59,7 +59,36 @@ case "$1" in
         # kernel lets them go at power-off.
         ;;
     status)
-        "$LVM" lvs 2>/dev/null
+        # The first line is the summary, and the STATUS cell of `service
+        # list` shows that line; `service status lvm` prints the table under
+        # it. The fifth lv_attr character is `a` for an active volume. lvs
+        # reads the volume groups only as root, and a refused or failed lvs
+        # prints nothing on stdout, so both are told apart from a system with
+        # no volumes rather than reported as one.
+        if [ ! -x "$LVM" ]; then
+            echo "$NAME: not installed"
+            exit 0
+        fi
+        if [ "$(id -u)" -ne 0 ]; then
+            echo "$NAME: needs root to list volumes"
+            exit 0
+        fi
+        if ! _attrs=$("$LVM" lvs --noheadings -o lv_attr 2>/dev/null); then
+            echo "$NAME: lvs could not list volumes"
+            exit 0
+        fi
+        _n=0
+        _a=0
+        for _attr in $_attrs; do
+            _n=$((_n + 1))
+            [ "${_attr:4:1}" = a ] && _a=$((_a + 1))
+        done
+        if [ "$_n" -eq 0 ]; then
+            echo "$NAME: no logical volumes"
+        else
+            echo "$NAME: $_a of $_n logical volumes active"
+            "$LVM" lvs 2>/dev/null
+        fi
         ;;
     *)
         echo "Usage: $0 {start|stop|status}"

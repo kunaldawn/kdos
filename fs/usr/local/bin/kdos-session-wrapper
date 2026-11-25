@@ -20,15 +20,49 @@
 # exactly as plasma-workspace installs /usr/share/wayland-sessions/plasma.desktop,
 # which nothing here edits. Its stderr is the session log,
 # ~/.local/share/sddm/wayland-session.log; its stdout goes nowhere. It does the
-# job of SDDM's own wayland-session script and three things KDOS needs before
-# Plasma starts:
+# job of SDDM's own wayland-session script and what KDOS needs before Plasma
+# starts:
 #
-# 1. A LOGIN SHELL. It runs itself again under the user's shell with --login
-#    (bash and zsh), or sources the profiles itself (anything else), so
-#    /etc/profile, /etc/profile.d and the user's own profile reach Plasma and
-#    everything it starts, as they reach a tty login.
+# 1. A LOGIN SHELL. It runs itself again under the user's shell as a login
+#    shell that reads no startup file itself (bash --noprofile --login, zsh
+#    -l -f), and then sources that shell's login files in the shell's own
+#    order: /etc/profile and the first of ~/.bash_profile, ~/.bash_login and
+#    ~/.profile for bash; ~/.zshenv, /etc/zsh/zprofile, ~/.zprofile,
+#    /etc/zsh/zlogin and ~/.zlogin for zsh (which reads /etc/zsh/zshenv
+#    before any script, the one file outside this); /etc/profile and
+#    ~/.profile for any other shell, read in this script. So /etc/profile,
+#    /etc/profile.d and the user's own profile reach Plasma and everything it
+#    starts, as they reach a tty login, and they are read under the traps of 2.
 #
-# 2. THE ONE SESSION BUS. Plasma, every box and every user service have to be
+# 2. EVERY LOGIN NAMES THE STAGE IT REACHED. SDDM reports a session that ends
+#    at once only as "sddm-helper exited with N", N being the session
+#    process's own exit status or, for a signal, the signal's number, and the
+#    greeter comes back with nothing on the screen. So each login writes a
+#    line to syslog under kdos-session and to the session log: one before the
+#    login shell is started (its pid, $SHELL, XDG_RUNTIME_DIR and whether the
+#    bus socket is there), one once the profile has been read, and one as
+#    Plasma is started, all naming the same pid. Every way out after the
+#    first line logs too, a profile script's exit included: a refusal says
+#    why, and any other exit or a SIGTERM, SIGHUP or SIGINT logs its status or
+#    its signal. A login with the first line and not the second ended inside
+#    the profile; one with neither never ran this script, or was killed before
+#    its first command, and a SIGKILL logs nothing at any stage.
+#
+# 3. THE PREVIOUS LOGIN'S TEARDOWN IS OVER. At a user's last logout turnstile
+#    runs its backend's `stop` (/usr/lib/turnstile/ksvc stop) as the user,
+#    which stops the boxes and the user services and after which turnstile
+#    clears the runtime directory. pam_turnstile holds a login that arrives
+#    meanwhile until that stop is over and the next set of services is ready,
+#    so none should still be running here; one that is would clear this
+#    login's runtime directory and bus from under Plasma. So this waits for
+#    the stop process to end, up to TEARDOWN_WAIT seconds, and refuses the
+#    session if it is still running then. turnstiled clears the directory
+#    only after it has reaped that process, which this cannot see, so after a
+#    wait it gives the clear TEARDOWN_SETTLE more seconds before it checks the
+#    runtime directory and then the bus: a clear later than that still takes
+#    the bus from under Plasma, and only pam_turnstile's hold prevents it.
+#
+# 4. THE ONE SESSION BUS. Plasma, every box and every user service have to be
 #    on $XDG_RUNTIME_DIR/bus, the bus the user services start and the address
 #    kdos-appbox gives every box. plasma-dbus-run-session-if-needed starts a
 #    private bus whenever DBUS_SESSION_BUS_ADDRESS is empty, and a private bus
@@ -39,10 +73,12 @@
 #    session — the greeter comes back, and the reason is in the session log
 #    and in syslog.
 #
-# 3. THE DESKTOP'S ENVIRONMENT, before the first program that reads it:
+# 5. THE DESKTOP'S ENVIRONMENT, before the first program that reads it:
 #    XDG_CURRENT_DESKTOP=KDE, XDG_CONFIG_DIRS with /etc/xdg and then the
 #    distribution's defaults in /usr/share/kdos/xdg (and the virtual-machine
-#    and live-medium overlays in front where they apply), and no QT_IM_MODULE
+#    and live-medium overlays in front where they apply), on the live medium
+#    /usr/share/kdos/data-live in front of XDG_DATA_DIRS for its own desktop
+#    entries (kdos_session_live_data), and no QT_IM_MODULE
 #    or GTK_IM_MODULE, so each toolkit picks its own input-method route (Qt 6,
 #    GTK 3 and GTK 4 KWin's text-input, GTK under Xwayland fcitx5-gtk's
 #    module over D-Bus) and a profile's leftover cannot pick it. A
@@ -55,44 +91,150 @@
 #    Konsole runs for a launcher would draw at 80x24 in a larger window,
 #    because ncurses prefers the variables to the window's own size.
 #
+# 6. A NEW ACCOUNT'S INPUT-METHOD PROFILE NAMES THE SYSTEM LAYOUT. fcitx5,
+#    which KWin starts, writes its group's layout into ~/.config/kxkbrc when
+#    'Allow Overriding System XKB Settings' is on (wayland.conf turns it off;
+#    the Input Method page can turn it on), so a
+#    home with no ~/.config/fcitx5/profile gets one whose layout is
+#    /etc/kdos/xkb.conf's before KWin can start it
+#    (kdos_session_fcitx5_profile in session-common.sh); an existing profile
+#    is left as it is.
+#
 # Then the boxes behind the pinned favourites are warmed up, and the Exec line
-# is run, word-split as SDDM's script runs it.
+# is run, word-split as SDDM's script runs it; a first word that names no
+# program is refused, since a failed exec would end the login with no line.
+#
+# KDOS_SESSION_PROFILE and KDOS_SESSION_LIB move /etc/profile (for bash and
+# for sh) and /usr/local/lib/kdos, for the selftest's
+# fixture; SDDM starts this with neither set.
 
-if [ -z "$KDOS_SESSION_LOGIN" ]; then
-    KDOS_SESSION_LOGIN=1
-    export KDOS_SESSION_LOGIN
-    case "$SHELL" in
-        */bash|*/zsh)
-            exec "$SHELL" --login "$0" "$@"
-            ;;
-    esac
-fi
-case "$SHELL" in
-    */bash|*/zsh) ;;
-    *)
-        # sh, or a shell whose login profile this cannot run itself.
-        [ -r /etc/profile ] && . /etc/profile
-        [ -r "$HOME/.profile" ] && . "$HOME/.profile"
-        ;;
-esac
-unset KDOS_SESSION_LOGIN
-[ -n "$ZSH_NAME" ] && emulate -R sh
-
-. /usr/local/lib/kdos/session-common.sh
+_kdos_etc_profile=${KDOS_SESSION_PROFILE:-/etc/profile}
+_kdos_lib=${KDOS_SESSION_LIB:-/usr/local/lib/kdos}
+TEARDOWN_WAIT=10
+TEARDOWN_SETTLE=1
 
 say() {
     echo "kdos-session-wrapper: $*" >&2
 }
 
+# To the session log and to syslog, at the given priority.
+note() {
+    _pri=$1
+    shift
+    say "$*"
+    command -v logger >/dev/null 2>&1 && \
+        logger -t kdos-session -p "user.$_pri" "$*"
+    return 0
+}
+
+# Where the login stands: the runtime directory and its bus socket.
+where() {
+    if [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
+        _b=present
+    else
+        _b=absent
+    fi
+    echo "runtime dir '${XDG_RUNTIME_DIR:-unset}', bus socket $_b"
+}
+
+# KDOS_SESSION_LOGIN is set only in the login shell this starts, and names
+# whose profile files it reads; that shell reads none of them itself.
+_kdos_login=$KDOS_SESSION_LOGIN
+unset KDOS_SESSION_LOGIN
+if [ -z "$_kdos_login" ]; then
+    note info "login $$: entered as $(id -un 2>/dev/null) under shell '${SHELL:-unset}'; $(where)"
+    _kdos_login=sh
+    if [ -x "$SHELL" ]; then
+        case "$SHELL" in
+            */bash)
+                KDOS_SESSION_LOGIN=bash
+                export KDOS_SESSION_LOGIN
+                exec "$SHELL" --noprofile --login "$0" "$@"
+                ;;
+            */zsh)
+                KDOS_SESSION_LOGIN=zsh
+                export KDOS_SESSION_LOGIN
+                exec "$SHELL" -l -f "$0" "$@"
+                ;;
+        esac
+    fi
+    case "$SHELL" in
+        */bash|*/zsh)
+            note warning "login $$: shell '$SHELL' cannot be run; reading /etc/profile and ~/.profile here" ;;
+    esac
+fi
+
+# From here every way out logs. A refusal has logged already; the session's
+# own start clears these before it execs.
+_kdos_said=0
+trap '_rc=$?; [ "$_kdos_said" = 1 ] || note err "login $$: ended with status $_rc before Plasma started; the session was not started"' EXIT
+trap 'note err "login $$: SIGTERM before Plasma started"; _kdos_said=1; exit 143' TERM
+trap 'note err "login $$: SIGHUP before Plasma started"; _kdos_said=1; exit 129' HUP
+trap 'note err "login $$: SIGINT before Plasma started"; _kdos_said=1; exit 130' INT
+
+# The login shell's own files, in its own order, under the traps: a profile
+# script that exits is logged with its status.
+case "$_kdos_login" in
+    bash)
+        [ -r "$_kdos_etc_profile" ] && . "$_kdos_etc_profile"
+        for _f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+            if [ -r "$_f" ]; then
+                . "$_f"
+                break
+            fi
+        done
+        ;;
+    zsh)
+        [ -r "${ZDOTDIR:-$HOME}/.zshenv" ] && . "${ZDOTDIR:-$HOME}/.zshenv"
+        [ -r /etc/zsh/zprofile ] && . /etc/zsh/zprofile
+        [ -r "${ZDOTDIR:-$HOME}/.zprofile" ] && . "${ZDOTDIR:-$HOME}/.zprofile"
+        [ -r /etc/zsh/zlogin ] && . /etc/zsh/zlogin
+        [ -r "${ZDOTDIR:-$HOME}/.zlogin" ] && . "${ZDOTDIR:-$HOME}/.zlogin"
+        ;;
+    *)
+        [ -r "$_kdos_etc_profile" ] && . "$_kdos_etc_profile"
+        [ -r "$HOME/.profile" ] && . "$HOME/.profile"
+        ;;
+esac
+[ -n "$ZSH_NAME" ] && emulate -R sh
+
+note info "login $$: profile read; $(where)"
+
 refuse() {
     say "$*; not starting the session"
     command -v logger >/dev/null 2>&1 && \
-        logger -t kdos-session -p user.err "$*; the session was not started"
+        logger -t kdos-session -p user.err "login $$: $*; the session was not started"
+    _kdos_said=1
     exit 1
 }
 
+[ -r "$_kdos_lib/session-common.sh" ] || refuse "cannot read $_kdos_lib/session-common.sh"
+. "$_kdos_lib/session-common.sh"
+
 if [ $# -eq 0 ]; then
     refuse "no session command (SDDM passes the session's Exec= line)"
+fi
+
+# The previous login's `stop`, run as this user: its pids, or nothing.
+# turnstiled execs the backend as `<path> stop <pid>`, which the kernel runs
+# as `/bin/bash <path> stop <pid>`; the whole command line is matched, so a
+# process that only mentions the backend in its arguments is not taken for it.
+teardown() {
+    command -v pgrep >/dev/null 2>&1 || return 0
+    pgrep -u "$(id -u)" -f '^[^ ]*/bash [^ ]*/turnstile/ksvc stop [0-9]+$' 2>/dev/null | tr '\n' ' '
+}
+_td=$(teardown)
+if [ -n "$_td" ]; then
+    note warning "login $$: the previous login's teardown (ksvc stop, pid ${_td% }) is still running; waiting up to ${TEARDOWN_WAIT}s"
+    _n=$((TEARDOWN_WAIT * 10))
+    while [ -n "$_td" ] && [ "$_n" -gt 0 ]; do
+        sleep 0.1
+        _n=$((_n - 1))
+        _td=$(teardown)
+    done
+    [ -z "$_td" ] || refuse "the previous login's teardown (ksvc stop, pid ${_td% }) is still running after ${TEARDOWN_WAIT}s, and would clear this login's runtime directory"
+    sleep "$TEARDOWN_SETTLE"
+    note info "login $$: the previous login's teardown is over; $(where)"
 fi
 
 if [ -z "$XDG_RUNTIME_DIR" ] || [ ! -d "$XDG_RUNTIME_DIR" ] || \
@@ -124,14 +266,19 @@ say "session bus $_bus answers"
 XDG_CURRENT_DESKTOP=KDE
 export XDG_CURRENT_DESKTOP
 kdos_session_xdg_dirs
+kdos_session_live_data
 kdos_session_open
+kdos_session_fcitx5_profile
 unset QT_IM_MODULE QT_IM_MODULES GTK_IM_MODULE
 unset TERM LINES COLUMNS
 
 kdos_session_boxes
 
-say "starting $*"
 # Word-split as SDDM's wayland-session does, and never globbed.
 set -f
 # shellcheck disable=SC2068
-exec $@
+set -- $@
+command -v "$1" >/dev/null 2>&1 || refuse "the session command '$1' is not a program"
+note info "login $$: starting $*"
+trap - EXIT TERM HUP INT
+exec "$@"

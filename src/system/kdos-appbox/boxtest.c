@@ -94,8 +94,81 @@ static void grants(void)
 	profile_set(&p, "x11 = false");
 	cat_chk(!strcmp(p.x11, "no"), "x11 = false reads as no");
 	cat_chk(profile_x11(&p) == 0, "x11 = no hands over no display");
-	profile_set(&p, "x11 = maybe");
-	cat_chk(!strcmp(p.x11, "yes"), "any other word is yes");
+	cat_chk(profile_set(&p, "x11 = maybe") == -2,
+		"x11 = maybe is refused");
+	cat_chk(!strcmp(p.x11, "no"), "and leaves x11 as it was");
+}
+
+/* A value its key does not take is refused (-2), recorded, and changes
+ * nothing; it is never read as the key's default. */
+static void values(void)
+{
+	Profile p;
+
+	profile_defaults(&p, "v");
+	cat_chk(profile_set(&p, "network=none") == 0 && p.netnone && p.netns,
+		"network=none is set");
+	cat_chk(profile_set(&p, "network=maybe") == -2,
+		"network=maybe is refused");
+	cat_chk(p.netnone && p.netns, "and the network stays none");
+	cat_chk(p.nbad == 1 && !strcmp(p.badvalue[0], "network=maybe"),
+		"and is recorded as key=value");
+	cat_chk(profile_set(&p, "network=no") == -2 && p.netnone,
+		"network=no is refused: host or none is a guess");
+	cat_chk(profile_set(&p, "network=") == -2, "an empty network is refused");
+	cat_chk(profile_set(&p, "network=yes") == 0 && p.netns && !p.netnone,
+		"network=yes is private");
+	cat_chk(profile_set(&p, "network=shared") == 0 && !p.netns,
+		"network=shared is host");
+	cat_chk(profile_set(&p, "persistence=forever") == -2 &&
+		p.persist == PERSIST_PERSISTENT, "persistence=forever is refused");
+	cat_chk(profile_set(&p, "persistence=frozen") == 0 &&
+		p.persist == PERSIST_FROZEN, "persistence=frozen is set");
+	cat_chk(profile_set(&p, "pids=abc") == -2 && p.pids == 0,
+		"pids=abc is refused");
+	cat_chk(profile_set(&p, "pids=-1") == -2, "a negative pids is refused");
+	cat_chk(profile_set(&p, "pids=512") == 0 && p.pids == 512,
+		"pids=512 is set");
+	cat_chk(profile_set(&p, "memory=4G") == 0 && !strcmp(p.memory, "4G"),
+		"memory=4G is set");
+	cat_chk(profile_set(&p, "memory=1.5gb") == 0 && profile_set(&p, "memory=512m") == 0 &&
+		profile_set(&p, "memory=6m") == 0 && profile_set(&p, "memory=8388608") == 0,
+		"a fractional size, a lowercase unit, the 6 MiB floor and plain bytes are set");
+	cat_chk(profile_set(&p, "memory=Unlimited") == 0 && !p.memory[0],
+		"memory=Unlimited is stored empty");
+	cat_chk(profile_set(&p, "memory=bogus") == -2 && profile_set(&p, "memory=-1") == -2 &&
+		profile_set(&p, "memory=4x") == -2 && profile_set(&p, "memory=0") == -2 &&
+		profile_set(&p, "memory=2048") == -2 && profile_set(&p, "memory=1.5b") == -2 &&
+		profile_set(&p, "memory=5m") == -2 &&
+		!p.memory[0], "a size podman cannot read is refused");
+	cat_chk(profile_set(&p, "cpus=1.5") == 0 && !strcmp(p.cpus, "1.5"), "cpus=1.5 is set");
+	cat_chk(profile_set(&p, "cpus=ALL") == 0 && !p.cpus[0], "cpus=ALL is stored empty");
+	cat_chk(profile_set(&p, "cpus=two") == -2 && profile_set(&p, "cpus=0") == -2,
+		"a core count that is no number above zero is refused");
+	cat_chk(profile_set(&p, "autostop=30m") == 0 && p.autostop_s == 1800,
+		"autostop=30m is set");
+	cat_chk(profile_set(&p, "autostop=0s") == 0 && p.autostop_s == 0,
+		"autostop=0s, as the profile writes it, is set");
+	cat_chk(profile_set(&p, "autostop=soon") == -2 &&
+		profile_set(&p, "autostop=30x") == -2, "a bad autostop is refused");
+	cat_chk(profile_set(&p, "ipc=sometimes") == -2 && !p.ipc,
+		"ipc=sometimes is refused");
+	cat_chk(profile_set(&p, "ipc=shared") == 0 && profile_set(&p, "home=private") == 0
+		&& p.privhome, "the sharing words are set");
+	cat_chk(profile_set(&p, "gpu=shared") == 0 && p.gpu, "gpu=shared is yes");
+	cat_chk(profile_set(&p, "export=always") == -2 && !p.autoexport,
+		"export=always is refused");
+	cat_chk(profile_set(&p, "accent=anything") == 0,
+		"a free-text key takes any value");
+	cat_chk(profile_set(&p, "accent=none") == 0 &&
+		!strcmp(p.accent, "session"),
+		"accent=none, the word printed, is stored as session");
+	cat_chk(!strcmp(accent_shown(p.accent), "none"),
+		"accent=none prints back as none");
+	cat_chk(accent_known("none"), "accent none is a known accent");
+	cat_chk(profile_set(&p, "colour=red") == -1, "an unknown key is -1");
+	cat_chk(!strcmp(profile_value_rule("network"), "host, private or none"),
+		"network's rule names its three values");
 }
 
 static void lanes(void)
@@ -269,16 +342,116 @@ static void rules(void)
 	kb_rmtree(dir);
 }
 
+static void digests(void)
+{
+	Profile a, b;
+	char da[PROFILE_DIGEST_MAX], db[PROFILE_DIGEST_MAX], keys[256];
+	int n;
+
+	profile_defaults(&a, "d");
+	profile_set(&a, "base=image:docker.io/library/alpine:latest");
+	b = a;
+	profile_set(&b, "x11=no");
+	profile_set(&b, "grant=secrets");
+	profile_set(&b, "autostop=30m");
+	profile_set(&b, "accent=amber");
+	profile_set(&b, "wayland=no");
+	profile_set(&b, "audio=no");
+	profile_set(&b, "render=software");
+	profile_set(&b, "image=other");
+	profile_create_digest(&a, da, sizeof(da));
+	profile_create_digest(&b, db, sizeof(db));
+	cat_chk(!strcmp(da, db),
+		"keys a launch reads are not in the create-time digest");
+	cat_chk(profile_digest_diff(da, db, keys, sizeof(keys)) == 0 && !keys[0],
+		"and no key is named as changed");
+	cat_chk(strspn(da, "v0123456789abcdef.") == strlen(da) &&
+		strlen(da) == 3 + 8 * 13,
+		"the digest is one plain word, 8 hex digits a key");
+	profile_set(&b, "network=none");
+	profile_set(&b, "memory=2G");
+	profile_create_digest(&b, db, sizeof(db));
+	n = profile_digest_diff(da, db, keys, sizeof(keys));
+	cat_chk(n == 2 && !strcmp(keys, "network, memory"),
+		"a create-time change names exactly the keys that differ");
+	n = profile_digest_diff("v0.x", db, keys, sizeof(keys));
+	cat_chk(n == 13, "a digest of another version counts every key");
+}
+
+static void foreground(void)
+{
+	int fd[2];
+
+	cat_chk(pipe(fd) == 0, "a pipe for the foreground check");
+	cat_chk(!tty_foreground(fd[0]), "a pipe is no foreground terminal");
+	close(fd[0]);
+	close(fd[1]);
+}
+
+/* A profile remove kept, of a box with no container, gets no window rule;
+ * a live profile and an exported launcher's box do. No podman is on the
+ * PATH here, so no box has a container. */
+static void rules_kept(void)
+{
+	const char *tmp = getenv("TMPDIR");
+	char dir[512], apps[600], pdir[600], f[700];
+	char *home = kb_strdup(getenv("HOME") ? getenv("HOME") : "");
+	char *path = kb_strdup(getenv("PATH") ? getenv("PATH") : "");
+	char (*boxes)[64] = kb_calloc(8, 64);
+	char (*accents)[16] = kb_calloc(8, 16);
+	int n, live = 0, gone = 0, exp = 0;
+
+	snprintf(dir, sizeof(dir), "%s/kdos-boxtest-XXXXXX",
+		 tmp && *tmp ? tmp : "/tmp");
+	if (!mkdtemp(dir)) {
+		cat_chk(0, "a scratch home for the rules");
+		return;
+	}
+	snprintf(apps, sizeof(apps), "%s/.local/share/applications", dir);
+	snprintf(pdir, sizeof(pdir), "%s/.config/kdos/boxes", dir);
+	kb_mkdir_p(apps);
+	kb_mkdir_p(pdir);
+	snprintf(f, sizeof(f), "%s/live.conf", pdir);
+	kb_write_file(f, "base=image:x\naccent=amber\n");
+	snprintf(f, sizeof(f), "%s/gone.conf", pdir);
+	kb_write_file(f, BOX_KEPT_MARK "base=image:x\n");
+	snprintf(f, sizeof(f), "%s/exp.sh.desktop", apps);
+	kb_write_file(f, "[Desktop Entry]\nType=Application\nName=sh\n"
+			 "Exec=sh\nX-KDOS-Box=exp\nX-KDOS-Export=true\n");
+	setenv("HOME", dir, 1);
+	setenv("PATH", dir, 1);
+	n = box_rules_collect(apps, pdir, boxes, accents, 8);
+	for (int i = 0; i < n; i++) {
+		live += !strcmp(boxes[i], "live") && !strcmp(accents[i], "amber");
+		gone += !strcmp(boxes[i], "gone");
+		exp += !strcmp(boxes[i], "exp");
+	}
+	setenv("HOME", home, 1);
+	setenv("PATH", path, 1);
+	cat_chk(live == 1, "a profile's box gets its rule, with its accent");
+	cat_chk(exp == 1, "an exported launcher's box gets its rule");
+	cat_chk(gone == 0, "a kept profile with no container gets none");
+	kb_rmtree(dir);
+	free(boxes);
+	free(accents);
+	free(home);
+	free(path);
+}
+
 int boxes_selftest(void)
 {
 	cat_fail = 0;
 	names();
 	launcher_ids();
 	grants();
+	values();
 	lanes();
 	policy();
 	states();
 	rules();
+	digests();
+	foreground();
+	rules_kept();
 	if (cat_fail) {
 		fprintf(stderr, "boxes --selftest: %d failure(s)\n", cat_fail);
 		return 1;

@@ -10,7 +10,7 @@
 
 name        = python3-adafruit-nrfutil
 version     = 0.5.3.post16
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/a/adafruit-nrfutil/adafruit-nrfutil-$version.tar.gz
 sha256      = b72103dc8e50f92951f512fc2b6f2c621dac1614531ddf8c0be3b13d020e24ad  python3-adafruit-nrfutil-0.5.3.post16.tar.gz
 description = Serial DFU flasher for nRF52 boards; rnodeconf flashes RAK4631, T-Echo and Heltec T114 RNodes with it

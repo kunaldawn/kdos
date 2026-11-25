@@ -17,3 +17,4 @@
 	--with-bashcompdir=/usr/share/bash-completion/completions
 make
 make DESTDIR=$PKG install
+install -Dm644 docs/LICENSE "$PKG/usr/share/licenses/$name/LICENSE"

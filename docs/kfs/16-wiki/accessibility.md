@@ -148,7 +148,9 @@ spd-say "The build has finished"
 ```
 
 Both play through PipeWire inside the session. `spd-conf` writes a per-user Speech Dispatcher
-configuration and runs its diagnostics.
+configuration and runs its diagnostics. The server the first speaking program starts ends at
+logout, unless another login of the user (a console or a second graphical login) is open:
+`plasma-workspace/shutdown/kdos-speech.sh` sends SIGTERM to the PID in `$XDG_RUNTIME_DIR/speech-dispatcher/pid/speech-dispatcher.pid`.
 
 ### The magnifier
 

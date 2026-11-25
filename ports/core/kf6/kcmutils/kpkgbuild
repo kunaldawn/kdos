@@ -10,7 +10,7 @@
 
 name        = kcmutils
 version     = 6.31.0
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
 sha256      = e7c96296f2cc31b68c323559890df1e197dcb9c663822682dc97737c1b811610  kcmutils-6.31.0.tar.xz
 description = KDE Frameworks: configuration modules for widget and QML settings pages

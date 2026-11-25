@@ -11,7 +11,7 @@
 
 name        = movit
 version     = 1.7.2
-release     = 1
+release     = 2
 source      = https://movit.sesse.net/$name-$version.tar.gz
 sha256      = 00ac1f8e46c2d3e38c75cbb7a1af0a615751c158c611cb70053094b65ecfe8d5  movit-1.7.2.tar.gz
 description = High-quality GPU video filters on OpenGL — the GLSL effect chain MLT's movit module drives

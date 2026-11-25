@@ -69,6 +69,10 @@ void ktui_modal_confirm(const char *title, const char *msg, const char *yes,
 	kb_strlcpy(md.yes, yes, sizeof(md.yes));
 	kb_strlcpy(md.no, no, sizeof(md.no));
 	md.on_yes = on_yes;
+	/* A confirm opens on the other button: every caller asks before
+	 * something it cannot take back, so a stray or doubled Enter on
+	 * arrival answers no and Left or Tab is a deliberate step to yes. */
+	md.sel = 1;
 	modal_open();
 }
 
@@ -118,8 +122,11 @@ void ktui_modal_draw(void)
 	}
 
 	/* Buttons stay inside the dialog rect at every width: a fixed
-	 * x + w - 40 walks off the left edge below 46 columns. */
-	int by = y + h - 2;
+	 * x + w - 40 walks off the left edge below 46 columns. And at every
+	 * height: a button draws its shade on the row below it, so the row is
+	 * two above the bottom border, and a button on the last inner row
+	 * would shade the border away. */
+	int by = y + h - 3;
 	int bw = 18;
 
 	/* The highlight is pointed at `sel` here, at draw time, rather than
@@ -130,8 +137,15 @@ void ktui_modal_draw(void)
 	ktui_focus_set(ktui_id_base() + (md.confirm ? md.sel : 0));
 
 	if (md.confirm) {
-		int bx1 = x + w - 40, bx2 = x + w - 21;
-		if (w < 42) {
+		/* Wide enough for the longer label and the two focus markers
+		 * beside it, so a marker never lands on a letter. */
+		int lw = ktui_utf8_width(md.yes);
+		if (ktui_utf8_width(md.no) > lw)
+			lw = ktui_utf8_width(md.no);
+		if (lw + 4 > bw)
+			bw = lw + 4;
+		int bx2 = x + w - 3 - bw, bx1 = bx2 - 1 - bw;
+		if (w < 2 * bw + 6) {
 			bw = (w - 2) / 2;
 			bx1 = x + 1;
 			bx2 = x + w - 1 - bw;

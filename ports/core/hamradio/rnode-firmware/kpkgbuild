@@ -11,7 +11,7 @@
 
 name        = rnode-firmware
 version     = 1.86
-release     = 1
+release     = 2
 _url        = https://github.com/markqvist/RNode_Firmware/releases/download/$version
 source      = $name-$version.json::$_url/release.json
 source      = $name-console-$version.bin::$_url/console_image.bin

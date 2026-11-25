@@ -57,3 +57,5 @@ Requires:
 Libs: -L${libdir} -llua${V} -lm -ldl
 Cflags: -I${includedir}
 EOF
+
+install -Dm644 "$SRC/src/lua.h" "$PKG/usr/share/licenses/$name/lua.h"

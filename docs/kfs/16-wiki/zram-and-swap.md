@@ -43,23 +43,26 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 installer writes its own lines, swap among them, ahead of the image's, in one of these two forms,
 from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1967-1975 pin=ce989ec84df4 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2913-2922 pin=62a1ee6651cc -->
 
 The first is a swap partition, or on the A/B layout the `swap` volume beside the two root slots.
 The second, a swap file, is written only on a single-root layout: a file inside one slot's root
 would be missing from the other slot after an update switches to it (see
-[A/B slots and rollback](ab-slots-and-rollback.md)).
+[A/B slots and rollback](ab-slots-and-rollback.md)). `make_swapfile()` makes the file before the
+table is written, and the line is written only when the file was made whole; a file that could
+not be made is deleted and never `mkswap`ped, and the install warns that the machine has no swap
+and goes on.
 
 `rcS` turns on every swap line of `/etc/fstab` once the filesystems are mounted, from
 `fs/etc/init.d/rcS`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=119-122 pin=99061a33a0a0 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=145-148 pin=99061a33a0a0 -->
 
 and `/etc/inittab`, from `fs/etc/inittab`, turns all swap off again at power-off and reboot, after
 the services are stopped and before the persistence store is made read-only and the filesystems
 are unmounted:
 
-<!-- kfs:include fs/etc/inittab lines=75-80 pin=a753ee32329a -->
+<!-- kfs:include fs/etc/inittab lines=76-81 pin=a753ee32329a -->
 
 ## Usage
 
@@ -267,9 +270,9 @@ restart again, or reboot.
 
 ## Known gaps
 
-[Known gaps](../../kdos/06-reference/known-gaps.md) has no entry for zram or swap. Hibernation is
-not offered at all; [What happens around a suspend](../../kdos/04-programs/daemons.md#what-happens-around-a-suspend)
-says why.
+Hibernation is not offered at all: [No hibernation](../../kdos/06-reference/known-gaps.md#no-hibernation)
+in Known gaps and [What happens around a suspend](../../kdos/04-programs/daemons.md#what-happens-around-a-suspend)
+say why.
 
 ## See also
 

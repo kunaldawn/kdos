@@ -9,6 +9,8 @@
 # ---------------------------------
 
 install -Dm644 "$PORT_SRC/$name-$version.py" $PKG/usr/share/gef/gef.py
+install -d $PKG/usr/share/licenses/$name
+head -n 50 "$PORT_SRC/$name-$version.py" > $PKG/usr/share/licenses/$name/LICENSE
 
 install -d $PKG/usr/share/doc/gef
 cat > $PKG/usr/share/doc/gef/README.kdos << 'EOF'

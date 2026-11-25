@@ -5,11 +5,11 @@ grant       = screencast, mystery
               screencast        the screen-cast portal, through KWin's own picker
             ! grant 'mystery' is no name KWin's sandbox policy or the bus proxy knows — it opens nothing
 persistence = persistent  kdos-packd's upper, kept
-network     = private     --unshare-netns
-ipc         = private     --unshare-ipc
-devices     = private     --unshare-devsys
-processes   = private     --unshare-process
-home        = shared      the user's own $HOME
+network     = private     a network namespace of its own (podman's rootless default)
+ipc         = private     an IPC namespace of its own (podman's default)
+devices     = private     podman's own /dev and /sys
+processes   = private     a PID namespace of its own (podman's default)
+home        = shared      the user's own $HOME, bound in
 wayland     = yes         the session's Wayland socket, tagged with this box's security context
 audio       = no          no PipeWire socket
 x11         = yes         DISPLAY and the session's cookie: its X11 windows reach KWin untagged

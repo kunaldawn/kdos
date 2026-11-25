@@ -52,8 +52,22 @@ KCM.SimpleKCM {
         case "ipc": return i18nc("@item a box setting", "shared memory");
         case "processes": return i18nc("@item a box setting", "process list");
         case "init": return i18nc("@item a box setting", "init process");
+        case "base": return i18nc("@item a box setting", "base system");
+        case "image": return i18nc("@item a box setting", "base image");
         }
         return key;
+    }
+
+    /* The labels of these settings as one list read in a sentence: a single
+     * label as it is, two or more with "and" before the last. */
+    function settingsList(keys: list<string>): string {
+        const labels = keys.map(k => page.keyLabel(k));
+        if (labels.length < 2) {
+            return labels.join("");
+        }
+        return i18nc("@item:inlist the last two settings of a list", "%1 and %2",
+                     labels.slice(0, -1).join(i18nc("@item:inlist list separator", ", ")),
+                     labels[labels.length - 1]);
     }
 
     /* Controls write through these from onCheckedChanged, not from the
@@ -65,6 +79,14 @@ KCM.SimpleKCM {
         if (page.values[key] !== value) {
             page.values[key] = value;
         }
+    }
+
+    /* The desktop style's SpinBox assigns `value` itself as text is typed,
+     * which ends a `value:` binding: the field would then keep the typed
+     * value through Reset and Defaults. Writing a limit binds it again. */
+    function setLimit(box: QQC2.SpinBox, key: string): void {
+        page.values[key] = box.value;
+        box.value = Qt.binding(() => page.values[key] ?? 0);
     }
 
     function setGrant(id: string, on: bool): void {
@@ -115,8 +137,10 @@ KCM.SimpleKCM {
             visible: kcm.needsRecreate
             type: Kirigami.MessageType.Information
             icon.name: "view-refresh"
-            text: i18nc("@info %1 list of settings", "The box still has its old %1. These settings apply when the box is created, so create it again to apply them now.",
-                        kcm.profile.pendingRecreate.map(k => page.keyLabel(k)).join(", "))
+            text: i18ncp("@info %2 list of settings",
+                         "Changed since the box was created: %2. This setting applies when the box is created, so create it again to apply it now.",
+                         "Changed since the box was created: %2. These settings apply when the box is created, so create it again to apply them now.",
+                         kcm.recreateKeys.length, page.settingsList(kcm.recreateKeys))
             actions: [
                 Kirigami.Action {
                     text: i18nc("@action:button", "Recreate…")
@@ -127,6 +151,18 @@ KCM.SimpleKCM {
             ]
         }
 
+        /* A store box's image comes only from installing its application,
+         * so neither Create nor Export as Archive, which flattens that
+         * image, is offered for one whose image is gone. */
+        Kirigami.InlineMessage {
+            objectName: "appMissingMessage"
+            Layout.fillWidth: true
+            position: Kirigami.InlineMessage.Position.Header
+            visible: page.box.appMissing === true
+            type: Kirigami.MessageType.Information
+            text: i18nc("@info", "Its application is not installed. Installing it again from Discover makes this box with these settings; Delete Settings removes them.")
+        }
+
         Kirigami.InlineMessage {
             Layout.fillWidth: true
             position: Kirigami.InlineMessage.Position.Header
@@ -134,32 +170,34 @@ KCM.SimpleKCM {
             type: page.box.confinement === "confined" ? Kirigami.MessageType.Positive
                 : page.box.confinement === "unconfined" ? Kirigami.MessageType.Warning
                 : Kirigami.MessageType.Information
-            icon.name: page.box.confinement === "unconfined" ? "security-low" : page.box.confinement === "confined" ? "security-high" : "security-medium"
+            /* No record is no verdict: the plain information icon, never
+             * a security level. */
+            icon.name: page.box.confinement === "unconfined" ? "security-low"
+                : page.box.confinement === "confined" ? "security-high"
+                : page.box.confinement === "tagged" ? "security-medium"
+                : "dialog-information"
             readonly property string verdict: page.box.confinement === "confined"
                 ? i18nc("@info", "Confined. Its windows are tagged, its runtime folder holds no way to the session's own display or bus, its bus is filtered and no X11 display is within its reach.")
                 : page.box.confinement === "tagged"
                 ? i18nc("@info", "Tagged. KWin limits what its windows may do, but the box can reach past that.")
                 : page.box.confinement === "unconfined"
                 ? i18nc("@info", "Not confined. Its last launch had no tagged display socket, so nothing marks its windows as a box's.")
-                : i18nc("@info", "The box did not record how it is confined, so this page cannot say.")
+                : i18nc("@info", "Nothing has been launched in this box through KDOS yet (an exported launcher or kdos-box run), so how its windows are confined is not recorded.")
             text: (page.box.confinementReason ?? "") !== ""
                 ? i18nc("@info %1 the confinement verdict, %2 why it is not confined", "%1 %2", verdict, page.box.confinementReason)
                 : verdict
         }
 
-        Repeater {
-            model: kcm.profile.generalNotes
-
-            delegate: Kirigami.InlineMessage {
-                required property string modelData
-
-                Layout.fillWidth: true
-                position: Kirigami.InlineMessage.Position.Header
-                visible: true
-                type: Kirigami.MessageType.Warning
-                /* `kcm` is gone before a delegate is when the page closes. */
-                text: kcm?.profile.noteMarkup(modelData) ?? ""
-            }
+        /* One message for every note, as in KeyNotes: a Repeater's delegate
+         * destroyed when Apply reloads the report is still in this layout
+         * while its size hint is read. */
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            position: Kirigami.InlineMessage.Position.Header
+            visible: kcm !== null && kcm.generalNotes.length > 0
+            type: Kirigami.MessageType.Warning
+            /* `kcm` is gone before this item is when the page closes. */
+            text: (kcm?.generalNotes ?? []).map(note => kcm.profile.noteMarkup(note)).join("<br>")
         }
     }
 
@@ -211,11 +249,21 @@ KCM.SimpleKCM {
                 text: (page.box.disk ?? "") !== "" ? i18nc("@info %1 state, %2 size on disk", "%1 · %2 written", page.box.stateText, page.box.disk) : (page.box.stateText ?? "")
             }
 
+            /* A box with no container is made by Create: `kdos-box start`
+             * refuses one, whichever way it was left. */
             RowLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 QQC2.Button {
-                    visible: !page.running
+                    visible: !page.created && kcm.profile.described && !page.box.appMissing
+                    enabled: page.idle && !kcm.needsSave
+                    text: i18nc("@action:button", "Create")
+                    icon.name: "list-add"
+                    Accessible.description: i18nc("@info:whatsthis", "Makes the box's container from its settings.")
+                    onClicked: kcm.createBox()
+                }
+                QQC2.Button {
+                    visible: page.created && !page.running
                     enabled: page.idle
                     text: i18nc("@action:button", "Start")
                     icon.name: "media-playback-start"
@@ -234,6 +282,14 @@ KCM.SimpleKCM {
                     text: i18nc("@action:button", "Restart")
                     icon.name: "view-refresh"
                     onClicked: kcm.restartBox()
+                }
+                QQC2.Button {
+                    visible: page.created
+                    enabled: page.idle
+                    text: i18nc("@action:button", "Open Terminal")
+                    icon.name: "utilities-terminal"
+                    Accessible.description: i18nc("@info:whatsthis", "Opens a terminal window with a shell inside the box.")
+                    onClicked: kcm.openTerminal()
                 }
             }
 
@@ -255,7 +311,7 @@ KCM.SimpleKCM {
                     onClicked: removeDialog.open()
                 }
                 QQC2.Button {
-                    visible: (page.box.exportId ?? "") !== ""
+                    visible: (page.box.exportId ?? "") !== "" && !page.box.appMissing
                     enabled: page.idle && !kcm.needsSave
                     text: i18nc("@action:button", "Export as Archive…")
                     icon.name: "document-export"
@@ -343,6 +399,9 @@ KCM.SimpleKCM {
             }
 
             QQC2.ComboBox {
+                /* The wheel scrolls the page: a setting changed by the wheel
+                 * passing over it while the page scrolls is changed unseen. */
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:listbox", "What it writes:")
                 Accessible.name: i18nc("@label:listbox", "What the box writes")
                 textRole: "text"
@@ -391,6 +450,7 @@ KCM.SimpleKCM {
                 key: "audio"
             }
             QQC2.ComboBox {
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:listbox", "Drawing:")
                 Accessible.name: i18nc("@label:listbox", "How the box's applications draw")
                 textRole: "text"
@@ -414,6 +474,8 @@ KCM.SimpleKCM {
             }
 
             QQC2.SpinBox {
+                id: memoryBox
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:spinbox", "Memory limit:")
                 Accessible.name: i18nc("@label:spinbox", "Memory limit")
                 from: 0
@@ -421,17 +483,17 @@ KCM.SimpleKCM {
                 stepSize: 256
                 editable: true
                 value: page.values.memory ?? 0
-                validator: RegularExpressionValidator {
-                    regularExpression: /[^\n]*/
-                }
+                validator: kcm ? kcm.profile.limitValidator("memory") : null
                 textFromValue: (v, locale) => kcm.profile.formatMemory(v)
                 valueFromText: (text, locale) => kcm.profile.memoryFromText(text)
-                onValueModified: page.values.memory = value
+                onValueModified: page.setLimit(memoryBox, "memory")
             }
             KeyNotes {
                 key: "memory"
             }
             QQC2.SpinBox {
+                id: cpusBox
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:spinbox", "Processor limit:")
                 Accessible.name: i18nc("@label:spinbox", "Processor limit")
                 from: 0
@@ -439,17 +501,17 @@ KCM.SimpleKCM {
                 stepSize: 5
                 editable: true
                 value: page.values.cpus ?? 0
-                validator: RegularExpressionValidator {
-                    regularExpression: /[^\n]*/
-                }
+                validator: kcm ? kcm.profile.limitValidator("cpus") : null
                 textFromValue: (v, locale) => kcm.profile.formatCpus(v)
                 valueFromText: (text, locale) => kcm.profile.cpusFromText(text)
-                onValueModified: page.values.cpus = value
+                onValueModified: page.setLimit(cpusBox, "cpus")
             }
             KeyNotes {
                 key: "cpus"
             }
             QQC2.SpinBox {
+                id: pidsBox
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:spinbox", "Process limit:")
                 Accessible.name: i18nc("@label:spinbox", "Process limit")
                 from: 0
@@ -457,20 +519,17 @@ KCM.SimpleKCM {
                 stepSize: 64
                 editable: true
                 value: page.values.pids ?? 0
-                textFromValue: (v, locale) => v === 0 ? i18nc("@item process limit", "No limit") : Number(v).toLocaleString(locale, "f", 0)
-                valueFromText: (text, locale) => {
-                    const n = parseInt(text.replace(/[^0-9]/g, ""));
-                    return isNaN(n) ? 0 : n;
-                }
-                validator: RegularExpressionValidator {
-                    regularExpression: /[^\n]*/
-                }
-                onValueModified: page.values.pids = value
+                textFromValue: (v, locale) => kcm.profile.formatPids(v)
+                valueFromText: (text, locale) => kcm.profile.pidsFromText(text)
+                validator: kcm ? kcm.profile.limitValidator("pids") : null
+                onValueModified: page.setLimit(pidsBox, "pids")
             }
             KeyNotes {
                 key: "pids"
             }
             QQC2.SpinBox {
+                id: autostopBox
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:spinbox", "Stop when idle for:")
                 Accessible.name: i18nc("@label:spinbox", "Stop the box when it has had no window for")
                 from: 0
@@ -480,10 +539,8 @@ KCM.SimpleKCM {
                 value: page.values.autostop ?? 0
                 textFromValue: (v, locale) => kcm.profile.formatDuration(v)
                 valueFromText: (text, locale) => kcm.profile.durationFromText(text)
-                validator: RegularExpressionValidator {
-                    regularExpression: /[^\n]*/
-                }
-                onValueModified: page.values.autostop = value
+                validator: kcm ? kcm.profile.limitValidator("autostop") : null
+                onValueModified: page.setLimit(autostopBox, "autostop")
             }
             KeyNotes {
                 key: "autostop"
@@ -506,6 +563,7 @@ KCM.SimpleKCM {
             }
 
             QQC2.ComboBox {
+                wheelEnabled: false
                 Kirigami.FormData.label: i18nc("@label:listbox", "X11 display:")
                 Accessible.name: i18nc("@label:listbox", "When the box may use the X11 display")
                 textRole: "text"
@@ -619,14 +677,25 @@ KCM.SimpleKCM {
     /* A dialog declared in a SimpleKCM is moved into its scrolled content
      * and centred there, out of view behind its own modal dim: each one is
      * parented to the window's overlay. */
+    /* The dialogs name the box, never an application exported from it:
+     * the whole box goes, with everything installed in it. Each says what
+     * goes and what stays. */
+    readonly property string exportsClause: (page.box.exports ?? []).length > 0
+        ? i18nc("@info %1 programs exported from the box", " and the launchers exported from it (%1)", page.box.exports.join(", "))
+        : ""
+
     Kirigami.PromptDialog {
         id: recreateDialog
 
         parent: page.QQC2.Overlay.overlay
-        title: i18nc("@title:window %1 box", "Create %1 Again?", page.title)
+        title: i18nc("@title:window %1 box name", "Create %1 again?", kcm.currentBox)
         subtitle: page.box.writesInside
-            ? i18nc("@info", "The box is removed and created again with its current settings. It keeps what it writes inside its container, so all of that is deleted. Your home folder is not touched.")
-            : i18nc("@info", "The box is removed and created again with its current settings. What it wrote is kept: its writable layer, snapshots and home live outside the container.")
+            ? i18nc("@info %1 an optional clause naming exported launchers",
+                    "It is removed and created again with its current settings. Goes: its container, every package installed in it%1. Stays: the files in your home folder.",
+                    page.exportsClause)
+            : i18nc("@info %1 an optional clause naming exported launchers",
+                    "It is removed and created again with its current settings. Goes: its container%1. Stays: its writable layer, snapshots and home, which live outside the container, and the files in your home folder.",
+                    page.exportsClause)
         standardButtons: Kirigami.Dialog.NoButton
         customFooterActions: [
             Kirigami.Action {
@@ -648,13 +717,24 @@ KCM.SimpleKCM {
     Kirigami.PromptDialog {
         id: removeDialog
 
+        readonly property string comesBack: page.box.appBox === true
+            ? i18nc("@info", "It is created again the next time its application starts.")
+            : i18nc("@info", "Create makes it again from its settings.")
+
         parent: page.QQC2.Overlay.overlay
-        title: page.created ? i18nc("@title:window %1 box", "Remove %1?", page.title) : i18nc("@title:window %1 box", "Delete the Settings of %1?", page.title)
+        title: page.created ? i18nc("@title:window %1 box name", "Remove the box %1?", kcm.currentBox)
+            : i18nc("@title:window %1 box name", "Delete the settings of %1?", kcm.currentBox)
         subtitle: !page.created
-            ? i18nc("@info", "The box has never been created, so these settings are all there is of it.")
+            ? (page.box.kept === true
+               ? i18nc("@info", "The box was removed, and these settings are all that is left of it.")
+               : i18nc("@info", "The box has never been created, so these settings are all there is of it."))
             : page.box.writesInside
-            ? i18nc("@info", "Its settings are kept. It keeps what it writes inside its container, so all of that is deleted.")
-            : i18nc("@info", "Its settings, writable layer, snapshots and home are kept, and it is created again the next time its application starts.")
+            ? i18nc("@info %1 an optional clause naming exported launchers, %2 how the box comes back",
+                    "Goes: its container, every package installed in it%1. Stays: its settings and the files in your home folder. %2",
+                    page.exportsClause, comesBack)
+            : i18nc("@info %1 an optional clause naming exported launchers, %2 how the box comes back",
+                    "Goes: its container%1. Stays: its settings, its writable layer, snapshots and home, and the files in your home folder. %2",
+                    page.exportsClause, comesBack)
         dialogType: Kirigami.PromptDialog.Warning
         standardButtons: Kirigami.Dialog.NoButton
         customFooterActions: [

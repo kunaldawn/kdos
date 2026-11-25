@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=No Office Program
+Comment=Say that no office program is installed, and how to install one
+Exec=kdialog --icon x-office-document --desktopfile kdos-nooffice --title "No office program" --detailedsorry "No office program is installed. LibreOffice is in the office group: install it from Discover, or with sudo kdos update install office." %f
+Icon=x-office-document
+Terminal=false
+NoDisplay=true
+MimeType=application/vnd.oasis.opendocument.text;application/vnd.oasis.opendocument.text-template;application/vnd.oasis.opendocument.spreadsheet;application/vnd.oasis.opendocument.spreadsheet-template;application/vnd.oasis.opendocument.presentation;application/vnd.oasis.opendocument.presentation-template;application/vnd.oasis.opendocument.graphics;application/vnd.oasis.opendocument.graphics-template;application/vnd.oasis.opendocument.formula;application/vnd.oasis.opendocument.formula-template;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.wordprocessingml.template;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.spreadsheetml.template;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.openxmlformats-officedocument.presentationml.template;application/vnd.ms-word.document.macroEnabled.12;application/vnd.ms-excel.sheet.macroEnabled.12;application/vnd.ms-powerpoint.presentation.macroEnabled.12;
+Categories=Utility;

@@ -20,10 +20,14 @@
  *
  *   /var/lib/kpkg/db changes       a package was installed or removed: ask
  *   /var/lib/kdos/update.json      `kdos restarts`, `kdos cve` and `kdos
- *                                  firmware sync --dry-run`, once the
- *                                  database has been quiet for ten seconds,
- *                                  so an update of three hundred packages is
- *                                  one question and not three hundred
+ *                                  firmware sync --dry-run`, and read the
+ *                                  installer's records, once the database
+ *                                  has been quiet for ten seconds, so an
+ *                                  update of three hundred packages is one
+ *                                  question and not three hundred; `kdos
+ *                                  update install --pending` rewrites
+ *                                  groups-pending right after each group's
+ *                                  packages, inside that quiet time
  *   /run/kdos/bootstate.json       the slots changed: ask `kdos-bootctl`
  *   every ten seconds              kdos-oomd's kill count, one line over its
  *                                  socket, which is what a kill is visible by
@@ -35,13 +39,15 @@
  *   every six hours                everything, for a secdb or a trial that
  *                                  changed under a watch that missed it, for
  *                                  the installer's apps-pending file, which
- *                                  Discover empties, and for a firmware load
- *                                  the kernel logged since
+ *                                  Discover empties, for a record emptied
+ *                                  by hand, and for a firmware load the
+ *                                  kernel logged since
  *
  * WHAT IT RUNS. The facts' commands, and the action a person clicked —
  * Konsole on `kdos cve` or `kdos restarts`, Konsole on `sudo kdos firmware
- * sync`, System Settings at System Versions, Discover at "Selected during
- * install" — each an argument vector; logging out is a D-Bus call to
+ * sync` (`su -c 'kdos firmware sync'` for an account outside `wheel`), System
+ * Settings at System Versions, Discover at "Selected during install" — each
+ * an argument vector; logging out is a D-Bus call to
  * Plasma's logout prompt. No shell, and no input from a notification ever
  * becomes an argument: an action is one of the fixed ids decide.c offered.
  *
@@ -143,7 +149,7 @@ static void post(const KnPost *p)
 	r = sd_bus_message_new_method_call(g_bus, &call, NOTIFY_DEST,
 					   NOTIFY_PATH, NOTIFY_DEST, "Notify");
 	if (r >= 0)
-		r = sd_bus_message_append(call, "susss", "KDOS",
+		r = sd_bus_message_append(call, "susss", "KDOS Tools",
 					  (uint32_t)g_state.id[p->kind],
 					  p->icon ? p->icon : "", p->summary,
 					  p->body);
@@ -164,6 +170,14 @@ static void post(const KnPost *p)
 	if (r >= 0)
 		r = sd_bus_message_append(call, "{sv}", "x-kdos-notice", "s",
 					  kn_kind_name(p->kind));
+	/* kdos-tools' kdos.notifyrc: Plasma's KDOS mark and Configure button
+	 * on the notice, and a place in the history, which a notification
+	 * with no notifyrc and no shown application entry is kept out of.
+	 * The sender above is that notifyrc's Name: any other would head a
+	 * history group of its own beside the one every kdos command fills. */
+	if (r >= 0)
+		r = sd_bus_message_append(call, "{sv}", "x-kde-appname", "s",
+					  "kdos");
 	if (r >= 0)
 		r = sd_bus_message_close_container(call);
 	if (r >= 0)
@@ -527,6 +541,7 @@ static int serve(int once)
 		if (t_pkgs >= 0 && now >= t_pkgs) {
 			look_packages();
 			look_firmware();
+			look_pending();
 			t_pkgs = -1;
 		}
 		if (now >= t_oom) {

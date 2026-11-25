@@ -19,6 +19,8 @@ applications follow the theme. Why the look is built this way is in
 | [kdos-kwin-motion](#port-kdos-kwin-motion) | Phosphor mode's window, login and logout motion |
 | [kdos-tools](#port-kdos-tools) | `kdos theme` and `kdos phosphor` |
 | [noto-fonts](#port-noto-fonts), [ttf-jetbrains-mono](#port-ttf-jetbrains-mono), [terminus-ttf](#port-terminus-ttf) | The interface face, the fixed-width face and the fallback for braille and box glyphs |
+| [noto-fonts-extra](#port-noto-fonts-extra) | The base's faces for Arabic, Hebrew, Armenian, Georgian, the Indic scripts, Sinhala, Thai, Lao, Khmer, Myanmar and Ethiopic; Chinese, Japanese and Korean come with `noto-cjk`, in the `lang-zh`, `lang-ja` and `lang-ko` groups |
+| [noto-cjk-prefer-ja](#port-noto-cjk-prefer-ja), [noto-cjk-prefer-zh](#port-noto-cjk-prefer-zh), [noto-cjk-prefer-ko](#port-noto-cjk-prefer-ko) | Each language group's default CJK face: which of Noto Sans CJK's variants draws Han text that names no language |
 | [kde-gtk-config](#port-kde-gtk-config) | Carries the colours, fonts and cursor to GTK programs |
 | [qt5ct](#port-qt5ct) | Carries the KDOS palette to Qt 5 programs |
 
@@ -51,6 +53,20 @@ puts JetBrains Mono first, Noto Sans Mono second for the Latin, Greek and Cyrill
 Terminus third for braille patterns and box drawing, from `fs/etc/fonts/conf.d/45-kdos-mono.conf`:
 
 <!-- kfs:include fs/etc/fonts/conf.d/45-kdos-mono.conf lines=45-57 pin=32b406aa9868 -->
+
+### Han text and the language groups
+
+Chinese, Japanese and Korean share one block of [Han]{.idx} code points and draw many of them
+differently, so Noto Sans CJK carries a variant per language. Text that names its language (a
+web page's `lang`, a document's language) gets that language's variant from `noto-cjk`'s
+`70-noto-cjk.conf`. Every other piece of text, which in an `en_US.UTF-8` session is nearly all of
+it, gets the first CJK face in `sans-serif`, `serif` or `monospace`, and fontconfig's own
+`65-nonlatin.conf` lists Noto Sans CJK KR first for `sans-serif` and `monospace`. Each language group therefore installs a default
+of its own, `/etc/fonts/conf.d/64-noto-cjk-prefer-<lang>.conf`: `lang-ja` puts Noto Sans CJK JP
+first, `lang-zh` Simplified Chinese (SC) and `lang-ko` Korean (KR), and the matching Noto Sans Mono
+CJK variant for `monospace`. It sits after the Latin and script preferences, so Noto Sans, DejaVu
+and the `noto-fonts-extra` faces keep their scripts, and before `65-nonlatin.conf`. With two groups
+installed, the lower file name wins: `ja` before `ko` before `zh`.
 
 ### The accent outside the session
 
@@ -141,6 +157,13 @@ is not in `wheel` and polkit did not allow it, `kdos-powerd` is not running
 `/usr/share/kdos/xdg` in `XDG_CONFIG_DIRS`; see
 [Session and environment](session-and-environment.md#troubleshooting). A Qt 5 program needs
 `QT_QPA_PLATFORMTHEME=kde`, which every login shell sets.
+
+**Kanji or hanzi take another language's shapes.** `fc-match -s sans-serif | grep -m1 CJK` names
+the variant unlabelled Han text gets. With no CJK package installed nothing matches and the text
+shows as boxes; with `noto-cjk` installed alone (`sudo kdos update install noto-cjk`) it is Noto
+Sans CJK KR; `sudo kdos update install lang-ja` (or `lang-zh`) installs the default for that language, and a
+program started afterwards draws with it. With several groups installed, `ja` comes before `ko`
+and `ko` before `zh` (see [Han text and the language groups](#han-text-and-the-language-groups)).
 
 **Box-drawing or braille characters look wrong in Konsole.** `fc-match -s monospace` must list
 Terminus before any proportional face; check that `45-kdos-mono.conf` is in

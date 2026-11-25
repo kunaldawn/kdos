@@ -14,7 +14,7 @@
  * last is the result:
  *
  *   {"t":"plan","steps":[{"index":0,"title":"Prepare","detail":"…",
- *                         "state":"pending"}, …]}
+ *                         "state":"pending","weight":3}, …]}
  *   {"t":"S","step":4,"title":"Copy system"}    a step begins
  *   {"t":"K","step":1}                          a step is skipped
  *   {"t":"P","step":4,"frac":0.42}              its progress, -1 unknown
@@ -24,6 +24,13 @@
  *   {"t":"F","step":9,"text":"…"}               the failure, with its reason
  *   {"t":"D"}                                   every step finished
  *   {"t":"exit","status":0}                     the last line, always
+ *
+ * A step's `weight` is the time it is expected to take, in tenths of a
+ * second (the copies by their bytes at a measured rate; install.c, THE
+ * STEPS' WEIGHTS), for a bar over the install that moves with the clock;
+ * a reader takes a missing one as 1. The Copy step's and Slot B's `frac`
+ * is of the copy's time, not its bytes (THE FRACTION DONE IS OF THE TIME),
+ * so the bar keeps to the clock through the copy too.
  *
  * Status 0 is a finished install, 1 a failed one, 2 answers refused before
  * anything was written (the reason in an `F` line with step -1). The process
@@ -64,8 +71,9 @@ static void plan_line(void)
 		kb_json_str(&b, inst.step[i].title);
 		kb_buf_str(&b, ",\"detail\":");
 		kb_json_str(&b, inst.step[i].detail);
-		kb_buf_printf(&b, ",\"state\":\"%s\"}",
-			      ki_state_name(inst.step[i].state));
+		kb_buf_printf(&b, ",\"state\":\"%s\",\"weight\":%d}",
+			      ki_state_name(inst.step[i].state),
+			      inst.step[i].weight);
 	}
 	kb_buf_str(&b, "]}");
 	out(&b);

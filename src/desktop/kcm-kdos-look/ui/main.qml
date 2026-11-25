@@ -11,7 +11,29 @@
  * selection and text roles of the colour scheme a click applies, read by
  * the controller through KColorScheme; only the frame round it is this
  * page's own theme, so the picked one is marked in the colours the page is
- * wearing now.
+ * wearing now. The frame marks the current accent and a second ring outside
+ * it, in the focus colour, marks keyboard focus, so a focused current
+ * swatch still looks different from an unfocused one.
+ *
+ * THE SWATCHES ARE A RADIO GROUP. Each is checkable and checked where its
+ * accent is current, so the accessibility layer reports the checked state
+ * itself; an Accessible.checked override is replaced by the button's own.
+ * A click toggles `checked` and an exclusive group unchecks its neighbour,
+ * either of which leaves a value the model did not set, so every swatch
+ * binds `checked` to `current` again after any click and whenever `current`
+ * moves. Tab stops once in the group, on the current swatch, and a
+ * focused swatch keeps its stop until the focus leaves it; the arrow
+ * keys move focus only, wrapping and skipping a disabled swatch; Space or
+ * Enter applies, because an accent is a command that repaints the machine
+ * and an arrow press must not start one. A swatch stays enabled while an
+ * accent runs, so the focus and the accessible states hold still while it
+ * goes; the busy line says a run is going, and a press the controller
+ * refuses is announced rather than dropped. The refresh that brings a new
+ * current accent updates the swatches in place, so the focused one keeps
+ * the focus. A list that adds, drops or reorders an accent resets the
+ * model and the Repeater rebuilds every swatch; the focus then goes back
+ * to the swatch in the place the focused one held, so it does not fall out
+ * of the group.
  */
 
 pragma ComponentBehavior: Bound
@@ -55,13 +77,44 @@ KCM.SimpleKCM {
             spacing: Kirigami.Units.smallSpacing
             Accessible.role: Accessible.Grouping
             Accessible.name: i18ndc("kdos-kcm-look", "@label accessible name of the swatches", "Accents")
+            Accessible.description: i18ndc("kdos-kcm-look", "@info accessible description of the swatches", "The arrow keys move between the accents; Space or Enter applies one.")
+
+            QQC2.ButtonGroup {
+                id: accentGroup
+
+                exclusive: true
+            }
 
             Repeater {
+                id: accentRepeater
+
+                /* The place of the swatch that held the focus when a reset
+                 * removed it, -1 while none did, and how the last focused
+                 * swatch got the focus, which each records itself. The
+                 * Repeater adds the new swatches in the same pass, so a
+                 * place no new swatch takes is forgotten after it. */
+                property int refocusIndex: -1
+                property int refocusReason: Qt.OtherFocusReason
+
                 model: root.controller.accents
+
+                onItemRemoved: (index, item) => {
+                    if (item.activeFocus) {
+                        refocusIndex = index;
+                        Qt.callLater(() => accentRepeater.refocusIndex = -1);
+                    }
+                }
+                onItemAdded: (index, item) => {
+                    if (index === refocusIndex) {
+                        refocusIndex = -1;
+                        item.forceActiveFocus(refocusReason);
+                    }
+                }
 
                 delegate: QQC2.AbstractButton {
                     id: swatch
 
+                    required property int index
                     required property string accentId
                     required property string label
                     required property bool current
@@ -77,14 +130,76 @@ KCM.SimpleKCM {
                      * either. */
                     padding: Kirigami.Units.smallSpacing
                     bottomPadding: Kirigami.Units.smallSpacing * 2 + 2
-                    enabled: available && !root.controller.busy
-                    focusPolicy: Qt.StrongFocus
+                    /* Not tied to `busy`: the controller refuses an accent
+                     * while one runs, and a swatch disabled under the focus
+                     * on Space would throw the focus off the group and make
+                     * every swatch report a state change twice per run, a
+                     * storm a screen reader walks the whole page for. */
+                    enabled: available
+                    /* One Tab stop for the group: the current swatch, or every
+                     * swatch while none is current. The swatch that holds the
+                     * focus keeps its stop until the focus leaves it, since a
+                     * control cannot drop its Tab stop while it holds the
+                     * active focus: an accent picked elsewhere under a focused
+                     * swatch would otherwise log a warning and leave the stop
+                     * where it was. */
+                    focusPolicy: swatch.current || swatch.activeFocus || !accentGroup.checkedButton ? Qt.StrongFocus : Qt.ClickFocus
                     hoverEnabled: true
+                    checkable: true
+                    checked: current
+                    QQC2.ButtonGroup.group: accentGroup
+
+                    function bindChecked(): void {
+                        checked = Qt.binding(() => swatch.current);
+                    }
+
+                    /* A press while a run or kded-kdos's sync goes is
+                     * refused; the swatch says so, or a screen reader hears
+                     * the checked state flip back and nothing else. */
+                    function apply(): void {
+                        if (!root.controller.applyAccent(accentId) && available) {
+                            swatch.Accessible.announce(root.controller.busyText.length > 0
+                                ? i18ndc("kdos-kcm-look", "@info announced when an accent press is refused; %1 is what is running", "Not applied: %1", root.controller.busyText)
+                                : i18ndc("kdos-kcm-look", "@info announced when an accent press is refused", "Not applied: another change is still running"));
+                        }
+                    }
+
+                    /* The next enabled swatch `step` places away, wrapping;
+                     * a Tab reason so the focus ring is drawn. */
+                    function focusNeighbour(step: int): void {
+                        const n = accentRepeater.count;
+                        for (let k = 1; k < n; ++k) {
+                            const next = accentRepeater.itemAt((((index + step * k) % n) + n) % n);
+                            if (next && next.enabled) {
+                                next.forceActiveFocus(Qt.TabFocusReason);
+                                return;
+                            }
+                        }
+                    }
+
+                    onCurrentChanged: bindChecked()
+                    onActiveFocusChanged: {
+                        if (activeFocus) {
+                            accentRepeater.refocusReason = focusReason;
+                        }
+                    }
+                    Keys.onLeftPressed: focusNeighbour(-1)
+                    Keys.onUpPressed: focusNeighbour(-1)
+                    Keys.onRightPressed: focusNeighbour(1)
+                    Keys.onDownPressed: focusNeighbour(1)
+                    Keys.onReturnPressed: apply()
+                    Keys.onEnterPressed: apply()
+
+                    Connections {
+                        target: accentGroup
+
+                        function onClicked(): void {
+                            swatch.bindChecked();
+                        }
+                    }
 
                     Accessible.role: Accessible.RadioButton
                     Accessible.name: i18ndc("kdos-kcm-look", "@action:button %1 is an accent", "%1 accent", label)
-                    Accessible.checkable: true
-                    Accessible.checked: current
                     Accessible.description: available
                         ? i18ndc("kdos-kcm-look", "@info:tooltip %1 is an accent", "Apply %1 everywhere", label)
                         : i18ndc("kdos-kcm-look", "@info:tooltip %1 is an accent", "The %1 color scheme is not installed", label)
@@ -93,23 +208,44 @@ KCM.SimpleKCM {
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
 
-                    onClicked: root.controller.applyAccent(accentId)
+                    onClicked: apply()
 
-                    background: Rectangle {
-                        color: swatch.windowColor
-                        opacity: swatch.available ? 1 : 0.4
-                        border.width: swatch.current || swatch.visualFocus ? 2 : 1
-                        border.color: swatch.current || swatch.visualFocus ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-
+                    /* The fill and band dim on a swatch whose scheme is
+                     * missing; the focus ring sits beside them, not in them,
+                     * so it is drawn at full strength on every swatch. */
+                    background: Item {
                         Rectangle {
-                            anchors {
-                                left: parent.left
-                                right: parent.right
-                                bottom: parent.bottom
-                                margins: parent.border.width
+                            id: fill
+
+                            anchors.fill: parent
+                            color: swatch.windowColor
+                            opacity: swatch.available ? 1 : 0.4
+                            border.width: swatch.current ? 2 : 1
+                            border.color: swatch.current ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+
+                            Rectangle {
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    bottom: parent.bottom
+                                    margins: fill.border.width
+                                }
+                                height: Kirigami.Units.smallSpacing * 2
+                                color: swatch.accentColor
                             }
-                            height: Kirigami.Units.smallSpacing * 2
-                            color: swatch.accentColor
+                        }
+
+                        /* Outside the frame and inside the Flow's spacing,
+                         * so it never covers the frame that marks the
+                         * current accent. */
+                        Rectangle {
+                            objectName: "focusRing"
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            color: "transparent"
+                            border.width: 2
+                            border.color: Kirigami.Theme.focusColor
+                            visible: swatch.visualFocus
                         }
                     }
 
@@ -201,8 +337,8 @@ KCM.SimpleKCM {
             font: Kirigami.Theme.smallFont
             color: Kirigami.Theme.disabledTextColor
             text: root.controller.bootMenu
-                ? i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens, the splash and the boot menu at once. Each accent is also a Global Theme and a color scheme on their own pages.")
-                : i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens and the splash at once. Each accent is also a Global Theme and a color scheme on their own pages.")
+                ? i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals and the lock screen at once. The login screen and the text console change the next time they show, and the splash and the boot menu at the next boot. Each accent is also a Global Theme and a color scheme on their own pages.")
+                : i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals and the lock screen at once. The login screen and the text console change the next time they show, and the splash at the next boot. Each accent is also a Global Theme and a color scheme on their own pages.")
         }
 
         Kirigami.Separator {

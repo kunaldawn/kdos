@@ -338,6 +338,11 @@ kdos-energyd
 # socket for `kdos doctor`.
 kdos-oomd
 
+# `.local` host names for getaddrinfo() on musl, which has no NSS for
+# nss-mdns to hook: NetworkManager's dnsmasq forwards the `local` domain to
+# it on 127.0.0.1:5380, and it asks avahi-daemon, as `nobody`.
+kdos-mdnsd
+
 # Packs. An application is one signed EROFS image with a KDOS footer on the
 # end, and this is the only thing on the machine that mounts one: it verifies
 # where it mounts, composes a box's root filesystem out of an overlay of them,

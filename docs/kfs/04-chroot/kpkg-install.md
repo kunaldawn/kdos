@@ -68,9 +68,9 @@ is left out here:
 ==> Removing cached package /var/cache/kpkg/packages/pv-1.12.0-1.tar.xz...
 ```
 
-All of it goes to the step's log, `build/logs/41_system/<NNNN>_pv.install.log`. In the log, kpkg's
-own lines can come after the build output they introduce: kpkg buffers its standard output when it
-is not writing to a terminal, and the programs the build runs write theirs directly.
+All of it goes to the step's log, `build/logs/41_system/<NNNN>_pv.install.log`, in the order it
+was written: kpkg's standard output is line-buffered wherever it goes, so each of its own lines is
+out before the build it forks writes to the same descriptor.
 
 ## Deciding: resolution and the recipe hash
 
@@ -106,9 +106,9 @@ below, printing `Reusing pv from the store` with the start of the key.
 
 `Building pv...` starts the build proper. `kpkg install -f pv` would print `Rebuilding pv
 (forced)...` instead, and build it whether it is current or not. Only the ports named on the
-command line are forced, never their dependencies: the order is resolved as if nothing were
-installed, so `Packages to install` lists `ncurses pv`, and kpkg then prints `Skipping ncurses
-(already installed)` for the dependency that is current.
+command line are forced, never their dependencies: a dependency is ordered only when it is not
+installed at its current recipe, and the walk stops at an installed one. With ncurses current,
+`Packages to install` lists `pv` alone.
 
 ## Building
 

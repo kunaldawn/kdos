@@ -1,0 +1,17 @@
+# bash completion for kinstall.
+
+_kdos_kinstall() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    case "$prev" in
+        --config|--save) COMPREPLY=($(compgen -f -- "$cur")); return ;;
+        --dump)          COMPREPLY=($(compgen -W "probe plan apps look" -- "$cur")); return ;;
+        --events)        COMPREPLY=($(compgen -W "json" -- "$cur")); return ;;
+        --theme)         COMPREPLY=($(compgen -W "phosphor amber ice bone norton borland perfect paper" -- "$cur")); return ;;
+        --payload-kb|--appbox-kb) COMPREPLY=(); return ;;
+    esac
+    COMPREPLY=($(compgen -W "--config --save --unattended --events --dry-run --dump --json --payload-kb --appbox-kb --theme --no-mouse --ascii --version --help" -- "$cur"))
+}
+complete -F _kdos_kinstall kinstall

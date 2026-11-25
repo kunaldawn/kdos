@@ -1,0 +1,40 @@
+Subject: Read the terminal size in the curses driver's getsize and resize ncurses to it
+
+curses_getsize() answered a resize with endwin() and a second initscr(),
+and ncurses' initscr() returns the existing stdscr after its first call,
+so the reported size never changed and aa_resize() kept the old buffers.
+Ask the terminal for its size with TIOCGWINSZ on every call and give a
+changed size to resize_term(), which resizes stdscr in place, then mark
+curscr for a full repaint. resize_term() and not resizeterm(): the
+latter also queues KEY_RESIZE, which the curses keyboard driver reports
+as AA_UNKNOWN, so every resize would hand the program a spurious key and
+aafire, which quits on any key, would exit. Checking on every call also
+covers a keyboard driver other than curses, which installs no SIGWINCH
+handler. Without ncurses or TIOCGWINSZ the driver keeps the reinit path.
+
+--- a/src/aacurses.c
++++ b/src/aacurses.c
+@@ -1,6 +1,7 @@
+ #include <setjmp.h>
+ #include <signal.h>
+ #include <stdio.h>
++#include <sys/ioctl.h>
+ #include "config.h"
+ #ifdef CURSES_DRIVER
+ #ifdef USE_NCURSES
+@@ -69,8 +70,15 @@
+ }
+ static void curses_getsize(aa_context * c, int *width, int *height)
+ {
++#if defined(NCURSES_VERSION) && defined(TIOCGWINSZ)
++    struct winsize ws;
++    if (ioctl(fileno(stdout), TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0 && ws.ws_col > 0
++	&& (ws.ws_row != LINES || ws.ws_col != COLS))
++	resize_term(ws.ws_row, ws.ws_col), clearok(curscr, TRUE);
++#else
+     if (__resized_curses)
+ 	curses_uninit(c), curses_init(&c->params, NULL,&c->driverparams, NULL), __resized_curses = 0;
++#endif
+     *width = getmaxx(stdscr);
+     *height = getmaxy(stdscr);
+ #ifdef GPM_MOUSEDRIVER

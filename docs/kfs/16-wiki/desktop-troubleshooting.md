@@ -99,7 +99,8 @@ starts the account as new.
 **A black screen after the splash, and `tty2` answers.** The greeter is not drawing. Read
 `/var/log/sddm.log`. A line about the display (no DRM device, a permission refused) means KWin
 could not take the screen: `ls -l /dev/dri/` and [Graphics drivers](graphics-drivers.md). A
-greeter that SDDM keeps restarting shows the restarts there.
+greeter that SDDM keeps restarting shows the restarts there (`Greeter exited with no login,
+starting it again`), and SDDM gives up after three in a row, each within a minute of its start.
 
 **`tty1` shows a text password prompt.** `kdos-dm` gave up on SDDM; see
 [Login and autologin](login-and-autologin.md#troubleshooting).

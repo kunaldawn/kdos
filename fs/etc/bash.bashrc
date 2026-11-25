@@ -92,6 +92,14 @@ if command -v bat >/dev/null 2>&1; then
     # bat does not have the script.
     [ -x /usr/libexec/bat/man-pager ] && export MANPAGER=/usr/libexec/bat/man-pager
 fi
+# Without bat, man pages go to less, and mandoc hands less the page as a temp
+# file, whose name (/tmp/man.XXXX) less's default prompt shows. This prompt is
+# the position alone: a percentage, or (END). No spaces in it, since mandoc
+# splits $MANPAGER on them; argv[0] stays `less`, which keeps mandoc's tag
+# file and so `man -O tag=`.
+if [ -z "${MANPAGER:-}" ] && command -v less >/dev/null 2>&1; then
+    export MANPAGER='less -Ps?e(END):?pB%pB\%..'
+fi
 
 # No aliases for `find` or `ps`: fd and procs take different arguments, and
 # muscle memory that silently means something else is a trap, not a feature.

@@ -135,6 +135,65 @@ static void test_colour(void)
 			  "own slots");
 	}
 
+	/* The boot menu's plate is bone's floor under every accent, because
+	 * the one backdrop PNG is drawn on it and Limine cannot retint it;
+	 * and the menu text reads on that floor in every scheme. */
+	{
+		const KcolScheme *bone = kcol_find("bone");
+		char want[32], conf[1024];
+		int same = 1, legible = 1;
+
+		snprintf(want, sizeof(want), "term_background: 00");
+		kcol_format(bone->deep, want + strlen(want));
+		for (int i = 0; i < kcol_nscheme; i++) {
+			const KcolScheme *sc = &kcol_schemes[i];
+			uint32_t fg;
+			const char *p;
+
+			if (kcol_limine_conf(sc, conf, sizeof(conf)) >=
+			    (int)sizeof(conf) || !strstr(conf, want)) {
+				same = 0;
+				continue;
+			}
+			p = strstr(conf, "term_foreground: ");
+			if (!p || kcol_parse(p + 17, &fg) ||
+			    kcol_contrast(fg, bone->deep) < 450)
+				legible = 0;
+		}
+		ok(same, "every accent's boot menu plate is bone's deep");
+		ok(legible, "every accent's boot menu text reads at 4.5:1 on it");
+	}
+
+	/* The console's bright black is text, as the terminal's is: htop and
+	 * ls write figures in slot 8, so it has to read on slot 0. */
+	{
+		int vt8 = 1;
+
+		for (int i = 0; i < kcol_nscheme; i++) {
+			const KcolScheme *sc = &kcol_schemes[i];
+			char vt[256];
+			unsigned rgb[3][16];
+
+			if (kcol_vtrgb(sc, vt, sizeof(vt)) >= (int)sizeof(vt)) {
+				vt8 = 0;
+				continue;
+			}
+			const char *p = vt;
+			for (int ch = 0; ch < 3; ch++)
+				for (int k = 0; k < 16; k++) {
+					rgb[ch][k] = (unsigned)strtoul(p, (char **)&p, 10);
+					p++;
+				}
+			uint32_t s0 = rgb[0][0] << 16 | rgb[1][0] << 8 | rgb[2][0];
+			uint32_t s8 = rgb[0][8] << 16 | rgb[1][8] << 8 | rgb[2][8];
+
+			if (s8 != kcol_muted(sc) || kcol_contrast(s8, s0) < 450)
+				vt8 = 0;
+		}
+		ok(vt8, "every scheme's console slot 8 is kcol_muted, at 4.5:1 "
+			"on slot 0");
+	}
+
 	/*
 	 * EVERY SCHEME CLEARS THE SAME TWO FLOORS. A palette is judged by eye
 	 * at the bright end and the dark end of this one is compressed enough
@@ -300,11 +359,23 @@ static void test_colour(void)
 	{
 		char got[8][512], dir[512], store[600];
 		char *cwd = getcwd(NULL, 0);
-		int n;
+		int n, made = 0;
 
-		snprintf(dir, sizeof(dir), "%s/recent-write",
-			 getenv("KDOS_SELFTEST_OUT") ? getenv("KDOS_SELFTEST_OUT")
-						    : "/tmp");
+		/* A store of this run's own: two runs sharing one would each
+		 * read the other's entries. Without KDOS_SELFTEST_OUT it is a
+		 * fresh directory under $TMPDIR. */
+		if (getenv("KDOS_SELFTEST_OUT"))
+			snprintf(dir, sizeof(dir), "%s/recent-write",
+				 getenv("KDOS_SELFTEST_OUT"));
+		else {
+			snprintf(dir, sizeof(dir), "%s/kdos-recent.XXXXXX",
+				 getenv("TMPDIR") && *getenv("TMPDIR")
+					 ? getenv("TMPDIR") : "/tmp");
+			if (mkdtemp(dir))
+				made = 1;
+			else
+				snprintf(dir, sizeof(dir), "/nonexistent");
+		}
 		kb_mkdir_p(dir);
 		snprintf(store, sizeof(store), "%s/recently-used.xbel", dir);
 		unlink(store);
@@ -330,6 +401,8 @@ static void test_colour(void)
 		       "to whatever reads the store next");
 
 		unlink(store);
+		if (made)
+			kb_rmtree(dir);
 		unsetenv("XDG_DATA_HOME");
 		free(cwd);
 	}
@@ -692,6 +765,21 @@ static void test_base(void)
 	char dir[] = "/tmp/kdos-selftest.XXXXXX";
 	ok(mkdtemp(dir) != NULL, "scratch directory");
 
+	/* One slash at the join: makewhatis -d refuses every page under a
+	 * "//usr/share/man" base, the join of "/" and "usr/share/man". */
+	{
+		static const char *const pj[][3] = {
+			{ "/", "x", "/x" },     { "/a/", "x", "/a/x" },
+			{ "a", "/x", "a/x" },   { "", "x", "/x" },
+			{ "/a", "x", "/a/x" },  { "/", "//x", "/x" },
+		};
+		for (size_t i = 0; i < sizeof(pj) / sizeof(pj[0]); i++) {
+			char *j2 = kb_path_join(pj[i][0], pj[i][1]);
+			eq_str(j2, pj[i][2], "path_join has one slash at the join");
+			free(j2);
+		}
+	}
+
 	char *nested = kb_path_join(dir, "a/b");
 	ok(kb_mkdir_p(nested) == 0, "mkdir_p makes every component");
 	ok(kb_is_dir(nested), "and the deepest one is there");
@@ -1031,6 +1119,11 @@ static void test_pkg(void)
 		 * the reason. */
 		{ "x", "depends = y\n\nname = x\nversion = 1\nrelease = 1\n" },
 		{ "y", "depends = x\n\nname = y\nversion = 1\nrelease = 1\n" },
+		/* A forced install: fa and fc installed, fb and fd not. */
+		{ "fa", "depends = fb fc\n\nname = fa\nversion = 1\nrelease = 1\n" },
+		{ "fb", "depends =\n\nname = fb\nversion = 1\nrelease = 1\n" },
+		{ "fc", "depends = fb fd\n\nname = fc\nversion = 1\nrelease = 1\n" },
+		{ "fd", "depends =\n\nname = fd\nversion = 1\nrelease = 1\n" },
 		{ NULL, NULL }
 	};
 	for (int i = 0; ports[i][0]; i++) {
@@ -1050,8 +1143,8 @@ static void test_pkg(void)
 	kp_conf_load(&c);
 	ok(c.nrepos == 1, "PORT_REPO from the environment");
 
-	/* The /dev/null idiom: three callers ask for an empty database this
-	 * way, and it works only because /dev/null/<name> cannot be a file. */
+	/* The /dev/null idiom: the build system asks for an empty database
+	 * this way, and it works only because /dev/null/<name> cannot be a file. */
 	ok(!kp_installed(&c, "a"), "PKGDB_DIR=/dev/null reads as empty");
 
 	char *names[] = { (char *)"a" };
@@ -1064,6 +1157,49 @@ static void test_pkg(void)
 	char *cyc[] = { (char *)"x" };
 	kp_resolve(&c, cyc, 1, &o);
 	ok(o.n == 2, "a dependency cycle terminates");
+
+	/* `kpkg install -f`: the named package is rebuilt, a dependency is
+	 * ordered only when it is missing, and the walk stops at an installed
+	 * one. Walking through installed fc would reach fd, a dependency of
+	 * fc alone, and build it under a package nobody asked to rebuild. */
+	{
+		char *fdb = kb_path_join(dir, "forcedb");
+		kb_mkdir_p(fdb);
+		const char *inst[] = { "fa", "fc" };
+		for (int i = 0; i < 2; i++) {
+			char *f = kb_path_join(fdb, inst[i]);
+			kb_write_file(f, "1 1\n");
+			free(f);
+		}
+		KpConf fc = c;
+		kb_strlcpy(fc.pkgdb_dir, fdb, sizeof(fc.pkgdb_dir));
+		free(fdb);
+
+		char *fa[] = { (char *)"fa" };
+		kp_resolve(&fc, fa, 1, &o);
+		ok(o.n == 0, "an installed package resolves to nothing");
+		kp_resolve_forced(&fc, fa, 1, &o);
+		ok(o.n == 2, "-f orders the named package and its missing dependency");
+		eq_str(o.order[0], "fb", "the missing dependency first");
+		eq_str(o.order[o.n - 1], "fa", "the forced package last");
+		int deep = 0;
+		for (int i = 0; i < o.n; i++)
+			if (!strcmp(o.order[i], "fd") || !strcmp(o.order[i], "fc"))
+				deep = 1;
+		ok(!deep, "-f never walks through an installed dependency");
+
+		char *two[] = { (char *)"fa", (char *)"fc" };
+		kp_resolve_forced(&fc, two, 2, &o);
+		ok(o.n == 4, "a forced dependency of a forced package is walked");
+		int ia = -1, ic = -1;
+		for (int i = 0; i < o.n; i++) {
+			if (!strcmp(o.order[i], "fa"))
+				ia = i;
+			if (!strcmp(o.order[i], "fc"))
+				ic = i;
+		}
+		ok(ic >= 0 && ic < ia, "and ordered before the package that needs it");
+	}
 
 	char *pd = kp_port_dir(&c, "a");
 	ok(pd != NULL, "port lookup");
@@ -1390,6 +1526,13 @@ static void test_facets(void)
 		{ "./usr/share/info/gcc.info", NULL, KP_FACET_DOC },
 		{ "./usr/share/gtk-doc/html/glib/index.html", NULL,
 		  KP_FACET_DOC },
+		{ "./usr/share/gtk-doc/html/x/index.html", NULL, KP_FACET_DOC },
+		{ "./usr/share/gtk-doc/python/gtkdoc/scan.py", NULL,
+		  KP_FACET_RUN },
+		{ "./usr/share/gtk-doc/python", NULL, KP_FACET_RUN },
+		{ "./usr/share/gtk-doc/data/gtk-doc.xsl", NULL, KP_FACET_RUN },
+		{ "./usr/share/gtk-doc/data/gtk-doc.make", NULL, KP_FACET_RUN },
+		{ "./usr/share/gtk-doc/html", NULL, KP_FACET_DOC },
 		{ "./usr/share/help/C/gedit/index.page", NULL, KP_FACET_RUN },
 		{ "./usr/include/", NULL, KP_FACET_RUN },
 		{ "./usr/bin/zcat", NULL, KP_FACET_RUN },
@@ -2829,6 +2972,60 @@ static void check_modal(int sw, int sh)
 }
 
 /*
+ * A confirm opens on its `no` button. Every confirm guards something that
+ * cannot be taken back — an erase, a half-written install, a log out — so
+ * the Enter that arrives with the dialog, or a doubled one, must cancel.
+ */
+static int modal_yes_ran;
+
+static void modal_yes(void)
+{
+	modal_yes_ran++;
+}
+
+static void check_modal_default(void)
+{
+	KtuiEvent ev;
+
+	ktui_offscreen_init(80, 24);
+	modal_yes_ran = 0;
+	ktui_modal_confirm("Log Out", "End this session?", "Log Out",
+			   "Cancel", modal_yes);
+	feed(&ev, KT_K_ENTER);
+	ktui_modal_event(&ev);
+	ok(!modal_yes_ran && !ktui_modal_active(),
+	   "Enter on a fresh confirm cancels it");
+
+	ktui_modal_confirm("Log Out", "End this session?", "Log Out",
+			   "Cancel", modal_yes);
+	feed(&ev, KT_K_LEFT);
+	ktui_modal_event(&ev);
+	feed(&ev, KT_K_ENTER);
+	ktui_modal_event(&ev);
+	eq_int(modal_yes_ran, 1, "Left then Enter confirms");
+
+	ktui_modal_confirm("Log Out", "End this session?", "Log Out",
+			   "Cancel", modal_yes);
+	feed(&ev, KT_K_TAB);
+	ktui_modal_event(&ev);
+	feed(&ev, ' ');
+	ktui_modal_event(&ev);
+	eq_int(modal_yes_ran, 2, "Tab then Space confirms");
+
+	/* The immediate-mode path: the focused button answers Enter inside
+	 * the frame, and it is the `no` one. */
+	ktui_modal_confirm("Log Out", "End this session?", "Log Out",
+			   "Cancel", modal_yes);
+	feed(&ev, KT_K_ENTER);
+	ktui_frame_begin(&ev);
+	ktui_draw_clear();
+	ktui_modal_draw();
+	ktui_frame_end();
+	ok(modal_yes_ran == 2 && !ktui_modal_active(),
+	   "and Enter through the frame's buttons cancels too");
+}
+
+/*
  * THE DROP SHADOW DARKENS AND DOES NOT ERASE, and the translucency pass mixes
  * towards what was under it.
  *
@@ -3064,6 +3261,9 @@ static void test_slider(void)
 		ev.type = KT_EVT_KEY;
 		ev.key = KT_K_RIGHT;
 		ktui_frame_begin(&ev);
+		/* Focused by name: the focus left by an earlier case is not
+		 * this slider's. */
+		ktui_focus_set(ktui_id_base());
 		eq_int(ktui_slider(r, &v, 0, 100, 5, "crt"), 1,
 		       "the frame control takes the key of the focused slider");
 		eq_int(v, 45, "and steps it");
@@ -3626,6 +3826,72 @@ static void lay_form_cursor(KRect b)
 	ktui_note(f.x, f.y, b.w, "an indented note");
 }
 
+/* Both installers rate a password by length alone, the graphical one's
+ * StrengthLabel tiers; and a cut text draw is counted where a fitted one is
+ * not. */
+static void test_ktui_pw_and_cuts(void)
+{
+	printf("libktui password strength and the cut counter\n");
+	ok(ktui_pw_score("Secret1") == 0, "7 characters are short");
+	ok(ktui_pw_score("Secret123") == 1,
+	   "Secret123 is fair, as the graphical installer's 8 to 15");
+	ok(ktui_pw_score("aaaaaaaaaaaaaaa") == 1, "15 characters are fair");
+	ok(ktui_pw_score("correct horse ba") == 2, "16 characters are long");
+	ok(ktui_pw_score("\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9") == 0,
+	   "and the length is in characters, not bytes");
+
+	ktui_offscreen_init(20, 2);
+	ktui_draw_init();
+	ktui_draw_clear();
+	ktui_draw_cut_reset();
+	ktui_draw_text(0, 0, 4, "abcd", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 0, "a string that fits is no cut");
+	ktui_draw_text(0, 0, 3, "abcd", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 1, "a string wider than its width is one");
+	ktui_draw_text(18, 1, 10, "abcd", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 2, "and so is one run past the clip's edge");
+	int fit = ktui_draw_text_fit(0, 1, 5, "abcdefgh", KT_TEXT, KT_BG, 0);
+	ok(ktui_draw_cut_count() == 2 && fit == 5 && tc_ch(0, 1) == 'a' &&
+	   tc_ch(4, 1) != 'e' && tc_ch(5, 1) != 'f',
+	   "a fitted string with its ellipsis is not, and stays in its width");
+	ktui_draw_cut_reset();
+	ok(ktui_draw_cut_count() == 0, "the reset clears it");
+
+	/* A control byte sent as a glyph moves the terminal's cursor instead
+	 * of painting one cell, and every cell after it lands in the wrong
+	 * column: a TAB is one blank cell and the rest take none. */
+	ktui_draw_clear();
+	int cw = ktui_draw_text(0, 0, 20, "a\tb\x01" "c", KT_TEXT, KT_BG, 0);
+	ok(cw == 4 && tc_ch(0, 0) == 'a' && tc_ch(1, 0) == ' ' &&
+	   tc_ch(2, 0) == 'b' && tc_ch(3, 0) == 'c' && tc_ch(4, 0) == ' ' &&
+	   ktui_utf8_width("a\tb\x01" "c") == 4,
+	   "a TAB draws as one blank cell and a C0 byte as none");
+	uint32_t ell_cp;
+	int ew = ktui_utf8_width(ktui_glyph[KT_G_ELLIPSIS]);
+	ktui_utf8_next(ktui_glyph[KT_G_ELLIPSIS], &ell_cp);
+	ktui_draw_clear();
+	fit = ktui_draw_text_fit(0, 1, 5 + ew, "ab\tcd\x1b" "efgh", KT_TEXT,
+				 KT_BG, 0);
+	ok(fit == 5 + ew && tc_ch(2, 1) == ' ' && tc_ch(3, 1) == 'c' &&
+	   tc_ch(4, 1) == 'd' && tc_ch(5, 1) == ell_cp &&
+	   ktui_draw_cut_count() == 0,
+	   "and a fitted line with a TAB ends in its ellipsis");
+	ktui_draw_cut_reset();
+
+	ktui_offscreen_init(24, 4);
+	ktui_draw_init();
+	ktui_draw_clear();
+	int pl = ktui_para(0, 0, 24, "America/Argentina/Buenos_Aires", KT_TEXT);
+	ok(pl == 2 && tc_ch(17, 0) == '/' && tc_ch(18, 0) == ' ' &&
+	   tc_ch(0, 1) == 'B' && tc_ch(11, 1) == 's',
+	   "a word longer than the line breaks after its last '/'");
+	ktui_draw_clear();
+	pl = ktui_para(0, 0, 24, "off at /etc/service.disabled", KT_TEXT);
+	ok(pl == 2 && tc_ch(6, 0) == ' ' && tc_ch(0, 1) == '/' &&
+	   tc_ch(1, 1) == 'e',
+	   "and a space still beats a slash, so a path starts its line");
+}
+
 static void test_ktui_layout(void)
 {
 	KtuiEvent ev;
@@ -3965,7 +4231,11 @@ static void test_grid(void)
 	ok(only_three, "wcwidth answers 0, 1 or 2 for every codepoint");
 
 	ok(ktui_wcwidth('A') == 1 && ktui_wcwidth(' ') == 1 &&
-	   ktui_wcwidth(0x7f) == 1, "ASCII is one cell");
+	   ktui_wcwidth('~') == 1, "printable ASCII is one cell");
+	ok(ktui_wcwidth('\t') == 1 && ktui_wcwidth(0x01) == 0 &&
+	   ktui_wcwidth(0x1b) == 0 && ktui_wcwidth(0x7f) == 0 &&
+	   ktui_wcwidth(0x9b) == 0 && ktui_wcwidth(0xa0) == 1,
+	   "a TAB is one cell, every other C0, DEL and C1 none");
 	ok(ktui_wcwidth(0x00e9) == 1 && ktui_wcwidth(0x0410) == 1,
 	   "Latin-1 and Cyrillic are one cell");
 	ok(ktui_wcwidth(0x2500) == 1 && ktui_wcwidth(0x2591) == 1,
@@ -4145,6 +4415,58 @@ static void test_grid(void)
 	ktui_frame_end();
 	eq_str(buf, "éllo", "left moves by sequence, so the delete lands on one");
 
+	/* ── a field that takes the focus types at the end ──────────────── */
+
+	/*
+	 * The caret lives in the per-id store, and a page reuses ids. A
+	 * prefilled field reached by Tab must append, and the caret another
+	 * field left at that id must not carry over: the installer's hostname
+	 * field typed into "kdos" otherwise reads "xkdos".
+	 */
+	{
+		char pre[32] = "kdos";
+
+		ktui_frame_begin(&ev);	/* the "éllo" field, caret at 0 */
+		ktui_focus_set(1);
+		ktui_input(r, buf, sizeof(buf), 0, NULL);
+		ktui_frame_end();
+		feed(&ev, 'x');
+		ktui_frame_begin(&ev);
+		ktui_focus_set(0);
+		ktui_input(r, pre, sizeof(pre), 0, NULL);
+		ktui_frame_end();
+		eq_str(pre, "kdosx",
+		       "focus moving into a prefilled field types after its text");
+		feed(&ev, KT_K_LEFT);
+		ktui_frame_begin(&ev);
+		ktui_focus_set(0);
+		ktui_input(r, pre, sizeof(pre), 0, NULL);
+		ktui_frame_end();
+		feed(&ev, 'y');
+		ktui_frame_begin(&ev);
+		ktui_focus_set(0);
+		ktui_input(r, pre, sizeof(pre), 0, NULL);
+		ktui_frame_end();
+		eq_str(pre, "kdosyx",
+		       "and while it keeps the focus the caret stays where it moved");
+
+		/* The focused field's page is left: a frame draws no field.
+		 * When the focus lands on that id again, the caret left inside
+		 * "kdosyx" must not carry onto the text now drawn there. */
+		char other[32] = "hostname";
+
+		feed(&ev, KT_K_LEFT);
+		ktui_frame_begin(&ev);
+		ktui_frame_end();
+		feed(&ev, 'z');
+		ktui_frame_begin(&ev);
+		ktui_focus_set(0);
+		ktui_input(r, other, sizeof(other), 0, NULL);
+		ktui_frame_end();
+		eq_str(other, "hostnamez",
+		       "a field focused again after a frame without it types at the end");
+	}
+
 	/* ── the field trio, with no frame around it ────────────────────── */
 
 	/*
@@ -4236,6 +4558,7 @@ static void test_grid(void)
 
 	check_modal(44, 12);
 	check_modal(30, 8);
+	check_modal_default();
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -6165,6 +6488,25 @@ static void test_bracketed_paste(void)
 		ktui_input_next(&ev, 5);
 	ok(out != NULL, "a control byte inside a paste stays in the paste");
 
+	/* The Linux console's F1-F5 are ESC [ [ A..E: read as CSI, the second
+	 * '[' is the final byte and the letter is typed. */
+	const char *fk = "\033[[A\033[[E";
+	int f1 = 0, f5 = 0, typed = 0;
+
+	w = write(pfd[1], fk, strlen(fk));
+	for (int i = 0; i < 10; i++) {
+		if (ktui_input_next(&ev, 5) <= 0 || ev.type != KT_EVT_KEY)
+			continue;
+		if (ev.key == KT_K_F1 && !f5)
+			f1 = 1;
+		else if (ev.key == KT_K_F5 && f1)
+			f5 = 1;
+		else
+			typed = 1;
+	}
+	ok(f1 && f5 && !typed,
+	   "the console's ESC [ [ A and ESC [ [ E are F1 and F5, and type nothing");
+
 	dup2(saved, 0);
 	close(saved);
 	close(pfd[0]);
@@ -6185,6 +6527,67 @@ static void feed_seq(int w, const char *bytes)
 	ssize_t n = write(w, bytes, strlen(bytes));
 
 	(void)n;
+}
+
+/* ktui_run_console_note prints its note on the restored terminal before the
+ * program starts, and the program runs with SHLVL=2, so bash.bashrc takes the
+ * shell for a nested one and draws no banner over the note. Run in a child
+ * whose standard input holds the Enter that returns and whose standard
+ * output is a file. */
+static void test_ktui_console_note(void)
+{
+	printf("\n==> A console run says how to come back\n");
+
+	char path[] = "/tmp/ktui-note-XXXXXX";
+	int fd = mkstemp(path);
+	int pv[2];
+
+	if (fd < 0 || pipe(pv) != 0) {
+		ok(0, "a file and a pipe standing in for the terminal");
+		if (fd >= 0) {
+			close(fd);
+			unlink(path);
+		}
+		return;
+	}
+	if (write(pv[1], "\n", 1) != 1)
+		ok(0, "the Enter that returns");
+	close(pv[1]);
+
+	pid_t pid = fork();
+
+	if (pid == 0) {
+		dup2(pv[0], 0);
+		dup2(fd, 1);
+		unsetenv("SHLVL");
+		char *a[] = { "env", NULL };
+		ktui_run_console_note("NOTE-LINE type exit", a);
+		fflush(stdout);
+		_exit(0);
+	}
+	close(pv[0]);
+	int st = 0;
+
+	waitpid(pid, &st, 0);
+	close(fd);
+
+	char buf[65536];
+	FILE *f = fopen(path, "r");
+	size_t n = f ? fread(buf, 1, sizeof(buf) - 1, f) : 0;
+
+	if (f)
+		fclose(f);
+	buf[n] = 0;
+	unlink(path);
+
+	char *note = strstr(buf, "NOTE-LINE type exit\n");
+	char *lvl = strstr(buf, "\nSHLVL=2\n");
+
+	ok(note != NULL, "the note is printed");
+	ok(lvl != NULL, "the program runs with SHLVL=2");
+	ok(note && lvl && note < lvl, "the note comes before the program's output");
+	ok(strstr(buf, "-- press Enter to return --") != NULL,
+	   "the way back is printed after it");
 }
 
 static void test_ktui_csi_u(void)
@@ -6247,6 +6650,18 @@ static void test_ktui_csi_u(void)
 	eq_int(ktui_input_next(&ev, 50), 1, "CSI 1;5A still decodes");
 	eq_int(ev.key, KT_K_UP, "  as Up");
 	eq_int(ev.mods, KT_MOD_CTRL, "  with Ctrl and nothing else");
+
+	/*
+	 * SHIFT+TAB OUTSIDE A VT IS ESC [ Z. A Tab is a back-tab only when the
+	 * console reports Shift held, and a pipe is no console: a plain Tab
+	 * from a terminal emulator or ssh must stay a Tab.
+	 */
+	feed_seq(pv[1], "\t");
+	eq_int(ktui_input_next(&ev, 50), 1, "a Tab off a VT decodes");
+	eq_int(ev.key, KT_K_TAB, "  as Tab, never as the back-tab");
+	feed_seq(pv[1], "\x1b[Z");
+	eq_int(ktui_input_next(&ev, 50), 1, "CSI Z decodes");
+	eq_int(ev.key, KT_K_BTAB, "  as the back-tab");
 
 	dup2(saved, 0);
 	close(saved);
@@ -6486,6 +6901,7 @@ int main(void)
 	test_rows();
 	test_ktui_ids();
 	test_ktui_layout();
+	test_ktui_pw_and_cuts();
 	test_ktui_anim();
 	test_pack();
 	test_portup();
@@ -6496,6 +6912,7 @@ int main(void)
 	test_menu();
 	test_ktui_announce();
 	test_ktui_csi_u();
+	test_ktui_console_note();
 	test_bracketed_paste();
 
 	printf("\n%d checks, %d failed\n", checks, failures);

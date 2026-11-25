@@ -8,6 +8,7 @@
  *   fetch — a port's sources, onto a machine that has only its recipe
  *
  *   kpkg fetch <pkg>...
+ *   kpkg fetch --size <pkg>...
  *   KPKG_FETCH=1 kpkg install <pkg>...
  *
  * A shipped machine carries the recipe-only ports tree: every `kpkgbuild`,
@@ -36,6 +37,17 @@
  * Exit status: 0 every source is present, 1 one could not be had (no copy
  * verified, or nowhere names it), 3 the NETWORK could not be reached — so a
  * caller can tell a machine that is offline from a source that has gone.
+ *
+ * --size DOWNLOADS NOTHING. For each file a fetch would download it asks the
+ * same URLs, in the same order, for the Content-Length of their final
+ * response (`curl -sIL`, 15 seconds a request; a file in parts is the sum of
+ * its parts), and prints `<file> <bytes>`, or `<file> ?` when no copy
+ * answered with one. A file two of the ports share is printed once. It is
+ * what `kdos update` reckons a build's space from before the sources are
+ * here; the hash is not checked, so a size is a server's word for the file,
+ * and the download that follows is still verified. Exit status as above: 0
+ * every size is known, 1 one is not, 3 offline, with a `?` line for the
+ * file that met it and none for the files after it.
  * ---------------------------------
  */
 
@@ -43,6 +55,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include "kdos-kpkg.h"
@@ -370,6 +383,175 @@ done:
 	return GOT_OK;
 }
 
+/* ── the size a fetch would download ───────────────────────────────────── */
+
+/*
+ * The Content-Length of the final response to a HEAD request for `url`,
+ * redirects followed: GOT_OK with it in *bytes, GOT_FAIL when the server
+ * answered without one or with no 2xx status, GOT_OFFLINE as download()'s.
+ * A file:// URL answers with no status line, only the length.
+ */
+static int head_size(const char *url, long long *bytes)
+{
+	KbArgv a = {0};
+	kb_argv_add(&a, "curl");
+	kb_argv_add(&a, "-sIL");
+	kb_argv_add(&a, "--max-time");
+	kb_argv_add(&a, "15");
+	kb_argv_add(&a, "--");
+	kb_argv_add(&a, url);
+	kb_argv_end(&a);
+
+	KbBuf out = {0};
+	int rc = kb_run_capture_buf(&a, &out);
+	if (rc != 0) {
+		kb_buf_free(&out);
+		return curl_offline(rc) ? GOT_OFFLINE : GOT_FAIL;
+	}
+	int status = 0;
+	long long len = -1;
+	char *save = NULL;
+	for (char *line = out.p ? strtok_r(out.p, "\r\n", &save) : NULL; line;
+	     line = strtok_r(NULL, "\r\n", &save)) {
+		/* Each response of a redirect chain opens with its status
+		 * line; only the last one's length is the file's. */
+		if (!strncmp(line, "HTTP/", 5)) {
+			const char *sp = strchr(line, ' ');
+			status = sp ? atoi(sp + 1) : 0;
+			len = -1;
+		} else if (!strncasecmp(line, "content-length:", 15)) {
+			char *end;
+			long long v = strtoll(line + 15, &end, 10);
+			if (end != line + 15)
+				len = v;
+		}
+	}
+	kb_buf_free(&out);
+	if (len < 0 || (status && (status < 200 || status > 299)))
+		return GOT_FAIL;
+	*bytes = len;
+	return GOT_OK;
+}
+
+/* head_size for a file in parts (archive_parts' `parts`): the sum of every
+ * part's, known only when each is. */
+static int head_parts(const char *url, const char *parts, long long *bytes)
+{
+	int n = atoi(parts);
+	if (n < 1)
+		return GOT_FAIL;
+	long long sum = 0;
+	for (int i = 1; i <= n; i++) {
+		char purl[2200];
+		long long b = 0;
+		if ((size_t)snprintf(purl, sizeof(purl), "%s.part%02d", url,
+				     i) >= sizeof(purl))
+			return GOT_FAIL;
+		int got = head_size(purl, &b);
+		if (got != GOT_OK)
+			return got;
+		sum += b;
+	}
+	*bytes = sum;
+	return GOT_OK;
+}
+
+/* fetch_one's sources, in its order, asked for the size of `file` instead
+ * of the file: GOT_OK with it in *bytes, GOT_FAIL none answered with one,
+ * GOT_OFFLINE none was reached. */
+static int size_one(const KpDecl *d, const char *portdir, const char *hash,
+		    const char *file, long long *bytes)
+{
+	int tried = 0, reached = 0;
+	char base[1024];
+	archive_base(base, sizeof(base));
+	char *idx = base[0] ? find_index(portdir) : NULL;
+	char tag[128], asset[512], parts[4096];
+
+	if (idx && index_lookup(idx, hash, tag, sizeof(tag), asset,
+				sizeof(asset), parts, sizeof(parts)) == 0) {
+		char url[2048];
+		snprintf(url, sizeof(url), "%s/%s/%s", base, tag, asset);
+		tried = 1;
+		int got = parts[0] ? head_parts(url, parts, bytes)
+				   : head_size(url, bytes);
+		if (got == GOT_OK) {
+			free(idx);
+			return GOT_OK;
+		}
+		reached |= got != GOT_OFFLINE;
+	}
+	free(idx);
+
+	char ubuf[2048];
+	const char *url = upstream_url(d, file, ubuf, sizeof(ubuf));
+	if (url) {
+		tried = 1;
+		int got = head_size(url, bytes);
+		if (got == GOT_OK)
+			return GOT_OK;
+		reached |= got != GOT_OFFLINE;
+	}
+	return reached || !tried ? GOT_FAIL : GOT_OFFLINE;
+}
+
+/* One port's `--size` lines: each file `printed` does not hold yet is added
+ * to it. 0, 1 or 3 as kp_cmd_fetch's --size. */
+static int size_port(const KpConf *c, const char *portdir, KbBuf *printed)
+{
+	char *recipe = kb_path_join(portdir, "kpkgbuild");
+	KpDecl *d = kp_decl_parse(recipe);
+	free(recipe);
+	if (!d) {
+		kp_err("%s: not a recipe", portdir);
+		return 1;
+	}
+	char list[4096];
+	kb_strlcpy(list, kp_decl_sha256(d), sizeof(list));
+	int rc = 0;
+	char *hex = NULL, *save = NULL;
+	int k = 0;
+	for (char *t = strtok_r(list, " \t\n", &save); t;
+	     t = strtok_r(NULL, " \t\n", &save), k++) {
+		if (k % 2 == 0) {
+			hex = t;
+			continue;
+		}
+		if (!hex || strchr(t, '/'))
+			continue;
+		char key[600];
+		snprintf(key, sizeof(key), "\n%s\n", t);
+		if (printed->p && strstr(printed->p, key))
+			continue;
+		char *here = kb_path_join(portdir, t);
+		char *cached = kb_path_join(c->source_dir, t);
+		int have = kb_path_exists(here) || kb_path_exists(cached);
+		free(here);
+		free(cached);
+		if (have)
+			continue;
+		if (!printed->p)
+			kb_buf_add(printed, "\n", 1);
+		kb_buf_add(printed, t, strlen(t));
+		kb_buf_add(printed, "\n", 1);
+		long long bytes = 0;
+		int got = size_one(d, portdir, hex, t, &bytes);
+		if (got == GOT_OK) {
+			printf("%s %lld\n", t, bytes);
+			continue;
+		}
+		printf("%s ?\n", t);
+		if (got == GOT_OFFLINE) {
+			rc = 3;
+			break;
+		}
+		rc = 1;
+	}
+	kp_decl_free(d);
+	fflush(stdout);
+	return rc;
+}
+
 /* ── one port ──────────────────────────────────────────────────────────── */
 
 int kp_fetch_port(const KpConf *c, const char *portdir)
@@ -441,11 +623,17 @@ int kp_fetch_wanted(void)
 
 int kp_cmd_fetch(const KpConf *c, int argc, char **argv)
 {
+	int size = argc > 0 && !strcmp(argv[0], "--size");
+	if (size) {
+		argc--;
+		argv++;
+	}
 	if (argc < 1) {
-		printf("Usage: kpkg fetch <package>...\n");
+		printf("Usage: kpkg fetch [--size] <package>...\n");
 		return 1;
 	}
 	int rc = 0;
+	KbBuf printed = {0};
 	for (int i = 0; i < argc; i++) {
 		char err[1600], *dir = NULL;
 		int f = kp_port_find(c, argv[i], &dir, err, sizeof(err));
@@ -458,12 +646,16 @@ int kp_cmd_fetch(const KpConf *c, int argc, char **argv)
 				rc = 1;
 			continue;
 		}
-		int r = kp_fetch_port(c, dir);
+		int r = size ? size_port(c, dir, &printed)
+			     : kp_fetch_port(c, dir);
 		free(dir);
-		if (r == 3)
+		if (r == 3) {
+			kb_buf_free(&printed);
 			return 3;
+		}
 		if (r && !rc)
 			rc = r;
 	}
+	kb_buf_free(&printed);
 	return rc;
 }

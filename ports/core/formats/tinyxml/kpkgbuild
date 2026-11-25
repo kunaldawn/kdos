@@ -11,7 +11,7 @@
 
 name        = tinyxml
 version     = 2.6.2
-release     = 1
+release     = 2
 _ver        = ${version//./_}
 source      = $name-$version.tar.gz::https://downloads.sourceforge.net/tinyxml/tinyxml_$_ver.tar.gz
 sha256      = 15bdfdcec58a7da30adc87ac2b078e4417dbe5392f3afb719f9ba6d062645593  tinyxml-2.6.2.tar.gz

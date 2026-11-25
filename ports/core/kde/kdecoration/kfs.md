@@ -20,7 +20,7 @@ sandbox engine, app id and instance id of its window's client, and exposes them 
 its own `sandbox-badge.patch`, and [breeze](#port-breeze) draws a box glyph from it; both are built
 against this patched port and do not compile against an unpatched one. The change is additive, so
 a decoration built before it still loads, and a compositor that implements only the earlier
-interface answers empty strings. It is proposed upstream with the KWin and Breeze halves.
+interface answers empty strings. It is to be proposed upstream with the KWin and Breeze halves.
 
 ## Notes
 

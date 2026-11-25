@@ -39,7 +39,7 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib --localstatedir=/
 	-Dhsi=enabled \
 	-Dbash_completion=true \
 	-Dfish_completion=false \
-	-Dsupported_build=disabled \
+	-Dsupported_build=enabled \
 	-Dlvfs=disabled \
 	-Dvendor_ids_dir=/usr/share/hwdata
 meson compile -C build

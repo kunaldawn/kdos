@@ -15,10 +15,11 @@
  * CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER, so fbcon does not claim the
  * framebuffer until a glyph is printed on a virtual terminal. /dev/console is
  * the LAST console=: the serial port on the live entries (`console=tty0
- * console=ttyS0`), so boot messages go there and the screen is the splash's
- * until the display manager's compositor takes it; tty0 on an installed
- * machine, where the initramfs's first echo ends the deferral and fbcon draws
- * every boot message over it.
+ * console=ttyS0,115200n8`), tty0 on an installed machine, where the
+ * initramfs's first echo ends the deferral. Either way the splash puts the
+ * foreground VT in KD_GRAPHICS while it draws (console_claim), and a VT in
+ * graphics mode draws no text, so no boot message lands on the picture; the
+ * messages still go to the VT's buffer and show once it is back in text mode.
  *
  * TWO MOTIONS, ONE PICTURE. `kdos.splash=phosphor` on the kernel command line
  * is Phosphor mode's CRT, the power-on a window gets from the desktop's CRT
@@ -27,12 +28,13 @@
  * hum bar drifting down the raster; quitting runs it backwards — collapse to a
  * line, pinch to a dot, decay. Anything else is Modern: the same picture
  * fading in from black and back out to it, flat, with no scanlines. Boot
- * reports itself as POST lines either way. Either way the last frame is full
- * black, so whatever takes the screen next starts from black; Modern's first
- * frame is black too, and the CRT's is black but for the hairline it unfolds
- * from. The command line is the one place the choice can come from: the
- * power-on runs in the initramfs, before any root filesystem with a setting in
- * it is mounted.
+ * reports itself as POST lines either way. Quitting to a text console ends
+ * on a full black frame; handing off to the display manager ends on the
+ * settled picture, held until the compositor takes the screen (`handoff`).
+ * Modern's first frame is black, and the CRT's is black but for the
+ * hairline it unfolds from. The command line is the one place the choice
+ * can come from: the power-on runs in the initramfs, before any root
+ * filesystem with a setting in it is mounted.
  *
  * Every failure to reach the display or the running instance exits 0 without
  * drawing. A boot animation that can stop a boot is a bug, not a feature. The
@@ -47,7 +49,9 @@
  *                                   on a command line without `quiet` it draws
  *                                   nothing and exits (read_mode)
  *   kdos-splash step "PROBING..."   begin a stage (prints NAME ....... )
- *   kdos-splash ok | fail           close the current stage
+ *   kdos-splash ok | fail | skip    close the current stage: it started, it
+ *                                   failed, or it chose not to run (a service
+ *                                   script that printed a `[SKIP]` line)
  *   kdos-splash msg  "text"         a plain line
  *   kdos-splash detail "text"       a detail line; the newest few are kept
  *   kdos-splash total N             add N to the expected step count (the
@@ -57,14 +61,26 @@
  *                                   arrives it sweeps)
  *   kdos-splash accent NAME         switch the running splash's colour scheme
  *   kdos-splash quit                power-off animation, then exit; the console
- *                                   is left in text mode with its cursor shown
- *   kdos-splash handoff             power-off animation, then exit; tty1 is left
- *                                   black, in graphics mode, for the display
- *                                   manager's compositor
- *   kdos-splash preview WxH T out.ppm [modern|phosphor]
+ *                                   is put back in text mode with its cursor
+ *                                   shown, and draws the boot's messages; the
+ *                                   client does that too, so it holds when no
+ *                                   splash answers (vt_text)
+ *   kdos-splash handoff             draw the settled frame once more and stop
+ *                                   reading commands; tty1 is left in graphics
+ *                                   mode with that frame on it for the display
+ *                                   manager's compositor, and the splash
+ *                                   blanks the framebuffer and exits once
+ *                                   that compositor's first frame is on the
+ *                                   display (its CRTC scans out another
+ *                                   framebuffer), or 5 s after it became DRM
+ *                                   master (a pan refused with EBUSY) when no
+ *                                   CRTC can be read, and says in the kernel
+ *                                   log what ended the hold (hold_frame)
+ *   kdos-splash preview WxH T out.ppm [modern|phosphor] [ACCENT]
  *                                   render the frame at T seconds to a file,
  *                                   with no framebuffer and no FIFO, in the
- *                                   motion named or the command line's
+ *                                   motion named or the command line's, and
+ *                                   in the scheme named or the default
  *
  * Commands reach the running instance through a FIFO in /dev, which is the
  * one filesystem that survives switch_root intact (devtmpfs is moved, not
@@ -91,6 +107,9 @@
 #include <unistd.h>
 #include <linux/fb.h>
 #include <linux/kd.h>
+#include <linux/vt.h>
+#include <drm/drm.h>
+#include <drm/drm_mode.h>
 
 #include "penguin.h"
 
@@ -123,6 +142,7 @@ static const struct spl_scheme {
 /* The accent in force, projected onto the names the drawing code uses. The two
  * derived values are kcol_mix results, not free-hand colours. */
 static uint32_t C_PHOS, C_PHOSDIM, C_DIM, C_AMBER, C_ALARM, C_TEXT, C_DEEP;
+static uint32_t C_TAG;		/* pdark, lifted to SPL_TAG_FLOOR on deep   */
 static uint32_t C_HOT;		/* mix(text, white, 60) — the beam flash    */
 static uint32_t C_GLOW;		/* mix(text, white, 68) — the mascot rim    */
 
@@ -141,6 +161,49 @@ static uint32_t spl_mix(uint32_t a, uint32_t b, int pct)
 	return out;
 }
 
+/* WCAG relative luminance and contrast ratio, the measure kcol_contrast
+ * takes, in floating point: the splash links nothing from libkcolor, and the
+ * selftest checks every scheme's tagline with kcol_contrast itself. */
+static double spl_lin(unsigned c)
+{
+	double v = c / 255.0;
+
+	return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
+}
+
+static double spl_contrast(uint32_t a, uint32_t b)
+{
+	double la = 0.2126 * spl_lin((a >> 16) & 0xff) +
+		    0.7152 * spl_lin((a >> 8) & 0xff) +
+		    0.0722 * spl_lin(a & 0xff) + 0.05;
+	double lb = 0.2126 * spl_lin((b >> 16) & 0xff) +
+		    0.7152 * spl_lin((b >> 8) & 0xff) +
+		    0.0722 * spl_lin(b & 0xff) + 0.05;
+
+	return la > lb ? la / lb : lb / la;
+}
+
+/*
+ * THE TAGLINE IS TEXT, SO IT HOLDS WCAG AA ON THE GROUND. It is the scheme's
+ * `pdark`, the accent's dark tone, where that reaches the floor on `deep`; on
+ * a scheme where it does not (Amber at 3.56:1, Ice at 4.42:1) it is moved
+ * toward `primary` one percent at a time until it does, so it stays the
+ * accent's hue and is only as much brighter as legibility needs. The floor
+ * carries a margin over 4.5 so that kcol_contrast's table, which rounds each
+ * channel, measures the same verdict.
+ */
+#define SPL_TAG_FLOOR 4.52
+
+static uint32_t spl_tag(uint32_t pdark, uint32_t primary, uint32_t deep)
+{
+	uint32_t c = pdark;
+	int pct = 0;
+
+	while (pct < 100 && spl_contrast(c, deep) < SPL_TAG_FLOOR)
+		c = spl_mix(pdark, primary, ++pct);
+	return c;
+}
+
 static void spl_peng_pal(uint32_t glow, uint32_t amber, uint32_t phos,
 			 uint32_t phosdim);
 
@@ -155,6 +218,7 @@ static int spl_accent(const char *name)
 			continue;
 		C_PHOS = s->primary;
 		C_PHOSDIM = s->pdark;
+		C_TAG = spl_tag(s->pdark, s->primary, s->deep);
 		C_DIM = s->dim;
 		C_AMBER = s->secondary;
 		C_ALARM = s->urgent;
@@ -180,12 +244,13 @@ static int spl_accent(const char *name)
 
 /* The VT SDDM's first greeter takes (its build's SDDM_INITIAL_VT), and the one
  * kdos-dm falls back to a prompt on. */
-#define DM_VT "/dev/tty1"
+#define DM_VT_NAME "tty1"
+#define DM_VT "/dev/" DM_VT_NAME
 
 #define MAX_LINES 64
 #define LINE_COLS 40   /* stage name is dotted out to this column */
 
-enum { ST_PENDING = 0, ST_OK, ST_FAIL, ST_PLAIN };
+enum { ST_PENDING = 0, ST_OK, ST_FAIL, ST_SKIP, ST_PLAIN };
 
 struct line {
 	char text[72];
@@ -208,7 +273,10 @@ struct line {
  * the splash's part, and it is most of the value.
  */
 #define MAX_DETAIL 10
-#define DETAIL_COLS 68
+/* A detail line is kept whole up to the client's command buffer (`say`), and
+ * cut to the panel's width only when it is drawn, so one line fits each
+ * screen's panel rather than the narrowest's. */
+#define DETAIL_COLS 254
 
 static struct fb_var_screeninfo vi;
 static struct fb_fix_screeninfo fi;
@@ -222,6 +290,7 @@ static uint32_t *canvas;      /* what the screen would show, unmodulated */
 
 static unsigned char *glyphs; /* PSF bitmap data */
 static int gw, gh, gstride, gcount;
+static int ellipsis_glyph = -1; /* the font's U+2026, -1 when it has none */
 
 static struct line lines[MAX_LINES];
 static int nlines;
@@ -253,8 +322,10 @@ static int total_steps, done_steps;
  * first seconds. The first total sent from the real root (in_initrd, below)
  * moves the floor to INITRD_SHARE and the span's end to the whole bar.
  *
- * Until quit arrives the boot is by definition not finished — the bar holds
- * at 99% / one segment short so the user never watches a "100%" boot wait.
+ * Only quit fills the bar: until it arrives the boot is by definition not
+ * finished, and the bar holds at 99% / one segment short so the user never
+ * watches a "100%" boot wait. A hand-off holds its frame at that hold, the
+ * value KSplash starts its own bar from, so the bar never moves backwards.
  */
 #define INITRD_SHARE 0.15
 static double bar_base, bar_end = 1.0, bar_take = 1.0;
@@ -276,6 +347,13 @@ static int compact;
 
 /* The last stop is a display manager, not a text console (`handoff`). */
 static int handing_off;
+/* The devtmpfs /dev, and the kernel log, opened while their names still
+ * resolve: after switch_root this process resolves no path. switch_root moves
+ * that devtmpfs into the new root rather than remounting it, so a node opened
+ * at devfd is the real root's (hold_frame reopens DM_VT through it), and
+ * kmsgfd is where hold_frame says what ended the hold. */
+static int devfd = -1;
+static int kmsgfd = -1;
 
 static volatile sig_atomic_t stop;
 
@@ -291,6 +369,55 @@ static double now_s(void)
 /* ------------------------------------------------------------------ font */
 
 /*
+ * The glyph that maps U+2026 in a font's unicode table, or -1. The text the
+ * splash draws is ASCII and indexes glyphs by byte, so the table is read for
+ * this one character: PSF1's is little-endian 16-bit code points, each glyph's
+ * ended by 0xFFFF; PSF2's is UTF-8, each glyph's ended by 0xFF. In both, a
+ * marker (0xFFFE, 0xFE) starts the glyph's multi-character sequences, which
+ * are no single character and are skipped.
+ */
+static int font_ellipsis(FILE *f, int psf2)
+{
+	int g = 0, seq = 0, c;
+	unsigned char u[3];
+	int nu = 0;
+
+	while (g < gcount && (c = fgetc(f)) != EOF) {
+		if (!psf2) {
+			int hi = fgetc(f);
+			if (hi == EOF)
+				break;
+			c |= hi << 8;
+			if (c == 0xffff) {
+				g++, seq = 0;
+				continue;
+			}
+			if (c == 0xfffe)
+				seq = 1;
+			else if (!seq && c == 0x2026)
+				return g;
+			continue;
+		}
+		if (c == 0xff) {
+			g++, seq = 0, nu = 0;
+			continue;
+		}
+		if (c == 0xfe) {
+			seq = 1, nu = 0;
+			continue;
+		}
+		/* A lead byte restarts the character; U+2026 is E2 80 A6. */
+		if ((c & 0xc0) != 0x80)
+			nu = 0;
+		if (nu < 3)
+			u[nu++] = (unsigned char)c;
+		if (!seq && nu == 3 && u[0] == 0xe2 && u[1] == 0x80 && u[2] == 0xa6)
+			return g;
+	}
+	return -1;
+}
+
+/*
  * PSF1 and PSF2 both, because the console fonts KDOS ships are PSF1 (Terminus
  * 8x16) but nothing stops a later font from being PSF2.
  */
@@ -301,6 +428,7 @@ static int font_load(const char *path)
 		return -1;
 
 	unsigned char hdr[32];
+	int psf2 = 0, table = 0;
 	if (fread(hdr, 1, 4, f) != 4) {
 		fclose(f);
 		return -1;
@@ -311,6 +439,7 @@ static int font_load(const char *path)
 		gh = hdr[3];
 		gcount = (hdr[2] & 0x01) ? 512 : 256;
 		gstride = 1;
+		table = hdr[2] & 0x02;
 		fseek(f, 4, SEEK_SET);
 	} else if (hdr[0] == 0x72 && hdr[1] == 0xb5 &&
 		   hdr[2] == 0x4a && hdr[3] == 0x86) {   /* PSF2 */
@@ -323,6 +452,8 @@ static int font_load(const char *path)
 		gh      = *(uint32_t *)(hdr + 24);
 		gw      = *(uint32_t *)(hdr + 28);
 		gstride = (gw + 7) / 8;
+		psf2 = 1;
+		table = *(uint32_t *)(hdr + 12) & 0x01;
 		fseek(f, headersize, SEEK_SET);
 	} else {
 		fclose(f);
@@ -342,6 +473,7 @@ static int font_load(const char *path)
 		fclose(f);
 		return -1;
 	}
+	ellipsis_glyph = table ? font_ellipsis(f, psf2) : -1;
 	fclose(f);
 	return 0;
 }
@@ -362,9 +494,9 @@ static void fill(int x, int y, int w, int h, uint32_t c)
 			px(i, j, c);
 }
 
-static void draw_glyph(int x, int y, unsigned char ch, int scale, uint32_t c)
+static void draw_glyph(int x, int y, int ch, int scale, uint32_t c)
 {
-	if (!glyphs || ch >= gcount)
+	if (!glyphs || ch < 0 || ch >= gcount)
 		return;
 	const unsigned char *g = glyphs + (size_t)ch * gstride * gh;
 
@@ -392,6 +524,43 @@ static void draw_text(int x, int y, const char *s, int scale, int tracking, uint
 		draw_glyph(x, y, *p, scale, c);
 		x += gw * scale + tracking;
 	}
+}
+
+/*
+ * A LINE WIDER THAN ITS ROOM ENDS IN AN ELLIPSIS. Up to `cols` cells of `s`
+ * are drawn; a longer line is cut at the last space that leaves room for the
+ * marker, its trailing spaces dropped, and the marker drawn after it: the
+ * font's U+2026 in one cell, or "..." in three when the font has none. A
+ * line with no space early enough (one long path, say) is cut at the room
+ * itself. Without the marker a cut line reads as the whole message.
+ */
+static void draw_fitted(int x, int y, const char *s, int cols, int scale,
+			uint32_t c)
+{
+	int n = (int)strlen(s);
+	int step = gw * scale;
+
+	if (n <= cols) {
+		draw_text(x, y, s, scale, 0, c);
+		return;
+	}
+	int mark = ellipsis_glyph >= 0 ? 1 : 3;
+	int room = cols - mark;
+	if (room < 0)
+		room = 0;
+	int cut = room;
+	while (cut > 0 && s[cut] != ' ')
+		cut--;
+	while (cut > 0 && s[cut - 1] == ' ')
+		cut--;
+	if (!cut)
+		cut = room;
+	for (int i = 0; i < cut; i++, x += step)
+		draw_glyph(x, y, (unsigned char)s[i], scale, c);
+	if (ellipsis_glyph >= 0)
+		draw_glyph(x, y, ellipsis_glyph, scale, c);
+	else
+		draw_text(x, y, "...", scale, 0, c);
 }
 
 /* ----------------------------------------------------------------- frame */
@@ -436,7 +605,7 @@ static void spl_peng_pal(uint32_t glow, uint32_t amber, uint32_t phos,
 
 static int art_cw, art_ch, art_lt, art_x, art_y;
 static int peng_scale, peng_x, peng_y;
-static int sub_y, tag_y, rule_y, bar_y;
+static int sub_y, tag_y, ver_y, rule_y, bar_y;
 static int body_scale, body_x, body_y, body_w, body_step, body_max;
 
 #define BAR_SEGS 26
@@ -496,6 +665,124 @@ static void draw_penguin(int x, int y, int scale)
 }
 
 /*
+ * THE RELEASE IS NAMED BEFORE THE DESKTOP, in the one form every other surface
+ * gives it (`kdos version`, the boot menu, the greeter, the installer, What's
+ * New): /etc/kdos-release's VERSION, which 045_identity.sh writes as `0.2.1`
+ * on a release build and `0.2.1+<BUILD_ID>` otherwise. A root with no record
+ * gives os-release's VERSION_ID, with `+BUILD_ID` when it has one. The files
+ * are read at start out of the initramfs's /etc, where 090_initramfs.sh
+ * copies the image's; neither file there means no release, and the identity
+ * line is then the name alone.
+ *
+ * THE ROOT THAT BOOTS HAS THE LAST WORD. The initramfs's copy is the release
+ * of the image that built it, and an installed machine keeps that initramfs
+ * across every update that is not a slot image, so it can name an older
+ * release than the root it boots. Once the root is mounted at /newroot, the
+ * initramfs runs `KDOS_SPLASH_ROOT=/newroot kdos-splash release`: the client
+ * reads that root's record and sends it as `R<release>`, and the running
+ * splash takes it in place of its own (an empty one is a root with no
+ * record, and leaves the name alone). It has to come from a client: after
+ * switch_root this process resolves every path in the emptied initramfs.
+ *
+ * The reader takes one fixed buffer of each file and keeps the printable
+ * ASCII of the value, which is all the font is indexed by, cut at the room
+ * in `release`; spl_set_release() holds a sent value to the same rule.
+ * KDOS_SPLASH_ROOT names a directory whose etc/ is read in place of /etc,
+ * so every form can be rendered without a boot.
+ */
+static char release[48];
+/* The name under the mark. genlook.py reads this line, and the tagline in
+ * compose(), into KSplash's copy of the picture. */
+static const char *sub = "Kool Desktop Operating System";
+static char ident[64 + sizeof(release)];
+
+static int spl_key(const char *root, const char *file, const char *key,
+		   char *out, size_t cap)
+{
+	char path[4096], buf[4096];
+	size_t klen = strlen(key);
+	int fd;
+	ssize_t n;
+
+	out[0] = '\0';
+	if ((size_t)snprintf(path, sizeof(path), "%s/etc/%s", root, file) >=
+	    sizeof(path))
+		return 0;
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0)
+		return 0;
+	buf[n] = '\0';
+	for (char *l = buf, *nl; l; l = nl ? nl + 1 : NULL) {
+		nl = strchr(l, '\n');
+		if (strncmp(l, key, klen) || l[klen] != '=')
+			continue;
+		const char *v = l + klen + 1;
+		size_t o = 0;
+		if (*v == '"')
+			v++;
+		for (; *v && *v != '\n' && *v != '"' && o + 1 < cap; v++)
+			if (*v >= 0x20 && *v < 0x7f)
+				out[o++] = *v;
+		out[o] = '\0';
+		return o > 0;
+	}
+	return 0;
+}
+
+/* The release `root`'s etc/ names, in `out` (empty when it names none). */
+static void spl_read_release(const char *root, char *out, size_t cap)
+{
+	char build[sizeof(release)];
+
+	if (!spl_key(root, "kdos-release", "VERSION", out, cap) &&
+	    spl_key(root, "os-release", "VERSION_ID", out, cap) &&
+	    spl_key(root, "os-release", "BUILD_ID", build, sizeof(build))) {
+		size_t l = strlen(out);
+		const char *b = build;
+		if (l + 1 < cap)
+			out[l++] = '+';
+		while (*b && l + 1 < cap)
+			out[l++] = *b++;
+		out[l] = '\0';
+	}
+}
+
+/* `R<release>`, and the start: the release on screen, and the line it
+ * shares with the name. */
+static void spl_set_release(const char *v)
+{
+	size_t o = 0;
+
+	for (; *v && *v != '\n' && o + 1 < sizeof(release); v++)
+		if (*v >= 0x20 && *v < 0x7f)
+			release[o++] = *v;
+	release[o] = '\0';
+	snprintf(ident, sizeof(ident), "%s%s%s", sub, *release ? " " : "",
+		 release);
+}
+
+static void read_release(void)
+{
+	const char *root = getenv("KDOS_SPLASH_ROOT");
+	char v[sizeof(release)];
+
+	spl_read_release(root ? root : "", v, sizeof(v));
+	spl_set_release(v);
+}
+
+/* The name and the release share a line when the pair fits nine tenths of
+ * the width; past that the release takes a line of its own under the
+ * tagline, in the tagline's colour, and the rule moves down to make room. */
+static int ver_own(void)
+{
+	return *release && text_width(ident, body_scale, 0) > fbw * 9 / 10;
+}
+
+/*
  * Everything is stacked from the top down and measured in glyph cells, so the
  * whole screen scales with the framebuffer instead of assuming 1280x800.
  * `cw` is the wordmark's cell width; 0 is the width the screen gives it.
@@ -542,7 +829,9 @@ static void layout_at(int cw)
 	int group_end = peng_y + group_h;
 	sub_y  = group_end + cell;
 	tag_y  = sub_y + cell * 2;
-	rule_y = compact ? group_end + cell : tag_y + cell * 2;
+	ver_y  = ver_own() ? tag_y + cell * 2 : 0;
+	rule_y = compact ? group_end + cell
+			 : (ver_y ? ver_y : tag_y) + cell * 2;
 
 	body_step = cell + body_scale * 4;
 
@@ -741,6 +1030,10 @@ static void draw_line(const struct line *l, int y, int tick)
 		draw_text(sx, y, "OK", body_scale, 0, C_PHOS);
 	} else if (l->state == ST_FAIL) {
 		draw_text(sx, y, "FAIL", body_scale, 0, C_ALARM);
+	} else if (l->state == ST_SKIP) {
+		/* Neither started nor broken: the tagline's dim tone, which holds
+		 * 4.5:1 on the ground, so it reads apart from OK and from FAIL. */
+		draw_text(sx, y, "SKIP", body_scale, 0, C_TAG);
 	} else {
 		/* A live stage gets a little rotor, not a mute block. */
 		char s[2] = { spin[tick & 3], 0 };
@@ -776,13 +1069,17 @@ static void compose(int tick)
 	draw_penguin(peng_x, peng_y, peng_scale);
 
 	if (!compact) {
-		const char *sub = "KD's Homebrew Linux Distro";
-		draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
-			  sub, body_scale, 0, C_TEXT);
+		const char *name = ver_y ? sub : ident;
+		draw_text((fbw - text_width(name, body_scale, 0)) / 2, sub_y,
+			  name, body_scale, 0, C_TEXT);
 
 		const char *tag = "musl . GNU . sysvinit . KDE Plasma";
 		draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
-			  tag, body_scale, 0, C_DIM);
+			  tag, body_scale, 0, C_TAG);
+
+		if (ver_y)
+			draw_text((fbw - text_width(release, body_scale, 0)) / 2,
+				  ver_y, release, body_scale, 0, C_TAG);
 	}
 
 	/* A rule between the identity and the machine talking. */
@@ -792,9 +1089,11 @@ static void compose(int tick)
 
 	/*
 	 * THE FAILURE PANEL'S ROOM IS TAKEN FIRST. Once a stage has failed with
-	 * a reason, the reason is drawn under the stage list, in alarm on the
-	 * dimmest surface, at HALF the body scale — the point is to fit real
-	 * log text on screen, and a boot log line is wider than a stage name.
+	 * a reason, the reason is drawn under the stage list, `WHY:` in alarm
+	 * and the reason in the text colour, one scale step under the body
+	 * (panel_ds) — the point is to fit real log text on screen, and a boot
+	 * log line is wider than a stage name. Each detail line is cut to the
+	 * columns that scale leaves inside the panel.
 	 * Its height comes out of the list's rows before the list is laid out,
 	 * so every detail line lands above the bottom edge on any screen that
 	 * holds two stage rows and the panel; a list given its rows first would
@@ -839,11 +1138,13 @@ static void compose(int tick)
 
 		draw_text(body_x, dy, "WHY:", ds, 0, C_ALARM);
 		dy += lh;
+		/* Indented two cells under `WHY:`, inside the rule's width. */
+		int cols = body_w / (gw * ds) - 2;
 		for (int i = 0; i < ndetail; i++, dy += lh) {
 			if (dy + lh > fbh)
 				break;	/* never scribble past the panel */
-			draw_text(body_x + gw * ds * 2, dy, detail[i], ds, 0,
-				  C_DIM);
+			draw_fitted(body_x + gw * ds * 2, dy, detail[i], cols,
+				    ds, C_TEXT);
 		}
 	}
 }
@@ -1089,16 +1390,23 @@ static void read_mode(void)
 /* ------------------------------------------------------------------ init */
 
 /*
- * Tell the console to sit still.
+ * Take the foreground VT for the picture.
  *
  * The kernel is built with CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER, which
  * is the whole reason the framebuffer is free for us. Only a printed glyph
  * ends the deferral, and this write is escape sequences alone, so it claims
  * nothing: where fbcon has already taken over (an installed machine's
- * console=tty0) it clears the console and hides the cursor, so no blinking
- * block sits on the animation, and elsewhere it changes nothing on screen.
- * On virtio-gpu the framebuffer is scanned out with the deferral still
- * pending, measured in the rig.
+ * console=tty0) it clears the console and hides the cursor, and elsewhere it
+ * changes nothing on screen. On virtio-gpu the framebuffer is scanned out with
+ * the deferral still pending, measured in the rig.
+ *
+ * Then KD_GRAPHICS: fbcon draws nothing on a VT in graphics mode, so the
+ * initramfs's and rcS's lines, a kernel message and a deferred take-over that
+ * a later glyph ends all stay off the picture. The mode is the VT's and
+ * outlives this process, so it is set only after every early return in run()
+ * and console_release() is the splash's way out: a splash that set it and left
+ * without putting it back would leave the console drawing nothing, which the
+ * `quit` client's vt_text() undoes for a splash that was killed.
  */
 static void console_claim(void)
 {
@@ -1107,18 +1415,25 @@ static void console_claim(void)
 		return;
 	static const char seq[] = "\033[2J\033[H\033[?25l";
 	(void)!write(ttyfd, seq, sizeof(seq) - 1);
+	(void)ioctl(ttyfd, KDSETMODE, KD_GRAPHICS);
 }
 
-/* The console back, for whoever writes text on it next — unless the next is
- * the display manager's compositor, where a cursor shown now would blink on
- * the black until the compositor takes the VT. */
+/* The console back in text mode with its cursor shown, for whoever writes text
+ * on it next; it redraws its buffer, the boot's messages included. The `quit`
+ * client does the same after the splash is gone (vt_text), for a splash that
+ * never got here. Not on a hand-off: the display manager's compositor takes
+ * the VT from elogind in graphics mode, and a VT put back into text now would
+ * draw rcS's last lines and a blinking cursor over the held frame until it
+ * does (vt_handoff). */
 static void console_release(void)
 {
 	if (ttyfd < 0)
 		return;
 	static const char seq[] = "\033[?25h";
-	if (!handing_off)
+	if (!handing_off) {
+		(void)ioctl(ttyfd, KDSETMODE, KD_TEXT);
 		(void)!write(ttyfd, seq, sizeof(seq) - 1);
+	}
 	close(ttyfd);
 	ttyfd = -1;
 }
@@ -1199,6 +1514,7 @@ static int handle(const char *cmd)
 	case 'M': add_line(cmd + 1, ST_PLAIN); break;
 	case 'O': close_line(ST_OK); break;
 	case 'F': close_line(ST_FAIL); break;
+	case 'K': close_line(ST_SKIP); break;
 	case 'D':
 		/* Detail lines accumulate; the newest MAX_DETAIL are kept, so
 		 * a script that fails after pages of output still shows the
@@ -1222,19 +1538,256 @@ static int handle(const char *cmd)
 	 * needs redrawing here.
 	 */
 	case 'A': spl_accent(cmd + 1); break;
+	/* The booted root's release (read_release() above). The layout
+	 * follows it, because a longer one can need a line of its own. */
+	case 'R': spl_set_release(cmd + 1); layout(); break;
 	case 'Q': finishing = 1; return 1;
-	case 'H': finishing = 1; handing_off = 1; return 1;
+	case 'H': handing_off = 1; return 1;
 	default: break;
 	}
 	return 0;
+}
+
+/*
+ * THE HAND-OFF HOLDS THE PICTURE. A power-off to black here would leave the
+ * screen black for the seconds SDDM and its compositor take to start; instead
+ * the settled frame (STARTING SESSION closed, the bar at its hold, the value
+ * KSplash starts its own bar from) is drawn once more and stays on the
+ * framebuffer until the compositor's first modeset replaces it.
+ *
+ * Closing the FIFO is the answer to the client: its open then fails with
+ * ENXIO, so `kdos-splash handoff` returns only once that frame is flushed, and
+ * no later frame is drawn for the compositor's modeset to race.
+ *
+ * THEN THE FRAMEBUFFER IS BLANKED, after the compositor has replaced the
+ * frame, so the fbdev contents the kernel shows again when that compositor
+ * lets go of the display (a login, a logout back to SDDM) are black and not a
+ * stale boot frame. The blank must land before that hand-back: the kernel
+ * restores fbdev's buffer in the same instant the compositor drops master,
+ * and a blank made after it is seen for a frame. THE FIRST SIGN IS A PAN
+ * REFUSED WITH EBUSY, which DRM's fbdev emulation answers while a DRM master
+ * holds the device; once rcS has handed off, nothing but a compositor becomes
+ * master. The pan is tried on every poll. It does not mark the compositor's
+ * first frame: a master exists before its first modeset, and until that
+ * modeset the fbdev buffer is still what the display scans out, with fbdev's
+ * deferred-I/O flush copying writes into it whoever is master, so a blank on
+ * the first EBUSY would show black for the rest of the compositor's start.
+ *
+ * THE COMPOSITOR'S FIRST FRAME IS SEEN ON THE DISPLAY CONTROLLER. On the
+ * first EBUSY the hold opens the DRM card (hold_scan_open: dri/card0 to
+ * dri/card3 through devfd, the first with a lit CRTC) and records the
+ * framebuffer each lit CRTC scans out, which is still fbdev's. The open
+ * cannot make the splash master, since one exists, and DROP_MASTER is asked
+ * anyway so a stray EBUSY with no compositor leaves no master behind. A CRTC
+ * that then scans out another framebuffer, or none, has stopped showing
+ * fbdev's buffer, and the blank lands unseen. On virtio-gpu the greeter's
+ * KWin draws its first frame about 0.6 to 0.7 s after it becomes master
+ * (a live session's about 1.0 to 1.1 s) and the greeter's picture 2.6 to
+ * 3.4 s after it, so the frame is blanked before a login can be typed.
+ *
+ * WHEN NO CARD ANSWERS (no DRM device, or no CRTC lit), the blank waits
+ * HOLD_MARGIN_S past the first EBUSY. KWin's first frame on virtio-gpu comes
+ * 0.6 to 1.8 s after master, so 5 s leaves more than twice that; the margin
+ * then ends 1.6 to 2.4 s after the greeter appears, and a login typed inside
+ * that window ends the greeter's session, puts DM_VT back in text mode and
+ * blanks on that exit, a poll after the kernel has shown fbdev's buffer
+ * again, so the boot frame shows for one frame before black. A compositor
+ * slower than the margin to its first frame shows black for the rest of its
+ * start, not the held frame.
+ *
+ * DM_VT's VT_PROCESS mode, which elogind sets when the compositor takes
+ * control of the session, is recorded for the log and ends nothing: the VT is
+ * hung up when the greeter's session starts, a descriptor held across that
+ * answers every ioctl with EIO, and the hold reopens DM_VT through devfd
+ * whenever one does.
+ *
+ * The hold ends at HOLD_MAX_S whatever was seen, and on SIGTERM, with the
+ * same blank. It ends at once, touching nothing, when the framebuffer device
+ * is gone (FBIOGET_VSCREENINFO fails: a native GPU driver has replaced the
+ * firmware framebuffer the splash drew on, and its modeset has already
+ * replaced the frame). It ends at once when DM_VT is put back into text
+ * mode: with no EBUSY seen that is kdos-getty's prompt when SDDM cannot run,
+ * whose console then owns the framebuffer, and the frame is left untouched;
+ * after an EBUSY it is a compositor letting go (a login inside the margin, or
+ * SDDM failing after its compositor came up, where kdos-getty switches to
+ * text before it draws), fbdev shows its own buffer again, and that buffer is
+ * blanked.
+ *
+ * EVERY WAY OUT WRITES ONE LINE TO THE KERNEL LOG, which `dmesg | grep
+ * kdos-splash` shows: what ended the hold (frame, margin, timeout, signal,
+ * fb-gone, text), after how long, when VT_PROCESS and the first EBUSY were
+ * seen, and what the last pan returned. Times count from the hand-off.
+ */
+#define HOLD_POLL_US  100000
+#define HOLD_MARGIN_S 5.0
+#define HOLD_MAX_S    60.0
+
+/* The lit CRTCs of the card the compositor took, and the framebuffer each
+ * scanned out when the hold first saw EBUSY. */
+#define HOLD_CRTCS 8
+struct hold_scan {
+	int fd, n;
+	uint32_t crtc[HOLD_CRTCS], fb[HOLD_CRTCS];
+};
+
+static uint32_t hold_crtc_fb(int fd, uint32_t crtc)
+{
+	struct drm_mode_crtc c;
+	memset(&c, 0, sizeof(c));
+	c.crtc_id = crtc;
+	return ioctl(fd, DRM_IOCTL_MODE_GETCRTC, &c) == 0 ? c.fb_id : 0;
+}
+
+static void hold_scan_open(struct hold_scan *s)
+{
+	s->fd = -1;
+	s->n = 0;
+	for (int i = 0; i < 4 && s->n == 0 && devfd >= 0; i++) {
+		char name[16];
+		snprintf(name, sizeof(name), "dri/card%d", i);
+		int fd = openat(devfd, name, O_RDWR | O_NOCTTY | O_CLOEXEC);
+		if (fd < 0)
+			continue;
+		(void)ioctl(fd, DRM_IOCTL_DROP_MASTER, 0);
+		uint32_t ids[HOLD_CRTCS];
+		struct drm_mode_card_res res;
+		memset(&res, 0, sizeof(res));
+		res.crtc_id_ptr = (uint64_t)(uintptr_t)ids;
+		res.count_crtcs = HOLD_CRTCS;
+		if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) == 0) {
+			uint32_t n = res.count_crtcs < HOLD_CRTCS ? res.count_crtcs : HOLD_CRTCS;
+			for (uint32_t j = 0; j < n; j++) {
+				uint32_t fb = hold_crtc_fb(fd, ids[j]);
+				if (fb) {
+					s->crtc[s->n] = ids[j];
+					s->fb[s->n++] = fb;
+				}
+			}
+		}
+		if (s->n)
+			s->fd = fd;
+		else
+			close(fd);
+	}
+}
+
+/* A recorded CRTC scans out something other than fbdev's buffer now. */
+static int hold_scan_moved(const struct hold_scan *s)
+{
+	for (int i = 0; i < s->n; i++)
+		if (hold_crtc_fb(s->fd, s->crtc[i]) != s->fb[i])
+			return 1;
+	return 0;
+}
+
+static void hold_log(const char *why, double since, double t_vt,
+		     double t_busy, int pan_err)
+{
+	if (kmsgfd < 0)
+		return;
+	char vt[24] = "never", busy[24] = "never", line[200];
+	if (t_vt >= 0.0)
+		snprintf(vt, sizeof(vt), "%.1fs", t_vt);
+	if (t_busy >= 0.0)
+		snprintf(busy, sizeof(busy), "%.1fs", t_busy);
+	int n = snprintf(line, sizeof(line),
+			 "<6>kdos-splash: hold ended by %s after %.1fs; "
+			 "VT_PROCESS at %s, EBUSY at %s, last pan %s\n",
+			 why, since, vt, busy, pan_err ? strerror(pan_err) : "ok");
+	if (n > 0)
+		(void)!write(kmsgfd, line, (size_t)n < sizeof(line) ? (size_t)n : sizeof(line) - 1);
+}
+
+/* DM_VT's KD mode, reopening it through devfd when the descriptor held was
+ * hung up. A VT that cannot be asked counts as graphics: the hold then ends
+ * by the pan or the timeout, never by a text mode nobody saw. */
+static int hold_vt_mode(int *vt)
+{
+	int mode = KD_GRAPHICS;
+	if (*vt >= 0 && ioctl(*vt, KDGETMODE, &mode) == 0)
+		return mode;
+	if (*vt >= 0 && errno != EIO)
+		return KD_GRAPHICS;
+	if (*vt >= 0)
+		close(*vt);
+	*vt = devfd >= 0 ? openat(devfd, DM_VT_NAME, O_RDONLY | O_NOCTTY | O_CLOEXEC) : -1;
+	mode = KD_GRAPHICS;
+	if (*vt >= 0 && ioctl(*vt, KDGETMODE, &mode) < 0)
+		mode = KD_GRAPHICS;
+	return mode;
+}
+
+static void hold_frame(int fifo)
+{
+	compose(0);
+	present(1.0, 1.0, 0.0, 1.0, -1e6);
+	fb_flush();
+	close(fifo);
+	unlink(FIFO_PATH);
+	console_release();
+
+	int vt = devfd >= 0 ? openat(devfd, DM_VT_NAME, O_RDONLY | O_NOCTTY | O_CLOEXEC) : -1;
+	double h0 = now_s(), t = h0, t_vt = -1.0, t_busy = -1.0;
+	int pan_err = 0, blank = 1;
+	const char *why = "signal";
+	struct hold_scan scan = { .fd = -1, .n = 0 };
+
+	for (;;) {
+		t = now_s();
+		if (stop)
+			break;
+		if (t_busy >= 0.0 && t - h0 - t_busy >= HOLD_MARGIN_S) {
+			why = "margin";
+			break;
+		}
+		if (t - h0 >= HOLD_MAX_S) {
+			why = "timeout";
+			break;
+		}
+
+		struct fb_var_screeninfo cur;
+		struct vt_mode vm;
+
+		if (ioctl(fbfd, FBIOGET_VSCREENINFO, &cur) < 0) {
+			why = "fb-gone";
+			blank = 0;
+			break;
+		}
+		if (hold_vt_mode(&vt) != KD_GRAPHICS) {
+			why = "text";
+			blank = t_busy >= 0.0;
+			break;
+		}
+		if (t_vt < 0.0 && vt >= 0 &&
+		    ioctl(vt, VT_GETMODE, &vm) == 0 && vm.mode == VT_PROCESS)
+			t_vt = t - h0;
+		vi.activate = FB_ACTIVATE_NOW | FB_ACTIVATE_FORCE;
+		pan_err = ioctl(fbfd, FBIOPAN_DISPLAY, &vi) < 0 ? errno : 0;
+		if (pan_err == EBUSY && t_busy < 0.0) {
+			t_busy = t - h0;
+			hold_scan_open(&scan);
+		} else if (scan.n && hold_scan_moved(&scan)) {
+			why = "frame";
+			break;
+		}
+		usleep(HOLD_POLL_US);
+	}
+	if (blank) {
+		memset(fbmem, 0, fbsize);
+		fb_flush();
+	}
+	munmap(fbmem, fbsize);
+	if (vt >= 0)
+		close(vt);
+	if (scan.fd >= 0)
+		close(scan.fd);
+	hold_log(why, t - h0, t_vt, t_busy, pan_err);
 }
 
 static int run(void)
 {
 	if (fb_open() < 0)
 		return 0;   /* fail open: no framebuffer, no splash, no fuss */
-
-	console_claim();
 
 	if (font_load("/usr/share/kdos/splash.psf") < 0 &&
 	    font_load("/usr/share/consolefonts/ter-v16n.psf") < 0)
@@ -1264,6 +1817,10 @@ static int run(void)
 	signal(SIGTERM, on_signal);
 	signal(SIGINT, on_signal);
 	signal(SIGPIPE, SIG_IGN);
+
+	devfd = open("/dev", O_PATH | O_DIRECTORY | O_CLOEXEC);
+	kmsgfd = open("/dev/kmsg", O_WRONLY | O_NOCTTY | O_CLOEXEC);
+	console_claim();
 
 	double t0 = now_s();
 	char buf[512];
@@ -1316,9 +1873,14 @@ static int run(void)
 		}
 	}
 
+	if (handing_off) {
+		hold_frame(fifo);
+		return 0;
+	}
+
 	/*
 	 * Power-off, in the motion in force. The screen is left black so
-	 * whatever takes it next starts from black.
+	 * the text console that takes it next starts from black.
 	 */
 	double q0 = now_s();
 	for (;;) {
@@ -1353,11 +1915,13 @@ static int run(void)
  * Render one frame to a PPM instead of to the screen, so the look can be
  * iterated on without booting anything:
  *
- *   kdos-splash preview 1280x800 0.35 out.ppm [modern|phosphor]
+ *   kdos-splash preview 1280x800 0.35 out.ppm [modern|phosphor] [ACCENT]
  *
  * The second argument is the intro progress in seconds; anything past the
  * intro gives the settled picture. The motion is the one named, or the
- * command line's when none is.
+ * command line's when none is; the scheme is the one named, or libkcolor's
+ * default. A scheme name that does not exist is a usage error here, where a
+ * person typed it, and not on the FIFO.
  */
 static int preview(const char *geom, const char *at, const char *out)
 {
@@ -1396,10 +1960,12 @@ static int preview(const char *geom, const char *at, const char *out)
 	 * it; the stages after it are what push the failed one out of the
 	 * scrolling window and onto its pinned row. Same reason kdosbuild's
 	 * preview fixture uses a nine-digit file count and a port name longer
-	 * than any pane.
+	 * than any pane. The newest service skipped itself, so a tall screen
+	 * shows SKIP beside OK and FAIL.
 	 *
-	 * The detail lines are rcS's six, deliberately at and over DETAIL_COLS:
-	 * real log output does not respect a column budget.
+	 * The detail lines are rcS's six, one of them deliberately wider than
+	 * the panel at any scale: real log output does not respect a column
+	 * budget, and that line is the one the ellipsis is seen on.
 	 */
 	static const char *INITRD[] = {
 		"T2", "SPROBING BLOCK DEVICES", "O", "SDEVICE MANAGER", "O",
@@ -1422,7 +1988,7 @@ static int preview(const char *geom, const char *at, const char *out)
 		"POLKIT", "ACPID", "CRON", "CHRONY", "BLUETOOTH", "CUPS",
 		"AVAHI", "FIREWALL", "SSHD", "UPOWER", "UDISKS", "MODEMMANAGER",
 		"WPA SUPPLICANT", "ZRAM", "PLASMA SETUP", "FLATPAK", "PACKS",
-		"BOXES", "STEP-CA",
+		"BOXES", "STEP-CA", "-LLAMA-SERVER",
 	};
 	in_initrd = 1;
 	bar_end = INITRD_SHARE;
@@ -1430,14 +1996,25 @@ static int preview(const char *geom, const char *at, const char *out)
 	initrd_probe = ".";	/* the initramfs's root, still there */
 	for (size_t i = 0; i < sizeof(INITRD) / sizeof(INITRD[0]); i++)
 		handle(INITRD[i]);
+	/* The root mounted at /newroot names its release, as the initramfs
+	 * has it do before switch_root; KDOS_SPLASH_NEWROOT stands in for it. */
+	const char *newroot = getenv("KDOS_SPLASH_NEWROOT");
+	if (newroot) {
+		char r[sizeof(release) + 1];
+		r[0] = 'R';
+		spl_read_release(newroot, r + 1, sizeof(r) - 1);
+		handle(r);
+	}
 	initrd_probe = "";	/* switch_root: the initramfs's root is gone */
 	for (size_t i = 0; i < sizeof(ROOT) / sizeof(ROOT[0]); i++)
 		handle(ROOT[i]);
 	for (size_t i = 0; i < sizeof(SVC) / sizeof(SVC[0]); i++) {
 		char c[sizeof(lines[0].text) + 1];
-		snprintf(c, sizeof(c), "S%s", SVC[i]);
+		/* A leading '-' is a stage that skipped itself. */
+		int skip = SVC[i][0] == '-';
+		snprintf(c, sizeof(c), "S%s", SVC[i] + skip);
 		handle(c);
-		handle("O");
+		handle(skip ? "K" : "O");
 	}
 	handle("SSTARTING SESSION");
 
@@ -1488,10 +2065,10 @@ static int say(const char *fmt, const char *arg, int wait_for_exit)
 	/*
 	 * Quitting is synchronous. rcS runs `kdos-splash handoff` and returns,
 	 * and init starts the display manager straight after; if we did not
-	 * block here, the greeter's compositor would modeset while the power-off
-	 * animation was still drawing, and the two would race for the screen —
-	 * and on the way to a text console, the console's text would end up
-	 * interleaved with splash pixels.
+	 * block here until the splash has drawn its last frame, the greeter's
+	 * compositor would modeset while the splash was still drawing, and the
+	 * two would race for the screen — and on the way to a text console, the
+	 * console's text would end up interleaved with splash pixels.
 	 *
 	 * The daemon is NOT able to announce its own exit by removing the FIFO.
 	 * It started in the initramfs and was never chroot'ed, so after
@@ -1502,9 +2079,11 @@ static int say(const char *fmt, const char *arg, int wait_for_exit)
 	 * the move; anything by name does not.
 	 *
 	 * So test for the daemon rather than for the file: opening a FIFO for
-	 * writing fails with ENXIO exactly when no reader is left. That answer
-	 * does not depend on whose root is whose. The client is running in the
-	 * real root, so it can do the cleanup the daemon cannot.
+	 * writing fails with ENXIO exactly when no reader is left. A `quit`
+	 * splash closes it on exit, a `handoff` one once its held frame is
+	 * flushed (hold_frame). That answer does not depend on whose root is
+	 * whose. The client is running in the real root, so it can do the
+	 * cleanup the daemon cannot.
 	 */
 	if (wait_for_exit) {
 		for (int i = 0; i < 200; i++) {
@@ -1520,14 +2099,15 @@ static int say(const char *fmt, const char *arg, int wait_for_exit)
 }
 
 /*
- * tty1 FOR THE DISPLAY MANAGER: black, in graphics mode, its text cleared and
- * its cursor hidden. A VT in KD_GRAPHICS draws nothing — not the lines rcS and
- * init print after this, not a kernel message — so the black the splash left
- * is what shows until the greeter's compositor takes the VT from elogind,
- * which keeps it in graphics mode. The clear and the hidden cursor are for the
- * VT's text buffer: whoever puts the VT back into text mode (elogind when the
- * greeter's session ends, kdos-getty when SDDM cannot run) redraws it, and an
- * empty buffer with no cursor redraws as black. Escape sequences alone end no
+ * tty1 FOR THE DISPLAY MANAGER: in graphics mode, its text cleared and its
+ * cursor hidden. A VT in KD_GRAPHICS draws nothing — not the lines rcS and
+ * init print after this, not a kernel message — so the frame the splash holds
+ * (hold_frame) is what shows until the greeter's compositor takes the VT from
+ * elogind, which keeps it in graphics mode, and draws its first frame. The
+ * clear and the hidden cursor are for the VT's text buffer: whoever puts the
+ * VT back into text mode (elogind when the greeter's session ends, kdos-getty
+ * when SDDM cannot run) redraws it, and an empty buffer with no cursor
+ * redraws as black. Escape sequences alone end no
  * deferred fbcon take-over, so a console fbcon has not claimed stays
  * unclaimed.
  *
@@ -1549,6 +2129,32 @@ static void vt_handoff(void)
 	close(fd);
 }
 
+/*
+ * THE FOREGROUND VT BACK IN TEXT MODE for a `quit`, whether or not a splash
+ * answered. console_release() does this on the splash's own way out, but a
+ * splash killed without its outro leaves the VT in KD_GRAPHICS, where the
+ * rescue shell, sulogin and kdos-getty would draw nothing. Only a VT in
+ * VT_AUTO mode is touched: a VT in VT_PROCESS mode belongs to a session
+ * elogind handed to a compositor, and putting that one into text mode would
+ * draw the console over the desktop.
+ */
+static void vt_text(void)
+{
+	static const char seq[] = "\033[?25h";
+	struct vt_mode vm;
+	int mode = KD_TEXT;
+	int fd = open("/dev/tty0", O_RDWR | O_NOCTTY | O_CLOEXEC);
+
+	if (fd < 0)
+		return;
+	if (ioctl(fd, VT_GETMODE, &vm) == 0 && vm.mode == VT_AUTO &&
+	    ioctl(fd, KDGETMODE, &mode) == 0 && mode == KD_GRAPHICS) {
+		(void)ioctl(fd, KDSETMODE, KD_TEXT);
+		(void)!write(fd, seq, sizeof(seq) - 1);
+	}
+	close(fd);
+}
+
 int main(int argc, char **argv)
 {
 	const char *cmd = argc > 1 ? argv[1] : "run";
@@ -1559,17 +2165,20 @@ int main(int argc, char **argv)
 	 * own, so the splash and an unconfigured desktop come up in the same
 	 * scheme. */
 	spl_accent(KCOL_DEFAULT_NAME);
+	read_release();
 
 	if (!strcmp(cmd, "run")) {
 		read_mode();
 		return quiet_boot ? run() : 0;
 	}
-	if (!strcmp(cmd, "preview") && argc > 4 && argc < 7) {
-		if (argc == 6 && strcmp(argv[5], "modern") &&
+	if (!strcmp(cmd, "preview") && argc > 4 && argc < 8) {
+		if (argc >= 6 && strcmp(argv[5], "modern") &&
 		    strcmp(argv[5], "phosphor"))
 			goto usage;
+		if (argc == 7 && !spl_accent(argv[6]))
+			goto usage;
 		read_mode();
-		if (argc == 6)
+		if (argc >= 6)
 			crt = !strcmp(argv[5], "phosphor");
 		return preview(argv[2], argv[3], argv[4]);
 	}
@@ -1583,12 +2192,19 @@ int main(int argc, char **argv)
 		return say("O%s\n", NULL, 0);
 	if (!strcmp(cmd, "fail"))
 		return say("F%s\n", NULL, 0);
+	if (!strcmp(cmd, "skip"))
+		return say("K%s\n", NULL, 0);
 	if (!strcmp(cmd, "detail"))
 		return say("D%s\n", arg, 0);
 	if (!strcmp(cmd, "accent"))
 		return say("A%s\n", arg, 0);
-	if (!strcmp(cmd, "quit"))
-		return say("Q%s\n", NULL, 1);
+	if (!strcmp(cmd, "release") && argc == 2)
+		return say("R%s\n", release, 0);
+	if (!strcmp(cmd, "quit")) {
+		say("Q%s\n", NULL, 1);
+		vt_text();
+		return 0;
+	}
 	if (!strcmp(cmd, "handoff")) {
 		say("H%s\n", NULL, 1);
 		vt_handoff();
@@ -1596,8 +2212,8 @@ int main(int argc, char **argv)
 	}
 
 usage:
-	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|detail TEXT|\n"
-		"                    total N|accent NAME|quit|handoff|\n"
-		"                    preview WxH T OUT [modern|phosphor]}\n");
+	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|skip|detail TEXT|\n"
+		"                    total N|accent NAME|release|quit|handoff|\n"
+		"                    preview WxH T OUT [modern|phosphor] [ACCENT]}\n");
 	return 1;
 }

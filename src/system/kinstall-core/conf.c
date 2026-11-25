@@ -20,13 +20,17 @@
 
 Config cfg;
 
+/* What the LUKS header and LVM's metadata take out of the erase plan's root
+ * partition before any volume is made, in MiB: 32 covers both. */
+#define KI_VOLUME_META_MB 32ULL
+
 /* Only the services a person would actually want to decide about. udev,
  * dbus, elogind and the rest are not choices, they are the system. */
 const Service ki_services[] = {
 	{ "networkmanager", "NetworkManager", "wired, wifi and VPN", 1 },
 	{ "bluetooth", "Bluetooth", "bluez daemon", 1 },
 	{ "alsa", "ALSA state", "restore mixer levels at boot", 1 },
-	{ "cups", "CUPS", "printing daemon", 0 },
+	{ "cups", "CUPS", "printing daemon", 1 },
 	{ "sshd", "OpenSSH server", "accepts remote logins", 0 },
 };
 
@@ -87,6 +91,16 @@ unsigned long long ki_need_bytes(void)
 					    ? ki_sys.payload_kb
 					    : ki_sys.payload_kb - ki_sys.appbox_kb) *
 	       1024;
+}
+
+unsigned long long ki_root_need_bytes(void)
+{
+	return ki_need_bytes() + (KI_ROOT_FREE_MB << 20);
+}
+
+unsigned long long ki_disk_need_bytes(void)
+{
+	return ki_root_need_bytes() + KI_DISK_MARGIN;
 }
 
 void ki_part_name(const char *disk, int n, char *out, size_t cap)
@@ -172,7 +186,7 @@ unsigned long long ki_slot_mb(void)
 					: 0;
 	unsigned long long mb = (kb + kb / 2) / 1024;
 	unsigned long long room = wipe_rest_bytes() >> 20;
-	unsigned long long taken = 32 + ki_swap_lv_mb();
+	unsigned long long taken = KI_VOLUME_META_MB + ki_swap_lv_mb();
 	unsigned long long share =
 		room > taken ? (room - taken) * KI_SLOT_SHARE / 100 : 0;
 
@@ -192,7 +206,7 @@ unsigned long long ki_swap_lv_mb(void)
 
 /*
  * TWO SLOTS, THE SWAP AND A HOME, OR ONE ROOT. The LUKS header and LVM's
- * metadata come out of the partition first, and 32 MiB covers both. The home
+ * metadata come out of the partition first (KI_VOLUME_META_MB). The home
  * must hold the box store the copy carries into it as well as the floor.
  */
 unsigned long long ki_ab_need_mb(void)
@@ -201,7 +215,7 @@ unsigned long long ki_ab_need_mb(void)
 
 	if (cfg.with_appbox)
 		home += ki_sys.appbox_kb / 1024;
-	return 32 + 2 * ki_slot_mb() + ki_swap_lv_mb() + home;
+	return KI_VOLUME_META_MB + 2 * ki_slot_mb() + ki_swap_lv_mb() + home;
 }
 
 int ki_ab(void)
@@ -261,13 +275,29 @@ static int keymap_installed(const char *share, const char *name)
 	return keymap_in(p, name, 0);
 }
 
+/* A kbd map name loadkeys looks up, never a path or an option: the
+ * initramfs refuses anything else in EFI/kdos/keymap by the same rule. */
+int ki_keymap_name_ok(const char *s)
+{
+	if (!s || !*s || *s == '.' || *s == '-' || strlen(s) > 63)
+		return 0;
+	for (; *s; s++)
+		if (!isalnum((unsigned char)*s) && !strchr("_.+-", *s))
+			return 0;
+	return 1;
+}
+
 /*
- * THE CONSOLE MAP NEAREST AN XKB LAYOUT, for the text consoles and the
- * recovery login: the layout's own variant first where kbd has a map of that
- * shape, then the layouts kbd names differently, then `<layout>` and
- * `<layout>-latin1`, which is how kbd names most of the rest. Each candidate
- * must be installed; a layout with no console map at all leaves `us`, which
- * every kbd carries, rather than a name loadkeys cannot load.
+ * THE CONSOLE MAP NEAREST AN XKB LAYOUT, for the text consoles, the recovery
+ * login and the LUKS prompt of the initramfs: the layout's own variant first
+ * where kbd has a map of that shape, then the layouts kbd names differently,
+ * then `<layout>-latin1` and only after it `<layout>`. A BARE kbd NAME IS THE
+ * 7-BIT MAP for most of Europe: `de`, `dk`, `no`, `fr`, `sg` and `fr_CH` are
+ * the ISO-646 national variants, where the keys for ü ö ä ß type @ [ ] \, and
+ * `pt` is the OLPC laptop's. Taking the bare name first would leave a German
+ * console unable to type a password with an umlaut in it. Each candidate must
+ * be installed; a layout with no console map at all leaves `us`, which every
+ * kbd carries, rather than a name loadkeys cannot load.
  */
 void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 		  char *out, size_t cap)
@@ -280,13 +310,20 @@ void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 		{ "us", "intl", "us-acentos" },
 		{ "de", "nodeadkeys", "de-latin1-nodeadkeys" },
 		{ "de", "neo", "neo" },
+		{ "de", "", "de-latin1" },
 		{ "fr", "bepo", "fr-bepo" },
+		{ "fr", "", "fr-latin1" },
 		{ "gb", "", "uk" },
 		{ "ee", "", "et" },
 		{ "ca", "", "cf" },
 		{ "latam", "", "la-latin1" },
 		{ "se", "", "sv-latin1" },
+		{ "dk", "", "dk-latin1" },
+		{ "no", "", "no-latin1" },
+		{ "pt", "", "pt-latin1" },
+		{ "ch", "fr", "fr_CH-latin1" },
 		{ "ch", "fr", "fr_CH" },
+		{ "ch", "", "sg-latin1" },
 		{ "ch", "", "sg" },
 		{ "si", "", "slovene" },
 		{ "hr", "", "croat" },
@@ -313,13 +350,13 @@ void ki_xkb_to_vt(const char *share, const char *layout, const char *variant,
 			return;
 		}
 	}
-	if (keymap_installed(share, layout)) {
-		kb_strlcpy(out, layout, cap);
+	snprintf(cand, sizeof(cand), "%s-latin1", layout);
+	if (keymap_installed(share, cand)) {
+		kb_strlcpy(out, cand, cap);
 		return;
 	}
-	snprintf(cand, sizeof(cand), "%s-latin1", layout);
-	if (keymap_installed(share, cand))
-		kb_strlcpy(out, cand, cap);
+	if (keymap_installed(share, layout))
+		kb_strlcpy(out, layout, cap);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -616,9 +653,11 @@ int conf_save(const char *path)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/* A leading '-' is refused as well as a leading digit: useradd would take
+ * the name for an option, and so would every tool handed it after that. */
 int ki_name_ok(const char *s)
 {
-	if (!*s || isdigit((unsigned char)*s) || strlen(s) > 32)
+	if (!*s || isdigit((unsigned char)*s) || *s == '-' || strlen(s) > 32)
 		return 0;
 	for (const char *c = s; *c; c++)
 		if (!islower((unsigned char)*c) && !isdigit((unsigned char)*c) &&
@@ -627,9 +666,13 @@ int ki_name_ok(const char *s)
 	return 1;
 }
 
+/* An RFC 1123 label: a dash may neither open nor close it, and the resolver
+ * and hostname1 refuse a name where one does. */
 int ki_host_ok(const char *s)
 {
-	if (!*s || *s == '-' || strlen(s) > 63)
+	size_t l = strlen(s);
+
+	if (!l || *s == '-' || s[l - 1] == '-' || l > 63)
 		return 0;
 	for (const char *c = s; *c; c++)
 		if (!isalnum((unsigned char)*c) && *c != '-')
@@ -708,7 +751,8 @@ int ki_answers_check(char *err, size_t n)
 		return 1;
 	}
 	if (!ki_host_ok(cfg.hostname)) {
-		snprintf(err, n, "hostname must be letters, digits and dashes");
+		snprintf(err, n, "a host name is letters a–z, digits and dashes, "
+				 "and does not start or end with a dash");
 		return 1;
 	}
 	if (!tz_ok(cfg.tz, cfg.tz_label)) {
@@ -790,20 +834,29 @@ int ki_answers_check(char *err, size_t n)
 
 int ki_disk_check(const Disk *d, char *err, size_t n)
 {
-	unsigned long long need = ki_need_bytes() + KI_DISK_MARGIN;
+	unsigned long long need = ki_disk_need_bytes();
 
 	if (d->is_boot_media) {
 		snprintf(err, n, "%s is the medium this runs from", d->path);
+		return 1;
+	}
+	if (d->is_boot_copy) {
+		snprintf(err, n, "%s holds a copy of the medium this runs from",
+			 d->path);
 		return 1;
 	}
 	if (d->readonly) {
 		snprintf(err, n, "%s is read-only", d->path);
 		return 1;
 	}
+	/* WHOLE MiB, ROUNDED THE WAY THAT KEEPS THE TWO APART: the disk down
+	 * and the need up, so a refused disk never reads as holding what it
+	 * needs, which one-decimal gigabytes do within 100 MiB of each other. */
 	if (ki_disk_bytes(d) < need) {
-		snprintf(err, n, "%s holds %s; the install needs at least %s",
-			 d->path, kb_human_size(ki_disk_bytes(d)),
-			 kb_human_size(need));
+		snprintf(err, n, "%s holds %llu MiB; the install needs at least "
+				 "%llu MiB",
+			 d->path, ki_disk_bytes(d) >> 20,
+			 (need + (1ULL << 20) - 1) >> 20);
 		return 1;
 	}
 	return 0;
@@ -824,14 +877,16 @@ static const Part *part_by_path(const char *path)
  * break after the point of no return: mkfs on the BIOS boot partition leaves
  * a disk that no longer starts on legacy BIOS, mkfs on a physical volume or
  * on a held device fails (or, on a PV it did not fail on, destroys a volume
- * group), and a root smaller than the install fails part way through the
- * copy.
+ * group), a partition whose node is remapped (Ventoy's boot partition, whose
+ * node is the ISO's mapping) is formatted or mounted as the device behind
+ * it, and a root smaller than the install fails part way through the copy.
  */
 static int reuse_check(char *err, size_t n)
 {
 	const Part *esp, *rp;
 	const Lv *l;
 	unsigned long long sectors;
+	unsigned long long need;
 	const char *fstype;
 	int held;
 
@@ -853,6 +908,11 @@ static int reuse_check(char *err, size_t n)
 	if (esp->held) {
 		snprintf(err, n, "%s is in use by an open container or volume "
 				 "group — it cannot be the ESP", esp->path);
+		return 1;
+	}
+	if (esp->remap[0]) {
+		snprintf(err, n, "%s is mapped to %s — it cannot be written",
+			 esp->path, esp->remap);
 		return 1;
 	}
 	if (!cfg.format_esp && strcmp(esp->fstype, "vfat")) {
@@ -878,6 +938,11 @@ static int reuse_check(char *err, size_t n)
 					 "another root", rp->path);
 			return 1;
 		}
+		if (rp->remap[0]) {
+			snprintf(err, n, "%s is mapped to %s — it cannot be "
+					 "written", rp->path, rp->remap);
+			return 1;
+		}
 		sectors = rp->sectors;
 		fstype = rp->fstype;
 		held = rp->held;
@@ -896,12 +961,22 @@ static int reuse_check(char *err, size_t n)
 				 "group — close it first", cfg.part_root);
 		return 1;
 	}
-	/* Partition and volume sizes are in /sys's 512-byte units. */
-	if (sectors * 512ULL < ki_need_bytes()) {
-		snprintf(err, n, "%s holds %s, smaller than the %s this install "
-				 "needs",
-			 cfg.part_root, kb_human_size(sectors * 512ULL),
-			 kb_human_size(ki_need_bytes()));
+	/* Partition and volume sizes are in /sys's 512-byte units. The swap
+	 * file is made in this root after the copy, so it is counted here or
+	 * it is what runs the root out of space, and KI_ROOT_FREE_MB is kept
+	 * free beside both. */
+	need = ki_root_need_bytes();
+	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0)
+		need += (unsigned long long)cfg.swap_mb << 20;
+	if (sectors * 512ULL < need) {
+		snprintf(err, n, "%s holds %llu MiB, smaller than the %llu MiB "
+				 "this install%s needs with %llu MiB left free",
+			 cfg.part_root, (sectors * 512ULL) >> 20,
+			 (need + (1ULL << 20) - 1) >> 20,
+			 cfg.swap == SWAP_FILE && cfg.swap_mb > 0
+				 ? " and its swap file"
+				 : "",
+			 KI_ROOT_FREE_MB);
 		return 1;
 	}
 	/* A disk that could not start on this machine is refused before the
@@ -914,6 +989,76 @@ static int reuse_check(char *err, size_t n)
 		return 1;
 	}
 	return 0;
+}
+
+/*
+ * THE SWAP BESIDE ONE ROOT. On the A/B layout ki_ab() has already counted the
+ * swap volume; beside one root the swap partition is carved out of the disk
+ * and the swap file is made in the root after the copy, so either takes room
+ * ki_disk_check() never counted, and a disk that holds the install alone is
+ * erased and then runs out of space. The rule is ki_disk_check()'s with the
+ * swap added, and the volume metadata when the root is on LVM or inside
+ * LUKS. The refusal names the largest multiple of KI_SWAP_MIN_MB that fits,
+ * which still leaves the root KI_ROOT_FREE_MB free, so the size it advises is
+ * one the graphical field can hold; with less room than KI_SWAP_MIN_MB it
+ * says to choose no swap.
+ */
+static int swap_fit_check(const Disk *d, char *err, size_t n)
+{
+	unsigned long long disk = ki_disk_bytes(d), swp, need, room;
+
+	if (cfg.plan != PLAN_WIPE || ki_ab() || cfg.swap == SWAP_NONE ||
+	    cfg.swap_mb <= 0)
+		return 0;
+	swp = (unsigned long long)cfg.swap_mb << 20;
+	need = ki_disk_need_bytes() +
+	       (cfg.lvm || cfg.luks ? KI_VOLUME_META_MB << 20 : 0);
+	if (disk >= need + swp)
+		return 0;
+	room = disk > need ? (disk - need) >> 20 : 0;
+	room -= room % KI_SWAP_MIN_MB;
+	if (room)
+		snprintf(err, n, "a %ld MiB swap does not fit beside the install "
+				 "on %s: make it at most %llu MiB, or none",
+			 cfg.swap_mb, d->path, room);
+	else
+		snprintf(err, n, "a %ld MiB swap does not fit beside the install "
+				 "on %s: choose no swap",
+			 cfg.swap_mb, d->path);
+	return 1;
+}
+
+long long ki_root_free_bytes(void)
+{
+	unsigned long long size, take = ki_need_bytes();
+	const Part *rp;
+	const Lv *l;
+
+	if (cfg.plan == PLAN_WIPE) {
+		if (ki_ab() || !disk_by_path(cfg.disk))
+			return -1;
+		size = ki_wipe_root_bytes();
+		if (cfg.lvm || cfg.luks)
+			size = size > KI_VOLUME_META_MB << 20
+				       ? size - (KI_VOLUME_META_MB << 20)
+				       : 0;
+	} else {
+		l = lv_by_path(cfg.part_root);
+		rp = l ? NULL : part_by_path(cfg.part_root);
+		if (!l && !rp)
+			return -1;
+		size = (l ? l->sectors : rp->sectors) * 512ULL;
+	}
+	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0)
+		take += (unsigned long long)cfg.swap_mb << 20;
+	return size > take ? (long long)(size - take) : 0;
+}
+
+int ki_swap_check(char *err, size_t n)
+{
+	Disk *d = disk_by_path(cfg.disk);
+
+	return d && swap_fit_check(d, err, n);
 }
 
 int ki_target_check(char *err, size_t n)
@@ -933,6 +1078,8 @@ int ki_target_check(char *err, size_t n)
 	}
 	if (cfg.plan == PLAN_REUSE)
 		return reuse_check(err, n);
+	if (swap_fit_check(d, err, n))
+		return 1;
 	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
 		if (!kb_have_prog("lvm")) {
 			snprintf(err, n, "this image has no lvm — it cannot put "
@@ -941,11 +1088,17 @@ int ki_target_check(char *err, size_t n)
 		}
 		/* THE GROUP NAME IS FIXED, so one of that name with a physical
 		 * volume off the target disk stops vgcreate after this disk
-		 * was erased. One wholly on the target is erased with it. */
+		 * was erased. One wholly on the target is erased with it.
+		 * Unticking Two system slots turns LVM off, which ends the
+		 * clash on any disk; a disk too small for a second slot still
+		 * shows the box, and there the remedy does not promise one. */
 		if (ki_vg_off_disk(KI_VG, d->name)) {
 			snprintf(err, n, "a volume group named " KI_VG " is "
 					 "already on another disk — rename it "
-					 "with vgrename, or leave LVM off");
+					 "with vgrename, or untick Two system "
+					 "slots%s",
+				 ki_ab() ? "" : ", which puts no volume group "
+						"on this disk");
 			return 1;
 		}
 	}

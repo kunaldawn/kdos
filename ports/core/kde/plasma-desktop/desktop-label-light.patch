@@ -1,0 +1,51 @@
+Subject: folder view: back the desktop labels under a light colour scheme
+
+A root-view label is drawn white with a black shadow whatever the colour
+scheme. When the window colour set is light (background HSL lightness
+above 0.5), draw a rounded black backing at 0.6 opacity behind the
+label's painted text, so the white label holds at least 4.5:1 on a light
+wallpaper. Under a dark scheme the label is unchanged.
+
+The light test sets the backing's opacity, never its visibility, so the
+backing follows a colour scheme change at run time: the Plasma platform
+theme skips its colour sync while its item is invisible, and a backing
+hidden by the test would keep a dark scheme's colours through a switch
+to a light one until plasmashell restarts.
+---
+--- a/containments/desktop/package/contents/ui/FolderItemDelegate.qml
++++ b/containments/desktop/package/contents/ui/FolderItemDelegate.qml
+@@ -305,6 +305,34 @@
+                     source: main.decoration
+                 }
+ 
++                Rectangle {
++                    id: labelBacking
++
++                    // A root-view label is white whatever the scheme. Under a light window colour set
++                    // the wallpaper is light too, and the shadow alone leaves the fill at about 1:1
++                    // on it; the backing holds the white text above 4.5:1 on any wallpaper.
++                    // The light test sets the opacity, not the visibility: the Plasma platform theme
++                    // does not sync its colours while its item is invisible, so a backing hidden by
++                    // the test would keep a dark scheme's colours through a switch to a light one.
++                    Kirigami.Theme.colorSet: Kirigami.Theme.Window
++                    Kirigami.Theme.inherit: false
++
++                    readonly property real paintedWidth: Math.min(label.paintedWidth, label.width)
++
++                    z: 1
++                    visible: main.isOnRootView && label.visible && label.text.length > 0
++                    opacity: Kirigami.Theme.backgroundColor.hslLightness > 0.5 ? 0.6 : 0
++
++                    x: label.x - Kirigami.Units.smallSpacing
++                       + (label.horizontalAlignment === Text.AlignHCenter ? (label.width - paintedWidth) / 2 : 0)
++                    y: label.y + (label.height - label.paintedHeight) / 2 - Kirigami.Units.smallSpacing / 2
++                    width: paintedWidth + Kirigami.Units.smallSpacing * 2
++                    height: label.paintedHeight + Kirigami.Units.smallSpacing
++
++                    radius: Kirigami.Units.cornerRadius
++                    color: "black"
++                }
++
+                 PlasmaExtras.ShadowedLabel {
+                     id: label
+ 

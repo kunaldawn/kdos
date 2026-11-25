@@ -128,10 +128,16 @@ class Monitor:
         self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.s.connect(path)
         self.s.settimeout(1.0)
+        # The gap type() leaves after each key, on top of the prompt round
+        # trip; main() sets it from --key-delay.
+        self.key_delay = 0.1
         time.sleep(0.3)
         self.drain()
 
+    PROMPT = b"(qemu) "
+
     def drain(self):
+        """Read until a recv times out: the greeting, whose length is unknown."""
         try:
             while True:
                 if not self.s.recv(65536):
@@ -139,13 +145,41 @@ class Monitor:
         except (socket.timeout, OSError):
             pass
 
-    def cmd(self, c):
+    def cmd(self, c, deadline=2.0):
+        """Send one HMP command and return once the monitor has answered it.
+
+        The answer is complete when the buffer ends with the prompt and a
+        newline precedes it: the newline is the Return of the command's echo,
+        so a prompt still pending from before the command does not count.
+        `deadline` bounds the wait, so a prompt that never arrives costs that
+        long and does not hang the run.
+        """
         self.s.sendall(c.encode() + b"\n")
-        time.sleep(0.4)
-        self.drain()
+        buf = b""
+        end = time.monotonic() + deadline
+        try:
+            while not (buf.endswith(self.PROMPT) and b"\n" in buf):
+                left = end - time.monotonic()
+                if left <= 0:
+                    break
+                self.s.settimeout(left)
+                d = self.s.recv(65536)
+                if not d:
+                    break
+                buf += d
+        except (socket.timeout, OSError):
+            pass
+        finally:
+            self.s.settimeout(1.0)
+        return buf
 
     def type(self, text, ret=True):
         """Type on the active VT, one `sendkey` per character.
+
+        Each key waits for the monitor's prompt, which says qemu has queued
+        the key, and then `key_delay` seconds (--key-delay, 0.1 by default),
+        so the pace is that gap plus one monitor round trip. A proof that
+        needs a human typing pace sets --key-delay 0.5.
 
         `ret` sends Return at the end, which is what a command line wants and
         what a FIELD does not: a search box, a rename or a filter is answered
@@ -182,7 +216,7 @@ class Monitor:
             else:
                 key = names.get(ch, ch)
             self.cmd("sendkey " + key)
-            time.sleep(0.08)
+            time.sleep(self.key_delay)
         if ret:
             self.cmd("sendkey ret")
 
@@ -747,6 +781,11 @@ def main():
                     help="type this and stop — no Return. A search field, a "
                          "filter or a rename is answered as it is typed, and "
                          "a Return has already acted on the first match")
+    ap.add_argument("--key-delay", type=float, default=0.1,
+                    metavar="SECONDS",
+                    help="the gap after each key --type and --text send, on "
+                         "top of the monitor's round trip; 0.5 for a human "
+                         "typing pace (default 0.1)")
     ap.add_argument("--mouse", action=Step,
                     help="move the pointer to X,Y (absolute pixels)")
     ap.add_argument("--click", action=Step,
@@ -1075,6 +1114,7 @@ def main():
             raise SystemExit("qemu did not create its sockets")
         ser = Serial(ser_sock)
         mon = Monitor(mon_sock)
+        mon.key_delay = args.key_delay
 
         # The serial console is a ROOT login on this image — and depending on
         # how far the boot has got it is either a `login:` prompt or a shell

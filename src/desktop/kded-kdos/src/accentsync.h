@@ -15,7 +15,11 @@
  * `kdos theme --from-plasma <accent>`, which carries the choice to the
  * terminal programs, the Qt 5 palette, the wallpaper, the greeter, the boot
  * menu and the console. `--from-plasma` skips the step that applies the
- * global theme, so the run this starts cannot start another.
+ * global theme, so the run this starts cannot start another. An account's
+ * first login — no $XDG_STATE_HOME/kdos/accent-synced yet — runs it with
+ * `--account`, which leaves the greeter, the boot menu and the splash on the
+ * machine's accent: a new account's default scheme is nobody's choice for
+ * the machine.
  *
  * A scheme that is not KDOS's changes nothing: the accent stays what it was,
  * and the boot menu keeps its colours while the desktop wears Breeze.
@@ -64,13 +68,17 @@ Q_SIGNALS:
 private:
     void schedule();
     void evaluate();
-    void run(const QString &accent);
+    void run(const QString &accent, bool account);
     void finished(int exitCode, QProcess::ExitStatus status);
     /* The end of a run, whichever way it ended: the state, the signal, the
      * notification on a failure, and the change that queued behind it. */
     void conclude(bool ok, const QString &message);
     void notifyFailure(const QString &accent, const QString &message);
+    /* Ends the account's first login, for this session and every later
+     * one, by writing the marker decidedMarker() names. */
+    void markDecided();
     static QString accentFile();
+    static QString decidedMarker();
     static QDateTime accentStamp();
     static QString kdosProgram();
 
@@ -82,6 +90,9 @@ private:
     bool m_pending = false;
     bool m_force = false;
     bool m_timedOut = false;
+    /* An evaluation has run in this session; the first one decides the
+     * account's first login and writes its marker. */
+    bool m_evaluated = false;
     /* The accent of the last failed run and the accent file's time when it
      * failed: the failure stands until a run succeeds or the file is
      * rewritten, which is `kdos theme` having been run by hand. */

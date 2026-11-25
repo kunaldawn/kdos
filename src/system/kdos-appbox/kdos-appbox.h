@@ -128,15 +128,23 @@ typedef struct {
 	char cpus[16];   /* --cpus                                            */
 	/* What `profile_print` reports it could NOT enforce. A setting that
 	 * silently does nothing is worse than an absent one, so an unknown key
-	 * is kept here and named rather than dropped. */
+	 * is kept here and named rather than dropped, and so is a value its
+	 * key does not take, as `key=value`, the field left as it was. */
 	char unknown[8][64];
 	int  nunknown;
+	char badvalue[8][96];
+	int  nbad;
 } Profile;
 
 void  profile_defaults(Profile *p, const char *box);
 int   profile_load(Profile *p, const char *box);
 int   profile_save(const Profile *p);
+/* 0 when set, -1 for no key=value or an unknown key, -2 for a value the key
+ * does not take (recorded in badvalue[], the field unchanged). */
 int   profile_set(Profile *p, const char *kv);
+/* The values <key> takes, as a phrase ("host, private or none"); NULL for a
+ * key whose value is free text. */
+const char *profile_value_rule(const char *key);
 void  profile_print(const Profile *p);
 /* An accent as a person reads it: `none` for no accent, whose stored token is
  * `session`. */
@@ -172,8 +180,50 @@ int  profile_granted(const Profile *p, const char *name);
 /* The `x11` key resolved: 1 when the box is handed the session's display. */
 int  profile_x11(const Profile *p);
 /* 1 when the profile is valid for a container name, a profile file name and
- * a socket path component. */
+ * a socket path component. BOX_NAME_RULE is that rule as a person reads it,
+ * the one wording every refusal of a name prints. */
 int  box_name_ok(const char *s);
+#define BOX_NAME_RULE "a box name is 1 to 63 of the characters A-Z a-z 0-9 . _ -, " \
+		      "starting with a letter or a digit"
+
+/*
+ * A PROFILE `kdos-box remove` KEPT ON PURPOSE carries BOX_KEPT_MARK as its
+ * first line: a comment, so it changes no setting. profile_save drops it:
+ * `kdos-box create` saves before it creates, and a launch that makes the box
+ * again (pack_box_ensure) saves once its create has succeeded.
+ */
+#define BOX_KEPT_MARK "# kept by kdos-box remove; remove --purge deletes it\n"
+int  profile_is_kept(const char *box);
+void profile_mark_kept(const char *box);
+
+/*
+ * THE KEYS A CONTAINER IS MADE FROM, recorded on it. Every create of a box
+ * labels the container `io.kdos.profile=<digest>`, where the digest is one
+ * 8-hex-digit hash per create-time key in PROFILE_CREATE_KEYS' order after a
+ * `v1.`; profile_print and the report of a `kdos-box profile` write compare
+ * the profile with the label key by key and name the keys that differ. The keys a launch reads (accent, grant, x11,
+ * autostop, wayland, audio, render, display, export) are not in it: a change
+ * to one of them applies at the box's next launch. Only letters, digits and
+ * dots, so the value passes distrobox's `eval` of --additional-flags as one
+ * word.
+ */
+#define BOX_PROFILE_LABEL "io.kdos.profile"
+#define PROFILE_DIGEST_MAX 160
+void profile_create_digest(const Profile *p, char *out, size_t n);
+/* The create-time keys whose hash differs between two digests, comma
+ * separated, into `out`; returns how many. A digest of another version or
+ * length counts every key as changed. */
+int  profile_digest_diff(const char *a, const char *b, char *out, size_t n);
+/* The digest the box's container was created with, its BOX_PROFILE_LABEL,
+ * "" when it has none or podman could not say. */
+void box_profile_label(const char *box, char *out, size_t n);
+/* 1 when `b` differs from `a` in a key a launch reads: every create-time key
+ * of the digest and the accent are left out of the comparison. */
+int  profile_launch_differs(const Profile *a, const Profile *b);
+/* 1 when the process is in the foreground of the terminal `fd` is: what an
+ * exec needs before it hands podman the terminal (`--tty`), since a
+ * background job that sets a terminal's modes is stopped by SIGTTOU. */
+int  tty_foreground(int fd);
 
 /* ─────────────────────────────────────────────────────────────── rundir.c */
 
@@ -286,6 +336,11 @@ void rules_scheme(const char *accent, char *out, size_t n);
 /* Every box the user has — launchers and profiles — written as rules into
  * ~/.config/kwinrulesrc, and KWin told to read them. */
 int  box_rules_refresh(void);
+/* The boxes box_rules_refresh writes rules for, with their accents: every box
+ * a launcher in `apps` names and every profile in `pdir`, except a profile
+ * `remove` kept whose box has no container. Returns how many. */
+int  box_rules_collect(const char *apps, const char *pdir, char (*boxes)[64],
+		       char (*accents)[16], int max);
 void kwin_reconfigure(void);
 
 /* ─────────────────────────────────────────────────────────────── session.c */
@@ -313,18 +368,32 @@ int  box_state(const char *box, char *buf, size_t n);
  * so the caller must create it again) or 4 (any other box, still stuck and
  * kept, because its writes are in the container). */
 int  box_unstick(const char *box, char *state, size_t n);
-/* `sig` to every process of the box but its init — the applications its
- * launches started — by the init's mount namespace, or by KDOS_BOX once the
- * init is gone. Signal 0 counts them. Returns how many were signalled. */
+/* `sig` to every process of the box but its init and to every launch still
+ * waiting for the box, by its wait mark ($XDG_RUNTIME_DIR/kdos/boxes/
+ * <box>.wait.<pid>). A process is the box's when it is in the init's mount
+ * namespace; when the init is gone, when it carries the box's KDOS_BOX or is
+ * in a mount namespace a process under one of the box's conmons was found in
+ * during this stop; and when its parent chain reaches one of the container's
+ * conmons, except the main conmon's exit-command and runtime children. The
+ * main conmon is never signalled; the exec conmons only at SIGKILL. Signal 0
+ * counts all of them, the exec conmons and the main conmon included. Returns
+ * how many were signalled. */
 int  box_signal_all(const char *box, int sig);
-/* Stop boxes without `podman stop`: SIGTERM to the applications and the init,
- * `grace` seconds, then SIGKILL and three more. Returns how many are still
- * up. */
+/* Stop boxes without `podman stop`: SIGHUP then SIGTERM to the exec
+ * sessions, SIGTERM to the other applications, the waiting launches and the
+ * init, `grace` seconds for the box and its main conmon to be gone, then
+ * SIGKILL (never to the main conmon) and three more; a box left `stopped`
+ * with nothing alive gets `podman container cleanup`. Returns how many are
+ * still up. box_unstick runs the same sequence without the waiting
+ * launches. */
 int  box_stop_many(const char *const *boxes, int n, int grace);
 int  box_create(const Profile *p);
 int  box_list(void);
 int  box_setup_done(const char *box);
+int  box_setup_ever(const char *box);
 int  box_wait_ready(const char *box, int seconds);
+int  box_wait_ready_note(const char *box, int seconds, int quiet,
+			 void (*note)(const char *box));
 int  image_exists(const char *image);
 int  image_has_label(const char *image, const char *label);
 
@@ -385,7 +454,11 @@ int  app_list(void);
 
 /* Regenerate the launchers, their icons, the mime cache, the alien-apps
  * table, the /usr/local/bin shims and the boxes' window rules. */
-int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir);
+int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir,
+		     int verbose);
+/* `verbose` prints how many packs were read and the launcher, mime type and
+ * shim counts: the `genlaunchers` verb's report. An install or a removal
+ * regenerates quietly, and every warning prints either way. */
 
 /* A generated launcher of a box, read back: its launcher id, the in-box
  * command after `run`, and its MimeType. */
@@ -406,6 +479,19 @@ int throwaway_launcher(const char *box, BoxLauncher *out);
  * pack exports one launcher, `<box>.<stem>` for each of several. The stem is
  * the shim name with every character a bus or app id component cannot carry
  * turned into `_`. */
+/*
+ * An application's icon, copied out of a root directory under the launcher
+ * id's name: every size of `<root>/usr/share/icons/hicolor/<size>/apps/
+ * <icon>.<ext>` into `<data>/icons/hicolor/<size>/apps/<lid>.<ext>`, else
+ * `<root>/usr/share/pixmaps/<icon>.<ext>` into `<data>/pixmaps`, and an
+ * absolute `icon` as `<root><icon>`. Each file written is listed in
+ * `manifest` (relative to `data`) when it is not NULL. Returns how many.
+ */
+int  launcher_icons_copy(const char *root, const char *icon, const char *lid,
+			 const char *data, KbBuf *manifest);
+/* Every icon launcher_icons_copy can have written for `lid` under `data`,
+ * deleted. Returns how many went. */
+int  launcher_icons_remove(const char *lid, const char *data);
 void launcher_id(const char *box, const char *stem, int several, char *out,
 		 size_t n);
 
@@ -540,8 +626,8 @@ int store_uninstall_many(const char *const *ids, int n);
  * and every installed app pack. The pack walk cannot see a store box: it is an
  * IMAGE and kdos-packd has never heard of it, so an application installed here
  * would have no Start menu entry, no $PATH shim and no "Open with" row.
- * Returns how many store boxes were read. */
-int store_launchers(void);
+ * `verbose` is cmd_genlaunchers'. Returns how many store boxes were read. */
+int store_launchers(int verbose);
 
 /* A set, as signed packs in one file. Packs and not `podman save`: kdos-packd
  * hashes and signature-checks a pack where it MOUNTS it, which is what makes

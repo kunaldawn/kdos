@@ -68,3 +68,6 @@ trap - EXIT
 echo "update-ca-certificates: $out: the Mozilla bundle and $n local anchor file(s)"
 SH
 chmod 755 $PKG/usr/bin/update-ca-certificates
+
+install -d "$PKG/usr/share/licenses/$name"
+head -n 4 certdata.txt > "$PKG/usr/share/licenses/$name/NOTICE"

@@ -43,9 +43,10 @@ manager, and an installer. It is released as a **live ISO**. Boot it from a USB 
 machine, use it as it is, and install it to a disk when you want to keep it.
 
 The ISO carries the **base system**: the Plasma session, the core KDE applications (Dolphin,
-Konsole, Kate, Okular, Gwenview, Ark, Spectacle, KDE Connect and their companions), Firefox ESR,
-Discover, networking, printing, the box stack, a compiler toolchain and the KDOS tools. Everything
-else is one download away, three ways:
+Konsole, Kate, Okular, Gwenview, Ark, Spectacle, KDE Connect and their companions), VLC, which
+Elisa plays through, Firefox ESR, Discover, networking, printing, the Orca screen reader and BRLTTY,
+the box stack, Python and Perl, and the KDOS tools. It carries no compiler: the toolchain is the
+`build-tools` group. Everything else is one download away, three ways:
 
 | Way | What it is | Use it for |
 |---|---|---|
@@ -67,38 +68,65 @@ marked **Latest**. Each release carries:
 
 | File | What it is |
 |---|---|
-| `kdos-<version>.iso`, or `kdos-<version>.iso.part01`, `.part02`, … | The live ISO. GitHub holds no file over 2 GiB, so a larger ISO is cut into parts |
-| `SHA256SUMS`, `SHA256SUMS.sig` | The checksum of the whole ISO and of every other file, and its signature |
+| `kdos-<tag>.iso` (for example `kdos-v0.2.iso`), or `kdos-<tag>.iso.part01`, `.part02`, … | The live ISO, named by the release's tag. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
+| `SHA256SUMS`, `SHA256SUMS.sig` | The checksums of the whole ISO and each of its parts, `sources.sha256`, the recipe tree, the update index, their two signatures and the release key, and the list's signature by the release key. The list does not cover its own signature or the book files below, which are attached after it is made |
 | `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
-| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built |
+| `kdos-ports.tar.xz`, `kdos-ports.tar.xz.sig` | The recipe tree of the release, signed: what `kdos update fetch` installs as `/ports` |
+| `kdos-update.idx`, `kdos-update.idx.sig` | The signed index of the release's prebuilt packages and update image |
+| `sources.sha256` | Every upstream source file the release's recipes name, by hash |
+| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built, attached once the release is published. The v0.2 release does not carry them |
 
-The prebuilt packages and the update images sit in pre-releases beside it (`binhost-<version>-NN`,
-`image-<version>`). You never download those by hand: a KDOS machine finds them through the
+The prebuilt packages and the update images sit in pre-releases beside it (`binhost-<tag>-NN` and
+`image-<tag>`). You never download those by hand: a KDOS machine finds them through the
 release's signed index.
 
-Join the parts, if there are any, and check the result:
+When the release carries the ISO in parts (`.part01`, `.part02` and on, and no whole
+`kdos-<tag>.iso`), join them first. Run this only then: the shell empties
+`kdos-<tag>.iso` before `cat` reads anything, so on a release with one whole ISO it destroys
+the download.
 
 ```sh
-cat kdos-<version>.iso.part* > kdos-<version>.iso
+cat kdos-<tag>.iso.part?? > kdos-<tag>.iso
+```
+
+Then check the ISO:
+
+```sh
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-The last command must print `kdos-<version>.iso: OK`. A checksum list downloaded beside the file
-proves only that the two agree; on a KDOS machine, `kdos verify kdos-<version>.iso` also checks the
-list's signature against the release key the system already trusts.
+It must print `kdos-<tag>.iso: OK`, with the tag, for example `kdos-v0.2.iso: OK`. A checksum list downloaded beside the file proves only that
+the two agree. To check the list's signature on a machine that does not run KDOS, download
+`SHA256SUMS.sig` and `kdos-release.pub` too, and use OpenSSL 3 and `xxd`:
+
+```sh
+cut -d' ' -f2 kdos-release.pub | xxd -r -p | sha256sum | cut -c1-16     # must print ccb53bac7fdba3cd
+{ printf 302a300506032b6570032100; cut -d' ' -f2 kdos-release.pub; } | xxd -r -p > kdos-release.der
+awk '$2=="ccb53bac7fdba3cd"{print $3}' SHA256SUMS.sig | xxd -r -p > SHA256SUMS.sig.bin
+openssl pkeyutl -verify -pubin -keyform DER -inkey kdos-release.der -rawin \
+    -in SHA256SUMS -sigfile SHA256SUMS.sig.bin
+```
+
+The first line prints the key's id, which must match the one above; the last prints
+`Signature Verified Successfully`. On a KDOS machine, `kdos verify kdos-<tag>.iso` checks the
+list and its signature against the release key the system already trusts.
 
 ### Try it in a virtual machine
 
 Any x86-64 virtual machine with UEFI firmware and 4 GB of memory boots the ISO. With QEMU and the
-OVMF firmware:
+OVMF firmware (Debian and Ubuntu's path is shown):
 
 ```sh
 qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
 qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4G \
-    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<version>.iso \
+    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<tag>.iso \
     -drive file=kdos.qcow2,format=qcow2 -device virtio-vga -device virtio-net-pci,netdev=n \
     -netdev user,id=n -usb -device usb-tablet
 ```
+
+Other distributions keep OVMF elsewhere: Arch at `/usr/share/edk2/x64/OVMF.4m.fd`, Fedora under
+`/usr/share/edk2/ovmf/`. Where only the split code file is installed, replace `-bios <file>` with
+`-drive if=pflash,format=raw,readonly=on,file=<path>/OVMF_CODE.fd`.
 
 Plain virtual graphics run KWin in software. Everything works except Phosphor mode and the CRT
 motion, which need the guest to have hardware OpenGL (virgl).
@@ -109,12 +137,21 @@ Use a stick at least as large as the ISO; this erases all of it. On Linux, with 
 stick:
 
 ```sh
-sudo dd if=kdos-<version>.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=kdos-<tag>.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 On Windows or macOS, use any tool that writes a raw disk image (Rufus in DD mode, balenaEtcher).
+On a KDOS machine, ISO Image Writer does it from a window; it knows no KDOS key and says "Could
+not find the key to verify the ISO image", so check the image with `kdos verify` as above.
+A Ventoy stick boots the ISO copied onto it, in Ventoy's normal mode. A stick holding copies of
+the ISO's files (Rufus in ISO mode, or files copied onto a FAT stick) does not boot: the boot
+stops at "Failed to find the KDOS live medium."
 The ISO boots from UEFI and from legacy BIOS. **Turn Secure Boot off** in the firmware first:
 KDOS's boot loader is not signed for it.
+
+The ISO also fits a DVD. Burn it as a disc image, not as a file on a data disc: on Linux
+`growisofs -dvd-compat -Z /dev/sr0=kdos-<tag>.iso`, on Windows the ISO's **Burn disc image**
+menu entry. A live session started from a disc cannot keep its changes.
 
 ### The live session
 
@@ -137,8 +174,10 @@ On the **Applications** page you can tick:
 - **Boxed applications**: catalogue groups, recorded on the new disk and offered at your first
   login, where Discover builds them.
 
-The disk must hold two system slots and your home; the installer's first page says how much that
-is and offers only disks that are large enough. [Installation](docs/kdos/02-user-guide/installation.md)
+The default layout holds two system slots, so that an update can be undone, beside the swap and
+your home: a disk of about 24.5 GiB with the default 4 GiB swap, or 20.5 GiB with none. A smaller
+disk is installed with one slot and no rollback, and the Disk page says which a disk gets.
+[Installation](docs/kdos/02-user-guide/installation.md)
 walks through the installer page by page.
 
 ## Adding software
@@ -192,15 +231,15 @@ the default Bone accent.
 | ![Dolphin in the home folder](docs/screenshots/dolphin.png) | ![Discover's home page with the editor's choice](docs/screenshots/discover.png) |
 | Dolphin, from KDE Gear, built as a native port | Discover over native ports, packs and boxed applications |
 | ![System Settings on the KDOS Look page: eight accents and Phosphor mode](docs/screenshots/settings-look.png) | ![The boot splash](docs/screenshots/boot-splash.png) |
-| KDOS Look in System Settings: one click repaints Plasma, the terminals, the splash and the login screen | The boot splash |
+| KDOS Look in System Settings: one click repaints Plasma and the terminals at once, and the login screen, the consoles and the splash the next time each shows | The boot splash |
 
 ## What is in it
 
 | Area | What is there |
 |---|---|
-| The desktop | KDE Plasma 6.8 on KWin, with three desks to choose from at first login, eight accents applied everywhere at once from the boot menu to the lock screen, an optional Phosphor mode with a CRT pass over the whole screen, KDOS pages in System Settings (boxes, the firewall, health, the look, the system's versions), a KRunner runner for the `kdos` verbs and an offline library, privacy lamps that name the box holding the camera, and Discover over native ports, packs, boxes, firmware and system updates |
-| On the ISO | The Plasma session; Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake, with the KIO workers and thumbnailers they use; Firefox ESR, NetworkManager, PipeWire, CUPS and scanning, podman and the box stack, Python and Perl, and every KDOS tool and daemon |
-| One download away | The rest of about 2,400 native ports, every one prebuilt for the release: all of KDE Gear (Kdenlive, digiKam, KMail, Krita and the rest), LibreOffice, GIMP, Inkscape, Blender, Thunderbird, Chromium, LibreWolf, OBS Studio, VLC, mpv, QGIS, FreeCAD, KiCad, TeX Live, Wine, Rust, Go, Node.js, Zig, Haskell, cross toolchains for ARM, RISC-V and AVR, and SDR and FPGA tooling, one at a time or in groups, among them `build-tools` (GCC's assembler and linker, make, CMake, Meson and the rest), `lang-zh`, `lang-ja` and `lang-ko` (input methods and CJK fonts) |
+| The desktop | KDE Plasma 6.8 on KWin, with three desks to choose from at first login, eight accents that repaint Plasma, the terminals and the lock screen at once and the login screen, the consoles, the splash and the boot menu the next time each shows, an optional Phosphor mode with a CRT pass over the whole screen, KDOS pages in System Settings (boxes, the firewall, health, the look, the system's versions), a KRunner runner for the `kdos` verbs and an offline library, privacy lamps that name the box holding the camera, and Discover over native ports, packs, boxes, firmware and system updates |
+| On the ISO | The Plasma session; Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager, Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use; Haruna, KolourPaint, Skanpage, Filelight, KFind, KCharSelect, KClock and KWalletManager; VLC, which Elisa plays through; the Orca screen reader and BRLTTY; Firefox ESR, NetworkManager, PipeWire, CUPS and scanning, podman and the box stack, Python and Perl, and every KDOS tool and daemon |
+| One download away | The rest of about 2,400 native ports, every one prebuilt for the release: all of KDE Gear (Kdenlive, digiKam, KMail, Krita and the rest), LibreOffice, GIMP, Inkscape, Blender, Thunderbird, Chromium, LibreWolf, OBS Studio, QGIS, FreeCAD, KiCad, TeX Live, Wine, Rust, Go, Node.js, Zig, Haskell, cross toolchains for ARM, RISC-V and AVR, and SDR and FPGA tooling, one at a time or in groups, among them `build-tools` (GCC's assembler and linker, make, CMake, Meson and the rest), `lang-zh`, `lang-ja` and `lang-ko` (input methods and CJK fonts) |
 | Boxed | 70 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and [exportable as one file](docs/kdos/02-user-guide/applications.md#carrying-a-set-to-another-machine) that installs on another machine offline |
 | Boot and install | A boot splash that hands over to the login screen, an optionally encrypted root, A/B root slots filled by signed whole-slot images with deltas, and an installer with a graphical front end and a text-mode one over one backend, which also runs unattended from an answer file |
 | Its own software | 9 C libraries written for this system, the package manager and the installer, and 43 recipes of its own: 21 parts of the Plasma desktop, six root daemons, the box tools, the `kdos` command and its subcommands, and the artwork |
@@ -231,9 +270,11 @@ binaries by design, and runs only in boxes. The complete list is in
 [Why KDOS](docs/kdos/01-philosophy/why-kdos.md#what-is-not-built-from-source).
 
 **KDOS can build KDOS.** The build's self-hosting phase, `20_selfhost`, rebuilds the C library and
-the compilers inside the new system, with itself. The installed system carries GCC, Clang,
-binutils, CMake, Meson, Ninja, Python, make and the package manager, so it can rebuild any port
-of its own; Rust, Go and the other compilers arrive prebuilt the first time a build needs them.
+the compilers inside the new system, with itself. The image carries the package manager, Python
+and every recipe, and no compiler: a build on an installed machine first installs, prebuilt, the
+members of the `build-tools` group it lacks (GCC's assembler and linker, make, CMake, Meson, Ninja,
+the fortify-headers its hardening flags need on musl, and the rest), so the machine can rebuild any port of its own. Rust, Go and the other compilers
+arrive prebuilt the first time a build needs them.
 
 **The build runs offline.** Every source file a recipe uses is named by a `sha256 =` line in that
 recipe. `make fetch` is the one step that downloads sources; `make build` compiles in a container
@@ -253,7 +294,18 @@ real hardware is the integrator.
 
 Some things you may expect are not there. Secure Boot must be off. The login screen runs on a
 Wayland greeter its upstream calls experimental. Phosphor mode needs hardware OpenGL. The system
-speaks English only. Every such gap is listed in [Known gaps](docs/kdos/06-reference/known-gaps.md),
+speaks English only. The medium carries only Intel, AMD, MediaTek and Realtek firmware, so other
+Wi-Fi cards and a recent NVIDIA GPU need a network first (Ethernet or a USB-tethered phone),
+then `sudo kdos firmware sync`
+([firmware](docs/kdos/06-reference/known-gaps.md#the-installation-medium-carries-four-vendors-firmware)).
+A program that crashes shows no crash dialog
+([crashes](docs/kdos/06-reference/known-gaps.md#a-crashed-program-shows-no-crash-dialog)).
+Twelve applications run on Qt 5, which has no 2026 security fixes
+([Qt 5](docs/kdos/06-reference/known-gaps.md#twelve-applications-run-on-qt-5-which-has-no-2026-security-fixes)).
+Session restore reopens applications but not their documents
+([session restore](docs/kdos/06-reference/known-gaps.md#session-restore-reopens-applications-not-their-documents)).
+On the live image `root` and `kdos` both have the password `kdos`, so do not open `ssh` there
+([security](docs/kdos/06-reference/known-gaps.md#security)). Every such gap is listed in [Known gaps](docs/kdos/06-reference/known-gaps.md),
 and the maturity of each subsystem, with the evidence behind each verdict, is in
 [Status](docs/kdos/06-reference/status.md).
 
@@ -318,10 +370,12 @@ page carries the full table of contents and four reading paths.
 | VI. Reference | Ports, commands, configuration, paths, gaps, status, glossary | [Command index](docs/kdos/06-reference/command-index.md) |
 
 A second book, *KDOS from Scratch* under [`docs/kfs/`](docs/kfs/README.md), builds the system
-phase by phase and package by package, with a page for every port. Both books are on every image,
-under `/usr/share/doc/kdos` and `/usr/share/doc/kfs`, and both are published to the repository's
-GitHub Pages site on every push to `main`; each `v` release carries *KDOS from Scratch* as one PDF
-and as an HTML tarball.
+phase by phase and package by package, with a page for every port. The image carries the KDOS
+book under `/usr/share/doc/kdos`, opened in the browser by `kdos-doc`; *KDOS from Scratch* is the
+port `kdos-kfs`, installed into `/usr/share/doc/kfs` with `sudo kdos update install kdos-kfs`. Both
+books are published to the repository's GitHub Pages site on every push to `main`, and a `v`
+release is given *KDOS from Scratch* as one PDF and as an HTML tarball once it is published. The
+v0.2 release does not carry them; `sudo kdos update install kdos-kfs` installs the book.
 
 ## Repository layout
 
@@ -336,7 +390,8 @@ src/desktop/      KDOS's parts of the Plasma desktop: settings pages, widgets, K
                   scripts, the Discover backend, the runner, the graphical installer
 src/daemons/      the six root daemons the desktop talks to
 src/system/       the package manager, the kdos command, packs, boxes and the box socket, the
-                  installer, and the two books on the image
+                  installer, and the two books (the KDOS book on the image, KDOS from Scratch
+                  a port to install)
 src/art/          the identity generators, icons, wallpapers, sounds, the login theme, the
                   add-ons, the boot splash, the demo
 src/devtools/     kdosbuild (the orchestrator behind make build) and kdos-portup (behind
@@ -410,3 +465,8 @@ keeps that licence along with its upstream copyright headers. `kdos-sddm-theme` 
 of Breeze's SDDM theme and keeps its LGPL-2.0-or-later licence. KWin's `kdos-crt.patch` adds files
 under GPL-2.0-only. Every port under `ports/core/` is upstream's own code under upstream's own
 terms.
+
+On an installed or live system, `/usr/share/licenses/<port>/` holds each package's licence texts,
+with KDOS's own MIT text in `/usr/share/licenses/kdos/LICENSE`, and `kpkg info <port>` prints the
+package's SPDX licence. `/usr/share/kdos/SOURCES` names the commit the image was built from and
+the archive releases that hold every upstream source.

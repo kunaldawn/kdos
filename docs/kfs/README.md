@@ -244,8 +244,6 @@ Chapters 362–363, the generated package chapters, one per shelf: `boot`, `devt
 451. [Licences](17-appendices/licences.md)
 452. [Glossary](17-appendices/glossary.md)
 
-Chapter 453, the generated package chapter: Ports no phase builds.
-
 <!-- /book-contents -->
 
 ## See also

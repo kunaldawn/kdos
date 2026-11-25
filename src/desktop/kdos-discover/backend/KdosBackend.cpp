@@ -31,13 +31,21 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QXmlStreamReader>
 
 #include <algorithm>
 #include <memory>
+#include <tuple>
 
 using namespace Qt::StringLiterals;
 
@@ -70,6 +78,104 @@ static QString pendingPath()
 {
     const QString env = qEnvironmentVariable("KDOS_APPS_PENDING");
     return env.isEmpty() ? u"/var/lib/kdos/apps-pending"_s : env;
+}
+
+// The update document `kdos update check` writes, renamed into place in
+// /var/lib/kdos, which the backend watches.
+static QString updateDocumentPath()
+{
+    const QString env = qEnvironmentVariable("KDOS_UPDATE_DOC");
+    return env.isEmpty() ? u"/var/lib/kdos/update.json"_s : env;
+}
+
+// What the Updates page says above its list when the update document records
+// a problem (update.c's problem(): a `fetch`, `binhost-<code>`, `image-<code>`
+// or `apply` code), with where the failed step looked and the tool's own
+// words: without it the page says "Up to date" about a release nothing could
+// read. A tree or image step names the channel, the tree source in effect. A
+// binhost step names `binhost_base`, the binhost update.conf, the environment
+// or the tree's release names, then `binhost`, where the index in place came
+// from, then the binary host in words; never the channel, which is another
+// place, so the sentence would send the reader where the index was not
+// looked for. A bare no-network or fetch-failed is the fetch's or the
+// apply's, so its sentence fits either. The tool's words follow in brackets
+// only when they add something: never for no-network, whose sentence says
+// all the tool's does, and never when they name `origin` again, which the
+// sentence already names (binhost-absent's always do). no-network is the
+// code for a name that did not resolve, or for a refusal or a timeout on a
+// machine with no default route (relidx.c's ri_class); a server that
+// refused or did not answer while a route exists is a fetch-failed whose
+// words say so, without the URL. no-tree is not said: with no tree
+// nothing can be behind, and the fetch's own code says why none arrived. Nor
+// is a tree fetch-failed whose detail is update.c's "the published tree … is
+// older than this machine's": that machine is ahead of the release, not cut
+// off from it, and would carry the warning beside every offer until the
+// release caught up. update.c's published_older() knows the refusal by the
+// same words, and problem() ranks it below every other code, so it is the
+// document's problem only when there is no other. Empty when nothing is
+// recorded or the code is unknown.
+static QString updateProblemText()
+{
+    QFile f(updateDocumentPath());
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+    QString code = doc.value("problem"_L1).toString();
+    const QString detail = doc.value("detail"_L1).toString();
+    enum { Tree, Binhost, Image } step = Tree;
+    if (code.startsWith("binhost-"_L1)) {
+        step = Binhost;
+        code = code.mid(8);
+    } else if (code.startsWith("image-"_L1)) {
+        step = Image;
+        code = code.mid(6);
+    }
+    if (step == Tree && code == "fetch-failed"_L1 && detail.contains("is older than this machine's"_L1))
+        return {};
+    QString origin;
+    if (step == Binhost) {
+        origin = doc.value("binhost_base"_L1).toString();
+        if (origin.isEmpty())
+            origin = doc.value("binhost"_L1).toString();
+        if (origin.isEmpty())
+            origin = i18nc("@info where the package index comes from, when no origin is recorded", "the binary host");
+    } else {
+        origin = doc.value("channel"_L1).toString();
+        if (origin.isEmpty())
+            origin = i18nc("@info where updates come from, when no origin is recorded", "the release's update server");
+    }
+    QString said;
+    if (code == "no-network"_L1)
+        said = step == Binhost ? i18nc("@info:status %1 is a URL or a directory", "The release's package index could not be fetched from %1: no network was found.", origin)
+            : step == Image    ? i18nc("@info:status %1 is a URL or a directory", "The release's system image could not be fetched from %1: no network was found.", origin)
+                               : i18nc("@info:status %1 is a URL or a directory", "Updates could not be fetched from %1: no network was found.", origin);
+    else if (code == "fetch-failed"_L1)
+        said = step == Binhost ? i18nc("@info:status %1 is a URL or a directory", "The release's package index could not be fetched from %1.", origin)
+            : step == Image    ? i18nc("@info:status %1 is a URL or a directory", "The release's system image could not be fetched from %1.", origin)
+                               : i18nc("@info:status %1 is a URL or a directory", "Updates could not be fetched from %1.", origin);
+    else if (code == "no-key"_L1)
+        said = i18nc("@info:status %1 is a URL or a directory",
+                     "This computer holds no key that could verify a release from %1, so nothing was fetched.",
+                     origin);
+    else if (code == "unverified"_L1)
+        said = step == Binhost ? i18nc("@info:status %1 is a URL or a directory",
+                                       "The release's package index from %1 does not verify against this computer's keys.",
+                                       origin)
+            : step == Image ? i18nc("@info:status %1 is a URL or a directory",
+                                    "The release's system image from %1 does not verify against this computer's keys.",
+                                    origin)
+                            : i18nc("@info:status %1 is a URL or a directory",
+                                    "The last update installed nothing: what it fetched from %1 does not verify against this computer's keys.",
+                                    origin);
+    else if (code == "build-failed"_L1)
+        said = i18nc("@info:status", "The last update installed nothing: building it from source failed.");
+    else if (code == "needs-source"_L1)
+        said = i18nc("@info:status", "The last update installed nothing: the release's package index does not cover it, and it needs building from source.");
+    else if (step == Binhost && code == "absent"_L1)
+        said = i18nc("@info:status %1 is a URL or a directory", "No package index is published at %1.", origin);
+    if (said.isEmpty() || detail.isEmpty() || code == "no-network"_L1 || detail.contains(origin))
+        return said;
+    return i18nc("@info:status %1 is a sentence saying what failed, %2 is the update tool's own words", "%1 (%2)", said, detail);
 }
 
 // The release's signed binary host, which `kdos update fetch` keeps and
@@ -149,6 +255,8 @@ struct KdosBackend::Snapshot {
     QHash<QString, QString> packIcons; // pack id -> its icon, extracted to the cache
     QHash<QString, QString> ports;
     bool portsOk = false;
+    QSet<QString> removable; // `kdos update removable --json`: world ports nothing installed needs
+    QHash<QString, QString> neededBy; // world ports an installed package needs, and one that does
     int outstanding = 0;
 };
 
@@ -169,8 +277,9 @@ static void runInOrder(const std::shared_ptr<QList<Chained>> &steps, const std::
     });
 }
 
-// Pack icons, extracted once per pack version: a new version is a new file
-// name, so an icon changed by an update is never the old one from the cache.
+// Pack icons and a binary host's embedded ones, written once per version: a
+// new version is a new file name, so an icon changed by an update is never
+// the old one from the cache.
 static QString iconCacheDir()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + u"/kdos-discover/icons"_s;
@@ -259,19 +368,35 @@ KdosBackend::KdosBackend(QObject *parent)
     }
 
     // A box created or removed in a terminal, a pack installed by
-    // `kdos-appbox import`, a medium inserted: each changes one of these
-    // directories, and a settled change reads the machine again.
+    // `kdos-appbox import`, a medium inserted, a `kdos update fetch` writing
+    // the binhost index and its catalogue: each changes one of these
+    // directories, and a settled change reads the machine again. The
+    // binhost's directories do not exist on a fresh live medium until the
+    // first fetch, so its parents are watched too and every change adds
+    // whichever of them has appeared since.
     m_settle.setSingleShot(true);
     m_settle.setInterval(1500);
     connect(&m_settle, &QTimer::timeout, this, [this] {
         refresh();
     });
-    const QStringList watched{QDir::home().filePath(u".config/kdos/boxes"_s), packStoreDir(), mediumPacksDir()};
-    for (const QString &dir : watched) {
-        if (QFileInfo(dir).isDir())
-            m_watcher.addPath(dir);
-    }
-    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] {
+    const QString binhostXml = QFileInfo(binhostCatalogue()).absolutePath();
+    const QStringList watched{QDir::home().filePath(u".config/kdos/boxes"_s),
+                              packStoreDir(),
+                              mediumPacksDir(),
+                              u"/var/lib/kdos"_s,
+                              QFileInfo(QFileInfo(binhostXml).absolutePath()).absolutePath(),
+                              QFileInfo(binhostXml).absolutePath(),
+                              binhostXml};
+    const auto watch = [this, watched] {
+        const QStringList have = m_watcher.directories();
+        for (const QString &dir : watched) {
+            if (!have.contains(dir) && QFileInfo(dir).isDir())
+                m_watcher.addPath(dir);
+        }
+    };
+    watch();
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this, watch] {
+        watch();
         if (!m_running)
             m_settle.start();
     });
@@ -360,6 +485,19 @@ QString KdosBackend::originName(const QString &origin)
 
 // ── the AppStream pool ──────────────────────────────────────────────────
 
+// How much of an application page a component fills, compared as a tuple:
+// a licence, then a developer or project group, then a description. A
+// package can carry several components (paraview has paraview.desktop with
+// no licence beside org.paraview.ParaView with one); the package keeps the
+// richest, so a component with a licence wins wherever the pool lists it;
+// of equals, the first the pool lists.
+static std::tuple<bool, bool, bool> componentRichness(const AppStream::Component &c)
+{
+    return {!c.projectLicense().isEmpty(),
+            !c.developer().name().isEmpty() || !c.projectGroup().isEmpty(),
+            !c.description().isEmpty()};
+}
+
 void KdosBackend::loadPool()
 {
     m_pool = std::make_unique<AppStream::Pool>();
@@ -385,8 +523,11 @@ void KdosBackend::loadPool()
         for (const AppStream::Component &c : all) {
             if (!c.origin().startsWith("debian"_L1) || c.kind() != AppStream::Component::KindDesktopApp)
                 continue;
-            for (const QString &p : c.packageNames())
-                m_debianByPackage.insert(p, c);
+            for (const QString &p : c.packageNames()) {
+                const auto have = m_debianByPackage.constFind(p);
+                if (have == m_debianByPackage.constEnd() || componentRichness(c) > componentRichness(*have))
+                    m_debianByPackage.insert(p, c);
+            }
         }
         qCDebug(LIBDISCOVER_BACKEND_KDOS_LOG) << "AppStream pool:" << all.size() << "components," << m_debianByPackage.size() << "Debian packages";
         m_poolReady = true;
@@ -395,11 +536,240 @@ void KdosBackend::loadPool()
     m_pool->loadAsync();
 }
 
-// The components of one catalogue file, by their first package name. Read
-// whole and outside the pool: a pool keys every OS catalogue component by
-// the same data id, so a host port and its Debian twin (org.kde.kate is in
+// How a component id is compared across catalogues: without a trailing
+// ".desktop". DEP-11 keeps the legacy ids (org.kde.kmail2.desktop) for
+// what the host's metainfo calls org.kde.kmail2, and a twin compared by
+// the bare string would be offered again in a box.
+static QString hostKey(const QString &id)
+{
+    return id.endsWith(".desktop"_L1) ? id.chopped(8) : id;
+}
+
+// Every key a host component answers to: its id and each desktop entry it
+// launches.
+static void addHostKeys(QSet<QString> *keys, const AppStream::Component &c)
+{
+    keys->insert(hostKey(c.id()));
+    for (const QString &entry : c.launchable(AppStream::Launchable::KindDesktopId).entries())
+        keys->insert(hostKey(entry));
+}
+
+// Whether a Debian component is one the host catalogues already have, by
+// its id or a desktop entry it launches. A program Debian lists under an
+// id of its own (org.musescore.MuseScore3, schism.desktop) is caught by
+// its name instead (hostTwinByName).
+static bool isHostComponent(const QSet<QString> &keys, const AppStream::Component &c)
+{
+    if (keys.contains(hostKey(c.id())))
+        return true;
+    for (const QString &entry : c.launchable(AppStream::Launchable::KindDesktopId).entries()) {
+        if (keys.contains(hostKey(entry)))
+            return true;
+    }
+    return false;
+}
+
+// A package's stem: its leading run of ASCII letters, case-folded
+// (musescore3 -> musescore, marble-qt -> marble).
+static QString packageStem(const QString &pkg)
+{
+    qsizetype n = 0;
+    while (n < pkg.size() && pkg.at(n).unicode() < 128 && pkg.at(n).isLetter())
+        ++n;
+    return pkg.left(n).toCaseFolded();
+}
+
+// A component's homepage as hostTwinByName compares it: the host,
+// case-folded and without "www.". On a code-hosting site or an application
+// directory the host names no program, so there it is the host and the
+// first two segments of the path (github.com/flatpak/flatpak,
+// apps.kde.org/kalk), and empty with no path at all: two programs called
+// Notes that both live on github.com are not the same program.
+static QString homepageHost(const AppStream::Component &c)
+{
+    const QUrl url = c.url(AppStream::Component::UrlKindHomepage);
+    QString host = url.host().toCaseFolded();
+    if (host.startsWith("www."_L1))
+        host = host.mid(4);
+    static const QSet<QString> forges = {
+        u"github.com"_s, u"gitlab.com"_s, u"gitlab.gnome.org"_s, u"invent.kde.org"_s, u"apps.kde.org"_s,
+        u"apps.gnome.org"_s, u"sourceforge.net"_s, u"codeberg.org"_s, u"gitlab.freedesktop.org"_s,
+    };
+    if (!forges.contains(host))
+        return host;
+    const QStringList segments = url.path().toCaseFolded().split(u'/', Qt::SkipEmptyParts);
+    if (segments.isEmpty())
+        return {};
+    return host + u'/' + segments.mid(0, 2).join(u'/');
+}
+
+// Files a host desktop application under its case-folded name.
+static void addHostName(QHash<QString, QList<HostFace>> *names, const AppStream::Component &c)
+{
+    const QString pkg = c.packageNames().value(0);
+    if (c.kind() != AppStream::Component::KindDesktopApp || c.name().isEmpty() || pkg.isEmpty())
+        return;
+    names->operator[](c.name().toCaseFolded()).append({pkg, packageStem(pkg), homepageHost(c)});
+}
+
+// The package of the host desktop application a Debian component is the
+// same program as, though no id is shared: the same name, case-folded, and
+// either the same homepage (homepageHost) or package stems of four letters or more of
+// which one begins the other (schism / schismtracker). A name alone is not
+// enough: Calculator, Calendar and Mines name different programs in each
+// archive, and those stay offered in a box. The cost: a Debian build of
+// another major version of a port's program, such as MuseScore 3 beside the
+// MuseScore port, is not offered while the port is. The name compared is
+// Component::name(), the one in the session's language, so a pair of which
+// only one catalogue translates the name is not caught and is offered
+// twice. Empty when there is none.
+static QString hostTwinByName(const QHash<QString, QList<HostFace>> &names, const AppStream::Component &c)
+{
+    const auto faces = names.constFind(c.name().toCaseFolded());
+    if (c.name().isEmpty() || faces == names.constEnd())
+        return {};
+    const QString host = homepageHost(c);
+    const QString stem = packageStem(c.packageNames().value(0));
+    for (const HostFace &face : *faces) {
+        if (!host.isEmpty() && host == face.homepage)
+            return face.package;
+        if (stem.size() >= 4 && face.stem.size() >= 4 && (stem.startsWith(face.stem) || face.stem.startsWith(stem)))
+            return face.package;
+    }
+    return {};
+}
+
+// Whether kdos-discover-catalog read a component from a bare desktop entry
+// rather than a metainfo file. In a `marked` catalogue, one in which any
+// component carries KDOS::BareEntry, the writer marked every such component
+// KDOS::BareEntry=1 and nothing else, so the mark alone decides: a metainfo
+// application with a .desktop id and no description is still metainfo. A
+// licence decides nothing, since the writer gives every component its
+// recipe's. A catalogue with no mark anywhere, as the published v0.2
+// binhost's, which a fresh machine reads until its own release's catalogue
+// is fetched, is read by what a desktop entry lacks: a desktop application
+// whose id is a .desktop name and which has no description is a bare entry,
+// since libappstream's desktop-entry reader writes none. Read by the mark
+// alone, such a catalogue would list LibreOffice as Base, with Base's
+// description.
+static bool isBareEntry(const AppStream::Component &c, bool marked)
+{
+    if (marked)
+        return c.customValue(u"KDOS::BareEntry"_s) == "1"_L1;
+    return c.kind() == AppStream::Component::KindDesktopApp && c.id().endsWith(".desktop"_L1) && c.description().isEmpty();
+}
+
+// Whether a component is one of its package's own metainfo applications:
+// not a bare entry, and described.
+static bool isMetainfo(const AppStream::Component &c, bool marked)
+{
+    return !c.description().isEmpty() && !isBareEntry(c, marked);
+}
+
+// Which of a package's components it is listed by: a desktop application
+// before a console one before anything else, then one with the package's
+// own metainfo (isMetainfo), then one with an icon, then the shortest name.
+// LibreOffice's package has seven applications, of which the start centre
+// is only a desktop entry (isSuiteFace gives the suite its name back), and
+// Okular's has its comic-book add-on beside Okular itself.
+static bool listsBetter(const AppStream::Component &a, const AppStream::Component &b, bool marked)
+{
+    auto rank = [](const AppStream::Component &c) {
+        switch (c.kind()) {
+        case AppStream::Component::KindDesktopApp:
+            return 2;
+        case AppStream::Component::KindConsoleApp:
+            return 1;
+        default:
+            return 0;
+        }
+    };
+    if (rank(a) != rank(b))
+        return rank(a) > rank(b);
+    if (isMetainfo(a, marked) != isMetainfo(b, marked))
+        return isMetainfo(a, marked);
+    if (a.icons().isEmpty() != b.icons().isEmpty())
+        return !a.icons().isEmpty();
+    return a.name().size() < b.name().size();
+}
+
+// Whether a suite's package is listed by `face`, its shortest-named
+// application, rather than `listed`, the metainfo application listsBetter
+// picks: when the face is a bare desktop entry (isBareEntry) whose name
+// begins the listed one's. The suite is then named, iconed and launched by
+// its face and described as a suite (describeFace): LibreOffice's start
+// centre, "LibreOffice", carries no description or developer, and Base,
+// Calc and Draw, which do, would each stand for the whole suite under its
+// own name. Any other face is left alone, so a package's minor tool never
+// names the application beside it.
+static bool isSuiteFace(const AppStream::Component &listed, const AppStream::Component &face, bool marked)
+{
+    return !face.id().isEmpty() && face.id() != listed.id() && isBareEntry(face, marked) && isMetainfo(listed, marked)
+        && listed.name().startsWith(face.name() + u' ');
+}
+
+// One application of a suite as its description lists it: its name less
+// the suite's ("Writer" for "LibreOffice Writer"), and its summary.
+struct SuiteMember {
+    QString name;
+    QString summary;
+};
+
+// Gives `face` a description of the suite: a lead-in and each of `members`,
+// the package's metainfo applications in catalogue order, by name and
+// summary; one application's description would describe that application
+// under the suite's name. The face's own summary stays out of the body:
+// Discover shows a summary as the description's heading, and repeated as
+// the body's first paragraph it would read twice. The licence, developer,
+// categories and links are `listed`'s, the metainfo application
+// listsBetter picked. `face` must be the only AppStream::Component holding
+// its data: a setter on a shared one detaches it, the detached copy frees
+// the GObject the other still holds, and the next read of that one crashes.
+static void describeFace(AppStream::Component *face, const AppStream::Component &listed, const QList<SuiteMember> &members)
+{
+    QString body;
+    if (!members.isEmpty()) {
+        body = u"<p>"_s + i18nc("@info the line before the list of a suite's applications", "The suite holds:").toHtmlEscaped() + u"</p><ul>"_s;
+        for (const SuiteMember &m : members) {
+            QString name = m.name;
+            if (name.startsWith(face->name() + u' '))
+                name = name.mid(face->name().size() + 1);
+            body += u"<li>"_s + (m.summary.isEmpty() ? name.toHtmlEscaped()
+                                                     : i18nc("@info one application of a suite: %1 its name, %2 its summary", "%1: %2", name, m.summary).toHtmlEscaped())
+                + u"</li>"_s;
+        }
+        body += u"</ul>"_s;
+    }
+    face->setDescription(body.isEmpty() ? listed.description() : body);
+    face->setProjectLicense(listed.projectLicense());
+    if (face->developer().name().isEmpty())
+        face->setDeveloper(listed.developer());
+    if (face->categories().isEmpty()) {
+        for (const QString &category : listed.categories())
+            face->addCategory(category);
+    }
+    for (const auto kind : {AppStream::Component::UrlKindHomepage,
+                            AppStream::Component::UrlKindBugtracker,
+                            AppStream::Component::UrlKindHelp,
+                            AppStream::Component::UrlKindDonation}) {
+        if (face->url(kind).isEmpty() && !listed.url(kind).isEmpty())
+            face->addUrl(kind, listed.url(kind).toString());
+    }
+}
+
+// What a search finds a package's resource by besides its own name: the
+// names and keywords of all its components, one a line, carried on the
+// listed component, so "writer" finds LibreOffice by its Writer.
+static const auto SearchTermsKey = u"KDOS::SearchTerms"_s;
+
+// The components of one catalogue file, one per package: the one listsBetter
+// picks, the first in the file on a tie. Every component's keys go to `keys`.
+// Every desktop application goes to `names` (addHostName).
+// Read whole and outside the pool: a pool keys every OS catalogue component
+// by the same data id, so a host port and its Debian twin (org.kde.kate is in
 // both) would be one component, whichever section loaded last.
-static QHash<QString, AppStream::Component> readCatalogueFile(const QString &path)
+static QHash<QString, AppStream::Component>
+readCatalogueFile(const QString &path, QSet<QString> *keys, QHash<QString, QList<HostFace>> *names)
 {
     QHash<QString, AppStream::Component> out;
     if (!QFileInfo::exists(path))
@@ -410,24 +780,92 @@ static QHash<QString, AppStream::Component> readCatalogueFile(const QString &pat
         qCWarning(LIBDISCOVER_BACKEND_KDOS_LOG) << path << md.lastError();
         return out;
     }
+    QHash<QString, QStringList> terms;
+    QHash<QString, AppStream::Component> faces; // each package's shortest-named application
+    QHash<QString, QList<SuiteMember>> members; // each package's metainfo applications, for describeFace
     const AppStream::ComponentBox box = md.components();
+    bool marked = false;
+    for (const AppStream::Component &c : box)
+        marked |= !c.customValue(u"KDOS::BareEntry"_s).isEmpty();
     for (const AppStream::Component &c : box) {
+        addHostKeys(keys, c);
+        addHostName(names, c);
         const QString pkg = c.packageNames().value(0);
-        if (!pkg.isEmpty() && !out.contains(pkg))
+        if (pkg.isEmpty())
+            continue;
+        QStringList &t = terms[pkg];
+        for (const QString &term : QStringList{c.name()} + c.keywords()) {
+            if (!term.isEmpty() && !t.contains(term))
+                t << term;
+        }
+        const auto have = out.constFind(pkg);
+        if (have == out.constEnd() || listsBetter(c, *have, marked))
             out.insert(pkg, c);
+        const auto face = faces.constFind(pkg);
+        if (c.kind() == AppStream::Component::KindDesktopApp && (face == faces.constEnd() || c.name().size() < face->name().size()))
+            faces.insert(pkg, c);
+        if (c.kind() == AppStream::Component::KindDesktopApp && isMetainfo(c, marked))
+            members[pkg].append({c.name(), c.summary()});
+    }
+    // The setters below run only on components nothing else holds (see
+    // describeFace): the faces and the metainfo they replace are let go
+    // first.
+    QHash<QString, AppStream::Component> describers;
+    for (auto it = out.begin(); it != out.end(); ++it) {
+        const auto face = faces.constFind(it.key());
+        if (face != faces.constEnd() && isSuiteFace(it.value(), *face, marked)) {
+            describers.insert(it.key(), it.value());
+            it.value() = *face;
+        }
+    }
+    faces.clear();
+    for (auto it = out.begin(); it != out.end(); ++it) {
+        const auto describer = describers.constFind(it.key());
+        if (describer != describers.constEnd())
+            describeFace(&it.value(), *describer, members.value(it.key()));
+        it->insertCustomValue(SearchTermsKey, terms.value(it.key()).join(u'\n'));
     }
     return out;
 }
 
+// The package of the host component that answers to `key`, read again from
+// the catalogues: only an appstream:// link to a component no resource is
+// listed by asks.
+static QString hostPackageOf(const QString &key)
+{
+    QStringList files;
+    for (const QString &root : swcatalogRoots())
+        files << root + u"/xml/kdos-ports.xml"_s;
+    files << binhostCatalogue();
+    for (const QString &path : std::as_const(files)) {
+        if (!QFileInfo::exists(path))
+            continue;
+        AppStream::Metadata md;
+        md.setFormatStyle(AppStream::Metadata::FormatStyleCatalog);
+        if (md.parseFile(path, AppStream::Metadata::FormatKindXml) != AppStream::Metadata::MetadataErrorNoError)
+            continue;
+        const AppStream::ComponentBox box = md.components();
+        for (const AppStream::Component &c : box) {
+            QSet<QString> keys;
+            addHostKeys(&keys, c);
+            if (keys.contains(key))
+                return c.packageNames().value(0);
+        }
+    }
+    return {};
+}
+
+// m_hostIds and m_hostNames hold the keys and names of both catalogues, the
+// binhost's included: a program the release's binary host can add is
+// offered as that port, never in a box.
 void KdosBackend::readHostCatalogues()
 {
     m_portsByPackage.clear();
     m_hostIds.clear();
+    m_hostNames.clear();
     for (const QString &root : swcatalogRoots())
-        m_portsByPackage.insert(readCatalogueFile(root + u"/xml/kdos-ports.xml"_s));
-    for (const AppStream::Component &c : std::as_const(m_portsByPackage))
-        m_hostIds.insert(c.id());
-    m_binhostByPackage = readCatalogueFile(binhostCatalogue());
+        m_portsByPackage.insert(readCatalogueFile(root + u"/xml/kdos-ports.xml"_s, &m_hostIds, &m_hostNames));
+    m_binhostByPackage = readCatalogueFile(binhostCatalogue(), &m_hostIds, &m_hostNames);
 }
 
 // A desktop-entry category to the Breeze icon Discover's own categories use.
@@ -438,7 +876,12 @@ static QString categoryIcon(const QString &category)
         {u"Development"_s, u"applications-development"_s},
         {u"Education"_s, u"applications-education"_s},
         {u"Game"_s, u"applications-games"_s},
-        {u"Graphics"_s, u"applications-graphics"_s},
+        // KColorChooser's colour wheel, in breeze and breeze-dark alike,
+        // reads as a graphics tool at list size. Breeze's
+        // applications-graphics is a plain sphere and image-x-generic a
+        // file-type placeholder: on a row of applications either reads as a
+        // missing icon.
+        {u"Graphics"_s, u"kcolorchooser"_s},
         {u"Network"_s, u"applications-internet"_s},
         {u"Office"_s, u"applications-office"_s},
         {u"Science"_s, u"applications-science"_s},
@@ -447,6 +890,29 @@ static QString categoryIcon(const QString &category)
         {u"Utility"_s, u"applications-utilities"_s},
     };
     return icons.value(category, u"applications-other"_s);
+}
+
+// The icon of a component that is no application and has no category of
+// its own, by what kind of thing it is.
+static QString kindIcon(AppStream::Component::Kind kind)
+{
+    switch (kind) {
+    case AppStream::Component::KindFont:
+        return u"preferences-desktop-font"_s;
+    case AppStream::Component::KindCodec:
+        return u"applications-multimedia"_s;
+    case AppStream::Component::KindInputMethod:
+        return u"input-keyboard"_s;
+    case AppStream::Component::KindLocalization:
+        return u"preferences-desktop-locale"_s;
+    case AppStream::Component::KindDriver:
+    case AppStream::Component::KindFirmware:
+        return u"hwinfo"_s;
+    case AppStream::Component::KindService:
+        return u"preferences-system-services"_s;
+    default:
+        return u"application-x-sharedlib"_s;
+    }
 }
 
 // The icon of the first of the categories that has one of its own.
@@ -460,34 +926,76 @@ static QString categoryIcon(const QStringList &categories)
     return u"applications-other"_s;
 }
 
+// A stock icon's file in hicolor or pixmaps. The icon theme a process has
+// loaded does not see icons installed after it read the theme, so a package
+// Discover has just installed finds its icon here until Discover restarts.
+static QString hicolorFile(const QString &name)
+{
+    static const QStringList sizes{u"scalable"_s, u"256x256"_s, u"128x128"_s, u"64x64"_s, u"48x48"_s, u"32x32"_s, u"24x24"_s, u"16x16"_s};
+    const QStringList roots = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+    for (const QString &root : roots) {
+        for (const QString &size : sizes) {
+            for (const auto *ext : {".svg", ".png"}) {
+                const QString path = root + u"/icons/hicolor/"_s + size + u"/apps/"_s + name + QLatin1String(ext);
+                if (QFileInfo::exists(path))
+                    return path;
+            }
+        }
+        for (const auto *ext : {".svg", ".png"}) {
+            const QString path = root + u"/pixmaps/"_s + name + QLatin1String(ext);
+            if (QFileInfo::exists(path))
+                return path;
+        }
+    }
+    return {};
+}
+
 // The first stored icon file the component names, else its stock name when
-// the icon theme has it: Debian's icons are not installed on the host, and
-// a name the theme lacks is drawn as Discover's missing-icon fallback.
+// the icon theme has it, else that name's file in hicolor: Debian's icons
+// are not installed on the host, and a name the theme lacks is drawn as
+// Discover's missing-icon fallback.
 static QString iconOf(const AppStream::Component &c)
 {
-    QString stock;
+    QString stock, file;
     const auto icons = c.icons();
     for (const AppStream::Icon &icon : icons) {
         if (icon.kind() == AppStream::Icon::KindCached || icon.kind() == AppStream::Icon::KindLocal) {
             const QString path = icon.url().toLocalFile();
             if (!path.isEmpty() && QFileInfo::exists(path))
                 return path;
-        } else if (icon.kind() == AppStream::Icon::KindStock && stock.isEmpty() && QIcon::hasThemeIcon(icon.name())) {
-            stock = icon.name();
+        } else if (icon.kind() == AppStream::Icon::KindStock && stock.isEmpty()) {
+            if (QIcon::hasThemeIcon(icon.name()))
+                stock = icon.name();
+            else if (file.isEmpty())
+                file = hicolorFile(icon.name());
         }
     }
-    return stock;
+    return stock.isEmpty() ? file : stock;
 }
 
 void KdosBackend::enrichFromComponent(Entry *e, const AppStream::Component &c) const
 {
     if (e->summary.isEmpty())
         e->summary = c.summary();
-    if (!c.description().isEmpty()) {
+    if (e->description.isEmpty() && !c.description().isEmpty()) {
         e->description = c.description();
         e->descriptionIsMarkup = true;
     }
-    const QString icon = iconOf(c);
+    QString icon = iconOf(c);
+    // A binary host's component carries its icon file (KDOS::IconData,
+    // kdos-discover-catalog's embedIcon), since the machine has not
+    // installed the package whose theme icon its stock name is; it is
+    // written to the icon cache once per component and version.
+    if (icon.isEmpty()) {
+        const QString data = c.customValue(u"KDOS::IconData"_s);
+        if (!data.isEmpty()) {
+            const QString key = u"binhost-"_s + c.id();
+            const QString version = c.customValue(u"KDOS::Version"_s);
+            icon = cachedIcon(key, version);
+            if (icon.isEmpty())
+                icon = storeIcon(key, version, QByteArray::fromBase64(data.toLatin1()));
+        }
+    }
     if (!icon.isEmpty())
         e->icon = icon;
     if (e->homepage.isEmpty())
@@ -501,11 +1009,26 @@ void KdosBackend::enrichFromComponent(Entry *e, const AppStream::Component &c) c
         if (!e->categories.contains(cat))
             e->categories << cat;
     }
+    // The developer's name, else the project group DEP-11 files the
+    // component under (KStars and Okteta name no developer, only "KDE"):
+    // an empty author is shown as "Unknown author".
     if (e->author.isEmpty())
         e->author = c.developer().name();
-    const auto launchable = c.launchable(AppStream::Launchable::KindDesktopId);
-    if (!launchable.entries().isEmpty())
-        e->desktopId = launchable.entries().first();
+    if (e->author.isEmpty())
+        e->author = c.projectGroup();
+    // The entry launched is the first one installed: a metainfo may name an
+    // entry its package does not install before the one the catalogue
+    // added that it does (kdos-discover-catalog).
+    const QStringList entries = c.launchable(AppStream::Launchable::KindDesktopId).entries();
+    e->desktopIds = entries;
+    for (const QString &entry : entries) {
+        if (!QStandardPaths::locate(QStandardPaths::ApplicationsLocation, entry).isEmpty()) {
+            e->desktopId = entry;
+            break;
+        }
+    }
+    if (e->desktopId.isEmpty() && !entries.isEmpty())
+        e->desktopId = entries.first();
     // A screenshot is shown only when it is a file on this machine: a remote
     // one would be a download nobody asked for.
     const Screenshots shots = AppStreamUtils::fetchScreenshots(c);
@@ -553,6 +1076,28 @@ KdosResource *KdosBackend::debianResource(const AppStream::Component &c)
     return res;
 }
 
+// A search's Debian component is one every word of the query names: each
+// word, case-folded, occurs in the component's name, id, package name or one
+// of its keywords. AppStream's own search also matches summaries and
+// descriptions, and over a catalogue of thousands that answers almost any
+// query, arithmetic included, with applications it does not name; those
+// would also fill DebianQueryLimit before the ones it does. Not static:
+// backendtest declares and calls it.
+bool debianMatches(const AppStream::Component &c, const QStringList &words);
+bool debianMatches(const AppStream::Component &c, const QStringList &words)
+{
+    QStringList fields{c.name().toCaseFolded(), c.id().toCaseFolded()};
+    for (const QString &p : c.packageNames())
+        fields << p.toCaseFolded();
+    for (const QString &k : c.keywords())
+        fields << k.toCaseFolded();
+    return !words.isEmpty() && std::all_of(words.cbegin(), words.cend(), [&fields](const QString &w) {
+        return std::any_of(fields.cbegin(), fields.cend(), [&w](const QString &f) {
+            return f.contains(w);
+        });
+    });
+}
+
 QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
 {
     QList<KdosResource *> out;
@@ -571,14 +1116,20 @@ QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
 
     const AppStream::ComponentBox box = filter.search.isEmpty() ? m_pool->componentsByCategories(filter.category->involvedCategories())
                                                                 : m_pool->search(filter.search);
+    const QStringList words = filter.search.toCaseFolded().split(u' ', Qt::SkipEmptyParts);
     for (const AppStream::Component &c : box) {
         if (out.size() >= DebianQueryLimit)
             break;
         if (!c.origin().startsWith("debian"_L1) || c.kind() != AppStream::Component::KindDesktopApp)
             continue;
-        // A program the host has natively is never offered again in a box.
+        if (!filter.search.isEmpty() && !debianMatches(c, words))
+            continue;
+        // A program the host has natively is never offered again in a box,
+        // whether Debian lists it by the host's id or under the same name
+        // (isHostComponent, hostTwinByName).
         const QString pkg = c.packageNames().value(0);
-        if (!isDebianPackage(pkg) || claimed.contains(pkg) || m_hostIds.contains(c.id()) || m_debianExclude.contains(pkg))
+        if (!isDebianPackage(pkg) || claimed.contains(pkg) || isHostComponent(m_hostIds, c)
+            || !hostTwinByName(m_hostNames, c).isEmpty() || m_debianExclude.contains(pkg))
             continue;
         out << debianResource(c);
     }
@@ -623,7 +1174,7 @@ void KdosBackend::refresh(std::function<void()> then)
             cb();
     };
 
-    snap->outstanding = 6;
+    snap->outstanding = 7;
     runTool(this, u"kdos-appbox"_s, {u"catalogue"_s}, [snap, landed](const QByteArray &out, bool ok) {
         snap->listing = parseCatalogueListing(out);
         snap->listingOk = ok;
@@ -643,7 +1194,25 @@ void KdosBackend::refresh(std::function<void()> then)
     });
     runTool(this, u"kpkg"_s, {u"list"_s, u"--json"_s}, [snap, landed](const QByteArray &out, bool ok) {
         snap->ports = parseKpkgList(out);
-        snap->portsOk = ok;
+        // kpkg answered only when it exited 0 and printed a package array:
+        // an empty or garbled answer taken for "nothing installed" would
+        // drop every image port off the installed list.
+        snap->portsOk = ok && QJsonDocument::fromJson(out).object().value(u"packages"_s).isArray();
+        landed();
+    });
+    // Which installed ports a person may remove: a world port nothing
+    // installed depends on. An answer that did not come leaves every port
+    // part of the system, which offers no Remove that would refuse.
+    runTool(this, u"kdos"_s, {u"update"_s, u"removable"_s, u"--json"_s}, [snap, landed](const QByteArray &out, bool ok) {
+        const QJsonObject doc = ok ? QJsonDocument::fromJson(out).object() : QJsonObject();
+        const QJsonArray removable = doc.value("removable"_L1).toArray();
+        for (const QJsonValue &v : removable)
+            if (isSafeId(v.toString()))
+                snap->removable.insert(v.toString());
+        const QJsonObject needed = doc.value("needed"_L1).toObject();
+        for (auto it = needed.constBegin(); it != needed.constEnd(); ++it)
+            if (isSafeId(it.key()) && isSafeId(it.value().toString()))
+                snap->neededBy.insert(it.key(), it.value().toString());
         landed();
     });
 
@@ -800,6 +1369,13 @@ void KdosBackend::apply(const Snapshot &snap)
         e.size = l.bytes;
         e.sizeIsEstimate = true;
         e.icon = categoryIcon(l.category);
+        // A row's own `about` comes first; a Debian component below fills
+        // only what it leaves empty.
+        e.vendorDeb = row.vendorDeb;
+        e.license = row.license;
+        e.author = row.author;
+        e.homepage = row.homepage;
+        e.description = row.description;
 
         const auto s = stored.constFind(l.id);
         const auto m = medium.constFind(l.id);
@@ -975,51 +1551,102 @@ void KdosBackend::apply(const Snapshot &snap)
     }
 
     // ── host ports ──
-    // What is installed comes from the image's catalogue and kpkg's versions;
-    // what a binhost could add, from its catalogue, only for a package kpkg
-    // answered is absent, so a kpkg that did not answer offers nothing. Both
-    // catalogues are read again here: kdos-ports-helper rewrites the first
-    // after every install, and `kdos update fetch` replaces the second.
+    // kpkg is the authority on what is installed; the image's catalogue only
+    // describes it. A package of that catalogue is installed when kpkg lists
+    // it, or when kpkg did not answer, by the catalogue's own version; one
+    // kpkg answered is absent is not listed from it, since `kpkg remove`
+    // leaves the catalogue as it was and Discover would offer to launch what
+    // is gone. What a binhost could add comes from its catalogue, only for a
+    // package kpkg answered is absent, so a kpkg that did not answer offers
+    // nothing. Both catalogues are read again here: kdos-ports-helper
+    // rewrites the first after every install, and `kdos update fetch`
+    // replaces the second.
     readHostCatalogues();
     {
-        auto portEntry = [this](const QString &pkg, const AppStream::Component &c) {
+        auto portEntry = [this, &snap](const QString &pkg, const AppStream::Component &c) {
             Entry e;
             e.lane = Lane::Port;
             e.id = pkg;
+            e.removable = snap.removable.contains(pkg);
+            e.neededBy = snap.neededBy.value(pkg);
             e.name = c.name().isEmpty() ? pkg : c.name();
             e.appstreamId = c.id();
+            e.kind = AppStream::Component::kindToString(c.kind());
             enrichFromComponent(&e, c);
-            if (e.icon.isEmpty())
-                e.icon = u"application-x-executable"_s;
+            // A component that names no icon the theme has: a terminal for a
+            // console program, a plugin for an add-on, its category's for an
+            // application, and for anything else its category's when it has
+            // one, else one of its kind (libfprint and pcscd are generic
+            // components with no category).
+            if (e.icon.isEmpty()) {
+                const QString byCategory = categoryIcon(e.categories);
+                switch (c.kind()) {
+                case AppStream::Component::KindConsoleApp:
+                    e.icon = u"utilities-terminal"_s;
+                    break;
+                case AppStream::Component::KindAddon:
+                    e.icon = u"preferences-plugin"_s;
+                    break;
+                case AppStream::Component::KindDesktopApp:
+                case AppStream::Component::KindWebApp:
+                    e.icon = byCategory;
+                    break;
+                default:
+                    e.icon = byCategory != "applications-other"_L1 ? byCategory : kindIcon(c.kind());
+                    break;
+                }
+            }
+            // Discover's All Applications page lists a resource by its
+            // categories, so an application whose metainfo and desktop entry
+            // name none is filed under Other rather than left off it.
+            if (e.categories.isEmpty() && c.kind() == AppStream::Component::KindDesktopApp)
+                e.categories << u"Other"_s;
             return e;
+        };
+        auto searchTerms = [](const AppStream::Component &c) {
+            return c.customValue(SearchTermsKey).split(u'\n', Qt::SkipEmptyParts);
         };
         for (auto it = m_portsByPackage.cbegin(); it != m_portsByPackage.cend(); ++it) {
             if (!isSafeId(it.key()))
                 continue;
-            Entry e = portEntry(it.key(), *it);
             const QString version = snap.ports.value(it.key());
+            if (snap.portsOk && version.isEmpty())
+                continue;
+            Entry e = portEntry(it.key(), *it);
             e.installedVersion = version.isEmpty() ? it->customValue(u"KDOS::Version"_s) : version;
             e.availableVersion = e.installedVersion;
             e.state = EntryState::Installed;
-            upsert(e, &seen);
+            upsert(e, &seen)->setSearchTerms(searchTerms(*it));
         }
         if (snap.portsOk) {
             for (auto it = m_binhostByPackage.cbegin(); it != m_binhostByPackage.cend(); ++it) {
-                if (!isSafeId(it.key()) || m_portsByPackage.contains(it.key()))
+                if (!isSafeId(it.key()))
                     continue;
                 Entry e = portEntry(it.key(), *it);
                 const QString version = snap.ports.value(it.key());
                 e.availableVersion = it->customValue(u"KDOS::Version"_s);
                 e.installedVersion = version;
                 e.state = version.isEmpty() ? EntryState::None : EntryState::Installed;
-                upsert(e, &seen);
-                // The same port, built here: a second origin in Discover's
-                // source picker, offered only while it is not installed, so
-                // an installed port is one resource.
-                if (e.state == EntryState::None) {
-                    e.lane = Lane::PortSource;
-                    upsert(e, &seen);
+                // An installed port the image's catalogue lists is that
+                // catalogue's resource, read above; the twin takes its state.
+                const KdosResource *listed = m_resources.value(u"port/"_s + it.key());
+                if (m_portsByPackage.contains(it.key()) && !version.isEmpty() && listed) {
+                    e.state = listed->entry().state;
+                    e.installedVersion = listed->entry().installedVersion;
+                    e.availableVersion = listed->entry().availableVersion;
+                    e.removable = listed->entry().removable;
+                    e.neededBy = listed->entry().neededBy;
+                } else {
+                    upsert(e, &seen)->setSearchTerms(searchTerms(*it));
                 }
+                // The same port, built here: a second origin in Discover's
+                // source picker, kept whether or not the port is installed.
+                // Discover's application page keeps the most sources it has
+                // seen while it is open, so a twin that came and went with
+                // the install would leave the page with one source after a
+                // removal: no picker, and an "Install from" button.
+                e.lane = Lane::PortSource;
+                upsert(e, &seen)->setSearchTerms(searchTerms(*it));
             }
         }
     }
@@ -1073,24 +1700,249 @@ void KdosBackend::apply(const Snapshot &snap)
         QTimer::singleShot(0, CategoryModel::global(), &CategoryModel::populateCategories);
     }
     m_context.mediumPacks = mediumPacksDir();
+    // Said again only when it changes: Discover keeps one message for every
+    // backend, and posting the same one again would flicker it.
+    static const char ProblemShown[] = "kdosUpdateProblem";
+    const QString problem = updateProblemText();
+    if (problem != property(ProblemShown).toString()) {
+        setProperty(ProblemShown, problem);
+        Q_EMIT inlineMessageChanged(problem.isEmpty() ? QSharedPointer<InlineMessage>()
+                                                      : QSharedPointer<InlineMessage>::create(InlineMessage::Warning, u"dialog-warning"_s, problem));
+    }
     Q_EMIT contentsChanged();
     Q_EMIT updatesCountChanged();
 }
 
 // ── search ──────────────────────────────────────────────────────────────
 
-static uint matchScore(KdosResource *res, const QString &term)
+// A search term, read once per search. `categories` are the desktop-entry
+// categories the word stands for: "browser" is a word for what a web browser
+// is, and the applications that are one carry WebBrowser, whatever their names.
+// `kin` matches, as a whole word or its plural, any word that stands for the
+// same categories ("mail", "email" and "e-mail" are one), in a summary.
+// `content` is the part of `kin` that names what a program of the category
+// handles (mail, chat, music, games), set only for those categories; a word
+// that also qualifies other programs ("web" interface, "video" settings,
+// graphics "editor", run in a "terminal") is not in it. `parent` is the
+// category the term's categories belong under (AudioVideo for Video, Music
+// and Audio), which an application may file alone with a narrower one the
+// term does not name (AudioVideoEditing, Player, Recorder).
+struct SearchQuery {
+    QString term;
+    QRegularExpression word; // the term between non-word characters
+    QStringList categories;
+    QString parent;
+    QRegularExpression kin;
+    QRegularExpression content;
+};
+
+// The head of a summary, the words before its first "for", "with" or "to":
+// past them the noun names what the program serves or carries, not what it
+// is.
+static QStringView summaryHead(const QString &summary)
 {
+    static const QRegularExpression tail(u"(?<!\\w)(?:for|with|to)(?!\\w)"_s,
+                                         QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+    const QRegularExpressionMatch m = tail.match(summary);
+    return m.hasMatch() ? QStringView(summary).left(m.capturedStart()) : QStringView(summary);
+}
+
+// Whether a summary calls its program an accessory of its category, by its
+// head: Ymuse, "GTK client for Music Player Daemon", is a music player, while
+// Birdtray, "System tray new mail notification for Thunderbird", is a tray
+// icon by the words before its "for", and FFmpeg Thumbnailer, "Video
+// thumbnail generator", serves a file manager.
+static bool isAccessory(const QString &summary)
+{
+    static const QRegularExpression nouns(u"(?<![\\w-])(?:notification|notifier|notify|tray|daemon|applet|indicator|gateway|plug-?in|thumbnailer|thumbnail\\s+generator)s?(?![\\w-])"_s,
+                                          QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+    return nouns.matchView(summaryHead(summary)).hasMatch();
+}
+
+// Whether a resource is media plumbing for a term whose categories belong
+// under AudioVideo (SearchQuery::parent: "video" and "music"): it files
+// itself under both Audio and Video, which names no medium, and the head of
+// its summary says neither the term's word (SearchQuery::kin) nor media or
+// player. qpwgraph, "A PipeWire Graph Qt GUI Interface", routes streams and
+// plays none; mpv and SMPlayer, "media player", play them. Any other term is
+// ranked as if the test did not exist.
+static bool isMediaPlumbing(const Entry &e, const QString &summary, const QString &parent, const QRegularExpression &kin)
+{
+    static const QRegularExpression media(u"(?<![\\w-])(?:media|multimedia|player)s?(?![\\w-])"_s,
+                                          QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+    if (parent != "AudioVideo"_L1 || !e.categories.contains("Audio"_L1) || !e.categories.contains("Video"_L1))
+        return false;
+    const QStringView head = summaryHead(summary);
+    return !kin.matchView(head).hasMatch() && !media.matchView(head).hasMatch();
+}
+
+static SearchQuery searchQuery(const QString &term)
+{
+    static const QHash<QString, QStringList> aliases = {
+        {u"browser"_s, {u"WebBrowser"_s}},
+        {u"web"_s, {u"WebBrowser"_s}},
+        {u"mail"_s, {u"Email"_s}},
+        {u"email"_s, {u"Email"_s}},
+        {u"e-mail"_s, {u"Email"_s}},
+        {u"office"_s, {u"Office"_s}},
+        {u"terminal"_s, {u"TerminalEmulator"_s}},
+        {u"editor"_s, {u"TextEditor"_s}},
+        {u"chat"_s, {u"InstantMessaging"_s, u"Chat"_s}},
+        {u"music"_s, {u"Music"_s, u"Audio"_s}},
+        {u"video"_s, {u"Video"_s}},
+        {u"game"_s, {u"Game"_s}},
+        {u"games"_s, {u"Game"_s}},
+    };
+    static const QStringList contentWords = {u"mail"_s, u"email"_s, u"e-mail"_s, u"chat"_s, u"music"_s, u"game"_s, u"games"_s};
+    const auto opts = QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption;
+    SearchQuery q;
+    q.term = term.trimmed();
+    q.word = QRegularExpression(u"(?<!\\w)"_s + QRegularExpression::escape(q.term) + u"(?!\\w)"_s, opts);
+    q.categories = aliases.value(q.term.toLower());
+    if (q.categories.contains("Video"_L1) || q.categories.contains("Audio"_L1))
+        q.parent = u"AudioVideo"_s;
+    if (!q.categories.isEmpty()) {
+        QStringList kin, content;
+        for (auto it = aliases.cbegin(); it != aliases.cend(); ++it) {
+            if (it.value() != q.categories)
+                continue;
+            kin << QRegularExpression::escape(it.key());
+            if (contentWords.contains(it.key()))
+                content << QRegularExpression::escape(it.key());
+        }
+        q.kin = QRegularExpression(u"(?<![\\w-])(?:"_s + kin.join(u'|') + u")s?(?![\\w-])"_s, opts);
+        if (!content.isEmpty())
+            q.content = QRegularExpression(u"(?<![\\w-])(?:"_s + content.join(u'|') + u")s?(?![\\w-])"_s, opts);
+    }
+    return q;
+}
+
+// A search's ranking, highest first. A resource takes the best of the ranks
+// it earns:
+//   100  its name is the term
+//    85  a keyword or component name is the whole term, for a term that
+//        names no category
+//   75+  it is an application of the category the term names; +3 when its
+//        summary says a word for that category, +2 when its name holds the
+//        term, so "mail" lists KMail and Thunderbird ahead of the Email
+//        tools that only file themselves there (Account Wizard, KTnef)
+//    74  a keyword is the whole term the category names, for a program
+//        outside the category
+//    70  its name starts with the term; 60 holds it as a word; 50 anywhere
+//    40  its package name holds it; 30 a keyword does; 20 its summary does
+// So "browser" lists the web browsers before AT-SPI Browser, and "chrome"
+// lists Chromium, whose keyword it is, before mkchromecast. For a term that
+// names a category, membership decides and a keyword does not: "video" lists
+// the video players and editors ahead of Qt V4L2 test Utility, AudioVideo
+// only and keyword video, which still lists above a name that starts with
+// the term. A catalogue row or a pack names one main category (Network, not
+// WebBrowser), so for those a summary that says a word for the category
+// stands in for the category and earns the full 75+: Surf, "Simple web
+// browser", is a web browser. An application that files itself under the
+// term's parent category (SearchQuery::parent, AudioVideo) with a narrower
+// one the term does not name is in the category when the head of its summary
+// (summaryHead()) says a word for it: Kdenlive, AudioVideoEditing, "Video
+// editor", is a video application. Any other resource that does not file
+// itself there takes a flat 75 when the head of its summary says a word for
+// what the category's programs handle (SearchQuery::content: mail, chat,
+// music, games): with the category's members that do not say it, below the
+// ones that both file themselves there and say it, above every name, keyword
+// or summary hit. Kontact, Office only, "Handle all your emails", lists with
+// the mail applications, ahead of KMail Import Wizard (its name) and gLabels
+// (its "mail merge" keyword); SieveEditor, "Editor for email filter Sieve
+// scripts", does not. The categories whose words also qualify other programs
+// take no content stand-in, so "browser" does not list CUPS, "CUPS Web
+// Interface", and "video" does not list Chocolate Doom Setup, "Controls,
+// sound, video and network settings". A Debian build in a box takes the flat
+// 75 for the category and both stand-ins, with no +3 or +2, so every native
+// application of the category that says the word lists above it. A program
+// that runs only in a terminal (ConsoleOnly, or a console-application
+// component) takes 65 for the keyword and category ranks, below every name
+// match, so "mail" lists the mail applications that draw a window ahead of
+// aerc, and a terminal program is still first for its own name.
+// kdos-discover-catalog adds ConsoleOnly to a Terminal=true entry. An
+// accessory, a program whose summary calls it a notifier, tray icon, daemon,
+// applet, indicator, gateway, plugin, thumbnailer or thumbnail generator
+// (isAccessory(): a client for a daemon is not one), takes at most 72 for
+// the keyword and category ranks: below every application of the category,
+// above a name that starts with the term, so "mail" lists Evolution, Geary
+// and Thunderbird ahead of Mailnag and Birdtray, and an accessory is still
+// first for its own name. Media plumbing takes the same cap for "video" and
+// "music", the terms whose categories belong under AudioVideo: an
+// application filed under both Audio and Video names no medium, so the
+// head of its summary has to say the term's word, media or player
+// (isMediaPlumbing()). "video" and "music" list qpwgraph, "A PipeWire Graph
+// Qt GUI Interface", after every video and music application, Debian builds
+// included; mpv and SMPlayer, "media player", stay with the players.
+//
+// Discover orders a search by its SearchRelevanceRole, sortScore / 100 plus
+// the rating, up to 10 for the name word nearest the term and 5 or 10 when
+// the name holds or is the term (ResourcesProxyModel.cpp). search() emits
+// the rank times RankScale, so the smallest step between two ranks (1 point,
+// 77 to 78, worth 100 after the division) outweighs the at most 20 the name
+// terms add (no KDOS source has a rating), and Discover's terms only order
+// resources of one rank. Every result but a Debian package's (a port, a
+// catalogue row or a pack) adds RankScale / 2 (50 after the division):
+// above the name terms and below a rank step, so within one rank the binary
+// host's ports and packs list before a Debian build. At a scale of 1 a rank
+// is worth at most a point, and AT-SPI Browser's name beats Chromium's
+// keyword.
+static constexpr uint RankScale = 10000;
+
+static uint matchScore(KdosResource *res, const SearchQuery &q)
+{
+    const QString &term = q.term;
     if (term.isEmpty())
         return 1;
-    if (res->name().compare(term, Qt::CaseInsensitive) == 0)
+    const QString name = res->name();
+    if (name.compare(term, Qt::CaseInsensitive) == 0)
         return 100;
-    if (res->name().startsWith(term, Qt::CaseInsensitive))
-        return 80;
-    if (res->name().contains(term, Qt::CaseInsensitive))
-        return 60;
+    const Entry &e = res->entry();
+    const bool console = e.categories.contains("ConsoleOnly"_L1) || e.kind == "console-application"_L1;
+    const bool accessory = isAccessory(res->comment()) || isMediaPlumbing(e, res->comment(), q.parent, q.kin);
+    const uint cap = console ? 65 : accessory ? 72 : 100;
+    const bool nameHolds = name.contains(term, Qt::CaseInsensitive);
+    uint score = 0;
+    auto earn = [&score](uint s) {
+        score = std::max(score, s);
+    };
+    const bool keyword = std::any_of(res->searchTerms().cbegin(), res->searchTerms().cend(), [&term](const QString &t) {
+        return t.compare(term, Qt::CaseInsensitive) == 0;
+    });
+    if (q.categories.isEmpty()) {
+        if (keyword)
+            earn(std::min(cap, 85u));
+    } else {
+        const QString summary = res->comment();
+        const bool summarySays = q.kin.match(summary).hasMatch();
+        const bool mainOnly = e.lane == Lane::Catalogue || e.lane == Lane::Pack;
+        const bool debian = e.lane == Lane::Debian;
+        bool inCategory = mainOnly && summarySays;
+        for (const QString &c : q.categories)
+            inCategory |= e.categories.contains(c);
+        if (!inCategory && !q.parent.isEmpty() && e.categories.contains(q.parent))
+            inCategory = q.kin.matchView(summaryHead(summary)).hasMatch();
+        if (inCategory)
+            earn(std::min(cap, 75u + (debian ? 0 : (summarySays ? 3 : 0) + (nameHolds ? 2 : 0))));
+        else if (!q.content.pattern().isEmpty() && q.content.matchView(summaryHead(summary)).hasMatch())
+            earn(std::min(cap, 75u));
+        else if (keyword)
+            earn(std::min(cap, 74u));
+    }
+    if (name.startsWith(term, Qt::CaseInsensitive))
+        earn(70);
+    else if (q.word.match(name).hasMatch())
+        earn(60);
+    else if (nameHolds)
+        earn(50);
+    if (score)
+        return score;
     if (res->packageName().contains(term, Qt::CaseInsensitive))
         return 40;
+    for (const QString &t : res->searchTerms()) {
+        if (t.contains(term, Qt::CaseInsensitive))
+            return 30;
+    }
     if (res->comment().contains(term, Qt::CaseInsensitive))
         return 20;
     return 0;
@@ -1103,17 +1955,18 @@ ResultsStream *KdosBackend::search(const AbstractResourcesBackend::Filters &filt
 
     auto *stream = new ResultsStream(u"KdosStream"_s);
     auto answer = [this, stream, filter] {
+        const SearchQuery query = searchQuery(filter.search);
         QVector<StreamResult> found;
         QSet<KdosResource *> have;
         const bool source = preferSource();
         auto consider = [&](KdosResource *res) {
             if (have.contains(res))
                 return;
-            const uint score = matchScore(res, filter.search);
+            const uint score = matchScore(res, query);
             if (score == 0 || !filter.shouldFilter(res))
                 return;
             have.insert(res);
-            found << StreamResult{res, score};
+            found << StreamResult{res, score * RankScale + (res->entry().lane == Lane::Debian ? 0 : RankScale / 2)};
         };
         for (KdosResource *res : std::as_const(m_resources)) {
             const Entry &e = res->entry();
@@ -1184,18 +2037,42 @@ QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
             if (!asid.isEmpty() && ids.contains(asid, Qt::CaseInsensitive))
                 found << StreamResult{res, 0};
         }
+        // A component of a host package the package is not listed by, such
+        // as LibreOffice Writer of the libreoffice port: that port.
+        if (found.isEmpty()) {
+            for (const QString &id : ids) {
+                if (!m_hostIds.contains(hostKey(id)))
+                    continue;
+                const QString pkg = hostPackageOf(hostKey(id));
+                for (const QString &lane : {u"port/"_s, u"port-source/"_s}) {
+                    if (auto *res = m_resources.value(lane + pkg); res && !found.contains(StreamResult{res, 0}))
+                        found << StreamResult{res, 0};
+                }
+            }
+        }
         // An appstream:// link to an application only Debian's DEP-11 knows,
         // as KRunner's software results give: the catalogue row that packs
         // its package when there is one, else the Debian lane's resource.
+        // One the host has under the same name (hostTwinByName) is that
+        // host port, as debianFor never lists it.
         if (found.isEmpty() && m_poolReady) {
             for (const QString &id : ids) {
-                if (m_hostIds.contains(id))
+                if (m_hostIds.contains(hostKey(id)))
                     continue;
                 const AppStream::ComponentBox box = m_pool->componentsById(id);
                 for (const AppStream::Component &c : box) {
                     const QString pkg = c.packageNames().value(0);
                     if (!c.origin().startsWith("debian"_L1) || !isDebianPackage(pkg))
                         continue;
+                    if (c.kind() == AppStream::Component::KindDesktopApp) {
+                        if (const QString hostPkg = hostTwinByName(m_hostNames, c); !hostPkg.isEmpty()) {
+                            for (const QString &lane : {u"port/"_s, u"port-source/"_s}) {
+                                if (auto *res = m_resources.value(lane + hostPkg); res && !found.contains(StreamResult{res, 0}))
+                                    found << StreamResult{res, 0};
+                            }
+                            continue;
+                        }
+                    }
                     KdosResource *res = nullptr;
                     for (const CatalogueRow &row : std::as_const(m_catalogue.rows)) {
                         if (row.packages.contains(pkg)) {
@@ -1222,18 +2099,23 @@ QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
     return found;
 }
 
-// A port not installed is two resources with one AppStream id, the binhost's
-// and the one built here. Discover's lists keep one resource per id, and
-// which of two equal rows survives its sort no backend decides; the
-// application page then offers the rest in its source picker, which it
-// fills by asking for the application's URL, and a link opens the first
-// resource that answers. So a list names only the twin `install =` prefers,
-// and a URL answers both, that one first: the other is the second twin.
+// A port the binhost holds is two resources with one AppStream id, the
+// binhost's and the one built here, installed or not. Discover's lists keep
+// one resource per id, and which of two equal rows survives its sort no
+// backend decides; the application page then offers the rest in its source
+// picker, which it fills by asking for the application's URL, and a link
+// opens the first resource that answers. So a list names only the twin
+// `install =` prefers, the binhost's once the port is installed, and a URL
+// answers both, that one first: the other is the second twin.
 bool KdosBackend::isSecondTwin(const KdosResource *res, bool preferSource) const
 {
     const Entry &e = res->entry();
-    if (e.lane == Lane::PortSource)
-        return !preferSource;
+    if (e.lane == Lane::PortSource) {
+        if (!preferSource)
+            return true;
+        const KdosResource *port = m_resources.value(u"port/"_s + e.id);
+        return port && port->entry().state != EntryState::None;
+    }
     if (e.lane == Lane::Port && preferSource && e.state == EntryState::None)
         return m_resources.contains(u"port-source/"_s + e.id);
     return false;

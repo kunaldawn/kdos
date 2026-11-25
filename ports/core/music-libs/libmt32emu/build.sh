@@ -20,3 +20,5 @@ cmake -S mt32emu -B build -G Ninja \
 	-DBUILD_TESTING=OFF
 ninja -C build
 DESTDIR=$PKG ninja -C build install
+install -Dm644 mt32emu/COPYING.LESSER.txt "$PKG/usr/share/licenses/$name/COPYING.LESSER.txt"
+install -Dm644 mt32emu/COPYING.txt "$PKG/usr/share/licenses/$name/COPYING.txt"

@@ -24,3 +24,5 @@ cmake .. \
 	-DPYTHON=OFF
 make
 make DESTDIR=$PKG install
+install -Dm644 "$SRC/docs/lgpl-3.0.txt" "$PKG/usr/share/licenses/$name/lgpl-3.0.txt"
+install -Dm644 "$SRC/docs/cc-by-sa-3.0.txt" "$PKG/usr/share/licenses/$name/cc-by-sa-3.0.txt"

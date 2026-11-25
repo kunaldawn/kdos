@@ -1,4 +1,4 @@
-Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent background and ground, monospace clock, credit, KWin layout switcher, screen-reader chord, fade through black
+Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent background and ground, monospace clock, credit, KWin layout switcher, screen-reader chord, fade through black, no Hibernate button where none is possible
 
 --- a/Main.qml
 +++ b/Main.qml
@@ -48,7 +48,15 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
              id: clock
              property Item shadow: clockShadow
              visible: y > 0 && config.showClock === "true"
-@@ -459,10 +474,25 @@
+@@ -214,6 +229,7 @@
+                         text: i18ndc("plasma-desktop-sddm-theme", "Suspend to disk", "Hibernate")
+                         onClicked: sddm.hibernate()
+                         enabled: sddm.canHibernate
++                        visible: sddm.canHibernate
+                     },
+                     ActionButton {
+                         icon.name: "system-suspend"
+@@ -459,10 +475,25 @@
                  }
              }
  
@@ -76,12 +84,48 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
                      // Otherwise the password field loses focus and virtual keyboard
                      // keystrokes get eaten
                      userListComponent.mainPasswordBox.forceActiveFocus();
-@@ -500,6 +530,15 @@
+@@ -500,6 +531,51 @@
                  Layout.fillWidth: true
              }
  
 +            PlasmaComponents3.Label {
-+                text: i18nd("kdos-sddm-theme", "KDOS · Plasma by KDE")
++                id: releaseCredit
++                // The release in the one form `kdos version`, the boot menu
++                // and the splash give: VERSION in /etc/kdos-release, or on a
++                // root with no record VERSION_ID, and +BUILD_ID when there is
++                // one, in /etc/os-release. XMLHttpRequest reads a local file
++                // only with QML_XHR_ALLOW_FILE_READ=1, which 00-kdos.conf puts
++                // in the greeter's environment; a file it cannot read leaves
++                // the credit without a release.
++                property string release: ""
++                function field(data, key) {
++                    for (const line of data.split("\n")) {
++                        if (line.startsWith(key + "="))
++                            return line.slice(key.length + 1).replace(/"/g, "").trim();
++                    }
++                    return "";
++                }
++                function load(path, done) {
++                    const req = new XMLHttpRequest();
++                    req.onreadystatechange = () => {
++                        if (req.readyState === XMLHttpRequest.DONE)
++                            done(req.responseText || "");
++                    };
++                    req.open("GET", "file://" + path);
++                    req.send();
++                }
++                Component.onCompleted: load("/etc/kdos-release", rec => {
++                    releaseCredit.release = field(rec, "VERSION");
++                    if (!releaseCredit.release)
++                        load("/etc/os-release", osr => {
++                            const id = field(osr, "VERSION_ID");
++                            const build = field(osr, "BUILD_ID");
++                            releaseCredit.release = id && build ? id + "+" + build : id;
++                        });
++                })
++                text: releaseCredit.release
++                    ? i18nd("kdos-sddm-theme", "KDOS %1 · Plasma by KDE", releaseCredit.release)
++                    : i18nd("kdos-sddm-theme", "KDOS · Plasma by KDE")
 +                textFormat: Text.PlainText
 +                opacity: 0.8
 +                Layout.alignment: Qt.AlignVCenter
@@ -92,7 +136,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
              Battery {}
          }
      }
-@@ -519,6 +558,7 @@
+@@ -519,6 +595,7 @@
              //takes to complete the init
              mainStack.opacity = 0
              footer.opacity = 0
@@ -100,7 +144,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
          }
      }
  
-@@ -533,4 +573,42 @@
+@@ -533,4 +610,42 @@
          interval: 3000
          onTriggered: notificationMessage = ""
      }

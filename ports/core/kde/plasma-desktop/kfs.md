@@ -43,7 +43,7 @@ Manager tooltip's subtext: "In box: www" for a KDOS box, "Flatpak: <id>" for a F
 <name>" for any other engine, per window in a grouped tooltip. It is QML only. It reads
 libtaskmanager's `SandboxEngine` and `SandboxName` roles from
 [plasma-workspace](#port-plasma-workspace)'s patch of the same name; a libtaskmanager without them
-reads as empty and the tooltip draws no line. It is proposed upstream with it.
+reads as empty and the tooltip draws no line. It is to be proposed upstream with it.
 
 `screenreader-save.patch` makes the screen reader's kded module write the setting to `kaccessrc`
 when it is switched over D-Bus with `setEnabled`, as its `toggle` (the Meta+Alt+S chord) already
@@ -70,6 +70,40 @@ adaptive transparency off, as the `kdos` style does. Plasma reports such a panel
 whatever the style draws, so the group would show a disabled "Translucent" over the opaque KDOS
 panel.
 It is to be offered upstream.
+
+`layout-list-order.patch` makes the keyboard settings' Add Layout dialog list layouts from A to Z
+by name, ignoring case, and the variants of the chosen layout in the XKB registry's order, the
+layout itself first, until a search is entered; a search sorts both by match score, best first,
+with equal scores kept in that order. Upstream sorts both lists by score alone; every score is 0
+before a search, so the score gives no order, and the layout list opens at Wolof. The first row is
+xkeyboard-config's "A user-defined custom Layout", which sorts before Albanian. It is to be
+offered upstream.
+
+`desktop-label-light.patch` gives the desktop's icon labels a backing under a light colour
+scheme. Upstream draws a label on the desktop white with a black shadow whatever the scheme; on
+the near-white wallpaper of a light accent such as `paper` the fill meets the ground at about 1:1
+and only the shadow outlines it. When the Window colour set's background has an HSL lightness
+above 0.5, a rounded black rectangle at 0.6 opacity is drawn behind the label's painted text,
+`Kirigami.Units.smallSpacing` wider on each side, so the white label holds at least 4.5:1 over
+any wallpaper, a photo included (about 5.7:1 over pure white). Under a dark scheme the label is
+upstream's, shadow only. The test reads the backing's own Window theme and sets its opacity, 0
+under a dark scheme, never its visibility, so the backing follows a scheme change at run time
+(`kdos theme paper`, the Welcome tour's *Light: Paper*) without a plasmashell restart: libplasma's
+Kirigami platform theme skips its colour sync while its item is invisible, so a backing the test
+hid would keep the dark scheme's background and never show. Labels in a folder popup or a
+folder-view widget are not on the root view and keep the scheme's text colour. It is to be
+offered upstream.
+
+`layouts-start-from-session.patch` fills the keyboard settings' layout list with the layouts the
+session runs when *Configure layouts* is turned on over an empty list, so the first layout added
+joins them rather than replacing them. An account whose `kxkbrc` names no layout has an empty list:
+KDOS seeds no `kxkbrc` for a US account, because KWin reads `LayoutList` whatever `Use` says, and a
+seeded list would pin the session and keep locale1's layout from reaching it. The layouts come from
+KWin's `org.kde.keyboard` `/Layouts` `getLayoutsList`, which names no variant; the variants come
+from `XKB_DEFAULT_VARIANT` when `XKB_DEFAULT_LAYOUT` names the same layouts, as `startplasma` sets
+both from locale1 for such an account. Without KWin on the session bus the two variables alone
+answer, and without either the list starts at `us`. The rows are added through the layout model,
+so the page asks for Apply. It is to be offered upstream.
 
 ## Notes
 

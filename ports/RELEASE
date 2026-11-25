@@ -1,0 +1,51 @@
+KDOS 0.2 is a KDE Plasma desktop on a small, signed base system. The image
+carries the base; applications, games, language packs and firmware install
+prebuilt from this release's packages, by name or as a group, in Discover, in
+the installer or with `kdos update install`.
+
+## What it needs
+
+- A 64-bit UEFI or BIOS machine with Secure Boot turned off: the boot loader
+  on the medium is not signed for Secure Boot.
+- 4 GB of memory or more. The live session keeps everything it installs in
+  memory.
+- For an install, about 24.5 GiB of disk for the two system slots updates
+  switch between, with the default 4 GiB swap (20.5 GiB with none). A smaller
+  disk gets one slot and no rollback.
+- The medium carries Intel, AMD, MediaTek and Realtek firmware. Other Wi-Fi
+  cards and GPUs (Qualcomm, Atheros, Broadcom, NVIDIA) need a network first,
+  over Ethernet or a supported card, then `sudo kdos firmware sync`.
+
+The live session logs in as `kdos`. The password of `kdos` and of `root` on
+the live medium is `kdos`; an installed system has the accounts and passwords
+you choose in the installer.
+
+## Installing software
+
+`kdos update install <name>` installs a program and what it needs from the
+release's binary host, checking every package against the release key the
+image carries. `kdos update groups` names the groups. Programs that
+KDOS does not package run in boxes, from Discover or with `kdos-appbox`.
+
+## Updating and going back
+
+`sudo kdos update fetch` asks whether a newer release is published, and
+`kdos update check` then says what it would change.
+
+On a machine with two system slots, an update is written to the other slot
+and started on the next boot; if that boot does not reach the desktop, the
+machine starts the previous slot again. On a machine SDDM does not log in
+automatically, the login screen staying up for a minute keeps the update,
+so a desktop that breaks only after a login is not rolled back by itself:
+System Settings → System Versions → Start This Version Next Time on the
+other slot starts the previous version, and `sudo kdos-bootctl try <slot>`
+on the recovery console (Ctrl+Alt+F2) does the same where the desktop
+cannot open System Settings. Programs installed and settings
+changed since an update stay in the version they were made in.
+
+On a machine with one slot, `sudo kdos update fetch` and then
+`sudo kdos update apply` write the update over the running system, which
+uses it from the next restart. There is no previous version to go back to.
+
+What's New shows these notes after an update or a rollback; `kdos update
+notes`, or Release Notes in the menu, shows them at any time.

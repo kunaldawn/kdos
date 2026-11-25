@@ -3,7 +3,7 @@
 Plasma Setup is the first-boot wizard for a machine handed over without an account (KDOS's
 "Let the first person set it up" install). On that boot the login manager signs in a special
 `plasma-setup` user with no password, whose session runs only the wizard: it creates the first
-real account in the groups KDOS gives its own account, and sets the language, keyboard layout, time zone, host name and
+real account in the groups KDOS gives its own account, and sets the keyboard layout, time zone, host name and
 Wi-Fi network, then writes `/etc/plasma-setup-done` so it never runs again and logs the new user
 in.
 
@@ -33,7 +33,64 @@ the printer pages ask for an administrator. Every group named must exist in `/et
 `useradd` refuses the account; the list follows `fs/etc/group`'s `kdos` lines. It is not proposed
 upstream: the file is upstream's documented place for a distribution's choice.
 
+`plasma-setup-kdos-firstboot.patch` makes ten changes, and its code is to be offered upstream. The
+keyboard page's two lists sort through a new `LayoutVariantSortModel` over upstream's filters. The
+layout list, while a search is applied, sorts by the fuzzy-match score descending, best match first,
+and otherwise, and between equal scores, by description, A to Z, as the keyboard settings' Add
+Layout dialog does. Every score is 0 before a search (an empty pattern matches everything at score
+0), so the score gives no order until a search is applied; and the layout model's own order is the
+XKB rules files', which is not alphabetical (*Armenian* before *Arabic*, the extra layouts after
+*Wolof*). Upstream sorts that list by the score ascending, so a search for *German* lists plain
+*German* last. The variant list puts the layout's own row without a variant first, then the variants
+by description, and while a search is applied by its match score, best first, with equal scores by
+description. Upstream sorts that list by the fuzzy-match score, ascending, so a search puts the best
+match last: after a search for *German* the list opens on *Romanian (Germany, no dead keys)* and
+plain *German* is last, where a click on the first row picks the wrong layout. The model's
+`searching` property follows the search string the layout search model holds, which the field sets
+when Enter is pressed, and its `plainFirst` property is set for the variant list alone. After any
+re-sort or re-filter of either list, and after a click, both lists highlight the layout and variant
+in use (the system's current layout, which a click replaces), scrolled into view, and nothing when a
+search hides that layout, because a ListView keeps its row number across a re-sort or re-filter and
+would highlight whichever row moved into that row number while another stays applied; a click
+re-filters the variant list, so without that the plain *German* row stays unhighlighted after
+*German* is clicked. Arrow keys still move the highlight without applying it, and the variant list
+of a layout reached that way highlights nothing. The keyboard page's subtitle reads *Select your
+keyboard layout.*, since the page has no language control, and its search field shows no *Ctrl+F*
+hover tooltip, since the page focuses the field itself and the tooltip opens over the subtitle. The
+landing page takes its background from the wallpaper package named by `[Appearance] Wallpaper` in
+`plasmasetuprc` (default `Next`): of the images named `WxH` in the screen's orientation, the one
+with the longest short side, from `images_dark` first when the active colour scheme's window
+background is dark by Kirigami's `ColorUtils.brightnessForColor`. Upstream asks the Dark Theme
+page's `PrepareUtil.usingDarkTheme`, which is true only for the scheme named `BreezeDark`, so every
+KDOS scheme would show the light image behind the wizard's headline; and it names `Next`'s own
+`5120x2880.png` and `1440x2960.png`, which no KDOS wallpaper carries. And the landing page's
+headline is `[Appearance] Welcome` when that key is set, instead of *Welcome to Plasma Desktop*. The
+headline and the *Begin Setup* button sit on a scrim, a rounded panel of the colour scheme's window
+background at 85% opacity padded by twice `Kirigami.Units.largeSpacing`, and the headline takes the
+scheme's text colour instead of white: upstream's white text over a wallpaper reads only where the
+image is dark, and the KDOS mascot's light belly runs through the letters. The Account page's avatar
+is a plain kirigami-addons `Avatar`, a display element, in the colour scheme's highlight colour, the
+accent, instead of upstream's disabled `AvatarButton` in a colour hashed from the typed name that
+has nothing to do with the scheme. The colour has to be resolved outside a disabled button:
+`AvatarButton` takes the `Button` colour set, and its disabled group's highlight on a KDOS scheme is
+the window background, so the initials vanish once a name is typed. And the Time page preselects the
+machine's time zone only when the selector's map shows it. A zone with no place on the map, such as
+`UTC`, raises the selector's *The currently selected time zone is not available for visualization on
+this map* banner, and its location box then looks up a region the zone has none of and throws; left
+unset, the region box reads *Choose…* and the machine keeps its zone until one is picked.
+
+The same patch sets KDOS's values in `plasmasetuprc`: `Wallpaper=KDOS-Bone`, the default accent's
+wallpaper (an install in another accent still shows Bone's here), and `Welcome=Welcome to KDOS` in
+the upstream headline's two-line form. Those two lines are KDOS's choice, not part of the offer.
+
 ## Notes
+
+`build.sh` removes two of the wizard's pages, which are KPackages the wizard finds by listing
+`/usr/share/plasma/packages`: `org.kde.plasmasetup.language`, whose list holds the one language
+the image ships, and `org.kde.plasmasetup.prepare` (*Before we get started*), whose only control is
+a Dark Theme switch that applies the Breeze or Breeze Dark global theme over the KDOS accent. The
+`prepareutil` QML module that page used stays installed and is loaded by nothing. The wizard's pages are Keyboard,
+Account, Host name, Time and Wi-Fi, then Finished.
 
 Upstream arms the wizard with three systemd pieces, and `build.sh` deletes all three:
 `plasma-setup.service` under `/usr/lib/systemd/system`, the `plasma-setup` user in

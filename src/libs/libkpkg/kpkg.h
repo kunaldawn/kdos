@@ -16,10 +16,11 @@
  *     `./`-prefixed and every DIRECTORY carrying a trailing `/`.
  *     Removal keys its rmdir-vs-unlink decision off that slash, and four
  *     things on the running system count the files in that directory.
- *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Three
- *     callers rely on it (kpkg's own -f, the build driver, mini_build.py)
- *     and it works because `/dev/null/<name>` cannot be a file. Anything here
- *     that stats the DIRECTORY first would silently break all three.
+ *   - `PKGDB_DIR=/dev/null` means "resolve against an empty database". Two
+ *     callers rely on it (the build driver's kpkgdepends phase resolution
+ *     and testing/mini_build.py) and it works because `/dev/null/<name>`
+ *     cannot be a file. Anything here that stats the DIRECTORY first would
+ *     silently break both.
  *   - `PORT_REPO` is a whitespace-separated list of at most KP_MAX_REPOS
  *     repositories, and the first repository holding a name wins. A
  *     repository holds its ports directly (`<repo>/<name>/kpkgbuild`, the
@@ -409,6 +410,9 @@ int kp_facets_left(const KpConf *c, const char *name, int facet);
  * minus `port`
  * itself. NULL-terminated, never NULL; kb_strv_free it. */
 char **kp_facet_wanted(const KpConf *c, const char *port);
+/* musl, linux and gcc, the ports kp_facet_wanted adds to every closure.
+ * NULL-terminated. */
+extern const char *const kp_facet_implicit[];
 
 /* ────────────────────────────────────────────────────────────────────────
  * Run-time needs (kp_needs.c)
@@ -438,7 +442,9 @@ char **kp_facet_wanted(const KpConf *c, const char *port);
  * that is the name of one of its own files, an interpreter, a qmldir or a
  * Python module (any `.py` or package directory) in its own manifest. PRESENT, EVEN EMPTY, means "measured";
  * ABSENT means "installed before needs were recorded", which every reader
- * reports as unmeasured, never as needing nothing.
+ * reports as unmeasured, never as needing nothing. Its readers are
+ * `kpkg needs` (needs.c) and `kpkg index --buildonly`
+ * (binhost.c needs_buildonly), which writes a stanza's N: line from it.
  *
  * WHAT PROVIDES AN EDGE (kp_needs_where), relative to the root:
  *
@@ -503,7 +509,7 @@ void kp_forget_needs(const KpConf *c, const char *name);
 
 /* Bump whenever build.c, prune.c or lint.c changes what a package contains
  * or how it is packed for the same inputs: every stored entry then misses. */
-#define KP_STORE_FORMAT 4
+#define KP_STORE_FORMAT 5
 
 /* The environment names the key ignores: job counts, launchers, the store's
  * own knobs, kpkg's run options and the terminal. 1 when `name` is one. */
@@ -587,6 +593,16 @@ typedef struct {
 	int n;
 } KpOrder;
 
+/* The names and every dependency not installed at its current recipe, each
+ * after what it needs. An installed, current dependency ends the walk along
+ * that edge, so nothing under it is reached. */
 void kp_resolve(const KpConf *c, char **names, int nnames, KpOrder *out);
+
+/* kp_resolve() for a forced install: every named package is walked and
+ * emitted whatever its installed state, and their dependencies follow
+ * kp_resolve()'s rule. The order is exactly what `kpkg install -f` builds —
+ * the named packages, and beneath them only what is missing or stale. */
+void kp_resolve_forced(const KpConf *c, char **names, int nnames,
+		       KpOrder *out);
 
 #endif /* KPKG_H */

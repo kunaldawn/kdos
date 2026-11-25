@@ -17,6 +17,8 @@ draws through this one. A person with no `qt5ct.conf` of their own gets a copy o
 
 - `kde-key.patch` — Makes the plugin answer the platform theme name `kde` as well as `qt5ct` and `qt6ct`: `Qt5CTPlatformThemePlugin::create()` in `src/qt5ct-qtplugin/main.cpp` accepts the key, and `qt5ct.json` lists it. The session exports `QT_QPA_PLATFORMTHEME=kde`, which loads KDE's platform theme in a Qt 6 program; KDE's platform theme is built for Qt 6 only, and each Qt major version searches only its own plugin directory, so with the patch a Qt 5 program loads qt5ct under the same value and the Qt 6 plugin is untouched.
 
+`portal-reentry.patch` makes `readSettings()` in `src/qt5ct-qtplugin/qt5ctplatformtheme.cpp` load the dialog theme named by `standard_dialogs` only in the outermost copy of the plugin, behind a `static bool loadingDialogs`. KDOS's `qt5ct.conf` names `xdgdesktopportal`, so a Qt 5 program's Open and Save dialogs are the file-chooser portal's, which is KDE's dialog. Qt's portal theme builds its own base theme from the desktop's theme names, and under `XDG_CURRENT_DESKTOP=KDE` the first of them is `kde`, which is qt5ct itself under `kde-key.patch`: without the guard each qt5ct it loads loads another portal theme, until the stack overflows and the program dies at start. The patch is to be offered upstream.
+
 ## Notes
 
 Upstream's desktop entry names the theme icon `preferences-desktop-theme` and no

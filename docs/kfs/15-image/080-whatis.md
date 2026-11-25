@@ -37,6 +37,20 @@ warning, and the phase goes on.
 The database is the check. A root with no pages in it gets no database, which is not an error, so
 the phase stops only when no root has one.
 
+## A page's one-line description
+
+`apropos` and `whatis` print, after each page's name, the one-line description `makewhatis` stored
+from the page's NAME section, and `makewhatis` stores no more than its first 150 bytes. The bytes are
+counted in the page's roff source, after the name and its dash, so an escape counts at its written
+length: `\(dq` for a straight double quote is four bytes for one printed character, `\e` for a
+backslash two. A longer description is printed cut at the 150th byte, mid-word as often as not,
+while `man` shows the whole NAME line.
+
+The KDOS pages are written within the limit. [kdos-doc](#port-kdos-doc) takes each command's
+description from its row of the command index and ends one that would not fit before the last
+clause that does, or at the last word, and the rows are short enough that none needs it. A port
+that ships its own page keeps its NAME line under 150 bytes the same way.
+
 ## Why it runs here
 
 After [040_orphans.sh](040-orphans.md), so the pages of a removed package are not indexed, and

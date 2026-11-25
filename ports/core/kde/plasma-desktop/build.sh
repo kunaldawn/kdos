@@ -13,6 +13,9 @@ patch -p1 -i "$PORT_SRC/sandbox-badge.patch"
 patch -p1 -i "$PORT_SRC/screenreader-save.patch"
 patch -p1 -i "$PORT_SRC/lockscreen-clock.patch"
 patch -p1 -i "$PORT_SRC/panel-opacity.patch"
+patch -p1 -i "$PORT_SRC/layout-list-order.patch"
+patch -p1 -i "$PORT_SRC/desktop-label-light.patch"
+patch -p1 -i "$PORT_SRC/layouts-start-from-session.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

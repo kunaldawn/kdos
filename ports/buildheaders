@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/buildheaders — build-only ports other packages' headers include
+# ---------------------------------
+#
+#   <port>...
+#
+# The ports of ports/buildonly whose headers, pkg-config files or protocol
+# files the development files of another package include or require:
+# libX11's X11/Xlib.h includes X11/X.h and its x11.pc requires xproto, both
+# xorgproto's. The image leaves every one of them out, and a build here
+# reaches none of them through an installed package, so before a build
+# `kdos update` installs each one that a package the build compiles against
+# names in `depends =`, prebuilt (dev_prepare in kdos-tools' update.c).
+# Without it every build against that package fails to find its headers.
+#
+# A PORT HERE MUST BE IN ports/buildonly AND BE A PORT; preflight fails the
+# tree otherwise. A port whose own run-time closure is large stays out:
+# boost's numpy edge would put numpy and openblas on every such build. A line
+# starting with '#' and a blank line are skipped.
+
+xorgproto xcb-proto wayland-protocols vulkan-headers spirv-headers
+opencl-headers nlohmann-json

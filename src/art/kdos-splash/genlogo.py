@@ -29,9 +29,12 @@
 #   * Character cells are twice as tall as they are wide, so the sampling grid
 #     is ~2x wider than tall or the penguin comes out stretched into a pin.
 #   * Colours stay in the 16-colour ANSI set, and the slots are /etc/vtrgb's
-#     (kdos-getty loads it), not a guess: 0 is the near-black ground, 8 a DARK
-#     green, 2 the accent #39ff14, 15 the near-white pale, 3 the amber. The
-#     dark slot is what lets a black-bodied penguin be black and still visible.
+#     (kdos-getty loads it), not a guess; the values below are the phosphor
+#     scheme's: 0 is the near-black ground, 8 the muted text colour
+#     (kcol_muted, the same bright black Konsole gives), 2 the accent #39ff14,
+#     15 the near-white pale, 3 the amber. The body takes slot 8 because it is
+#     the one dark neutral that is not the ground: slot 0 would erase the
+#     silhouette.
 #   * The bright half of the palette is reachable. ter-kdos32n has 512 glyphs,
 #     so fbcon needs a ninth glyph bit — and it takes it from BLINK, not from
 #     the foreground intensity. Verified on tty1: `1;37` renders a white block,
@@ -67,7 +70,7 @@ COLS, ROWS = 34, 18
 # plain majority sampling erases both.
 RIM_BIAS = 0.22
 
-DARK = '\033[1;30m'          # vtrgb slot 8  (18,64,31)   — the black body
+DARK = '\033[1;30m'          # vtrgb slot 8  (103,147,113) — the body, kcol_muted
 ACCENT = '\033[0;32m'        # vtrgb slot 2  (57,255,20)  — the glow, and its rim
 LIT = '\033[1;32m'           # vtrgb slot 10 (125,255,92) — the rim's hot edge
 PALE = '\033[1;37m'          # vtrgb slot 15 (232,255,238)— belly, eyes
@@ -81,12 +84,12 @@ OFF = '\033[0m'
 # The body must NOT share the glow's colour: 192 of the 284 cells the penguin
 # covers are body, and in the glow's green the silhouette, the arms and the head have no
 # edges between them — a green blob. kdos.png is a BLACK penguin inside a
-# green halo, and that is what these five entries say — dark body, bright
+# green halo, and that is what these five entries say — muted body, bright
 # ring, fading halo, white belly, amber beak. Nothing here is a new artistic
 # choice; it is the source image's own structure.
 INK = {1: DARK, 2: PALE, 3: AMBER, 4: LIT, 5: ACCENT}
 PREVIEW_RGB = {                      # /etc/vtrgb, so the preview cannot lie
-    DARK: (18, 64, 31),
+    DARK: (103, 147, 113),
     ACCENT: (57, 255, 20),
     LIT: (125, 255, 92),
     PALE: (232, 255, 238),
@@ -113,7 +116,7 @@ WORDMARK = [
 ]
 
 TAGLINE = [
-    "KD's Homebrew Linux Distro",
+    'Kool Desktop Operating System',
     'musl · GNU · KDE Plasma · no systemd',
 ]
 

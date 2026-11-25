@@ -26,6 +26,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -595,6 +596,144 @@ int ki_write_look(const char *root, char *err, size_t n)
 	return 0;
 }
 
+/*
+ * THE ACCOUNT'S HALF OF THE ACCENT, written by its single writer. A home's
+ * accent file, its terminal programs' colours, its qt5ct palette and its
+ * Konsole profile are what a text console, an SSH login and every program
+ * that is not KDE's read, and Plasma's first login rewrites them only at that
+ * login; /etc/skel and the live home renamed into the account carry the
+ * image's accent until then. `kdos theme --account` writes them as `kdos
+ * theme` does outside a session, and never calls kdos-power, whose
+ * `accent` would repaint the LIVE machine's boot menu and login screen.
+ *
+ * `env -i`, so nothing of the installer's own session reaches the run: no
+ * KDE_FULL_SESSION (which would apply the theme to the live desktop), no
+ * session bus. The run writes LookAndFeelPackage into the home's kdeglobals
+ * as the chosen accent's global theme, which replaces the image accent's
+ * value skel carries and would otherwise shadow /etc/xdg. XDG_CONFIG_DIRS is
+ * the target's, so the cascaded reads (DefaultDarkLookAndFeel, the Konsole
+ * keys, the first copy of qt5ct.conf) are the ones the account's logins see,
+ * and TMUX_TMPDIR names no directory, so a tmux server the live root runs is
+ * never told to re-read the new home's file.
+ */
+void ki_theme_argv(KbArgv *a, const char *kdos, const char *root,
+		   const char *home)
+{
+	const KcolScheme *sc = kcol_find(cfg.theme);
+
+	if (!sc)
+		sc = kcol_default();
+	kb_argv_add(a, "env");
+	kb_argv_add(a, "-i");
+	kb_argv_add(a, "PATH=/usr/local/bin:/usr/bin:/bin");
+	kb_argv_addf(a, "HOME=%s%s", root, home);
+	kb_argv_addf(a, "XDG_CONFIG_HOME=%s%s/.config", root, home);
+	kb_argv_addf(a, "XDG_CACHE_HOME=%s%s/.cache", root, home);
+	kb_argv_addf(a, "XDG_DATA_HOME=%s%s/.local/share", root, home);
+	kb_argv_addf(a, "XDG_STATE_HOME=%s%s/.local/state", root, home);
+	kb_argv_addf(a, "XDG_CONFIG_DIRS=%s/etc/xdg:%s/usr/share/kdos/xdg",
+		     root, root);
+	kb_argv_add(a, "TMUX_TMPDIR=/nonexistent");
+	kb_argv_add(a, kdos);
+	kb_argv_add(a, "theme");
+	kb_argv_add(a, "--account");
+	kb_argv_add(a, sc->name);
+	kb_argv_end(a);
+}
+
+static uid_t hand_uid;
+static gid_t hand_gid;
+
+static int hand_one(const char *path, const struct stat *st, int flag,
+		    struct FTW *ftw)
+{
+	(void)flag;
+	(void)ftw;
+	if (st->st_uid == hand_uid && st->st_gid == hand_gid)
+		return 0;
+	return lchown(path, hand_uid, hand_gid) < 0 ? -1 : 0;
+}
+
+int ki_hand_tree(const char *path, uid_t uid, gid_t gid)
+{
+	hand_uid = uid;
+	hand_gid = gid;
+	return nftw(path, hand_one, 16, FTW_PHYS | FTW_MOUNT);
+}
+
+void ki_account_ids(const char *root, const char *user, uid_t *uid,
+		    gid_t *gid)
+{
+	char path[1024], pw[65536];
+	char *save = NULL;
+	size_t ul = strlen(user);
+
+	*uid = 1000;
+	*gid = 1000;
+	if (under(path, sizeof(path), root, "/etc/passwd") < 0 ||
+	    kb_read_file(path, pw, sizeof(pw)) <= 0)
+		return;
+	for (char *l = strtok_r(pw, "\n", &save); l;
+	     l = strtok_r(NULL, "\n", &save)) {
+		unsigned u, g;
+
+		if (strncmp(l, user, ul) || l[ul] != ':')
+			continue;
+		if (sscanf(l + ul, ":%*[^:]:%u:%u", &u, &g) == 2) {
+			*uid = (uid_t)u;
+			*gid = (gid_t)g;
+		}
+		break;
+	}
+}
+
+/*
+ * ONE HOME IN THE ACCENT: the ki_theme_argv run into <root><home>, then, for
+ * an account's home, its three XDG trees handed to it by number: the run is
+ * root's, and a ~/.config the account cannot write is one no program of its
+ * can save to. skel stays root's, as every file of the image's is; useradd's
+ * copy hands it on.
+ */
+static int seed_home(const char *root, const char *kdos, const char *home,
+		     const char *user, int (*run)(const KbArgv *a))
+{
+	static const char *const trees[] = { ".config", ".cache", ".local" };
+	KbArgv a = { 0 };
+	uid_t uid;
+	gid_t gid;
+	int rc;
+
+	ki_theme_argv(&a, kdos, root, home);
+	rc = run(&a);
+	if (rc)
+		say("  %s%s did not get all of the %s accent (exit %d)", root,
+		    home, cfg.theme, rc);
+	if (!user || cfg.dry_run)
+		return rc != 0;
+	ki_account_ids(root, user, &uid, &gid);
+	for (size_t i = 0; i < sizeof(trees) / sizeof(trees[0]); i++) {
+		char path[1024];
+
+		snprintf(path, sizeof(path), "%s%s/%s", root, home, trees[i]);
+		if (kb_path_exists(path) && ki_hand_tree(path, uid, gid) < 0)
+			say("  cannot hand %s to %s (%u:%u): %s", path, user,
+			    (unsigned)uid, (unsigned)gid, strerror(errno));
+	}
+	return rc != 0;
+}
+
+int ki_seed_accent(const char *root, const char *kdos,
+		   int (*run)(const KbArgv *a))
+{
+	char home[256];
+	int bad = seed_home(root, kdos, "/etc/skel", NULL, run);
+
+	if (cfg.oem)
+		return bad;
+	snprintf(home, sizeof(home), "/home/%s", cfg.username);
+	return bad + seed_home(root, kdos, home, cfg.username, run);
+}
+
 /* ── the keyboard ──────────────────────────────────────────────────────── */
 
 /*
@@ -606,7 +745,10 @@ int ki_write_look(const char *root, char *err, size_t n)
  * With an XKB layout, /etc/kdos/xkb.conf is kdos-settingsd's store for
  * locale1, which the login screen's KWin reads before anybody types and which
  * startplasma hands every session; /etc/xdg/kxkbrc is the same layout as the
- * Keyboard page of System Settings shows it. Without one, xkb.conf is left
+ * Keyboard page of System Settings shows it, and the one KWin and the lock
+ * screen read first. kdos-settingsd rewrites it on every locale1 layout
+ * change, so an OEM machine's wizard choice replaces it; a machine that never
+ * calls locale1 keeps the layout written here. Without one, xkb.conf is left
  * empty, which kdos-settingsd reads as "the layout nearest the console
  * keymap", and no kxkbrc is written.
  */

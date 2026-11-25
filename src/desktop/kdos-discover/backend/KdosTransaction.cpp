@@ -19,6 +19,8 @@
 
 #include <QNetworkInformation>
 
+#include <algorithm>
+
 #include <signal.h>
 #include <unistd.h>
 
@@ -29,6 +31,21 @@ namespace Kdos
 
 // How many of a failed step's last standard-error lines reach the message.
 static constexpr int StderrTail = 3;
+
+// A failed step's last error lines as one reason. Each is one tool's
+// sentence, often its own full stop at the end; they are joined with "; "
+// and that stop dropped, so the lines of two tools read as two clauses.
+static QString joinedErrors(const QStringList &lines)
+{
+    QStringList said;
+    for (QString l : lines) {
+        while (l.endsWith(u'.'))
+            l.chop(1);
+        if (!l.isEmpty())
+            said << l;
+    }
+    return said.join(u"; "_s);
+}
 
 KdosTransaction::KdosTransaction(KdosResource *resource, Role role, const Plan &plan, KdosBackend *backend)
     : Transaction(backend, resource, role, {})
@@ -52,10 +69,20 @@ static void endGroup(QProcess *p)
         p->kill();
 }
 
+// A step run through pkexec is root once the password is in, and only its
+// standard input closing stops it (the helper's CANCEL IS STDIN CLOSING);
+// before that pkexec is still the user's, and the signal ends it and its
+// password dialog.
+static bool rootStep(const Step &step)
+{
+    return step.program == "pkexec"_L1;
+}
+
 KdosTransaction::~KdosTransaction()
 {
     if (m_process && m_process->state() != QProcess::NotRunning) {
         m_process->disconnect(this);
+        m_process->closeWriteChannel();
         endGroup(m_process);
         m_process->waitForFinished(3000);
     }
@@ -65,8 +92,26 @@ bool KdosTransaction::start()
 {
     if (m_cancelled || m_finished)
         return false;
+    static_cast<KdosResource *>(resource())->setFailure({});
     runStep();
     return true;
+}
+
+// Discover shows its offline sheet for every reachability but Online, and a
+// downloading step follows it: a network with no route out (Local) or only to
+// the site (Site) fetches no archive, and NetworkManager with networking
+// switched off is asleep, which Qt reports as Unknown. A step let through
+// would sit in Downloading until its tool gave up.
+bool KdosTransaction::offline(QNetworkInformation::Reachability reachability)
+{
+    return reachability != QNetworkInformation::Reachability::Online;
+}
+
+// What a running step is doing: downloading when it fetches anything, else
+// changing the machine.
+static Transaction::Status runningStatus(const Step &step)
+{
+    return step.downloads ? Transaction::DownloadingStatus : Transaction::CommittingStatus;
 }
 
 void KdosTransaction::runStep()
@@ -82,19 +127,29 @@ void KdosTransaction::runStep()
     m_stderrTail.clear();
     m_previewOut.clear();
 
+    if (step.kind == Step::Kind::Ask) {
+        setStatus(SetupStatus);
+        m_asking = true;
+        Q_EMIT proceedRequest(step.question, step.questionText);
+        return;
+    }
     if (step.kind == Step::Kind::Preview) {
         setStatus(SetupStatus);
-    } else if (step.downloads) {
-        // QNetworkInformation answers only when a backend for it runs; with
-        // none, the step is tried and its own error is the message.
+    } else {
+        // QNetworkInformation answers only once a backend for it is loaded,
+        // which Discover's window does for its offline sheet; with none, the
+        // step is tried and its own error is the message.
         const QNetworkInformation *net = QNetworkInformation::instance();
-        if (net && net->reachability() == QNetworkInformation::Reachability::Disconnected) {
-            fail(i18n("Installing %1 needs a network connection, and this computer is offline.", resource()->name()));
+        if (step.downloads && net && offline(net->reachability())) {
+            fail(i18n("it needs a network connection, and this computer is offline"));
             return;
         }
-        setStatus(DownloadingStatus);
-    } else {
-        setStatus(CommittingStatus);
+        // A step run through pkexec waits for the administrator's password
+        // and writes nothing until it has it: it stays in SetupStatus, which
+        // Discover says as "Waiting", until its first line of output
+        // (readOutput), so Discover never says Downloading beside an open
+        // password dialog.
+        setStatus(rootStep(step) ? SetupStatus : runningStatus(step));
     }
 
     if (step.kind == Step::Kind::Packd) {
@@ -139,15 +194,16 @@ void KdosTransaction::runStep()
         QProcess *p = m_process;
         m_process = nullptr;
         p->deleteLater();
-        if (m_cancelled)
+        if (m_cancelled) {
+            finish(CancelledStatus);
             return;
+        }
         if (how != QProcess::NormalExit) {
             fail(i18n("%1 stopped before it finished.", p->program()));
             return;
         }
         if (code != 0) {
-            const QString detail = m_stderrTail.isEmpty() ? i18n("exit status %1", code) : m_stderrTail.join(u' ');
-            fail(detail);
+            fail(m_stderrTail.isEmpty() ? i18n("exit status %1", code) : joinedErrors(m_stderrTail));
             return;
         }
         if (m_plan.steps.at(m_step).kind == Step::Kind::Preview) {
@@ -166,12 +222,20 @@ void KdosTransaction::readOutput()
     if (!m_process)
         return;
     m_stdout += m_process->readAllStandardOutput();
+    const Step &step = m_plan.steps.at(m_step);
+    if (step.kind != Step::Kind::Preview && status() == SetupStatus && m_stdout.contains('\n'))
+        setStatus(runningStatus(step));
     qsizetype nl;
     while ((nl = m_stdout.indexOf('\n')) >= 0) {
         const QString line = QString::fromUtf8(m_stdout.left(nl));
         if (m_plan.steps.at(m_step).kind == Step::Kind::Preview)
             m_previewOut += m_stdout.left(nl + 1);
         m_stdout.remove(0, nl + 1);
+        // Everything a step fetches is fetched before its first package
+        // goes in, so from either line on it is building or installing.
+        if (step.kind != Step::Kind::Preview && status() == DownloadingStatus
+            && (line.startsWith("==> installing "_L1) || line.startsWith("==> restoring the development files of "_L1)))
+            setStatus(CommittingStatus);
         if (m_meter && m_meter->feed(line))
             updateProgress();
     }
@@ -204,15 +268,55 @@ void KdosTransaction::stepSucceeded()
     runStep();
 }
 
+// The question a Preview step's dry run becomes. A removal's names each
+// package it takes out, the port first (`remove <pkg>`, update.c's dry run),
+// and the question counts the others, so whoever approves it knows what goes
+// with the port; output without the port's line is no removal anybody can be
+// asked about, and fails before the password.
 void KdosTransaction::ask()
 {
+    if (role() == RemoveRole) {
+        const auto *res = static_cast<KdosResource *>(resource());
+        const QByteArray want = "remove " + res->entry().id.toUtf8();
+        const QList<QByteArray> lines = QByteArray(m_previewOut + m_stdout).split('\n');
+        bool named = false;
+        int others = 0;
+        for (const QByteArray &l : lines) {
+            const QByteArray t = l.trimmed();
+            if (t == want)
+                named = true;
+            else if (t.startsWith("remove ") && t.size() > 7)
+                ++others;
+        }
+        if (!named) {
+            fail(i18n("what the removal would do could not be read"));
+            return;
+        }
+        const QString name = resource()->name().toHtmlEscaped();
+        m_asking = true;
+        Q_EMIT proceedRequest(i18nc("@title:window", "Remove?"),
+                              others ? i18np("<b>%2</b> is removed from this computer, with 1 package it brought that nothing else needs. "
+                                             "Discover can install it again.",
+                                             "<b>%2</b> is removed from this computer, with %1 packages it brought that nothing else needs. "
+                                             "Discover can install it again.",
+                                             others,
+                                             name)
+                                     : i18n("<b>%1</b> is removed from this computer. Discover can install it again.", name));
+        return;
+    }
     const InstallPreview p = parseInstallPreview(m_previewOut + m_stdout);
     if (!p.valid) {
         fail(i18n("what the install would do could not be read"));
         return;
     }
     m_asking = true;
-    Q_EMIT proceedRequest(i18nc("@title:window", "Install %1?", resource()->name()), installPreviewText(p));
+    // The dialog is narrow and elides its title, so the program's name opens
+    // the body, which wraps, and the title names no program.
+    Q_EMIT proceedRequest(i18nc("@title:window", "Install?"),
+                          i18nc("@info %1 is a program's name, %2 what installing it does",
+                                "<b>%1</b>: %2",
+                                resource()->name().toHtmlEscaped(),
+                                installPreviewText(p)));
 }
 
 void KdosTransaction::proceed()
@@ -228,8 +332,13 @@ void KdosTransaction::fail(const QString &why)
     if (m_finished)
         return;
     qCWarning(LIBDISCOVER_BACKEND_KDOS_LOG) << resource()->name() << "failed:" << why;
-    Q_EMIT passiveMessage(role() == RemoveRole ? i18n("%1 was not removed: %2", resource()->name(), why)
-                                                : i18n("%1 was not installed: %2", resource()->name(), why));
+    // Discover shows a transaction's message only behind "See Technical
+    // Details" of a generic error, so the reason is also the notice on the
+    // resource's own page.
+    const QString said = role() == RemoveRole ? i18n("%1 was not removed: %2", resource()->name(), why)
+                                              : i18n("%1 was not installed: %2", resource()->name(), why);
+    static_cast<KdosResource *>(resource())->setFailure(said);
+    Q_EMIT passiveMessage(said);
     finish(DoneWithErrorStatus);
 }
 
@@ -238,6 +347,16 @@ void KdosTransaction::cancel()
     if (m_finished)
         return;
     m_cancelled = true;
+    // A running step through pkexec ends Cancelled only once the process
+    // has: the backend's refresh after it must not meet a root run still
+    // holding the package lock. Until then the status stays and the
+    // button cannot be pressed again.
+    if (m_process && m_process->state() != QProcess::NotRunning && rootStep(m_plan.steps.at(m_step))) {
+        setCancellable(false);
+        m_process->closeWriteChannel();
+        endGroup(m_process);
+        return;
+    }
     endGroup(m_process);
     finish(CancelledStatus);
 }

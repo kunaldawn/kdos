@@ -1,0 +1,165 @@
+Subject: Powerful When Needed: list the Meta chords the machine binds; drop the Activities card
+
+The Keyboard Shortcuts card builds each of its rows from
+globalShortcutTexts() for the action the row teaches, and leaves out a row
+whose action has no chord, so it names only chords this machine binds and
+follows a rebound action to its new chord. The Activities card is removed:
+KDOS ships no activities interface and binds no activity-switcher chord.
+
+--- a/src/qml/pages/PowerfulWhenNeeded.qml
++++ b/src/qml/pages/PowerfulWhenNeeded.qml
+@@ -63,12 +63,6 @@ Click the cards below to see just a smattering of what it can do for you:")
+                         subtitle: i18nc("@info Caption for KDE Connect button", "Connect your phone and your computer"),
+                         page: "KDEConnect.qml"
+                     },
+-                    {
+-                        leadingIcon: "preferences-desktop-activities",
+-                        title: i18nc("@title:row Name of the 'Activities' Plasma feature", "Activities"),
+-                        subtitle: i18nc("@info Caption for Activities button. Note that 'Separate' is being used as an imperative verb here, not a noun.", "Separate work, school, or home tasks"),
+-                        page: "Activities.qml"
+-                    },
+                     {
+                         leadingIcon: "plasmavault",
+                         title: i18nc("@title:row Short form of the 'Vaults' Plasma feature", "Vaults"),
+--- a/src/qml/pages/powerfulwhenneeded/MetaKey.qml
++++ b/src/qml/pages/powerfulwhenneeded/MetaKey.qml
+@@ -15,6 +15,8 @@
+ import org.kde.plasma.welcome as Welcome
+ 
+ Welcome.Page {
++    id: metaKeyPage
++
+     heading: i18nc("@info:window", "Keyboard Shortcuts")
+ 
+     actions: [
+@@ -161,20 +163,119 @@
+         QQC2.Label {
+             Layout.fillWidth: true
+             wrapMode: Text.WordWrap
+-            text: xi18nc("@info:usagetip", "What can you do with the <shortcut>Meta</shortcut> key? Here are a few examples:\
+-<list><item>Press it: Open the Application Launcher widget</item>\
+-<item>Press <shortcut>Meta+[arrow keys]</shortcut>: Tile window to screen edges or corners</item>\
+-<item>Press <shortcut>Meta+[number keys]</shortcut>: Launch pinned Task Manager apps</item>\
+-<item>Press <shortcut>Meta+R</shortcut>: Start a screen recording</item>\
+-<item>Press <shortcut>Meta+L</shortcut>: Lock the screen</item>\
+-<item>Press <shortcut>Meta+Shift+S</shortcut>: Toggle screen reader on/off</item>\
+-<item>Press <shortcut>Meta+Alt+P</shortcut>: Move keyboard focus to panel</item>\
+-<item>Press <shortcut>Meta+Esc</shortcut>: Launch System Monitor app</item>\
+-<item>Press <shortcut>Meta+.</shortcut>: Launch Emoji Selector app</item>\
+-<item>Press <shortcut>Meta+D</shortcut>: Show the desktop</item></list>")
++            visible: chordRows.count > 0
++            text: xi18nc("@info:usagetip", "What can you do with the <shortcut>Meta</shortcut> key? Here are a few examples:")
++        },
++
++        GridLayout {
++            Layout.fillWidth: true
++            columns: 2
++            columnSpacing: Kirigami.Units.largeSpacing
++            rowSpacing: Kirigami.Units.smallSpacing
++
++            Repeater {
++                id: chordRows
++
++                model: metaKeyPage.chordModel()
++
++                delegate: QQC2.Label {
++                    required property var modelData
++                    required property int index
++
++                    Layout.row: index
++                    Layout.column: 0
++                    Layout.alignment: Qt.AlignTop
++                    textFormat: Text.PlainText
++                    font.weight: Font.Bold
++                    text: modelData.keys
++                    Accessible.name: i18nc("@info:usagetip %1 is keyboard shortcuts, %2 what they do", "%1: %2", modelData.keys, modelData.what)
++                }
++            }
++
++            Repeater {
++                model: chordRows.model
++
++                delegate: QQC2.Label {
++                    required property var modelData
++                    required property int index
++
++                    Layout.row: index
++                    Layout.column: 1
++                    Layout.fillWidth: true
++                    wrapMode: Text.WordWrap
++                    textFormat: Text.PlainText
++                    text: modelData.what
++                    Accessible.ignored: true
++                }
++            }
+         }
+     ]
+ 
++    // Every row is read from kglobalaccel, so the card names only chords this
++    // machine binds: an action with no chord loses its row, and a rebound
++    // action shows its new chord. A row keeps only the chords that start with
++    // Meta, the key the card is about, so Print or Alt+F1 never appear; the
++    // launcher's row keeps the Meta key alone, which is the whole of its
++    // chord. kglobalaccel hands chords back in no stable order, so they are
++    // sorted, shortest first, to give a row the same text every session.
++    function chords(component, action, keepBareMeta) {
++        return Welcome.Utils.globalShortcutTexts(component, action)
++            .filter(text => text.startsWith("Meta+") || (keepBareMeta && text === "Meta"))
++            .sort((a, b) => a.length - b.length || a.localeCompare(b));
++    }
++
++    function firstChords(component, actions) {
++        const found = [];
++        for (const action of actions) {
++            const texts = chords(component, action, false);
++            if (texts.length > 0) {
++                found.push(texts[0]);
++            }
++        }
++        return found;
++    }
++
++    function chordModel() {
++        const rows = [];
++        const add = (texts, what) => {
++            if (texts.length > 0) {
++                rows.push({ keys: texts.join(", "), what: what });
++            }
++        };
++
++        add(chords("plasmashell", "activate application launcher", true),
++            i18nc("@info:usagetip", "Open the Application Launcher widget"));
++        add(firstChords("kwin", ["Window Quick Tile Left", "Window Quick Tile Right",
++                                 "Window Quick Tile Top", "Window Quick Tile Bottom"]),
++            i18nc("@info:usagetip", "Tile window to screen edges or corners"));
++
++        // Entries 1 to 9 only: entry 10 is Meta+0, which would end the run
++        // on a key that reads as lower than where it starts.
++        const entries = firstChords("plasmashell",
++            [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => "activate task manager entry " + n));
++        add(entries.length > 2
++                ? [i18nc("@info:usagetip %1 is the first keyboard shortcut of a run, %2 the last", "%1 to %2",
++                         entries[0], entries[entries.length - 1])]
++                : entries,
++            i18nc("@info:usagetip", "Launch pinned Task Manager apps"));
++
++        add(chords("org.kde.spectacle.desktop", "RecordRegion", false),
++            i18nc("@info:usagetip", "Record a region of the screen"));
++        add(chords("ksmserver", "Lock Session", false),
++            i18nc("@info:usagetip", "Lock the screen"));
++        add(chords("org.kde.screenreader.desktop", "toggleScreenReader", false),
++            i18nc("@info:usagetip", "Toggle screen reader on/off"));
++        add(chords("plasmashell", "cycle-panels", false),
++            i18nc("@info:usagetip", "Move keyboard focus to panel"));
++        add(chords("org.kde.plasma-systemmonitor.desktop", "_launch", false),
++            i18nc("@info:usagetip", "Launch System Monitor app"));
++        add(chords("org.kde.plasma.emojier.desktop", "_launch", false),
++            i18nc("@info:usagetip", "Launch Emoji Selector app"));
++        add(chords("kwin", "Show Desktop", false),
++            i18nc("@info:usagetip", "Show the desktop"));
++        return rows;
++    }
++
+     component MockKey: Rectangle {
+         id: key
+ 

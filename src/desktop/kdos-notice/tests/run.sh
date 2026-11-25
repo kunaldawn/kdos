@@ -24,6 +24,10 @@ rm -rf "$D"
 mkdir -p "$D/state" "$D/data/applications"
 export XDG_STATE_HOME=$D/state XDG_DATA_HOME=$D/data XDG_DATA_DIRS=$D/none
 export KDOS_NOTICE_BOOT_ID=boot-1
+# An administrator's notices unless a step says otherwise: the account's own
+# primary group stands for wheel, whatever groups the host gives it.
+ADMIN=$(id -gn) NOADMIN=kdos-notice-nosuch-group
+export KDOS_NOTICE_ADMIN_GROUP=$ADMIN
 
 fail() { echo "  FAIL  $*"; sed 's/^/        /' "$D/out" | head -30; exit 1; }
 ok() { echo "  ok    $*"; }
@@ -99,7 +103,7 @@ KDOS_NOTICE_BOOT_ID=boot-3 step boot "$F/boot-kept.json"
 has "none trial" "a kept slot says nothing"
 step boot "$F/boot-rolledback.json"
 has "summary Your last update didn't start" "the rollback"
-has "body KDOS 0.2.14 did not start properly, so KDOS went back to 0.2.13." "versions named"
+has "body KDOS 0.2.14 did not start properly, so the computer went back to KDOS 0.2.13." "versions named"
 KDOS_NOTICE_BOOT_ID=boot-4 step boot "$F/boot-rolledback.json"
 has "none rollback" "a rollback is said once, not every boot"
 step boot "$F/boot-unconfigured.json"
@@ -121,18 +125,21 @@ step oom "err not permitted" 0
 has "none oom" "a refused socket says nothing"
 ok "oom: per kill, the box named, a refusal is silence"
 
-# ── the installer's pending applications ──────────────────────────────
+# ── the installer's pending selections ────────────────────────────────
 printf '# chosen at install\ngroup office\napp.gimp\napp.kcalc\n' > "$D/pending"
 step pending "$D/pending"
-has "pending 2" "two ids; a group line and a comment are not counted"
+has "pending 2" "two ids; a line with a space and a comment are not counted"
 has "post pending replaces=0 persistent=1" "the first look posts, persistently"
-has "summary 2 applications chosen during install are not installed yet" "the count"
+has "summary Software chosen during install is not installed yet" "the summary"
+has "body 2 selections are waiting: Discover lists them under Selected during install, and installs them from there." "the count, plural"
 has "action details Open Discover" "Open Discover"
 step pending "$D/pending"
 has "none pending" "the same file at the next look"
 printf 'app.kcalc\n' > "$D/pending"
 step pending "$D/pending"
-has "summary An application chosen during install is not installed yet" "one left replaces it"
+has "post pending" "one left posts again"
+has "summary Software chosen during install is not installed yet" "the same summary for one"
+has "body 1 selection is waiting: Discover lists it under Selected during install, and installs it from there." "a singular body for one"
 : > "$D/pending"
 step pending "$D/pending"
 has "close pending" "an empty file withdraws it"
@@ -142,6 +149,75 @@ step action pending details
 [ "$(tr '\n' ' ' < "$D/out")" = "[plasma-discover] [--category] [Selected during install] " ] \
 	|| fail "pending details"
 ok "pending: said once per selection, withdrawn when Discover has installed it"
+
+# ── groups and boxed apps together, with the tree's own titles ─────────
+# The popup shows eight lines of 38 characters before it scrolls: each body
+# is wrapped there at word breaks, a character counted as one, and must fit
+# whole, the command on a line of its own and the boxed-app line last.
+fits() {
+	local body line w col n lines=0 cmd=0 last=
+	body=$(sed -n '/^  body /,/^  icon /p' "$D/out" | sed '1s/^  body //;$d')
+	while IFS= read -r line; do
+		lines=$((lines + 1)) col=0
+		[ "$line" = "${CMD:-sudo kdos update install --pending}" ] && cmd=1
+		set -f
+		for w in $line; do
+			n=${#w}
+			if [ "$col" -gt 0 ] && [ $((col + 1 + n)) -gt 38 ]; then
+				lines=$((lines + 1)) col=$n
+			else
+				col=$((col + (col > 0) + n))
+			fi
+		done
+		set +f
+		last=$line
+	done <<< "$body"
+	[ "$lines" -le 8 ] || fail "$2: $lines popup lines"
+	[ "$cmd" = 1 ] || fail "$2: no command on a line of its own"
+	[ "$last" = "$1" ] || fail "$2: the last line is '$last'"
+	hasnt "more selection" "$2"
+}
+TREE=$HERE/../../../../ports/groups
+[ -f "$TREE" ] || fail "no ports/groups at $TREE"
+pend() { printf '%s\n' $1 > "$D/apps"; printf '%s\n' $2 > "$D/groups"
+	rm -rf "$D/state"; mkdir -p "$D/state"
+	step pending "$D/apps" "$D/groups" "$TREE"; }
+export LC_ALL=C.UTF-8
+pend org.kde.kate "kde-games nosuch-group kde-artwork"
+fits "1 boxed app also waits in Discover." "three groups, one unknown, and an app"
+has "body 3 KDOS application groups:" "a one-line header"
+pend essential "kde-games kde-system kde-artwork"
+fits "1 boxed app also waits in Discover." "a long title among three, and an app"
+pend "org.kde.kate app.kcalc" "kde-system kde-network"
+fits "2 boxed apps also wait in Discover." "two long titles and two apps"
+pend essential kde-artwork
+fits "1 boxed app also waits in Discover." "one group and an app"
+pend org.kde.kate "kde-system kde-network kde-pim kde-multimedia kde-utilities kde-devtools"
+fits "1 boxed app also waits in Discover." "six groups and an app"
+grep -qE '^and [0-9]+ more$' "$D/out" || fail "six groups: no 'and N more' line"
+pend "" "kde-system kde-network kde-pim kde-multimedia kde-utilities kde-devtools kde-games"
+has "body 7 KDOS application groups wait." "seven groups alone: the header"
+for t in "KDE disk usage, search, logs, wallets, characters and handbooks" \
+	"KDE torrents, remote desktop, file sharing and online accounts" \
+	"KDE mail, calendar and contacts" "KDE audio and video" "KDE utilities" \
+	"KDE development tools" "KDE games"; do
+	grep -qxF "$t" "$D/out" || fail "seven groups alone: '$t' not listed"
+done
+! grep -qE '^and [0-9]+ more$' "$D/out" || fail "seven groups alone: a title held back"
+grep -qx "sudo kdos update install --pending" "$D/out" \
+	|| fail "seven groups alone: no command line"
+KDOS_NOTICE_ADMIN_GROUP=$NOADMIN
+CMD="su -c 'kdos update install --pending'"
+pend org.kde.kate "kde-system kde-network kde-pim kde-multimedia kde-utilities kde-devtools"
+fits "1 boxed app also waits in Discover." "outside wheel: six groups and an app"
+hasnt "sudo" "outside wheel: six groups and an app"
+pend "" "kde-system kde-network"
+grep -qx "$CMD" "$D/out" || fail "outside wheel: groups alone: no su -c line"
+hasnt "sudo" "outside wheel: groups alone"
+KDOS_NOTICE_ADMIN_GROUP=$ADMIN
+unset CMD
+unset LC_ALL
+ok "pending: groups and boxed apps fit the popup, command and boxed line above the scroll"
 
 # ── firmware the hardware asks for ────────────────────────────────────
 step firmware "$F/firmware-nvidia.json"
@@ -167,6 +243,20 @@ step action firmware details
 [ "$(tr '\n' ' ' < "$D/out")" = "[konsole] [--hold] [-e] [sudo] [kdos] [firmware] [sync] " ] \
 	|| fail "firmware details"
 ok "firmware: said once per set of ports, withdrawn when they are installed"
+
+# ── an account outside wheel, which sudo refuses ──────────────────────
+export KDOS_NOTICE_ADMIN_GROUP=$NOADMIN
+step firmware "$F/firmware-nvidia.json"
+has "post firmware" "outside wheel: the port posts"
+has "Install it with: su -c 'kdos firmware sync' (root's password)" "outside wheel: su -c named"
+hasnt "sudo" "outside wheel: the firmware body"
+step action firmware details
+[ "$(tr '\n' ' ' < "$D/out")" = "[konsole] [--hold] [-e] [su] [-c] [kdos firmware sync] " ] \
+	|| fail "outside wheel: firmware details"
+step firmware "$F/firmware-none.json"
+has "close firmware" "outside wheel: withdrawn"
+export KDOS_NOTICE_ADMIN_GROUP=$ADMIN
+ok "outside wheel: the notices and Install name su -c and root's password, never sudo"
 
 # ── actions ────────────────────────────────────────────────────────────
 step action cve details

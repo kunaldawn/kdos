@@ -14,4 +14,4 @@ release     = 1
 description = KDOS system tools — kdos, services, getty, slots, fetch
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT AND (BSD-2-Clause OR CC0-1.0)
-depends     = kbd procps-ng alsa-utils basu kdos-pack croc qrencode curl zstd
+depends     = kbd procps-ng alsa-utils basu kdos-pack croc qrencode curl zstd wl-clipboard

@@ -19,6 +19,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QLocale>
 #include <QRegularExpression>
 #include <QThread>
 
@@ -210,31 +211,35 @@ QString BoxProfile::cpuSpelling(int tenths)
 int BoxProfile::parseDurationSeconds(const QString &raw)
 {
     /* profile_set()'s duration(): a number and an optional unit, h, m or
-     * anything else for seconds. */
-    static const QRegularExpression re(u"^\\s*(-?[0-9]+)\\s*([a-zA-Z]?)"_s);
-    const auto m = re.match(raw);
-    if (!m.hasMatch()) {
+     * anything else for seconds, and d for the spin box's "1 day". Several
+     * such pairs add up, so the spin box's own spelling ("1 hour and 30
+     * minutes") reads back as the value it spells. */
+    static const QRegularExpression lead(u"^\\s*-?[0-9]"_s);
+    static const QRegularExpression re(u"(-?[0-9]+)\\s*([a-zA-Z]?)"_s);
+    if (!lead.match(raw).hasMatch()) {
         return 0;
     }
-    const long long n = m.captured(1).toLongLong();
-    if (n <= 0) {
-        return 0;
+    long long total = 0;
+    for (auto it = re.globalMatch(raw); it.hasNext();) {
+        const auto m = it.next();
+        const long long n = m.captured(1).toLongLong();
+        if (n <= 0) {
+            return total > 0 ? int(qMin(total, 86400LL * 365)) : 0;
+        }
+        const QString unit = m.captured(2).toLower();
+        total += unit == "d"_L1 ? n * 86400 : unit == "h"_L1 ? n * 3600 : unit == "m"_L1 ? n * 60 : n;
+        if (total > 86400LL * 365) {
+            break;
+        }
     }
-    const QString unit = m.captured(2).toLower();
-    if (unit == "h"_L1) {
-        return int(n * 3600);
-    }
-    if (unit == "m"_L1) {
-        return int(n * 60);
-    }
-    return int(n);
+    return int(qMin(total, 86400LL * 365));
 }
 
 QVariant BoxProfile::normalize(const QString &key, const QString &raw)
 {
     const QString v = raw.trimmed();
     if (key == "accent"_L1) {
-        return v.isEmpty() ? u"session"_s : v;
+        return v.isEmpty() || v == "none"_L1 ? u"session"_s : v;
     }
     if (key == "grant"_L1) {
         return v.split(QRegularExpression(u"[,\\s]+"_s), Qt::SkipEmptyParts);
@@ -258,8 +263,9 @@ QVariant BoxProfile::normalize(const QString &key, const QString &raw)
         return (truthy(v) || v == "shared"_L1) ? u"yes"_s : u"no"_s;
     }
     if (key == "x11"_L1) {
-        /* Only a plain refusal is `no`, as kdos-appbox reads it; every
-         * other word is the default, `yes`. */
+        /* Only a plain refusal is `no`; kdos-box refuses any other word on
+         * its command line, and a hand-edited file keeps the earlier value
+         * or the default, `yes`. */
         static const QStringList refused{u"no"_s, u"off"_s, u"0"_s, u"false"_s};
         return refused.contains(v) ? u"no"_s : u"yes"_s;
     }
@@ -338,6 +344,7 @@ void BoxProfile::loadFile(const QString &name)
             m_mechanisms->insert(key, QString());
         }
         m_generalNotes.clear();
+        m_staleKeys.clear();
         m_notesLoaded = false;
         Q_EMIT notesChanged();
     }
@@ -388,6 +395,7 @@ void BoxProfile::applyReport(const QString &report)
     QStringList general;
     QMap<QString, QString> mech;
     QString last;
+    bool labelled = false;
 
     const auto lines = report.split(u'\n');
     for (const QString &line : lines) {
@@ -397,10 +405,23 @@ void BoxProfile::applyReport(const QString &report)
             if (text.isEmpty()) {
                 continue;
             }
-            /* A note about a key kdos-box could not parse belongs to no
-             * control; nor does one under a key the page does not show. */
-            if (last.isEmpty() || !hasControl(last) || text.contains(u"unknown key"_s)) {
+            /* A note that names the profile file (an unknown key, or a
+             * value its key does not take) belongs to no control; nor does
+             * one under a key the page does not show. */
+            if (last.isEmpty() || !hasControl(last) || text.startsWith(u"boxes/"_s)) {
                 general << text;
+            } else if (text.startsWith(u"the limits are"_s) && (last == "memory"_L1 || last == "cpus"_L1 || last == "pids"_L1)) {
+                /* kdos-box prints its note on the limits after the last
+                 * limit row; it sits under the first limit it names, so a
+                 * memory limit's note is not under the processor limit. */
+                QString key = last;
+                for (const char *k : {"memory", "cpus", "pids"}) {
+                    if (text.contains(u'`' + QLatin1String(k) + u'`')) {
+                        key = QLatin1String(k);
+                        break;
+                    }
+                }
+                notes[key] << text;
             } else {
                 notes[last] << text;
                 /* The one note that is about two keys names both. */
@@ -415,6 +436,13 @@ void BoxProfile::applyReport(const QString &report)
             continue;
         }
         last = k.captured(1);
+        /* `created = matches|differs|unrecorded`: the first two are said
+         * only of a container whose label records what it was made with. */
+        if (last == "created"_L1) {
+            const QString state = k.captured(2).trimmed().section(u' ', 0, 0);
+            labelled = state == "matches"_L1 || state == "differs"_L1;
+            continue;
+        }
         if (last == "accent"_L1 || last == "grant"_L1 || last == "base"_L1 || last == "box"_L1 || last == "image"_L1) {
             continue;
         }
@@ -429,6 +457,40 @@ void BoxProfile::applyReport(const QString &report)
         m_notes->insert(key, notes.value(key));
         m_mechanisms->insert(key, mech.value(key));
     }
+    /* `created: network, memory differ — …`: the keys sit between the
+     * colon and the verb, comma-separated, spelled as the file spells them. */
+    static const QRegularExpression staleLine(u"created: (.+?) differs? "_s);
+    m_staleKeys.clear();
+    for (const QString &text : std::as_const(general)) {
+        if (!isRecreateNote(text)) {
+            continue;
+        }
+        const auto m = staleLine.match(text);
+        if (m.hasMatch()) {
+            for (const QString &key : m.captured(1).split(u',')) {
+                const QString k = key.trimmed();
+                if (!k.isEmpty() && !m_staleKeys.contains(k)) {
+                    m_staleKeys << k;
+                }
+            }
+        }
+    }
+
+    /* A LABELLED CONTAINER'S REPORT IS THE WHOLE TRUTH: a remembered key
+     * its `!` line does not name is at the value the container was made
+     * with, whichever write set it back — this page's or `kdos-box
+     * profile`'s in a terminal. A container with no label reports nothing
+     * to compare with, so the page's memory stands for it. */
+    if (labelled && !m_name.isEmpty() && !m_pending.isEmpty()) {
+        QStringList kept = m_pending;
+        kept.removeIf([this](const QString &k) {
+            return !m_staleKeys.contains(k);
+        });
+        if (kept != m_pending) {
+            savePending(kept, kept.isEmpty() ? QDateTime() : m_pendingSince);
+        }
+    }
+
     m_generalNotes = general;
     m_notesLoaded = true;
     Q_EMIT notesChanged();
@@ -509,6 +571,16 @@ QStringList BoxProfile::generalNotes() const
 bool BoxProfile::notesLoaded() const
 {
     return m_notesLoaded;
+}
+
+QStringList BoxProfile::staleKeys() const
+{
+    return m_staleKeys;
+}
+
+bool BoxProfile::isRecreateNote(const QString &note)
+{
+    return note.contains(u"written after"_s) && note.contains(u"created"_s);
 }
 
 QStringList BoxProfile::otherGrants() const
@@ -614,12 +686,8 @@ void BoxProfile::savePending(const QStringList &keys, const QDateTime &since)
     Q_EMIT pendingChanged();
 }
 
-void BoxProfile::addPendingRecreate(const QStringList &keys)
+void BoxProfile::reloadPending()
 {
-    if (m_name.isEmpty() || keys.isEmpty()) {
-        return;
-    }
-    recordPendingRecreate(m_name, keys);
     loadPending();
 }
 
@@ -641,6 +709,43 @@ void BoxProfile::recordPendingRecreate(const QString &box, const QStringList &ke
         g.writeEntry("Since", QDateTime::currentDateTime().toSecsSinceEpoch());
     }
     cfg->sync();
+}
+
+void BoxProfile::dropPendingRecreate(const QString &box, const QStringList &keys)
+{
+    if (box.isEmpty() || keys.isEmpty()) {
+        return;
+    }
+    KSharedConfigPtr cfg = KSharedConfig::openStateConfig(StateFile);
+    KConfigGroup g(cfg, box);
+    QStringList kept = g.readEntry("PendingKeys", QStringList());
+    kept.removeIf([&keys](const QString &k) {
+        return keys.contains(k);
+    });
+    if (kept.isEmpty()) {
+        g.deleteGroup();
+    } else {
+        g.writeEntry("PendingKeys", kept);
+    }
+    cfg->sync();
+}
+
+QStringList BoxProfile::keysBackToCreated(const QString &output)
+{
+    /* The key list is the file's spellings joined by ", ", and the sentence
+     * before it ends in a full stop, which no key holds. */
+    static const QRegularExpression back(u"([a-z][a-z0-9, -]*?) (?:is|are) what the box was created with"_s);
+    QStringList keys;
+    const auto m = back.match(output);
+    if (m.hasMatch()) {
+        for (const QString &key : m.captured(1).split(u',')) {
+            const QString k = key.trimmed();
+            if (!k.isEmpty()) {
+                keys << k;
+            }
+        }
+    }
+    return keys;
 }
 
 void BoxProfile::clearPendingRecreate()
@@ -665,7 +770,28 @@ QString BoxProfile::formatDuration(int seconds) const
     if (seconds <= 0) {
         return i18nc("@item:inlistbox stop an idle box", "Never");
     }
-    return KFormat().formatSpelloutDuration(quint64(seconds) * 1000);
+    /* Spelled here rather than by KFormat::formatSpelloutDuration, whose
+     * plurals come from a catalogue an English session does not load and
+     * read "1 hour(s)". Every part begins with its number and its unit's
+     * first letter is d, h, m or s, which parseDurationSeconds reads back. */
+    QStringList parts;
+    if (const int d = seconds / 86400) {
+        parts << i18ncp("@item part of a duration", "%1 day", "%1 days", d);
+    }
+    if (const int h = seconds / 3600 % 24) {
+        parts << i18ncp("@item part of a duration", "%1 hour", "%1 hours", h);
+    }
+    if (const int m = seconds / 60 % 60) {
+        parts << i18ncp("@item part of a duration", "%1 minute", "%1 minutes", m);
+    }
+    if (const int sec = seconds % 60) {
+        parts << i18ncp("@item part of a duration", "%1 second", "%1 seconds", sec);
+    }
+    if (parts.size() == 1) {
+        return parts.first();
+    }
+    const QString last = parts.takeLast();
+    return i18nc("@item a duration, %1 its larger parts, %2 its last", "%1 and %2", parts.join(u", "_s), last);
 }
 
 int BoxProfile::cpuCount() const
@@ -688,7 +814,10 @@ int BoxProfile::memoryFromText(const QString &text) const
 {
     QString t = text;
     t.replace(u',', u'.');
-    return parseMemoryMiB(t);
+    /* kdos-box refuses a limit under 6 MiB, podman's floor, so a smaller
+     * one typed here is raised to it rather than written and refused. */
+    const int mib = parseMemoryMiB(t);
+    return mib > 0 ? qMax(mib, 6) : mib;
 }
 
 int BoxProfile::durationFromText(const QString &text) const
@@ -702,6 +831,64 @@ int BoxProfile::cpusFromText(const QString &text) const
     t.replace(u',', u'.');
     const int sp = t.indexOf(u' ');
     return parseCpuTenths(sp < 0 ? t : t.left(sp));
+}
+
+QString BoxProfile::formatPids(int n) const
+{
+    if (n <= 0) {
+        return i18nc("@item process limit", "No limit");
+    }
+    return QLocale().toString(n);
+}
+
+int BoxProfile::pidsFromText(const QString &text) const
+{
+    QString digits = text;
+    digits.remove(QRegularExpression(u"[^0-9]"_s));
+    bool ok = false;
+    const int n = digits.left(9).toInt(&ok);
+    return ok ? n : 0;
+}
+
+QValidator *BoxProfile::limitValidator(const QString &key)
+{
+    QValidator *&v = m_validators[key];
+    if (!v) {
+        v = new LimitValidator(this, key, this);
+    }
+    return v;
+}
+
+LimitValidator::LimitValidator(const BoxProfile *profile, const QString &key, QObject *parent)
+    : QValidator(parent)
+    , m_profile(profile)
+    , m_key(key)
+{
+}
+
+QString LimitValidator::spelled(const QString &text) const
+{
+    if (m_key == "memory"_L1) {
+        return m_profile->formatMemory(m_profile->memoryFromText(text));
+    }
+    if (m_key == "cpus"_L1) {
+        return m_profile->formatCpus(m_profile->cpusFromText(text));
+    }
+    if (m_key == "pids"_L1) {
+        return m_profile->formatPids(m_profile->pidsFromText(text));
+    }
+    return m_profile->formatDuration(m_profile->durationFromText(text));
+}
+
+QValidator::State LimitValidator::validate(QString &input, int &pos) const
+{
+    Q_UNUSED(pos)
+    return input == spelled(input) ? Acceptable : Intermediate;
+}
+
+void LimitValidator::fixup(QString &input) const
+{
+    input = spelled(input);
 }
 
 QString BoxProfile::formatMemory(int mib) const

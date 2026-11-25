@@ -55,4 +55,10 @@ QStringList ktarSets(const QString &dir, int max, int scanLimit);
  * are dropped from it, and `now` is added when the answer is yes. */
 bool startAllowed(QList<qint64> &starts, qint64 now, int max, qint64 windowMs);
 
+/* Whether an evaluation brings only this account into step: the session's
+ * first evaluation, not forced, in an account with no `markerPath` yet. The
+ * accent file cannot decide it, because /etc/skel seeds one in every home;
+ * the marker lives under the state directory, which skel does not seed. */
+bool accountOnlyRun(const QString &markerPath, bool firstEvaluation, bool forced);
+
 }

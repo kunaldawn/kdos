@@ -10,7 +10,7 @@
 
 name        = dsdcc
 version     = 1.9.6
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/f4exb/dsdcc/archive/refs/tags/v$version.tar.gz
 sha256      = 43505fe537b12492860a44d0373b6b2a7edacbaec058160b5007c341af1b40d9  dsdcc-1.9.6.tar.gz
 description = Digital voice decoder for D-STAR, DMR, dPMR, NXDN and YSF, and the dsdccx tool

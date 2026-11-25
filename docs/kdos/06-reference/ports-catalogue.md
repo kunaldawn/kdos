@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,399 recipes under `ports/core` and the
-43 recipes KDOS writes itself under `src/`, 2,442 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,402 recipes under `ports/core` and the
+44 recipes KDOS writes itself under `src/`, 2,446 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -92,8 +92,9 @@ Within each table, ports are in alphabetical order. The version is the recipe's 
 and the description is its `description =` value, reworded where that line praises the software,
 carries a typo or an aside, or does not plainly say what the software is. The phase column names the
 phase that first installs the port, and any later phase whose list names it again. "As a dependency"
-marks a port that phase installs without its list naming it, "by script" the one port a
-`10_bootstrap` step builds and no list names, and "not built" the recipe no phase builds.
+marks a port that phase installs without its list naming it. "By script" would mark a port a
+`10_bootstrap` step builds and no list names, and "not built" a recipe no phase builds; no row
+carries either.
 
 ## The phases
 
@@ -109,20 +110,20 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 13 files | 185 | 185 |
-| `41_system` | System | `packages.d/`, 98 files | 1,044 | 1,044 |
-| `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 188 | 188 |
+| `41_system` | System | `packages.d/`, 98 files | 1,048 | 1,048 |
+| `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | Applications | `packages.d/`, 61 files | 422 | 422 |
-| `50_desktop` | Desktop | `packages.txt` | 91 | 91 |
+| `50_desktop` | Desktop | `packages.txt` | 92 | 92 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,445 | 2,440 |
+| Total | | | 2,451 | 2,446 |
 
-The lists hold 2,445 lines naming 2,436 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,440 ports. With `kdos-installer`, which
-`10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
-a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
-`testing/bookcounts.py` fails on any other recipe no phase builds.
+The lists hold 2,451 lines naming 2,442 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,446 ports, every recipe in the tree.
+`ports/unbuilt` names the recipes kept for `kpkg install` that no phase builds, each to be
+marked `not built` in their tables; it lists 0. `testing/bookcounts.py` fails on any other recipe
+no phase builds.
 
 ### Built by script
 
@@ -159,7 +160,8 @@ are installed again as packages by a later phase, which is the phase the tables 
 Two of KDOS's own programs are built here from `src/system`, because nothing can read a recipe
 before `kpkg` exists. `120_kpkg.sh` compiles the package manager from `src/system/kdos-kpkg`, which
 has no recipe and is not catalogued. `130_kinstall.sh` compiles the installer from the sources of
-the `kdos-installer` port, which no list names; it is catalogued under [src/system](#srcsystem).
+the `kdos-installer` port, which `41_system`'s list names; the package that phase builds adopts the
+`/usr/bin/kinstall` the step left unowned, and it is catalogued under [src/system](#srcsystem).
 
 ## Ports per shelf
 
@@ -214,7 +216,7 @@ Every recipe, counted by where it lives.
 | [`3d`](#3d) | 17 |
 | [`cad`](#cad) | 17 |
 | [`fabrication`](#fabrication) | 13 |
-| [`fonts`](#fonts) | 26 |
+| [`fonts`](#fonts) | 29 |
 | [`themes`](#themes) | 12 |
 | [`xdg`](#xdg) | 20 |
 | [`accessibility`](#accessibility) | 10 |
@@ -272,8 +274,8 @@ Every recipe, counted by where it lives.
 | [`src/system`](#srcsystem) | 8 |
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
-| [`src/daemons`](#srcdaemons) | 6 |
-| Total | 2,442 |
+| [`src/daemons`](#srcdaemons) | 7 |
+| Total | 2,446 |
 
 ## The shelves
 
@@ -883,7 +885,7 @@ Documentation toolchains, man pages, markup converters and TeX typesetting. 28 p
 | `smu` | 1.5 | Markdown to HTML in one C file | `40_lang` |
 | `texinfo` | 7.3 | Programs for reading, writing, and converting info pages | `30_foundation` |
 | `texlive` | 20260301 | TeX, LaTeX, pdfTeX, XeTeX, LuaTeX, MetaPost, BibTeX and dvips from TeX Live 2026, with a curated texmf tree | `42_graphics` |
-| `texlive-doc` | 20260301 | The English manuals and examples of every TeX Live 2026 package the texlive port ships, for texdoc | not built |
+| `texlive-doc` | 20260301 | The English manuals and examples of every TeX Live 2026 package the texlive port ships, for texdoc | `42_graphics` |
 | `texstudio` | 4.9.8 | LaTeX editor — completion, live PDF preview with SyncTeX, spelling and grammar checking | `44_apps` |
 | `typst` | 0.15.1 | Markup-based typesetting system | `40_lang` |
 | `xmlto` | 0.0.29 | Front-end to an XSL toolchain | `30_foundation` |
@@ -921,8 +923,8 @@ Notes:
 - `texlive`: `fmtutil.cnf`, `updmap.cfg` and the language
   files are written from the cut packages alone, because an entry for a package that is not shipped
   makes fmtutil and updmap fail.
-- `texlive-doc`: listed in `ports/unbuilt`, so no phase builds it and the image does not carry it;
-  `kpkg install texlive-doc` builds it on a machine. It cuts the same texmf tarball and
+- `texlive-doc`: `42_graphics` builds it after `texlive` and the binhost carries it; `ports/base`
+  does not name it, so the image does not carry it. It cuts the same texmf tarball and
   `texlive.tlpdb` as `texlive`, and its `TL_ROOTS` must equal `texlive`'s, or `texdoc` lists
   packages whose manuals are missing and the package ships manuals for packages that are not
   installed. The two share `group = texlive`, so they are bumped together. The package-time prune
@@ -2811,7 +2813,7 @@ Notes:
 
 ### fonts
 
-Font packages, and font libraries and tooling. 26 ports, under `ports/core/fonts/`.
+Font packages, and font libraries and tooling. 29 ports, under `ports/core/fonts/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -2833,6 +2835,9 @@ Font packages, and font libraries and tooling. 26 ports, under `ports/core/fonts
 | `mkfontscale` | 1.2.4 | Create an index of scalable font files for X | `41_system` |
 | `nerd-fonts-symbols` | 3.5.1 | Symbols Nerd Font — the icon codepoints a patched font carries, as a fallback face | `41_system` |
 | `noto-cjk` | 2.004 | Noto Sans CJK — Chinese, Japanese and Korean coverage in one collection | `41_system` |
+| `noto-cjk-prefer-ja` | 1 | Noto Sans CJK JP first for sans-serif, serif and monospace — Japanese Han glyph forms | `41_system` |
+| `noto-cjk-prefer-ko` | 1 | Noto Sans CJK KR first for sans-serif, serif and monospace — Korean Han glyph forms | `41_system` |
+| `noto-cjk-prefer-zh` | 1 | Noto Sans CJK SC first for sans-serif, serif and monospace — Simplified Chinese Han glyph forms | `41_system` |
 | `noto-emoji` | 2.051 | Noto Color Emoji — the desktop's colour emoji face | `43_toolkits` |
 | `noto-fonts` | 2.015 | Noto Sans and Noto Sans Mono — the desktop's proportional and fixed faces | `41_system` |
 | `noto-fonts-extra` | 1 | Noto Sans coverage for Arabic, Hebrew, Indic, Sinhala, Thai, Lao, Khmer, Myanmar, Ethiopic, Georgian and Armenian | `41_system` |
@@ -3437,7 +3442,7 @@ thumbnailers, Plasma integration, KDE Wayland glue. 71 ports, under `ports/core/
 | `plasma-integration` | 6.8.2 | Qt platform theme that gives every Qt 6 and KF6 application the KDE palette, fonts, icons and file dialogs | `43_toolkits` |
 | `plasma-nm` | 6.8.2 | Plasma network applet, connection editor and Wi-Fi, mobile broadband and VPN settings over NetworkManager | `50_desktop` |
 | `plasma-pa` | 6.8.2 | Plasma volume applet, audio settings page and volume keys, over PulseAudio's protocol | `50_desktop` |
-| `plasma-setup` | 6.8.2 | First-boot setup wizard — creates the first account and sets language, keyboard, time zone and network | `50_desktop` |
+| `plasma-setup` | 6.8.2 | First-boot setup wizard — creates the first account and sets keyboard, time zone and network | `50_desktop` |
 | `plasma-wayland-protocols` | 1.23.0 | KDE Plasma Wayland protocol definitions | `43_toolkits` |
 | `plasma-welcome` | 6.8.2 | Plasma Welcome Center — the first-login tour, the post-update page and distribution pages | `50_desktop` |
 | `plasma-workspace` | 6.8.2 | KDE Plasma workspace — plasmashell, session start and shutdown, KRunner, notifications, the panel applets and the workspace settings | `50_desktop` |
@@ -4545,6 +4550,12 @@ Printing, printer drivers, labels, scanning and OCR. 28 ports, under `ports/core
 
 Notes:
 
+- `cups`: `local-names-through-avahi.patch` makes libcups ask Avahi for a `.local` host name that
+  `getaddrinfo()` cannot resolve, because musl has no NSS and no nss-mdns; without it a printer
+  DNS-SD discovered cannot be added by its name.
+- `cups-browsed`: linked with `-z stack-size=8388608`: its queue-creation thread overflows musl's
+  128 KiB default thread stack inside libcupsfilters, and the daemon crash-loops as soon as an IPP
+  printer is announced.
 - `cups-filters`: every filter is named on the configure line: each switch answers a missing
   dependency by turning its filter off, and the package then installs and cannot render a PDF, an
   image or a PostScript job. foomatic-rip is C17 code, in which `()` is not `(void)`. The install
@@ -5603,7 +5614,8 @@ image. `src/libs` holds the `libk*` libraries these programs compile in; it hold
 ### src/system
 
 The system layer: the `kdos` command and its services, packs and boxes, the box socket, the
-installer, and the two books on the image. On the `PORT_REPO` of every phase from `40_lang` to
+installer, and the two books: the KDOS book, which the image carries, and *KDOS from Scratch*,
+which `sudo kdos update install kdos-kfs` adds. On the `PORT_REPO` of every phase from `40_lang` to
 `60_kernel`. 8 ports.
 
 | Port | Version | Description | Phase |
@@ -5612,7 +5624,7 @@ installer, and the two books on the image. On the `PORT_REPO` of every phase fro
 | `kdos-boxinit` | 0.1.0 | pid 1 inside a pack box, in place of distrobox-init | `41_system` |
 | `kdos-boxsock` | 0.2.0 | Per-launcher tagged Wayland socket in a box's private runtime directory — the security-context-v1 engine | `42_graphics` |
 | `kdos-doc` | 1.0.0 | The KDOS book as HTML, kdos(7), kdos-doc and a manual page per kdos-* command | `41_system` |
-| `kdos-installer` | 5.0 | KDOS installer — the terminal wizard and the headless backend, C with no libraries | `10_bootstrap` (by script) |
+| `kdos-installer` | 5.0 | KDOS installer — the terminal wizard and the headless backend, C with no libraries | `41_system` |
 | `kdos-kfs` | 1.0.0 | KDOS from Scratch, the build book, as HTML and one PDF | `41_system` |
 | `kdos-pack` | 0.1.0 | Build, sign, index and delta packs | `41_system` |
 | `kdos-tools` | 1.3.0 | KDOS system tools — kdos, services, getty, slots, fetch | `42_graphics` |
@@ -5714,11 +5726,13 @@ Notes:
 
 ### src/daemons
 
-The root daemons. On the `PORT_REPO` of `50_desktop` only. 6 ports.
+The root daemons, and `kdos-mdnsd`, which drops to `nobody`. On the `PORT_REPO` of `50_desktop`
+only. 7 ports.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `kdos-energyd` | 0.2.0 | Relative per-app Energy Impact from RAPL, attributed by container | `50_desktop` |
+| `kdos-mdnsd` | 0.2.1 | DNS answers for .local host names, asked of Avahi | `50_desktop` |
 | `kdos-oomd` | 0.2.0 | PSI-triggered memory-pressure killer that spares the desktop | `50_desktop` |
 | `kdos-packd` | 0.1.0 | Mounts packs, composes box root filesystems, verifies signatures | `50_desktop` |
 | `kdos-powerd` | 0.2.0 | The firewall's named services and the look of the machine before a login, for a desktop that is not root | `50_desktop` |

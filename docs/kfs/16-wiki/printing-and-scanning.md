@@ -30,14 +30,18 @@ Three service scripts are part of the base filesystem, in `fs/etc/init.d`:
 | `81_cups-browsed.sh` | [`cups-browsed`]{.idx} | `cups-browsed` | Adds printers shared on the network to CUPS as they appear |
 | `82_ipp-usb.sh` | [`ipp-usb`]{.idx} | `ipp-usb` | Serves each IPP-over-USB device on localhost as it is plugged in |
 
-The live medium starts all three. The installer turns CUPS off on an installed system unless you
-turn it on: in its list of service choices, the last field of each entry is whether it starts
-ticked:
+The live medium starts all three, and so does an installed system unless you turn printing off in
+the installer: in its list of service choices, the last field of each entry is whether it starts
+ticked, and CUPS starts ticked:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=09936ab49b18 -->
 
-The installer's choice writes [`/etc/service.disabled/cups`]{.idx} and nothing else, so `81_cups-browsed`
-and `82_ipp-usb` still start at boot.
+Unticking it writes [`/etc/service.disabled/cups`]{.idx}, which covers the two companions as well:
+`81_cups-browsed` and `82_ipp-usb` exist to hand printers to `cupsd`, so they run only while it
+does. `80_cups.sh` starts each after `cupsd` unless that companion has a marker of its own, and
+stops both before `cupsd`; started any other way while `cupsd` is not supervised, each prints
+`[SKIP] <name>: CUPS is off` and starts nothing. A scanner that speaks IPP over USB reaches SANE only
+through `ipp-usb`, so it also needs CUPS running.
 
 ## Configuration
 
@@ -50,12 +54,15 @@ no flag; `ipp-usb` runs in `standalone` mode, which keeps it running between dev
 
 <!-- kfs:include fs/etc/init.d/82_ipp-usb.sh -->
 
+`81_cups-browsed.sh` has the same shape and the same check for a running `cupsd`, and runs
+`cups-browsed` with no argument.
+
 ### Who may manage printers
 
 CUPS is configured with [`lpadmin`]{.idx} and `root` as its administrative groups, runs filters as `lp`, and listens
 on a local socket under [`/run/cups`]{.idx}:
 
-<!-- kfs:include ports/core/printing/cups/build.sh lines=23-28 pin=f36619f7c808 -->
+<!-- kfs:include ports/core/printing/cups/build.sh lines=26-31 pin=f36619f7c808 -->
 
 The `kdos` account is in `lpadmin`, in the shipped `/etc/group`:
 
@@ -64,7 +71,7 @@ The `kdos` account is in `lpadmin`, in the shipped `/etc/group`:
 A password asked for by the web interface is checked through PAM, with the file the cups port
 writes:
 
-<!-- kfs:include ports/core/printing/cups/build.sh lines=46-51 pin=06a021f5fcdc -->
+<!-- kfs:include ports/core/printing/cups/build.sh lines=49-54 pin=06a021f5fcdc -->
 
 ### /etc/cups/
 
@@ -105,9 +112,12 @@ drives over raw USB rather than through CUPS, go to `lpadmin` instead, in
 
 ## Usage
 
-### Turning CUPS on (installed system)
+### Turning CUPS on and off (installed system)
 
-1. Enable it for every boot, and start it:
+CUPS runs on an installed system by default. If printing was turned off in the installer, or a
+machine was installed from KDOS 0.2, whose installer left it off:
+
+1. Enable it for every boot, and start it; `cups-browsed` and `ipp-usb` start with it:
 
    ```bash
    sudo service enable cups
@@ -120,6 +130,9 @@ drives over raw USB rather than through CUPS, go to `lpadmin` instead, in
    service status cups
    lpstat -r
    ```
+
+To turn printing off, `sudo service disable cups` and `sudo service stop cups`; the stop takes
+`cups-browsed` and `ipp-usb` down first, and at the next boot both skip with `CUPS is off`.
 
 ### Adding a printer from the desktop
 
@@ -152,6 +165,10 @@ queue while a job prints.
    ```bash
    lpadmin -p office -v 'ipp://printer.local/ipp/print' -m everywhere -E
    ```
+
+   `printer.local` resolves like any host name, through dnsmasq and `kdos-mdnsd`, which ask
+   Avahi (see [.local names through DNS](avahi-and-mdns.md#local-names-through-dns)), so
+   `ping printer.local` and the printer's web page at `http://printer.local` work as well.
 
    For a printer that needs a driver, find its model with `lpinfo -m` and give that name to `-m`
    in place of `everywhere`. `lpinfo -m` lists every model the drivers on the image cover, over
@@ -248,8 +265,10 @@ the authority CUPS checks. Root is granted the same, so the commands work under 
 
 ## Troubleshooting
 
-**`lpstat` says the scheduler is not running.** On an installed system CUPS is off unless it was
-chosen at install time. See [Turning CUPS on](#turning-cups-on-installed-system). Otherwise:
+**`lpstat` says the scheduler is not running.** CUPS was unticked at install time, the machine was
+installed from KDOS 0.2, or `cupsd` is failing. `service list` shows `cups` as `[DISABLED]` for
+the first two; see [Turning CUPS on and off](#turning-cups-on-and-off-installed-system).
+Otherwise:
 
 ```bash
 cat /run/kdos-init.cups.log
@@ -260,6 +279,13 @@ A running service reports `[ OK ] cupsd  (pid N)` to `service status cups`.
 
 **The Printers page says the print service is not available.** The scheduler is down; the
 procedure above starts it. `lpstat -r` says `scheduler is running` or `scheduler is not running`.
+
+**Adding a discovered printer fails with `Unable to connect to <host>.local:<port>: Name does not
+resolve`.** Neither the C library, through dnsmasq and `kdos-mdnsd`, nor CUPS's own question
+to Avahi got an address. Check that Avahi runs (`service status avahi`), that `getent hosts
+<host>.local` prints an address (see [Avahi and mDNS](avahi-and-mdns.md#troubleshooting)), and
+that `avahi-resolve-host-name -4 <host>.local` does; if it does not, the printer is not answering mDNS on this network, and adding it by
+address works: `lpadmin -p <name> -v ipp://<address>:<port>/ipp/print -m everywhere -E`.
 
 **`lpadmin -m everywhere` fails.** `IPP Everywhere driver requires an IPP connection.` means the
 URI is not `ipp://` or `ipps://`: the printer is on another backend and needs a driver from
@@ -276,7 +302,9 @@ system groups, `lpadmin` and `root`: run it as a member of `lpadmin`, or with `s
 
 **A job stays in the queue.** `lpstat -t` shows the queue's state and the printer's last message.
 CUPS's log is `/var/log/cups/error_log`; for more detail, run `cupsctl --debug-logging`, print
-again, and read it.
+again, and read it. A job for a network printer that is still busy waits in five-second steps
+until the printer is idle; see
+[Known gaps](../../kdos/06-reference/known-gaps.md#a-job-for-a-busy-network-printer-waits-in-five-second-steps).
 
 **A USB printer is not found.** Ask `ipp-usb` what it sees:
 

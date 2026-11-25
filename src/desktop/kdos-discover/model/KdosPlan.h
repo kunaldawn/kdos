@@ -12,12 +12,17 @@
  * over, so each is checked against the id rule before it is placed in a step,
  * and a step is run with a program and its arguments, no shell between.
  *
- * A HOST PORT IS SHOWN BEFORE IT IS INSTALLED. Its plan opens with the dry
- * run of the same install, which needs no root: what it prints becomes the
- * question Discover asks (Transaction::proceedRequest), and only a yes
- * reaches pkexec and the password. A dry run that refuses ends the plan
- * there, with its reason, and nobody is asked for a password for an install
- * that would refuse.
+ * A HOST PORT IS SHOWN BEFORE IT IS INSTALLED OR REMOVED. Its plan opens
+ * with the dry run of the same install or removal, which needs no root: what
+ * it prints becomes the question Discover asks (Transaction::proceedRequest),
+ * and only a yes reaches pkexec and the password. A dry run that refuses ends
+ * the plan there, with its reason, and nobody is asked for a password for a
+ * change that would refuse.
+ *
+ * A BOX IS ASKED ABOUT BEFORE IT IS REMOVED. A box's removal deletes the
+ * container with every package installed in it, its profile and its
+ * launchers, which no later install gives back, so its plan opens with an Ask
+ * step: a question with no program, and only a yes reaches `kdos-box stop`.
  *
  * THE PLAN PREFERS A PACK TO A BUILD. A catalogue row whose pack is already in
  * the pack store, or on the medium, becomes a box over that pack in seconds
@@ -52,11 +57,14 @@ struct Step {
         Run, // program + arguments
         Packd, // one request line to kdos-packd
         Preview, // program + arguments printing a dry run, asked about before the next step
+        Ask, // no program: `question` and `questionText` asked before the next step
     };
     Kind kind = Kind::Run;
     QString program;
     QStringList arguments;
     QString request;
+    QString question; // an Ask step's dialog title
+    QString questionText; // an Ask step's question, rich text with every name escaped
     Meter meter = Meter::None;
     int units = 1; // this step's share of the transaction's progress
     bool downloads = false; // the step reaches the network
@@ -85,7 +93,8 @@ struct Plan {
 Plan installPlan(const Entry &entry, const PlanContext &ctx);
 // Every removal of a box stops it first: a box stays up after its
 // application's last window closes until it stops itself, and `kdos-box
-// remove` refuses a running container.
+// remove` refuses a running container. The removal of a box on its own (the
+// Box lane) asks first, with what goes and what stays.
 Plan removePlan(const Entry &entry, const PlanContext &ctx);
 
 // The packd request that a kdos-box or kdos-appbox step would otherwise need

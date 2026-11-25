@@ -31,6 +31,20 @@
  * conflicts while a removal is rewriting the table decides against files that
  * are about to be gone.
  *
+ * A removed package leaves the world set and the origin record
+ * (`<root>/var/lib/kdos/world`, `<root>/var/lib/kdos/origin`, kdos update):
+ * a name left in the world set is installed again by the next update, which
+ * takes the world set as what somebody asked for. Each file is rewritten
+ * whole, once per run, and only when a name was removed and the file is
+ * there; a name that was not installed stays in both.
+ *
+ * The removal reaches this root alone. The other A/B slot is a root of its
+ * own: an update that has filled it installed the package there too, and its
+ * arm gave it a copy of the world set and the origin record, so a removal
+ * after the arm leaves the package installed and listed in the slot that
+ * boots next, and every update from that slot keeps it. It is removed there
+ * by running the removal again once that slot is running.
+ *
  * A name that is not installed is reported and skipped, never fatal. A check
  * inside the loop with an `exit 1` makes `kpkgdel a bogus c` remove `a`, then
  * stop and never touch `c` — while reporting only that `bogus` was not
@@ -38,6 +52,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -213,6 +228,51 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig,
 	return 0;
 }
 
+/* The first word of a world or origin line: leading blanks skipped, cut at
+ * a blank, a carriage return or a `#`, the way kdos update reads both. */
+static int line_names(const char *l, const char *const *names, const int *gone,
+		      int n)
+{
+	l += strspn(l, " \t");
+	size_t w = strcspn(l, " \t\r#");
+	for (int i = 0; i < n; i++)
+		if (gone[i] && strlen(names[i]) == w && !strncmp(l, names[i], w))
+			return 1;
+	return 0;
+}
+
+/* Every line naming a removed package dropped from <root>/<rel>, the file
+ * written whole: one cut short by a crash would lose every name after the
+ * cut. An absent file is left absent. */
+static int drop_names(const char *root, const char *rel,
+		      const char *const *names, const int *gone, int n)
+{
+	char *p = kb_path_join(root, rel);
+	char *data = kb_read_all(p, NULL);
+	int rc = 0, dropped = 0;
+	if (data) {
+		KbBuf b = {0};
+		kb_buf_str(&b, "");
+		for (char *l = data, *nl; l && *l; l = nl) {
+			nl = strchr(l, '\n');
+			if (nl)
+				*nl++ = 0;
+			if (line_names(l, names, gone, n))
+				dropped = 1;
+			else
+				kb_buf_printf(&b, "%s\n", l);
+		}
+		if (dropped && kb_write_file_atomic(p, b.p) != 0) {
+			kp_err("cannot rewrite %s: %s", p, strerror(errno));
+			rc = -1;
+		}
+		kb_buf_free(&b);
+		free(data);
+	}
+	free(p);
+	return rc;
+}
+
 int del_main(int argc, char **argv)
 {
 	KpConf c;
@@ -249,16 +309,19 @@ int del_main(int argc, char **argv)
 	}
 
 	const char *root = c.root[0] ? c.root : "/";
-	if (access(root, W_OK) != 0) {
-		kp_err("cannot write to %s — run as root", root);
+	if (kp_root_unwritable(root)) {
+		free(names);
 		return 1;
 	}
 
 	int lock = kp_db_lock(&c);
 	if (lock < 0) {
-		char *db = kp_db_dir(&c);
-		kp_err("cannot lock the package database %s", db);
-		free(db);
+		int e = errno;
+		char shown[1100];
+		kp_db_shown(&c, shown, sizeof(shown));
+		kp_err("cannot lock the package database %s: %s", shown,
+		       strerror(e));
+		free(names);
 		return 1;
 	}
 
@@ -267,10 +330,22 @@ int del_main(int argc, char **argv)
 	KpTriggers trig = {0};
 	KpDirClaims claims;
 	kp_dirclaims_load(&c, &claims);
-	for (int i = 0; i < n; i++)
+	int *gone = calloc((size_t)(n ? n : 1), sizeof(*gone));
+	int any = 0;
+	for (int i = 0; i < n; i++) {
 		if (remove_one(&c, names[i], &trig, &claims))
 			rc = 1;
+		else if (gone)
+			any = gone[i] = 1;
+	}
 	kp_dirclaims_free(&claims);
+	if (any) {
+		int w = drop_names(root, "var/lib/kdos/world", names, gone, n);
+		int o = drop_names(root, "var/lib/kdos/origin", names, gone, n);
+		if (w || o)
+			rc = 1;
+	}
+	free(gone);
 	kp_triggers_run(&trig, root);
 	close(lock);
 	free(names);

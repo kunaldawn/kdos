@@ -143,11 +143,14 @@ int kb_write_file(const char *path, const char *data)
  * found 0 bytes with every key gone, which loses `base` and makes the box
  * unstartable, on a machine where nothing was wrong but the write.
  *
- * Temp file, fsync the FILE, fsync the DIRECTORY, rename. The directory fsync
- * is the step people leave out, and without it the rename can be lost while
- * the data survives — the same rule `kdos-bootctl` keeps for the A/B state
- * file on the ESP, applied to every state file that cannot afford to come
- * back empty.
+ * Temp file, fsync the FILE, rename, fsync the DIRECTORY. Without the
+ * directory fsync the rename can be lost while the data survives, so every
+ * state file that cannot afford to come back empty is written this way. On
+ * filesystems that write directory entries through the directory, the
+ * directory fsync carries the rename; on Linux vfat it does not (the reused
+ * entry is written through the renamed file's inode), so kdos-bootctl settles
+ * its ESP writes with the renamed file's fsync and a syncfs instead
+ * (esp_settle in bootctl.c).
  */
 int kb_write_file_atomic(const char *path, const char *data)
 {
@@ -251,9 +254,13 @@ const char *kb_home_dir(void)
 
 char *kb_path_join(const char *a, const char *b)
 {
-	size_t n = strlen(a) + strlen(b) + 2;
+	size_t la = strlen(a);
+	while (*b == '/')
+		b++;
+	const char *sep = (la && a[la - 1] == '/') ? "" : "/";
+	size_t n = la + strlen(b) + 2;
 	char *p = kb_calloc(1, n);
-	snprintf(p, n, "%s/%s", a, b);
+	snprintf(p, n, "%s%s%s", a, sep, b);
 	return p;
 }
 

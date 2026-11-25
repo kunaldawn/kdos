@@ -57,7 +57,7 @@ add_dependencies(boxestest kdos-appbox-real boxfake)
 
 ecm_add_test(kcmuitest.cpp
     TEST_NAME boxes_kcmuitest
-    LINK_LIBRARIES KF6::KCMUtilsQuick KF6::CoreAddons Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test Qt6::Widgets
+    LINK_LIBRARIES KF6::KCMUtils KF6::KCMUtilsQuick KF6::CoreAddons Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test Qt6::Widgets
 )
 target_compile_definitions(boxes_kcmuitest PRIVATE ${engine_defs} KCM_PLUGIN_PATH="$<TARGET_FILE:kcm_kdos_boxes>")
 add_dependencies(boxes_kcmuitest kdos-appbox-real boxfake kcm_kdos_boxes)

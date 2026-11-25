@@ -40,7 +40,9 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QValidator>
 
+#include <algorithm>
 #include <memory>
 
 using namespace Qt::StringLiterals;
@@ -188,20 +190,77 @@ private Q_SLOTS:
         module();
         QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"unconfined"_s);
         QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementTextRole).toString(), u"Not confined"_s);
-        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), u"kdos-boxsock did not answer within 1 s"_s);
+        /* The reason follows the verdict's full stop as a sentence of its
+         * own; a program name keeps its spelling. */
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), u"kdos-boxsock did not answer within 1 s."_s);
         QCOMPARE(row(u"dev"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
         QVERIFY(row(u"app.gimp"_s, Kdos::BoxListModel::SubtitleRole).toString().contains(u"Not confined"_s));
 
         /* The page's own view of the box carries the reason too. */
         open(u"app.gimp"_s);
         QCOMPARE(m_kcm->current().value(u"confinement"_s).toString(), u"unconfined"_s);
-        QCOMPARE(m_kcm->current().value(u"confinementReason"_s).toString(), u"kdos-boxsock did not answer within 1 s"_s);
+        QCOMPARE(m_kcm->current().value(u"confinementReason"_s).toString(), u"kdos-boxsock did not answer within 1 s."_s);
+
+        /* A reason written as a clause starts with a capital. */
+        put(u"run/kdos/boxes/app.gimp.state"_s,
+            u"confinement = tagged\nreason      = the box shares the session's runtime directory, so the session's own Wayland socket and bus are in reach\n"_s);
+        m_kcm->boxes()->refresh();
+        QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"tagged"_s);
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(),
+                 u"The box shares the session's runtime directory, so the session's own Wayland socket and bus are in reach."_s);
+
+        /* A reason that opens with a profile key keeps the key's spelling. */
+        put(u"run/kdos/boxes/app.gimp.state"_s,
+            u"confinement = unconfined\nreason      = wayland = no, and the box shares the session's runtime directory\n"_s);
+        m_kcm->boxes()->refresh();
+        QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"unconfined"_s);
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(),
+                 u"wayland = no, and the box shares the session's runtime directory."_s);
 
         /* A confined box has nothing to explain, whatever the file says. */
         put(u"run/kdos/boxes/app.gimp.state"_s, u"confinement = confined\nreason = stale\n"_s);
         m_kcm->boxes()->refresh();
         QTRY_COMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"confined"_s);
         QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), QString());
+    }
+
+    /* A distrobox that is not kdos-box's (kdos-fetch-app's, with no
+     * profile, entered with `distrobox enter`) has no record, and shares
+     * everything a distrobox shares: it reads as not confined, and says
+     * why. kdos-box's own boxes carry the same label and have a profile:
+     * with no record they stay unknown. A record still wins over the
+     * label. */
+    void distroboxWithoutRecordIsNotConfined()
+    {
+        put(u"fake/podman.state"_s,
+            u"container app.gimp running\n"
+            "container kdos-debian running distrobox\n"
+            "container t4 running distrobox\n"
+            "container t5 running distrobox\n"_s);
+        put(u"home/.config/kdos/boxes/t4.conf"_s, u"base=image:docker.io/library/debian:trixie\n"_s);
+        put(u"home/.config/kdos/boxes/t5.conf"_s, u"base=image:docker.io/library/debian:trixie\nhome=private\nnetwork=none\n"_s);
+        put(u"run/kdos/boxes/t4.state"_s, u"confinement = tagged\nreason = the box shares the session's runtime directory\n"_s);
+        module();
+        QTRY_COMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"unconfined"_s);
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementTextRole).toString(), u"Not confined"_s);
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(),
+                 u"It is a distrobox, which shares your home and the session's runtime directory, display and bus."_s);
+        QCOMPARE(row(u"kdos-debian"_s, Qt::DisplayRole).toString(), u"kdos-debian"_s);
+        QCOMPARE(row(u"t4"_s, Kdos::BoxListModel::ConfinementRole).toString(), u"tagged"_s);
+        QCOMPARE(row(u"t4"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), u"The box shares the session's runtime directory."_s);
+        /* A box with no label and no record still cannot be told, nor can
+         * one of kdos-box's that distrobox made and no launch recorded. */
+        QCOMPARE(row(u"app.gimp"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
+        QCOMPARE(row(u"t5"_s, Kdos::BoxListModel::StateRole).toString(), u"running"_s);
+        QCOMPARE(row(u"t5"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
+        QCOMPARE(row(u"t5"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), QString());
+
+        /* Stopped, it claims nothing. */
+        put(u"fake/podman.state"_s, u"container kdos-debian exited distrobox\n"_s);
+        m_kcm->boxes()->refresh();
+        QTRY_COMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::StateRole).toString(), u"exited"_s);
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementRole).toString(), QString());
+        QCOMPARE(row(u"kdos-debian"_s, Kdos::BoxListModel::ConfinementReasonRole).toString(), QString());
     }
 
     void confinementRecord()
@@ -247,8 +306,12 @@ private Q_SLOTS:
         const auto rows = Kdos::BoxListModel::parseListing(
             u"[{\"name\":\"app.x\",\"base\":\"pack:app.x\",\"state\":\"running\",\"persistence\":\"persistent\",\"accent\":\"ice\",\"disk\":1024,\"created\":1790000000},"
             "{\"name\":\"later\",\"base\":\"\",\"state\":\"not created\",\"persistence\":\"ephemeral\",\"accent\":\"session\",\"disk\":0,\"created\":0},"
-            "{\"name\":\"../evil\",\"state\":\"running\"}]"_s);
-        QCOMPARE(rows.size(), 2);
+            "{\"name\":\"../evil\",\"state\":\"running\"},"
+            "{\"name\":\"kdos-debian\",\"base\":\"\",\"state\":\"running\",\"manager\":\"distrobox\"}]"_s);
+        QCOMPARE(rows.size(), 3);
+        QCOMPARE(rows.at(0).confinement, QString());
+        QCOMPARE(rows.at(2).confinement, u"unconfined"_s);
+        QVERIFY(rows.at(2).confinementReason.startsWith(u"It is a distrobox"_s));
         QCOMPARE(rows.at(0).accent, u"ice"_s);
         QCOMPARE(rows.at(0).created.toSecsSinceEpoch(), 1790000000);
         QCOMPARE(rows.at(0).diskBytes, 1024);
@@ -314,12 +377,72 @@ private Q_SLOTS:
         QCOMPARE(p.mechanisms()->value(u"x11"_s).toString(), u"no cookie in its runtime folder"_s);
     }
 
+    /* A limit field's text is final only in its value's own spelling, so a
+     * value is not taken under the cursor while it is typed; Return gives
+     * what was typed that spelling, and each spelling reads back as the
+     * value it spells. */
+    void limitTextIsFinalOnlyInItsSpelling()
+    {
+        Kdos::BoxProfile p;
+        int pos = 0;
+        QValidator *memory = p.limitValidator(u"memory"_s);
+        QVERIFY(memory);
+        QCOMPARE(p.limitValidator(u"memory"_s), memory);
+        for (QString typed : {u"5"_s, u"512m"_s, u"3 MiB"_s, u"1,5g"_s}) {
+            QCOMPARE(memory->validate(typed, pos), QValidator::Intermediate);
+        }
+        QString typed = u"512m"_s;
+        memory->fixup(typed);
+        QCOMPARE(typed, p.formatMemory(512));
+        QCOMPARE(memory->validate(typed, pos), QValidator::Acceptable);
+        QCOMPARE(p.memoryFromText(typed), 512);
+        typed = u"3"_s;
+        memory->fixup(typed);
+        QCOMPARE(p.memoryFromText(typed), 6);
+
+        for (int mib : {0, 6, 512, 1536, 4096}) {
+            QCOMPARE(p.memoryFromText(p.formatMemory(mib)), mib);
+        }
+        for (int tenths : {0, 5, 10, 15, 40}) {
+            QCOMPARE(p.cpusFromText(p.formatCpus(tenths)), tenths);
+        }
+        for (int n : {0, 64, 1024, 65536}) {
+            QCOMPARE(p.pidsFromText(p.formatPids(n)), n);
+        }
+        for (int s : {0, 1, 300, 3600, 5400, 86400, 90061}) {
+            QCOMPARE(p.durationFromText(p.formatDuration(s)), s);
+        }
+        QCOMPARE(p.formatDuration(5400), u"1 hour and 30 minutes"_s);
+        QCOMPARE(p.formatDuration(7200), u"2 hours"_s);
+        QCOMPARE(p.formatDuration(90061), u"1 day, 1 hour, 1 minute and 1 second"_s);
+        QString idle = u"90m"_s;
+        p.limitValidator(u"autostop"_s)->fixup(idle);
+        QCOMPARE(p.durationFromText(idle), 5400);
+        QCOMPARE(p.limitValidator(u"autostop"_s)->validate(idle, pos), QValidator::Acceptable);
+    }
+
+    /* A note that names the profile file is about the file, not the key
+     * printed above it: the last key of the report is `gpu`, a control. */
+    void profileFileNotesAreGeneral()
+    {
+        Kdos::BoxProfile p;
+        const QString bad = u"boxes/dev.conf: 'network=maybe' — network takes host, private or none; the line is ignored"_s;
+        p.applyReport(
+            u"box         = dev\n"
+            "network     = host        --network host\n"
+            "gpu         = yes         --volume /dev/dri\n"
+            "            ! "_s + bad + u"\n"_s);
+        QCOMPARE(p.generalNotes(), QStringList{bad});
+        QVERIFY(p.notes()->value(u"gpu"_s).toStringList().isEmpty());
+        QVERIFY(p.notes()->value(u"network"_s).toStringList().isEmpty());
+    }
+
     /* The same rule against what the real kdos-box prints, whatever its
      * wording: each `!` line is under the control of the key above it. */
     void eachNoteSitsUnderItsControl()
     {
         put(u"home/.config/kdos/boxes/dev.conf"_s,
-            u"base=image:docker.io/library/debian:trixie\nwayland=no\npersistence=ephemeral\naudio=no\nbogus=1\n"_s);
+            u"base=image:docker.io/library/debian:trixie\nwayland=no\npersistence=ephemeral\naudio=no\nbogus=1\nnetwork=maybe\n"_s);
         module();
         open(u"dev"_s);
         Kdos::BoxProfile *p = m_kcm->profile();
@@ -341,7 +464,7 @@ private Q_SLOTS:
             }
             const QString text = n.captured(1).trimmed();
             ++notes;
-            if (Kdos::BoxProfile::editableKeys().contains(key) && !text.contains(u"unknown key"_s)) {
+            if (Kdos::BoxProfile::editableKeys().contains(key) && !text.startsWith(u"boxes/"_s)) {
                 QVERIFY2(p->notes()->value(key).toStringList().contains(text), qPrintable(key + u": "_s + text));
             } else {
                 QVERIFY2(p->generalNotes().contains(text), qPrintable(text));
@@ -349,8 +472,34 @@ private Q_SLOTS:
         }
         QVERIFY2(notes > 0, qPrintable(rep));
         QVERIFY2(p->generalNotes().join(u' ').contains(u"unknown key 'bogus'"_s), qPrintable(p->generalNotes().join(u'|')));
+        QVERIFY2(p->generalNotes().join(u' ').contains(u"'network=maybe'"_s), qPrintable(p->generalNotes().join(u'|')));
         QVERIFY(!p->mechanisms()->value(u"network"_s).toString().isEmpty());
         QVERIFY(!p->mechanisms()->value(u"ipc"_s).toString().isEmpty());
+    }
+
+    /* kdos-box's note on the limits follows its last limit row; the page
+     * shows it under the first limit it names. */
+    void limitsNoteSitsUnderTheFirstLimitItNames()
+    {
+        put(u"home/.config/kdos/boxes/dev.conf"_s, u"base=image:docker.io/library/debian:trixie\nmemory=1G\ncpus=2\n"_s);
+        module();
+        open(u"dev"_s);
+        Kdos::BoxProfile *p = m_kcm->profile();
+        QTRY_VERIFY(p->notesLoaded());
+        const auto limitsNote = [p](const char *key) {
+            const QStringList notes = p->notes()->value(QLatin1String(key)).toStringList();
+            return std::any_of(notes.cbegin(), notes.cend(), [](const QString &n) {
+                return n.startsWith(u"the limits are"_s);
+            });
+        };
+        QVERIFY2(limitsNote("memory"), qPrintable(report(u"dev"_s)));
+        QVERIFY(!limitsNote("cpus"));
+
+        put(u"home/.config/kdos/boxes/dev.conf"_s, u"base=image:docker.io/library/debian:trixie\ncpus=2\npids=100\n"_s);
+        open(u"app.gimp"_s);
+        open(u"dev"_s);
+        QTRY_VERIFY(p->notesLoaded() && limitsNote("cpus"));
+        QVERIFY(!limitsNote("pids"));
     }
 
     /* One check box per grant name, in the order the profile spells them,
@@ -525,6 +674,159 @@ private Q_SLOTS:
         QVERIFY(m_kcm->profile()->pendingRecreate().isEmpty());
     }
 
+    /* A create-time change made with `kdos-box profile`, not on the page:
+     * the banner comes from the report's `!` line, which the page then does
+     * not show as well. */
+    void commandLineChangeShowsTheRecreateBanner()
+    {
+        put(u"fake/podman.state"_s, u"image docker.io/library/debian:trixie\n"_s);
+        QProcess p;
+        p.start(u"kdos-box"_s, {u"create"_s, u"dev"_s});
+        QVERIFY(p.waitForFinished(20000));
+        QCOMPARE(p.exitCode(), 0);
+        QVERIFY2(get(u"fake/podman.state"_s).contains(u"label dev v1."_s), qPrintable(get(u"fake/podman.state"_s)));
+        p.start(u"kdos-box"_s, {u"profile"_s, u"dev"_s, u"network=none"_s});
+        QVERIFY(p.waitForFinished(10000));
+        QCOMPARE(p.exitCode(), 0);
+
+        module();
+        open(u"dev"_s);
+        QVERIFY(m_kcm->profile()->pendingRecreate().isEmpty());
+        QTRY_VERIFY(m_kcm->needsRecreate());
+        QCOMPARE(m_kcm->recreateKeys(), QStringList{u"network"_s});
+        QCOMPARE(m_kcm->profile()->staleKeys(), QStringList{u"network"_s});
+        const QStringList reported = m_kcm->profile()->generalNotes();
+        QVERIFY(std::any_of(reported.cbegin(), reported.cend(), &Kdos::BoxesModule::isRecreateNote));
+        const QStringList shown = m_kcm->generalNotes();
+        QVERIFY(std::none_of(shown.cbegin(), shown.cend(), &Kdos::BoxesModule::isRecreateNote));
+
+        m_kcm->recreateBox();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QTRY_VERIFY(!m_kcm->needsRecreate());
+        QTRY_VERIFY(m_kcm->recreateKeys().isEmpty());
+        const QStringList after = m_kcm->profile()->generalNotes();
+        QVERIFY(std::none_of(after.cbegin(), after.cend(), &Kdos::BoxesModule::isRecreateNote));
+    }
+
+    /* A create-time setting the page changes and then sets back to what a
+     * labelled container was made with leaves no Recreate banner. */
+    void settingSetBackNeedsNoRecreate()
+    {
+        put(u"fake/podman.state"_s, u"image docker.io/library/debian:trixie\n"_s);
+        QProcess p;
+        p.start(u"kdos-box"_s, {u"create"_s, u"dev"_s});
+        QVERIFY(p.waitForFinished(20000));
+        QCOMPARE(p.exitCode(), 0);
+
+        module();
+        open(u"dev"_s);
+        const QVariant network = m_kcm->profile()->values()->value(u"network"_s);
+        const QVariant pids = m_kcm->profile()->values()->value(u"pids"_s);
+        m_kcm->profile()->values()->insert(u"network"_s, u"none"_s);
+        m_kcm->profile()->values()->insert(u"pids"_s, 512);
+        m_kcm->save();
+        QTRY_COMPARE(m_kcm->recreateKeys(), (QStringList{u"network"_s, u"pids"_s}));
+        QCOMPARE(m_kcm->profile()->pendingRecreate(), (QStringList{u"network"_s, u"pids"_s}));
+
+        m_kcm->profile()->values()->insert(u"network"_s, network);
+        m_kcm->save();
+        QTRY_COMPARE(m_kcm->profile()->pendingRecreate(), QStringList{u"pids"_s});
+        QTRY_COMPARE(m_kcm->recreateKeys(), QStringList{u"pids"_s});
+
+        m_kcm->profile()->values()->insert(u"pids"_s, pids);
+        m_kcm->save();
+        QTRY_VERIFY(m_kcm->profile()->pendingRecreate().isEmpty());
+        QTRY_VERIFY(!m_kcm->needsRecreate());
+    }
+
+    /* A key the page changed and `kdos-box profile` in a terminal set back:
+     * the labelled container's report names no key, so the page forgets
+     * the one it remembered and shows no banner when it opens again. */
+    void settingSetBackOnTheCommandLineNeedsNoRecreate()
+    {
+        put(u"fake/podman.state"_s, u"image docker.io/library/debian:trixie\n"_s);
+        QProcess p;
+        p.start(u"kdos-box"_s, {u"create"_s, u"dev"_s});
+        QVERIFY(p.waitForFinished(20000));
+        QCOMPARE(p.exitCode(), 0);
+
+        module();
+        open(u"dev"_s);
+        const QString network = m_kcm->profile()->values()->value(u"network"_s).toString();
+        m_kcm->profile()->values()->insert(u"network"_s, u"none"_s);
+        m_kcm->save();
+        QTRY_COMPARE(m_kcm->profile()->pendingRecreate(), QStringList{u"network"_s});
+        QTRY_VERIFY(m_kcm->needsRecreate());
+        m_kcm.reset();
+
+        p.start(u"kdos-box"_s, {u"profile"_s, u"dev"_s, u"network="_s + network});
+        QVERIFY(p.waitForFinished(10000));
+        QCOMPARE(p.exitCode(), 0);
+        const QString rep = report(u"dev"_s);
+        QVERIFY2(rep.contains(u"\ncreated     = matches "_s), qPrintable(rep));
+
+        module();
+        open(u"dev"_s);
+        QTRY_VERIFY(m_kcm->profile()->pendingRecreate().isEmpty());
+        QVERIFY(!m_kcm->needsRecreate());
+        QVERIFY(m_kcm->recreateKeys().isEmpty());
+        const QStringList shown = m_kcm->generalNotes();
+        QVERIFY2(std::none_of(shown.cbegin(), shown.cend(), [](const QString &n) {
+                     return n.contains(u"created"_s);
+                 }),
+                 qPrintable(shown.join(u'\n')));
+    }
+
+    /* A container with no label records nothing to compare with: the
+     * report says so, and the page keeps its own memory of the change. */
+    void unlabelledContainerKeepsThePagesMemory()
+    {
+        module();
+        open(u"dev"_s);
+        const QString network = m_kcm->profile()->values()->value(u"network"_s).toString();
+        m_kcm->profile()->values()->insert(u"network"_s, u"none"_s);
+        m_kcm->save();
+        QTRY_COMPARE(m_kcm->profile()->pendingRecreate(), QStringList{u"network"_s});
+        m_kcm.reset();
+
+        QProcess p;
+        p.start(u"kdos-box"_s, {u"profile"_s, u"dev"_s, u"network="_s + network});
+        QVERIFY(p.waitForFinished(10000));
+        QCOMPARE(p.exitCode(), 0);
+        const QString rep = report(u"dev"_s);
+        QVERIFY2(rep.contains(u"\ncreated     = unrecorded "_s), qPrintable(rep));
+
+        module();
+        open(u"dev"_s);
+        QCOMPARE(m_kcm->profile()->pendingRecreate(), QStringList{u"network"_s});
+        QVERIFY(m_kcm->needsRecreate());
+    }
+
+    /* The keys of kdos-box's "set back" sentence, alone or after the
+     * sentence naming the keys that still differ. */
+    void keysBackFromTheWrite()
+    {
+        QCOMPARE(Kdos::BoxProfile::keysBackToCreated(u"dev: written — network is what the box was created with, so it is in effect now.\n"_s),
+                 QStringList{u"network"_s});
+        QCOMPARE(Kdos::BoxProfile::keysBackToCreated(
+                     u"dev: written — memory applies at CREATE time, so run `kdos-box remove dev` and create it again for it to take effect. cpus, pids are what the box was created with, so they are in effect now. The rest applies at the box's next launch.\n"_s),
+                 (QStringList{u"cpus"_s, u"pids"_s}));
+        QVERIFY(Kdos::BoxProfile::keysBackToCreated(u"dev: written — it applies at the box's next launch.\n"_s).isEmpty());
+    }
+
+    /* The keys of the `!` line, one or several. */
+    void staleKeysFromTheNote()
+    {
+        Kdos::BoxProfile profile;
+        profile.applyReport(u"box         = dev\n"
+                            "            ! the profile was written after this box was created: network, memory differ — they apply once `kdos-box remove dev` has run and the box is made again\n"
+                            "network     = none       podman --network none\n"_s);
+        QCOMPARE(profile.staleKeys(), (QStringList{u"network"_s, u"memory"_s}));
+        profile.applyReport(u"box         = dev\nnetwork     = none       podman --network none\n"_s);
+        QVERIFY(profile.staleKeys().isEmpty());
+    }
+
     void recreateThatCannotCreateSaysSo()
     {
         /* A pack box is created through kdos-packd, which is not running
@@ -540,16 +842,170 @@ private Q_SLOTS:
         QVERIFY(profileFile(u"app.gimp"_s).contains(u"base=pack:app.gimp"_s));
     }
 
-    void removeKeepsTheProfile()
+    /* A development box is made again only by Create: no application of
+     * it starts it, and `kdos-box start` refuses a box with no container.
+     * Create reads the profile remove kept. */
+    void removeKeepsTheProfileAndCreateMakesItAgain()
     {
         module();
         open(u"dev"_s);
+        QCOMPARE(row(u"dev"_s, Kdos::BoxListModel::StateTextRole).toString(), u"Stopped"_s);
         m_kcm->removeBox();
         QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
         QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QCOMPARE(m_kcm->message(), u"dev was removed. Its settings are kept; Create makes it again from them."_s);
         QVERIFY(!get(u"fake/podman.state"_s).contains(u"container dev"_s));
         QVERIFY(!profileFile(u"dev"_s).isEmpty());
         QTRY_COMPARE(row(u"dev"_s, Kdos::BoxListModel::StateRole).toString(), u"not created"_s);
+        QVERIFY(row(u"dev"_s, Kdos::BoxListModel::KeptRole).toBool());
+        QCOMPARE(row(u"dev"_s, Kdos::BoxListModel::StateTextRole).toString(), u"Removed — settings kept"_s);
+        QTRY_VERIFY(m_kcm->current().value(u"kept"_s).toBool());
+        QCOMPARE(m_kcm->current().value(u"stateText"_s).toString(), u"Removed — settings kept"_s);
+
+        m_kcm->createBox();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QCOMPARE(m_kcm->message(), u"dev was created from its settings."_s);
+        QVERIFY2(calls().contains(u"distrobox create --name dev"_s), qPrintable(calls()));
+        QVERIFY(get(u"fake/podman.state"_s).contains(u"container dev created"_s));
+        QTRY_VERIFY(m_kcm->current().value(u"created"_s).toBool());
+        QVERIFY(!row(u"dev"_s, Kdos::BoxListModel::KeptRole).toBool());
+        /* The profile create wrote is the kept one, its settings intact. */
+        QVERIFY(profileFile(u"dev"_s).contains(u"display=floating"_s));
+    }
+
+    /* A store box whose application's uninstall released its image is
+     * made again only by installing the application: the listing says the
+     * image is absent and the page offers no Create. */
+    void storeBoxWithoutItsImageIsNotCreatable()
+    {
+        put(u"fake/podman.state"_s,
+            u"container dev exited\n"
+            "image docker.io/library/debian:trixie\n"
+            "image kdos/app.there\n"_s);
+        put(u"home/.config/kdos/boxes/app.zathura.conf"_s, u"# kept by kdos-box remove; remove --purge deletes it\nbase=image:kdos/app.zathura\n"_s);
+        put(u"home/.config/kdos/boxes/app.there.conf"_s, u"base=image:kdos/app.there\n"_s);
+        put(u"home/.config/kdos/boxes/myzat.conf"_s, u"base=image:kdos/app.zathura\n"_s);
+        module();
+        QTRY_VERIFY(m_kcm->boxes()->indexOf(u"app.zathura"_s) >= 0);
+        QVERIFY(row(u"app.zathura"_s, Kdos::BoxListModel::KeptRole).toBool());
+        open(u"app.zathura"_s);
+        QVERIFY(m_kcm->current().value(u"appBox"_s).toBool());
+        QVERIFY(m_kcm->current().value(u"appMissing"_s).toBool());
+        open(u"app.there"_s);
+        QVERIFY(!m_kcm->current().value(u"appMissing"_s).toBool());
+        /* A box made on the application's image needs it as much. */
+        QTRY_VERIFY(m_kcm->boxes()->indexOf(u"myzat"_s) >= 0);
+        open(u"myzat"_s);
+        QVERIFY(m_kcm->current().value(u"appMissing"_s).toBool());
+        /* A pack box never reads as a missing application. */
+        open(u"app.later"_s);
+        QVERIFY(!m_kcm->current().value(u"appMissing"_s).toBool());
+
+        /* kdos-box itself refuses, and asks no registry. */
+        QProcess p;
+        p.start(u"kdos-box"_s, {u"create"_s, u"app.zathura"_s});
+        QVERIFY(p.waitForFinished(10000));
+        QVERIFY(p.exitCode() != 0);
+        QVERIFY2(QString::fromUtf8(p.readAllStandardError()).contains(u"its application is not installed"_s), qPrintable(calls()));
+        QVERIFY2(!calls().contains(u"podman pull"_s), qPrintable(calls()));
+    }
+
+    /* An application's box is made again by its application's launch. */
+    void removingAnAppBoxSaysItsLaunchMakesIt()
+    {
+        module();
+        open(u"app.gimp"_s);
+        QVERIFY(m_kcm->current().value(u"appBox"_s).toBool());
+        m_kcm->removeBox();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
+        QCOMPARE(m_kcm->message(), u"app.gimp was removed. Its settings are kept, and it is created again the next time its application starts."_s);
+    }
+
+    void neverCreatedIsNotRemoved()
+    {
+        module();
+        QCOMPARE(row(u"app.later"_s, Kdos::BoxListModel::StateTextRole).toString(), u"Not created"_s);
+        QVERIFY(!row(u"app.later"_s, Kdos::BoxListModel::KeptRole).toBool());
+        /* Create on a box that has a container runs nothing. */
+        open(u"dev"_s);
+        m_kcm->createBox();
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Information));
+        QVERIFY(!calls().contains(u"distrobox create"_s));
+    }
+
+    /* The terminal is `kdos-box enter <box> --window`, as KRunner's verb
+     * runs it, and only for a box that has a container. */
+    void openTerminalEntersTheBox()
+    {
+        module();
+        open(u"dev"_s);
+        const QString tool = root(u"bin/kdos-box"_s);
+        QVERIFY(QDir().mkpath(root(u"real"_s)));
+        QVERIFY(QFile::link(QStringLiteral(KDOS_APPBOX_PATH), root(u"real/kdos-box"_s)));
+        QVERIFY(QFile::remove(tool));
+        put(u"bin/kdos-box"_s,
+            u"#!/bin/sh\n[ \"$1\" = enter ] && { echo \"$*\" > \"%1\"; exit 0; }\nexec \"%2\" \"$@\"\n"_s.arg(root(u"fake/enter.log"_s), root(u"real/kdos-box"_s)));
+        QVERIFY(QFile::setPermissions(tool, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        m_kcm->openTerminal();
+        QTRY_COMPARE(get(u"fake/enter.log"_s), u"enter dev --window\n"_s);
+
+        QFile::remove(root(u"fake/enter.log"_s));
+        open(u"app.later"_s);
+        m_kcm->openTerminal();
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Information));
+        QTest::qWait(300);
+        QVERIFY(!QFile::exists(root(u"fake/enter.log"_s)));
+    }
+
+    /* A development box keeps its own name whatever it exports; only an
+     * application's box takes its application's. */
+    void rowsAreNamedByWhatTheBoxIs()
+    {
+        Kdos::BoxRow dev;
+        dev.name = u"ubu"_s;
+        dev.base = u"image:ubuntu:24.04"_s;
+        dev.state = u"running"_s;
+        Kdos::BoxListModel::nameRow(dev,
+                                    {{u"ubu-galculator"_s, u"Galculator (ubu)"_s, u"galculator"_s, true},
+                                     {u"ubu-gedit"_s, u"gedit (ubu)"_s, u"gedit"_s, true}});
+        QCOMPARE(dev.displayName, u"ubu"_s);
+        QCOMPARE(dev.iconName, u"galculator"_s);
+        QCOMPARE(dev.exports, (QStringList{u"Galculator"_s, u"gedit"_s}));
+        QVERIFY(!dev.isAppBox());
+
+        Kdos::BoxRow app;
+        app.name = u"app.gimp"_s;
+        app.base = u"pack:app.gimp"_s;
+        Kdos::BoxListModel::nameRow(app, {{u"org.gimp.GIMP"_s, u"GIMP"_s, u"gimp"_s, false}});
+        QVERIFY(app.isAppBox());
+        QCOMPARE(app.displayName, u"GIMP"_s);
+        QCOMPARE(app.iconName, u"gimp"_s);
+        QVERIFY(app.exports.isEmpty());
+
+        /* An application's box whose application has gone. */
+        Kdos::BoxRow gone;
+        gone.name = u"app.mousepad"_s;
+        gone.base = u"pack:app.mousepad"_s;
+        Kdos::BoxListModel::nameRow(gone, {});
+        QCOMPARE(gone.displayName, u"mousepad"_s);
+        QCOMPARE(gone.iconName, u"preferences-security"_s);
+
+        /* A store box is an application's box too. */
+        Kdos::BoxRow deb;
+        deb.name = u"deb.galculator"_s;
+        deb.base = u"image:kdos/deb.galculator"_s;
+        QVERIFY(deb.isAppBox());
+    }
+
+    /* The `!` line kdos-box prints for a profile newer than its container
+     * is what the Recreate banner says; the page shows one of the two. */
+    void recreateNoteIsKnown()
+    {
+        QVERIFY(Kdos::BoxesModule::isRecreateNote(
+            u"the profile was written after this box was created: network differs — it applies once `kdos-box remove dev` has run and the box is made again"_s));
+        QVERIFY(!Kdos::BoxesModule::isRecreateNote(u"boxes/dev.conf: unknown key 'bogus'"_s));
     }
 
     void removingAnUncreatedBoxDeletesItsSettings()

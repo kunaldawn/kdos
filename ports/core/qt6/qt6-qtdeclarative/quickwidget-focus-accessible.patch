@@ -1,0 +1,297 @@
+Subject: QQuickWidget: announce the item a Tab or Backtab into the widget reaches
+
+QQuickWidget::focusInEvent() moves the scene's focus to its first item on
+a Tab and to its last on a Backtab. That item sends its accessible focus
+event at once, from QQuickItem::focusInEvent(), and QWidget::setFocus()
+sends the QQuickWidget's own focus event only after the FocusIn has been
+delivered. The screen reader's last focus event is therefore the
+QQuickWidget, which has no name ("layered pane" in Orca), and the control
+that holds the focus is never read.
+
+While accessibility is active, a Tab or Backtab focus-in records the item
+it reached and the count of the offscreen window's active-focus changes,
+and queues a call that runs after the widget has been announced. The call
+sends the item's focus event again if the widget still holds the focus,
+the count is unchanged and the item is not the window's content item. A
+handler that moves the focus on in between (KCMUtils' KCModuleQml does, on
+a Backtab entering a settings page) has announced its own item, and the
+count keeps the call silent, so no item is announced twice.
+
+---
+diff --git a/src/quickwidgets/qquickwidget.cpp b/src/quickwidgets/qquickwidget.cpp
+index 8bf1e6f..a905322 100644
+--- a/src/quickwidgets/qquickwidget.cpp
++++ b/src/quickwidgets/qquickwidget.cpp
+@@ -8,6 +8,9 @@
+ 
+ #include "private/qquickwindow_p.h"
+ #include "private/qquickitem_p.h"
++#if QT_CONFIG(accessibility)
++#include "private/qquickaccessibleattached_p.h"
++#endif
+ #include "private/qquickitemchangelistener_p.h"
+ #include "private/qquickrendercontrol_p.h"
+ #include "private/qsgrhisupport_p.h"
+@@ -197,6 +200,8 @@ void QQuickWidgetPrivate::initOffscreenWindow()
+ 
+ #if QT_CONFIG(accessibility)
+     QAccessible::installFactory(&qAccessibleQuickWidgetFactory);
++    QObject::connect(offscreenWindow, &QQuickWindow::activeFocusItemChanged, q,
++                     [this] { ++activeFocusSerial; });
+ #endif
+ }
+ 
+@@ -1781,8 +1786,41 @@ void QQuickWidget::focusInEvent(QFocusEvent * event)
+     }
+ 
+     d->offscreenWindow->focusInEvent(event);
++
++#if QT_CONFIG(accessibility)
++    // The item reached above sent its accessible focus event already, and
++    // QWidget::setFocus() sends this widget's own once this handler returns,
++    // so a screen reader would read the widget last and the item never. The
++    // item is announced again after the widget, unless the focus has moved
++    // in the meantime, and then whoever moved it announced the new item.
++    if ((reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason)
++        && QAccessible::isActive()) {
++        d->tabEntryItem = d->offscreenWindow->activeFocusItem();
++        d->tabEntrySerial = d->activeFocusSerial;
++        QMetaObject::invokeMethod(this, [this] { d_func()->announceTabEntry(); },
++                                  Qt::QueuedConnection);
++    }
++#endif
+ }
+ 
++#if QT_CONFIG(accessibility)
++void QQuickWidgetPrivate::announceTabEntry()
++{
++    Q_Q(QQuickWidget);
++    QQuickItem *item = tabEntryItem;
++    tabEntryItem.clear();
++    if (!item || !q->hasFocus() || tabEntrySerial != activeFocusSerial || !offscreenWindow
++        || item == offscreenWindow->contentItem() || !QQuickItemPrivate::get(item)->isAccessible
++        || !QAccessible::isActive()) {
++        return;
++    }
++    if (QObject *acc = QQuickAccessibleAttached::findAccessible(item)) {
++        QAccessibleEvent ev(acc, QAccessible::Focus);
++        QAccessible::updateAccessibility(&ev);
++    }
++}
++#endif
++
+ /*!
+    \reimp
+ */
+diff --git a/src/quickwidgets/qquickwidget_p.h b/src/quickwidgets/qquickwidget_p.h
+index bd2a7e8..81cb9aa 100644
+--- a/src/quickwidgets/qquickwidget_p.h
++++ b/src/quickwidgets/qquickwidget_p.h
+@@ -76,6 +76,9 @@ public:
+     void handleWindowAboutToChange();
+     void handleWindowChange();
+     void invalidateRenderControl();
++#if QT_CONFIG(accessibility)
++    void announceTabEntry();
++#endif
+ 
+     QSize rootObjectSize() const;
+ 
+@@ -116,6 +119,15 @@ public:
+     QBackingStoreRhiSupport offscreenRenderer;
+ 
+     QVariantMap initialProperties;
++
++#if QT_CONFIG(accessibility)
++    // The item a Tab or Backtab focus-in moved the scene's focus to, and the
++    // focus-change count at that moment; announceTabEntry() speaks the item
++    // only while the count is unchanged.
++    QPointer<QQuickItem> tabEntryItem;
++    quint64 activeFocusSerial = 0;
++    quint64 tabEntrySerial = 0;
++#endif
+ };
+ 
+ class QQuickWidgetOffscreenWindowPrivate;
+diff --git a/tests/auto/quickwidgets/qquickwidget/data/tabEntry.qml b/tests/auto/quickwidgets/qquickwidget/data/tabEntry.qml
+new file mode 100644
+index 0000000..7e79d22
+--- /dev/null
++++ b/tests/auto/quickwidgets/qquickwidget/data/tabEntry.qml
+@@ -0,0 +1,24 @@
++import QtQuick
++
++Item {
++    width: 200
++    height: 100
++
++    Rectangle {
++        objectName: "first"
++        width: 50
++        height: 50
++        activeFocusOnTab: true
++        Accessible.role: Accessible.Button
++        Accessible.name: "first"
++    }
++    Rectangle {
++        objectName: "last"
++        x: 100
++        width: 50
++        height: 50
++        activeFocusOnTab: true
++        Accessible.role: Accessible.Button
++        Accessible.name: "last"
++    }
++}
+diff --git a/tests/auto/quickwidgets/qquickwidget/tst_qquickwidget.cpp b/tests/auto/quickwidgets/qquickwidget/tst_qquickwidget.cpp
+index 6f091cd..bafb049 100644
+--- a/tests/auto/quickwidgets/qquickwidget/tst_qquickwidget.cpp
++++ b/tests/auto/quickwidgets/qquickwidget/tst_qquickwidget.cpp
+@@ -29,9 +29,11 @@
+ #include <QtQml/qqmlengine.h>
+ 
+ #include <QtCore/QLoggingCategory>
++#include <QtCore/QTimer>
+ #include <QtGui/qstylehints.h>
+ #include <QtWidgets/QBoxLayout>
+ #include <QtWidgets/QLabel>
++#include <QtWidgets/QLineEdit>
+ #include <QtWidgets/private/qapplication_p.h>
+ 
+ #include <QtQuickWidgets/QQuickWidget>
+@@ -165,6 +167,9 @@ private slots:
+     void accessibilityHandlesViewChange();
+     void accessibleParentOfQuickItems();
+     void accessibleWindowUnderNativeParent();
++    void accessibleFocusOnTabEntry_data();
++    void accessibleFocusOnTabEntry();
++    void accessibleFocusOnTabEntryMovedOn();
+ #endif
+     void cleanupRhi();
+     void dontRecreateRootElementOnWindowChange();
+@@ -1464,6 +1469,125 @@ void tst_qquickwidget::accessibleWindowUnderNativeParent()
+     // presents the other
+     QCOMPARE(rectIface->window(), quickWidgetIface->window());
+ }
++
++static QObject *lastAccessibleFocus()
++{
++    QObject *object = nullptr;
++    for (QAccessibleEvent *event : QTestAccessibility::events()) {
++        if (event->type() == QAccessible::Focus)
++            object = event->object();
++    }
++    return object;
++}
++
++static int accessibleFocusCount(QObject *object)
++{
++    int count = 0;
++    for (QAccessibleEvent *event : QTestAccessibility::events()) {
++        if (event->type() == QAccessible::Focus && event->object() == object)
++            ++count;
++    }
++    return count;
++}
++
++/*
++    A Tab or Backtab into a QQuickWidget moves the scene's focus to its first
++    or last item, whose focus event is sent before the QQuickWidget's own.
++    The last focus event a screen reader receives must be the item's, or it
++    reads the unnamed widget and never the control that holds the focus.
++*/
++void tst_qquickwidget::accessibleFocusOnTabEntry_data()
++{
++    QTest::addColumn<bool>("forward");
++    QTest::addColumn<QString>("target");
++    QTest::newRow("tab") << true << "first";
++    QTest::newRow("backtab") << false << "last";
++}
++
++void tst_qquickwidget::accessibleFocusOnTabEntry()
++{
++    QFETCH(bool, forward);
++    QFETCH(QString, target);
++    if (!initAccessibility())
++        QSKIP("This platform does not support accessibility");
++
++    QWidget window;
++    auto *layout = new QVBoxLayout(&window);
++    auto *before = new QLineEdit(&window);
++    auto *quickWidget = new QQuickWidget(&window);
++    auto *after = new QLineEdit(&window);
++    layout->addWidget(before);
++    layout->addWidget(quickWidget);
++    layout->addWidget(after);
++    quickWidget->setSource(testFileUrl("tabEntry.qml"));
++    window.show();
++    QVERIFY(QTest::qWaitForWindowActive(&window));
++
++    QQuickItem *item = quickWidget->rootObject()->findChild<QQuickItem *>(target);
++    QVERIFY(item);
++    QWidget *start = forward ? before : after;
++    start->setFocus(Qt::OtherFocusReason);
++    QTRY_VERIFY(start->hasFocus());
++    QTestAccessibility::clearEvents();
++
++    QTest::keyClick(start, Qt::Key_Tab, forward ? Qt::NoModifier : Qt::ShiftModifier);
++    QTRY_VERIFY(quickWidget->hasFocus());
++    QVERIFY(item->hasActiveFocus());
++    QTRY_COMPARE(lastAccessibleFocus(), item);
++    QTestAccessibility::clearEvents();
++}
++
++/*
++    When the focus moves on inside the scene before the queued announcement,
++    the item the focus-in reached is not announced after the widget: the
++    move announced its own item, and that stays the last focus event.
++*/
++void tst_qquickwidget::accessibleFocusOnTabEntryMovedOn()
++{
++    if (!initAccessibility())
++        QSKIP("This platform does not support accessibility");
++
++    QWidget window;
++    auto *layout = new QVBoxLayout(&window);
++    auto *before = new QLineEdit(&window);
++    auto *quickWidget = new QQuickWidget(&window);
++    layout->addWidget(before);
++    layout->addWidget(quickWidget);
++    quickWidget->setSource(testFileUrl("tabEntry.qml"));
++    window.show();
++    QVERIFY(QTest::qWaitForWindowActive(&window));
++
++    QQuickItem *first = quickWidget->rootObject()->findChild<QQuickItem *>("first");
++    QQuickItem *last = quickWidget->rootObject()->findChild<QQuickItem *>("last");
++    QVERIFY(first);
++    QVERIFY(last);
++    before->setFocus(Qt::OtherFocusReason);
++    QTRY_VERIFY(before->hasFocus());
++
++    class Mover : public QObject
++    {
++    public:
++        explicit Mover(QQuickItem *target) : m_target(target) { }
++        bool eventFilter(QObject *, QEvent *event) override
++        {
++            if (event->type() == QEvent::FocusIn)
++                QTimer::singleShot(0, m_target, [t = m_target] { t->forceActiveFocus(); });
++            return false;
++        }
++        QQuickItem *m_target;
++    } mover(last);
++    quickWidget->installEventFilter(&mover);
++    QTestAccessibility::clearEvents();
++
++    QTest::keyClick(before, Qt::Key_Tab);
++    QTRY_VERIFY(last->hasActiveFocus());
++    QTest::qWait(50);
++    QCOMPARE(lastAccessibleFocus(), last);
++    QCOMPARE(accessibleFocusCount(first), 1);
++    QCOMPARE(accessibleFocusCount(last), 1);
++    quickWidget->removeEventFilter(&mover);
++    QTestAccessibility::clearEvents();
++}
+ #endif
+ 
+ class CreateDestroyWidget : public QWidget

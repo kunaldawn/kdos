@@ -32,10 +32,12 @@ A graphical login runs this chain. Each step is a different program, and each wr
 ```
 SDDM (root, tty1)                     /var/log/sddm.log
   └─ sddm-helper: PAM session `sddm` or `sddm-autologin`
-       │   pam_unix, pam_limits, pam_turnstile, pam_elogind, pam_kwallet5
+       │   pam_unix, pam_limits, pam_turnstile, pam_elogind,
+       │   pam_kwallet5
        │   (turnstiled starts the user's services on the first login;
        │    elogind registers the session on seat0)
-       └─ kdos-session-wrapper        ~/.local/share/sddm/wayland-session.log
+       └─ kdos-session-wrapper
+            │                 ~/.local/share/sddm/wayland-session.log
             └─ plasma-dbus-run-session-if-needed
                  └─ startplasma-wayland
                       ├─ plasma-workspace/env/*.sh, sourced
@@ -43,7 +45,7 @@ SDDM (root, tty1)                     /var/log/sddm.log
                            └─ plasma_session
                                 ├─ kded6, ksmserver
                                 ├─ plasmashell
-                                └─ XDG autostart entries, in three phases
+                                └─ XDG autostart, in three phases
 ```
 
 1. **SDDM** shows the login screen on tty1 (see
@@ -90,22 +92,38 @@ The wrapper is a short shell script, run once per graphical login. Its standard
 error is the session log, `~/.local/share/sddm/wayland-session.log`; read the script to see exactly
 what a login does. In order:
 
-1. **It becomes a login shell.** It runs itself again under the user's shell with `--login` (bash
-   and zsh), or sources `/etc/profile` and `~/.profile` itself for any other shell, so
-   `/etc/profile.d` and the user's own profile reach Plasma and everything it starts, as they reach
-   a console login.
-2. **It refuses a login with no runtime directory of its own.** `XDG_RUNTIME_DIR` must name a
+1. **It becomes a login shell.** It runs itself again under the user's shell as a login shell that
+   reads no startup file itself (`bash --noprofile --login`, `zsh -l -f`), then reads that shell's
+   login files itself, in the shell's own order: `/etc/profile` and the first of `~/.bash_profile`,
+   `~/.bash_login` and `~/.profile` for bash, `~/.zshenv`, `/etc/zsh/zprofile`, `~/.zprofile`,
+   `/etc/zsh/zlogin` and `~/.zlogin` for zsh, and `/etc/profile` and `~/.profile` for any other
+   shell. So `/etc/profile.d` and the user's own profile reach Plasma and everything it starts, as
+   they reach a console login, and a profile script that exits is logged with its status.
+2. **It logs each login's stages.** Each stage writes a line to syslog under `kdos-session` and to
+   the session log. One comes before the login shell starts and names the pid, the shell,
+   `XDG_RUNTIME_DIR` and whether the bus socket is there. One comes once the profile is read, and
+   one as Plasma starts. All three name the same pid. Every way out between the first line and
+   Plasma logs at `user.err`. A refusal says why. Any other exit, a profile script's included, logs
+   its status. A `SIGTERM`, `SIGHUP` or `SIGINT` logs its signal. SDDM reports a session that ends
+   at once only as `sddm-helper exited with N`, so these lines are what names the stage; see
+   [Boot and init](boot-and-init.md#a-login-that-comes-straight-back).
+3. **It waits out the last logout's teardown.** If the user's `ksvc stop` (turnstile's backend
+   stop) is still running, the wrapper waits up to ten seconds for that process to end, and refuses
+   the session if it is still running then. After a wait it allows turnstiled one more second to
+   clear the runtime directory before it checks the directory and the bus. `pam_turnstile` holds a
+   login until that stop is over, so this should never wait.
+4. **It refuses a login with no runtime directory of its own.** `XDG_RUNTIME_DIR` must name a
    directory owned by the user; `pam_turnstile` makes it. Without it KWin cannot start, so the
    wrapper exits and the login screen comes back, with the reason in the session log and in syslog
    under `kdos-session`.
-3. **It insists on the one session bus.** It pings `unix:path=$XDG_RUNTIME_DIR/bus` for up to four
+5. **It insists on the one session bus.** It pings `unix:path=$XDG_RUNTIME_DIR/bus` for up to four
    seconds and refuses the session when nothing answers. When the login's
    `DBUS_SESSION_BUS_ADDRESS` names anything else, it logs the difference and sets the fixed
    address. `plasma-dbus-run-session-if-needed` starts a private bus whenever the variable is empty,
    and a private bus is one no box, user service or console login can reach: notifications,
    single-instance applications and the portals would all stop working with nothing on the screen
    to say why.
-4. **It settles the desktop's environment** before the first program reads it:
+6. **It settles the desktop's environment** before the first program reads it:
    `XDG_CURRENT_DESKTOP=KDE`, and `XDG_CONFIG_DIRS` as described
    [below](#the-environment-the-session-starts-with). It unsets `QT_IM_MODULE`, `QT_IM_MODULES` and
    `GTK_IM_MODULE`, so each toolkit chooses its input-method route itself
@@ -113,25 +131,28 @@ what a login does. In order:
    describe a terminal the session does not have: carried into Plasma, a terminal program Konsole
    runs for a launcher would draw at 80x24 in a larger window. A person who wants an input-method
    variable sets it in `~/.config/plasma-workspace/env/`, which Plasma reads after this.
-5. **It warms the boxes** behind the pinned favourites: `kdos-appbox warmup`, in the background at
+7. **It warms the boxes** behind the pinned favourites: `kdos-appbox warmup`, in the background at
    `nice 10`. At 19 the warm-up loses every CPU slice to the starting desktop and is still busy
    minutes later, and a launch in that window waits for it. A second warm-up while one runs does
    nothing.
-6. **It runs the `Exec=` line**, word-split as SDDM's own session script runs it and never
-   globbed.
+8. **It runs the `Exec=` line**, word-split as SDDM's own session script runs it and never
+   globbed; a first word that names no program is refused, so a failed exec cannot end the login
+   silently.
 
 The Plasma session entry, `/usr/share/wayland-sessions/plasma.desktop`, is plasma-workspace's,
 unedited. The pieces the wrapper and the environment script share are in
 `/usr/local/lib/kdos/session-common.sh`, sourced by both: `kdos_session_open` (sets `$BROWSER` to
 `xdg-open` when nothing has, so a program started by D-Bus has a link handler),
-`kdos_session_xdg_dirs` and `kdos_session_boxes`.
+`kdos_session_xdg_dirs`, `kdos_session_live_data`, `kdos_session_fcitx5_profile` (see
+[Input methods](#input-methods)) and
+`kdos_session_boxes`.
 
 ### The environment the session starts with
 
 Three sources set the environment, in the order a login meets them.
 
 **`/etc/profile.d/10-wayland.sh`** runs in every login shell: a console, the serial line, ssh, and
-the login shell the wrapper re-executes itself in. The runtime directory, the bus address, the
+the wrapper, which reads the profile itself in the login shell it re-executes itself in. The runtime directory, the bus address, the
 desktop's name and the configuration directories are filled in only where the session does not
 already carry a value; the toolkit variables below them are set outright, so a value a login
 carried in is replaced:
@@ -141,10 +162,11 @@ carried in is replaced:
 | `XDG_RUNTIME_DIR` | `/run/user/<uid>`, only when that directory exists: a shell no PAM session started (ssh) is pointed at the directory of a login that is still open, or at none |
 | `DBUS_SESSION_BUS_ADDRESS` | `unix:path=$XDG_RUNTIME_DIR/bus`, only when the socket exists, so an ssh shell reaches a running session's bus |
 | `XDG_CURRENT_DESKTOP`, `XDG_MENU_PREFIX` | `KDE` and `plasma-`, so a file opened from a console opens in the application the desktop opens it in: `kde-mimeapps.list`, where every KDOS default application is named, is read only by a program whose desktop names `KDE` |
+| `KDE_SESSION_VERSION` | `6`, the value startplasma sets: xdg-utils compares it as a number whenever the desktop is `KDE`, and with it empty `xdg-mime` prints `[: : integer expected` |
 | `XDG_CONFIG_DIRS` | `/usr/share/kdos/xdg` appended after `/etc/xdg` when missing |
 | `QT_QPA_PLATFORM` | `wayland;xcb`: Qt uses Wayland and falls back to Xwayland only when its Wayland plugin cannot start, which is a Qt 5 program built without one |
 | `QT_QPA_PLATFORMTHEME` | `kde`: a Qt 6 program finds plasma-integration's theme and the colours of `kdeglobals`; a Qt 5 program finds the `qt5ct` port's plugin under the same name, which reads the qt5ct files `kdos theme` writes |
-| `GTK_USE_PORTAL` | `1`: GTK 3's native file chooser and print dialog go through the portals, so a GTK 3 program that uses them opens the KDE file dialog, and Firefox's file picker reads the same variable. GTK 4 uses the portal without it. A program that builds GTK's own file dialog widget, such as AbiWord, keeps GTK's dialog. GTK 3 also reads its theme, fonts and other settings from the Settings portal under the variable, and its `gtk-modules` from `org.gtk.Settings`, which the patched gtk3 opens beside the portal and kde-gtk-config's kded module serves whatever the variable says (see [Portals](#portals)) |
+| `GTK_USE_PORTAL` | `1`: GTK 3's native file chooser and print dialog go through the portals, so a GTK 3 program that uses them opens the KDE file dialog, and Firefox's file picker reads the same variable. GTK 4 uses the portal without it. A program that builds GTK's own file dialog widget, such as GIMP, Inkscape or AbiWord, keeps GTK's dialog. GTK 3 also reads its theme, fonts and other settings from the Settings portal under the variable, and its `gtk-modules` from `org.gtk.Settings`, which the patched gtk3 opens beside the portal and kde-gtk-config's kded module serves whatever the variable says (see [Portals](#portals)) |
 | `GDK_BACKEND` | Not set. GDK tries Wayland first by itself, and a value would override the `GDK_BACKEND=x11` an X11-only program sets for itself |
 | `MOZ_ENABLE_WAYLAND`, `SDL_VIDEODRIVER`, `CLUTTER_BACKEND` | Wayland, for Firefox ESR, LibreWolf and Thunderbird, SDL and Clutter |
 
@@ -154,7 +176,7 @@ directory at most once:
 
 | Directory | When | What it holds |
 |---|---|---|
-| `/usr/share/kdos/xdg-live` | The root is the live medium's overlay | No file index of a home that is gone at the next boot, no timed lock and no wallet for an account with no password, no update notice, the welcome tour on its live page |
+| `/usr/share/kdos/xdg-live` | The root is the live medium's overlay | No file index of a home that is gone at the next boot, no timed lock and no wallet for the `kdos` account SDDM logs in automatically (password `kdos`, which is never typed to reach the desktop and unlocks a Meta+L lock), no update notice, the welcome tour on its live page |
 | `/usr/share/kdos/xdg-vm` | `kdos in-vm` says this is a virtual machine | No idle dimming, blanking, timed lock or idle and lid suspend, which from outside the guest look like a hung one |
 | `/etc/xdg` | Always | The machine owner's settings, and every package's autostart entries |
 | `/usr/share/kdos/xdg` | Always | Every KDOS default: `kwinrc`, `kscreenlockerrc`, `powerdevilrc`, `startkderc`, `kde-mimeapps.list`, the environment scripts below, and the rest |
@@ -168,10 +190,20 @@ login can carry one more directory first, `/etc/kdos/autologin-xdg`, which is ho
 logs in by itself starts behind the lock screen (see
 [The security model](security-model.md#the-login-stacks)).
 
+**`XDG_DATA_DIRS`** gains one directory on the live medium alone: `kdos_session_live_data` puts
+`/usr/share/kdos/data-live` in front of it once, by the same overlay-root test, keeping the
+specification's `/usr/local/share:/usr/share` behind it when the list is unset. It holds the
+desktop entries the live session starts differently, and an entry there replaces the image's of the
+same desktop id. Its one entry is Welcome Center's, whose `Exec` passes `--live-environment`, the
+argument the tour's live pages read; Welcome Center's kded module passes it at login, so the
+tour reopened from the launcher is the same live tour. An installed system's list has no such
+directory.
+
 **`plasma-workspace/env/`** in `/usr/share/kdos/xdg` holds two scripts `startplasma` sources before
 KWin starts, in one shell, keeping every variable they leave set:
 
-- `kdos.sh` runs the same `kdos_session_xdg_dirs` and `kdos_session_open`, so a
+- `kdos.sh` runs the same `kdos_session_xdg_dirs`, `kdos_session_live_data`, `kdos_session_open`
+  and `kdos_session_fcitx5_profile`, so a
   `startplasma-wayland` run by hand from a console settles the same names, exports
   `XDG_CURRENT_DESKTOP=KDE`, and sets `SSH_ASKPASS` to `ksshaskpass` when nothing has. A passphrase
   asked for with no terminal (ssh-add from an autostart entry, git or ssh run from an application)
@@ -213,7 +245,7 @@ user's first login. KDOS ships these:
 | Entry | Runs | What for |
 |---|---|---|
 | `kdos-session-good.desktop` | `kdos-notice --bless` | The second mark of a confirmed boot: once `org.kde.plasmashell` has answered for a minute, asks `kdos-sysupdated` to record that this boot reached a working desktop (see [Boot and init](boot-and-init.md#counting-and-confirming)) |
-| `kdos-notice.desktop` | `kdos-notice` | Notices for updated programs that need a restart, known vulnerabilities, a trial or rolled-back system version, a program closed to free memory, and applications chosen at install that are not installed yet |
+| `kdos-notice.desktop` | `kdos-notice` | Notices for updated programs that need a restart, known vulnerabilities, a trial or rolled-back system version, a program closed to free memory, and software chosen at install that is not installed yet. Each carries `x-kde-appname=kdos`, which names `/usr/share/knotifications6/kdos.notifyrc` ("KDOS Tools"), so it stays in the notification history and is configured on System Settings' Notifications page. The restart notice counts only replaced executable code, a program or library still mapped executable after its file was replaced (`kdos restarts`), so installing an application, whose index triggers rewrite the icon, MIME and font caches every program has mapped for reading, raises none |
 | `kdos-boxes-restore.desktop` | `kdos-appbox session restore` | The boxes of the last session, when the session is set to restore the previous one (see [Ending a session](#ending-a-session)) |
 | `kdos-fwask.desktop` | `kdos-fwask` | The firewall's "Allow on this network?" question |
 | `kdos-mpris.desktop` | `kdos-mpctl mpris` | Plasma's media controls for mpd, over MPRIS; only when mpd is installed |
@@ -236,13 +268,17 @@ The installer offers two kinds of application. The native groups (see
 [Packaging](packaging.md#groups)) are installed during the install, prebuilt from the release's
 binhost; a group that cannot be, because the network or the binhost did not answer, is written to
 the new disk's `/var/lib/kdos/groups-pending`, and `kdos update install --pending` installs it
-later. Nothing in the session reads that file.
+later. Discover does not list those groups; the first login's `kdos-notice` names each one and the
+`sudo kdos update install --pending` that installs it (`su -c 'kdos update install --pending'`
+for an account outside `wheel`, which `getgrouplist` tells it), in the same notice as the boxed selections
+below (the groups and their command first, the selections on a line after them), and withdraws the
+notice once neither file names anything.
 
 Boxed applications ticked in the installer are *offered* in the first session, never built in the
 background. `kinstall` builds none of them: it writes the chosen ids to the new disk's
 `/var/lib/kdos/apps-pending`. Discover's KDOS backend lists them under
-"Selected during install", and `kdos-notice` says once per content of the file that they are
-waiting, and withdraws the notice when the file names nothing. Building means podman and apt, which
+"Selected during install", and `kdos-notice` says once per content of the two files that they are
+waiting, with an Open Discover action whenever this file names something. Building means podman and apt, which
 can take twenty minutes or more on a machine booted for the first time, and a build that long with
 nothing on screen leaves the machine busy with no visible cause.
 
@@ -257,9 +293,13 @@ bus, the same PipeWire and the same running boxes.
 socket, `/run/turnstiled/control.sock`. At a user's first login it creates `/run/user/<uid>` (mode
 0700), runs the *backend* that starts the services, and exports `XDG_RUNTIME_DIR` and
 `DBUS_SESSION_BUS_ADDRESS` into the login once the bus answers. At the last logout it stops them and
-removes the directory. turnstile is the directory's only owner: elogind is built with its own
-runtime-directory code removed (`no-runtime-dir.patch`), because two owners would delete each
-other's directory, elogind's at its last session, under services and boxes still using it.
+removes the directory. A login lasts as long as its connection to that socket, and the module opens
+the connection close-on-exec (`session-socket-cloexec.patch`), so only the PAM caller holds the
+login: `sddm-helper` or `login` closes it when the session's process exits, and no program the
+session started, a box among them, keeps the login open after it. turnstile is the directory's
+only owner: elogind is built with its own runtime-directory code removed (`no-runtime-dir.patch`),
+because two owners would delete each other's directory, elogind's at its last session, under
+services and boxes still using it.
 Configuration is `/etc/turnstile/turnstiled.conf`.
 
 **The backend** is `/usr/lib/turnstile/ksvc`, a shell script that runs the table in
@@ -275,7 +315,7 @@ system's own `/etc/init.d` scripts:
 | `22_pipewire-pulse.sh` | `pipewire-pulse` | The PulseAudio server every Pulse client finds, the panel's volume applet among them; restarted whenever `pipewire` is |
 | `25_mpd.sh` | `mpd` | Only when a `mpd.conf` exists in one of the places mpd reads; the image ships none. It makes `$XDG_RUNTIME_DIR/mpd` first, where the socket [`kdos-mpctl`](../04-programs/kdos-command.md#kdos-mpctl) and every client `MPD_HOST` points at (`/etc/profile.d/45-mpd.sh`) reach mpd; mpd makes that directory itself only when it binds no address |
 | `30_timers.sh` | `timers` | The user's periodic jobs: every row of `/etc/kdos/user-services/timers.d` and `~/.config/kdos/timers.d`, under `snooze`, in one supervised process. Its start also builds the first file index in the background (`kdos-updatedb --if-missing`) when there is none |
-| `40_boxes.sh` | `boxes` | Starts nothing. Its `stop` runs first, because the table stops backwards, and stops every running container of the user's within thirty seconds, through `kdos-box stop`: `podman stop` signals nothing in a box that shares the host's PID namespace and has no cgroup of its own. It then ends podman's rootless pause process, by the pid in `$XDG_RUNTIME_DIR/libpod/tmp/pause.pid` |
+| `40_boxes.sh` | `boxes` | Starts nothing. Its `stop` runs first, because the table stops backwards, and stops every running container of the user's within fifteen seconds, through `kdos-box stop`: in a box that shares the host's PID namespace and has no cgroup of its own, `podman stop` reaches the box's init and its descendants and leaves running the applications its launches started. It then ends podman's rootless pause process, by the pid in `$XDG_RUNTIME_DIR/libpod/tmp/pause.pid` |
 
 Each script is asked `ready` before the next starts, so PipeWire's socket exists before WirePlumber
 connects, and the backend reports ready only after the last. turnstile holds the login until then,
@@ -514,17 +554,25 @@ OpenURI, screenshots and screen casting through KWin, remote desktop and input c
 e-mail, inhibit, background, global shortcuts, the clipboard, wallpaper, USB access, Access, and
 Settings, which hands an application the session's colour scheme, accent and fonts under
 `org.kde.*` and `org.freedesktop.appearance`. `kde-portals.conf` names `kde;gtk;` for Settings, and
-`xdg-desktop-portal-gtk` answers the keys the KDE backend does not: every `org.gnome.desktop.*`
+`xdg-desktop-portal-gtk`, which the base image carries for these keys (`default=kde` sends every
+interface a caller does not name to the KDE backend; only a caller that asks this backend by name
+gets its Print and Email), answers the keys the KDE backend does not: every `org.gnome.desktop.*`
 key (the GTK theme, icon and cursor themes, fonts, `gtk-im-module` and the window-button layout
 under `org.gnome.desktop.wm.preferences`) and `org.gnome.fontconfig`, read from the GSettings
 kde-gtk-config writes. GTK 4 on Wayland takes every one of those settings from the portal and
 none from `settings.ini`; a key no backend returns takes GTK's built-in fallback, which for
 `gtk-im-module` is `simple`, no input method, and for the button layout `menu:close`. GTK 3 on
 Wayland does the same under `GTK_USE_PORTAL=1`, on the host and in every box, except for two
-groups. `gtk-modules` and `gtk-fontconfig-timestamp` come only from kde-gtk-config's
-`org.gtk.Settings`, and the host's gtk3 is patched to open that service beside the portal, so
-`colorreload-gtk-module` loads and a running GTK 3 program repaints on a colour change; a box's own
-GTK 3 is not patched, and its filtered bus does not reach the service. `gtk-im-module` GTK 3 sets
+groups. `gtk-modules` and `gtk-fontconfig-timestamp` are not portal keys; GDK reads them from
+kde-gtk-config's `org.gtk.Settings`, and the host's gtk3 is patched to open that service beside
+the portal, so `colorreload-gtk-module` loads and a running GTK 3 program repaints on a colour
+change. GDK on Wayland answers `gtk-modules` itself from `org.gtk.Settings`, and that screen
+answer outranks the `gtk-modules=colorreload-gtk-module:window-decorations-gtk-module` line
+kde-gtk-config writes to `~/.config/gtk-3.0/settings.ini`. The box's bus proxy does not pass the
+service, and a box's own GTK 3 is not patched and does not ask for it while the Settings portal
+answers, so the answer is empty: a boxed GTK 3
+program looks for neither module, prints nothing about them and runs without them, and the box's
+runtime carries neither. `gtk-im-module` GTK 3 sets
 itself to `wayland` on a compositor that offers `text-input-v3`, above the portal's empty value
 (see [Input methods](#input-methods)). Where both
 backends answer a key, as for `org.freedesktop.appearance`, the front end takes the KDE one's.
@@ -669,6 +717,33 @@ KWin offers the input-method protocol to that one process and to no other client
 engines are set on System Settings' Input Method page (`fcitx5-configtool`), and the Virtual
 Keyboard page chooses between fcitx5 and an on-screen keyboard.
 
+KWin owns the keyboard layout list. It reads the kxkbrc cascade, `~/.config/kxkbrc` then
+`/etc/xdg/kxkbrc`, before the `XKB_DEFAULT_*` environment startplasma builds from locale1's
+layout, and the lock screen checks a password against the same list. The system
+`/etc/xdg/kxkbrc` is written by the installer and rewritten by `kdos-settingsd` on every locale1
+layout change, so the layout plasma-setup picks on an OEM machine, or the Region and Keyboard
+settings set through locale1, reaches the session and its lock screen and not only the login
+screen. No `kxkbrc` is seeded for an account: KWin takes a `LayoutList` whatever `Use` says, so a
+seeded list would pin the session against locale1. System Settings → Keyboard reads the same
+cascade, so it opens the system list when `/etc/xdg/kxkbrc` names one, and an empty list when
+neither file names a layout; turning an empty list on fills it with the layouts KWin runs
+(`org.kde.keyboard` `/Layouts`, with the variants of `XKB_DEFAULT_VARIANT`), so a layout added
+joins the session's instead of replacing it. fcitx5's Wayland module, when its *Allow Overriding System
+XKB Settings* is on (its compiled default), writes the current group's layout into
+`~/.config/kxkbrc` at every start and on every input-method change, which would put the
+profile's layout over the one the installer, locale1 or System Settings → Keyboard set, and
+the lock screen would then check a password typed on that layout. `/etc/xdg/fcitx5/conf/wayland.conf` turns it off; fcitx5 finds it
+along `XDG_CONFIG_DIRS`, falling back to `/etc/xdg`, whatever environment KWin starts it with, and
+decodes keys with the keymap KWin hands it.
+
+The profile names the system layout too, so the system layout reaches a new account even where
+fcitx5 writes it. `/etc/skel` carries no `~/.config/fcitx5/profile`; at a login whose home has none,
+`kdos-session-wrapper` and the Plasma environment script write one before KWin starts fcitx5
+(`kdos_session_fcitx5_profile` in `session-common.sh`), whose group's layout and first item are
+`/etc/kdos/xkb.conf`'s first layout and variant (`de-nodeadkeys`, `keyboard-de-nodeadkeys`),
+locale1's when the file names none, and `us` when neither does. An existing profile is never
+rewritten, so the Input Method page's choices stand.
+
 An application reaches the engine one of two ways. Through KWin's text-input protocol: Qt 6, GTK 3
 and GTK 4 through `text-input-v3`, Qt 5 through `text-input-v2`. Or through a toolkit module that
 speaks to fcitx5's own D-Bus interface: `fcitx5-qt` for Qt 6, `fcitx5-gtk` for GTK 3 and GTK 4.
@@ -778,12 +853,13 @@ on overlayfs.
 
 Log Out, Restart and Shut Down are Plasma's. ksmserver asks each application to save its state and
 closes its windows, then `plasma-shutdown` runs every file in every `plasma-workspace/shutdown/`
-directory along `XDG_CONFIG_DIRS`, in name order, waiting for each, before KWin quits. KDOS ships two
+directory along `XDG_CONFIG_DIRS`, in name order, waiting for each, before KWin quits. KDOS ships three
 in `/usr/share/kdos/xdg/plasma-workspace/shutdown/`:
 
 | Script | Does | Bound |
 |---|---|---|
 | `kdos-boxes.sh` | `kdos-appbox session save`: records every running box, and every boxed application that was open when the logout began, in `$XDG_STATE_HOME/kdos/session-boxes` | 10 s |
+| `kdos-speech.sh` | Sends SIGTERM to the Speech Dispatcher server that Orca, KMouth or `spd-say` spawned, named by `$XDG_RUNTIME_DIR/speech-dispatcher/pid/speech-dispatcher.pid`, unless another login of the user (a console or a second graphical login) is open; the session `turnstiled` opens for the user's service manager is not counted. The server stops its eSpeak NG modules. A spawned server outlives its clients, and `turnstiled` removes the runtime directory it listens in at the last logout, so one left running would sit beside the next login's | 5 s |
 | `kdos.sh` | `kdos-box gc --session-end`: stops every box that has run past its profile's `autostop`, without asking the desktop which boxes still have a window, since every window is closed by now | 20 s |
 
 Before those, when the session is set to restore the previous one (System Settings → Session →
@@ -796,6 +872,11 @@ with no arguments. An application comes back with its own start-up state: no doc
 window positions, and one window however many it had. A window that matches no desktop entry is not
 recorded, and does not come back (see
 [Known gaps](../06-reference/known-gaps.md#session-restore-reopens-applications-not-their-documents)).
+Nor is an entry named in ksmserverrc `[General] excludeApps`, compared with the storage id exactly
+(`org.kde.plasma-welcome.desktop`, suffix and case included). KDOS's
+`/usr/share/kdos/xdg/ksmserverrc` names Welcome there, so a Welcome window open at a logout does
+not come back at the next login as the full tour, without the page it was opened at. A list set
+in System Settings → Session replaces KDOS's.
 
 `kdos-boxes.sh` sorts first (`-` before `.`), so the record is taken while the boxes `gc` is about
 to stop are still running. KDE's own session restore starts launchers, not boxes, so when the
@@ -809,11 +890,11 @@ screen again. A Restart or Shut Down then reaches elogind's `Reboot` or `PowerOf
 `/sbin/reboot` or `/sbin/poweroff`, and so sysvinit's runlevel 6 or 0 (see
 [Boot and init](boot-and-init.md#shutdown)).
 
-The user's services do not end with the session. If the user has no other login and does not
-linger, turnstile stops them at this point: the `boxes` service first, so every container is
-stopped while its sockets still exist, then the rest of the table backwards, and then it clears
-the runtime directory. A box with no `autostop` that is still running at a Log Out is therefore
-stopped by the last logout and not before.
+The user's services do not end with the session. If the user has no other login and does not linger,
+turnstile stops them when `sddm-helper` closes the PAM session: the `boxes` service first, so every
+container is stopped while its sockets still exist, then the rest of the table backwards, and then
+it clears the runtime directory. A box with no `autostop` that is still running at a Log Out is
+therefore stopped by the last logout and not before.
 
 A login that arrives while that stop is under way, such as SDDM's automatic login logging the
 account straight back in after `loginctl terminate-user`, waits for it. turnstile starts a fresh

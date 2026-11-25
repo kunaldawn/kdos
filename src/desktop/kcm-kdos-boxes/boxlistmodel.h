@@ -17,10 +17,21 @@
  * this page; the table beside it is for a person and is never parsed, since
  * its STATE column can be two words and its widths follow the names.
  *
- * A BOX IS SHOWN UNDER ITS APPLICATION'S NAME AND ICON. genlaunchers writes
- * each launcher as `<box>.desktop` (or carries `X-KDOS-Box=<box>`), which is
- * the id KWin gives the box's windows, so the page and the task manager name
- * the same thing the same way.
+ * AN APPLICATION'S BOX IS SHOWN UNDER ITS APPLICATION'S NAME AND ICON.
+ * genlaunchers writes each launcher as `<box>.desktop` (or carries
+ * `X-KDOS-Box=<box>`), which is the id KWin gives the box's windows, so the
+ * page and the task manager name the same thing the same way. Only the box
+ * of one application (BoxRow::isAppBox) takes that name: any
+ * other box holds whatever was installed in it, and a launcher `kdos-box
+ * export` wrote (`X-KDOS-Export=true`) names one program of many. Such a box
+ * keeps its own name, borrows the first launcher's icon, and lists what it
+ * exports in its subtitle ("Box for Galculator"), so a dialog about the
+ * whole box never calls it by one program in it.
+ *
+ * A BOX WITH NO CONTAINER IS ONE OF TWO THINGS. A profile `kdos-box remove`
+ * kept on purpose opens with its mark line, and reads "Removed — settings
+ * kept"; any other is a box described and never made ("Not created"), a
+ * failed create's leftover among them.
  */
 
 #pragma once
@@ -29,6 +40,7 @@
 #include <QDateTime>
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 class QFileSystemWatcher;
 class QTimer;
@@ -50,12 +62,26 @@ struct BoxRow {
     QDateTime created;      /* invalid for a box with no container */
     QString confinement;    /* confined | tagged | unconfined | "" */
     QString confinementReason; /* the launch's own sentence, "" if none */
+    bool kept = false;      /* no container, and a profile remove kept */
+    bool imageMissing = false; /* a store box whose image the local store lacks */
+    QStringList exports;    /* programs `kdos-box export` put in the menu */
 
     bool isRunning() const;
     bool hasContainer() const;
+    /* The box of one application, made again by that application's next
+     * launch: a pack or store box named after what it is made of. */
+    bool isAppBox() const;
     QString exportId() const;
     /* The size on disk for a person, "" when it holds nothing. */
     QString diskText() const;
+};
+
+/* A desktop entry that names a box, by its own id or by X-KDOS-Box. */
+struct BoxEntry {
+    QString desktopId;
+    QString name;
+    QString icon;
+    bool exported = false; /* X-KDOS-Export=true: written by `kdos-box export` */
 };
 
 class BoxListModel : public QAbstractListModel
@@ -81,6 +107,7 @@ public:
         ConfinementReasonRole,
         SubtitleRole,
         ExportIdRole,
+        KeptRole,
     };
     Q_ENUM(Role)
 
@@ -99,7 +126,12 @@ public:
 
     /* Public for the tests: the rows a listing becomes. */
     static QList<BoxRow> parseListing(const QString &output);
-    static QString stateText(const QString &state);
+    static QString stateText(const QString &state, bool kept = false);
+    /* The name, icon and exports a row takes from the entries naming it. */
+    static void nameRow(BoxRow &row, const QList<BoxEntry> &entries);
+    /* The profile opens with the line `kdos-box remove` marks a kept one
+     * with. */
+    static bool profileIsKept(const QString &box);
     static QString confinementText(const QString &confinement);
 
 Q_SIGNALS:

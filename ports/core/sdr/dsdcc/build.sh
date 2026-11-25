@@ -22,6 +22,8 @@ cmake -B build -G Ninja \
 	-Wno-dev
 ninja -C build
 DESTDIR=$PKG ninja -C build install
+install -Dm644 debian/copyright "$PKG/usr/share/licenses/$name/copyright"
+install -Dm644 /usr/share/licenses/serialdv/LICENSE "$PKG/usr/share/licenses/$name/GPL-3.0"
 
 test -x "$PKG/usr/bin/dsdccx"
 test -f "$PKG/usr/lib/pkgconfig/libdsdcc.pc"

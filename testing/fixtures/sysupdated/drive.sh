@@ -176,9 +176,9 @@ want_re "$F/state.txt" '"phase" s "armed" "version" s "0.2.14"'
 prop TrySlot > "$F/tryslot.txt"
 want "$F/tryslot.txt" 's "b"'
 bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/slots.txt"
-want_re "$F/slots.txt" '^aa\{sv\} 2 16 "id" s "a" "title" s "KDOS 0.2.13 \(slot A\)" "present" b true "version" s "0.2.13"'
+want_re "$F/slots.txt" '^aa\{sv\} 2 18 "id" s "a" "title" s "KDOS 0.2.13 \(slot A\)" "present" b true "version" s "0.2.13"'
 want_re "$F/slots.txt" '"id" s "b" "title" s "KDOS 0.2.14 \(slot B\)" "present" b true "version" s "0.2.14"'
-want_re "$F/slots.txt" '"confirmed" b true "trial" b false "failed" b false "bootable" b false "reason" s "This is already the version the computer starts." "state" s "confirmed"'
+want_re "$F/slots.txt" '"confirmed" b true "trial" b false "failed" b false "abandoned" b false "incomplete" b false "bootable" b false "reason" s "This is already the version the computer starts." "state" s "confirmed"'
 want_re "$F/slots.txt" '"trial" b true .* "state" s "trial"'
 [ "$fail" = 0 ] || exit 1
 echo "  after Install: try = b, the logout entry, CheckNew empty, Slots1 armed"
@@ -188,6 +188,7 @@ AS=$R/run/kdos/sysupdate/io.kdos.system.metainfo.xml
 python3 -I -c 'import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])' "$AS" ||
     { echo "  FAIL  the AppStream file is not well-formed XML"; fail=1; }
 want_re "$AS" '<component type="operating-system">'
+want_re "$AS" '<project_license>MIT</project_license>'
 want_re "$AS" '<release version="0.2.14" type="stable" date="2026-10-28">'
 want_re "$AS" 'Signed by KDOS release \(ed25519 0123…cdef\), verified on this machine\.'
 want_re "$AS" 'Konsole &amp; Kate &lt;fixed&gt;\.'
@@ -198,6 +199,40 @@ mv "$R/var/lib/kdos/update.json.new" "$R/var/lib/kdos/update.json"
 wait_for 5 grep -q 'The signed system image of 0.2.14' "$AS" ||
     { echo "  FAIL  an image-lane document did not reach the AppStream file"; fail=1; }
 want_re "$AS" 'The signed system image of 0\.2\.14, written whole; 4\.0K to download\. It is written into slot B'
+# The verb follows the lane's origin, not the tree's channel: a tree read
+# from a stick still downloads packages from an https binhost, and a binhost
+# or an image on this machine is copied.
+doc 0.2.14 | sed 's|"channel":"https://example.invalid/latest"|"channel":"file:///mnt/bh"|' > "$R/var/lib/kdos/update.json.new"
+mv "$R/var/lib/kdos/update.json.new" "$R/var/lib/kdos/update.json"
+wait_for 5 grep -q '3 packages from the signed binhost' "$AS" ||
+    { echo "  FAIL  the binhost-lane text did not come back"; fail=1; }
+want_re "$AS" '3 packages from the signed binhost: aerc, curl and nftables; 4\.0K to download\.'
+doc 0.2.14 | sed 's|"binhost":"https://example.invalid/binhost-0.2.14"|"binhost":"file:///mnt/bh/binhost"|' > "$R/var/lib/kdos/update.json.new"
+mv "$R/var/lib/kdos/update.json.new" "$R/var/lib/kdos/update.json"
+wait_for 5 grep -q '4\.0K to copy' "$AS" ||
+    { echo "  FAIL  a file:// binhost's offer still says what it downloads"; fail=1; }
+want_re "$AS" '3 packages from the signed binhost: aerc, curl and nftables; 4\.0K to copy\.'
+doc 0.2.14 | sed 's/"lane":"binhost"/"lane":"image"/; s|"channel":|"image":"/mnt/stick/image","channel":|' > "$R/var/lib/kdos/update.json.new"
+mv "$R/var/lib/kdos/update.json.new" "$R/var/lib/kdos/update.json"
+wait_for 5 grep -q 'written whole; 4\.0K to copy' "$AS" ||
+    { echo "  FAIL  an image on this machine is not offered as a copy"; fail=1; }
+# Release notes in ports/RELEASE's Markdown: a heading is a paragraph of its
+# text, a run of `- ` items one list, and no `#` or backtick reaches the file.
+doc 0.2.14 | sed 's|"notes":"[^"]*"|"notes":"Intro `kdos update` line\\none.\\n\\n## What it needs\\n\\n- A 64-bit\\n  machine.\\n- 4 GB of `memory`.\\n\\nAfter <list>."|' > "$R/var/lib/kdos/update.json.new"
+mv "$R/var/lib/kdos/update.json.new" "$R/var/lib/kdos/update.json"
+wait_for 5 grep -q 'What it needs' "$AS" ||
+    { echo "  FAIL  Markdown release notes did not reach the AppStream file"; fail=1; }
+want_re "$AS" '<p>Intro kdos update line one\.</p>'
+want_re "$AS" '<p>What it needs</p>'
+want_re "$AS" '<li>A 64-bit machine\.</li>'
+want_re "$AS" '<li>4 GB of memory\.</li>'
+want_re "$AS" '<p>After &lt;list&gt;\.</p>'
+[ "$(grep -c '<ul>' "$AS")" = 2 ] && [ "$(grep -c '</ul>' "$AS")" = 2 ] ||
+    { echo "  FAIL  the notes' items are not one list in each description"; fail=1; }
+! grep -q '##\|`' "$AS" ||
+    { echo "  FAIL  a Markdown heading mark or backtick reached the AppStream file"; fail=1; }
+python3 -I -c 'import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])' "$AS" ||
+    { echo "  FAIL  the AppStream file with Markdown notes is not well-formed XML"; fail=1; }
 put_doc 0.2.14
 wait_for 5 grep -q '3 packages from the signed binhost' "$AS" ||
     { echo "  FAIL  the binhost-lane text did not come back"; fail=1; }
@@ -317,6 +352,12 @@ prop Channel > "$F/channel.txt"
 want "$F/channel.txt" 's "https://example.invalid/kdos"'
 bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 SetChannel s "ftp://x y" > "$F/channel.txt" 2>&1
 want_re "$F/channel.txt" "not an update channel"
+# `kdos update` fetches with curl --proto =https,file: plain http is refused
+# rather than saved.
+bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 SetChannel s "http://example.invalid/kdos" > "$F/channel.txt" 2>&1
+want_re "$F/channel.txt" "not an update channel"
+grep -q '^tree = http:' "$R/etc/kdos/update.conf" &&
+    { echo "  FAIL  SetChannel saved an http channel"; fail=1; }
 want_re "$F/pk.log" "^CHECK io.kdos.slots.channel flags=1 "
 bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 SetChannel s "" > /dev/null
 printf '# kept\nbinhost = /srv/binhost\n' | cmp -s - "$R/etc/kdos/update.conf" ||
@@ -445,6 +486,37 @@ rm -f "$F/next.json"
 [ "$fail" = 0 ] || exit 1
 echo "  CheckNew fetches the signed tree and index once an hour at most, and answers from them"
 
+# A fetch inside the hour that found no network is no fetch: the Refresh
+# pressed once the machine is online asks the network again.
+{ grep -v '^fetch ' "$R/var/lib/kdos/update.state"
+  printf 'fetch no-network %s the network is not reachable\n' "$(date +%s)"; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+doc 0.2.17 > "$F/next.json"
+: > "$F/calls"
+start_daemon --refresh-after 3600
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/fetch.txt"
+want "$F/fetch.txt" 's "0.2.17"'
+want "$F/calls" "update check --fetch --out $R/var/lib/kdos/update.json"
+grep -q '^fetch ok ' "$R/var/lib/kdos/update.state" ||
+    { echo "  FAIL  a CheckNew after a no-network fetch inside the hour did not fetch"; fail=1; }
+stop_daemon
+# A fetch the server answered with a refusal (a published tree older than
+# this machine's) holds the next CheckNew for the hour like an ok one.
+{ grep -v '^fetch ' "$R/var/lib/kdos/update.state"
+  printf 'fetch fetch-failed %s the published tree is older than this machine%ss\n' "$(date +%s)" "'"; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+: > "$F/calls"
+start_daemon --refresh-after 3600
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/fetch.txt"
+grep -q -- '--fetch' "$F/calls" &&
+    { echo "  FAIL  a CheckNew inside the hour after a fetch-failed asked the network"; cat "$F/calls"; fail=1; }
+stop_daemon
+rm -f "$F/next.json"
+[ "$fail" = 0 ] || exit 1
+echo "  a fetch that found no network does not hold the next CheckNew for the hour; a refused one does"
+
 # ── a trial boot: the slot an update would fill is the way back ────────────
 # Slot b is armed; booting it makes this boot its trial. Nothing is offered
 # and Acquire is refused before `kdos update` runs, until the trial ends.
@@ -474,12 +546,26 @@ rm -f "$R/run/kdos/bless/"*
 printf '1:2345:respawn:/sbin/agetty tty1 38400 linux\n' > "$R/etc/inittab"
 mv "$KDOS_BOOTSTATE" "$F/bootstate.saved"
 : > "$R/run/kdos/bless/userspace"
-start_daemon
+# With no second slot, CheckNew fetches the binhost index alone, once an
+# hour at most, and offers nothing; a binhost fetch that found no network
+# counts as none.
+{ grep -v '^binhost ' "$R/var/lib/kdos/update.state"
+  printf 'binhost no-network %s the network is not reachable\n' "$(date +%s)"; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+: > "$F/calls"
+start_daemon --refresh-after 3600
 wait_for 5 test -e "$R/run/kdos/bless/confirmed" ||
     { echo "  FAIL  a console machine waited for a graphical mark"; fail=1; }
-bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
-    org.freedesktop.sysupdate1.Target CheckNew > "$F/noslots.txt"
-want "$F/noslots.txt" 's ""'
+for _n in 1 2; do
+    bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+        org.freedesktop.sysupdate1.Target CheckNew > "$F/noslots.txt"
+    want "$F/noslots.txt" 's ""'
+done
+want "$F/calls" "update fetch --binhost-only"
+[ "$(grep -c -- '--binhost-only' "$F/calls")" = 1 ] ||
+    { echo "  FAIL  two CheckNew calls inside the hour fetched the binhost index twice"; cat "$F/calls"; fail=1; }
+grep -q -- 'check --fetch' "$F/calls" &&
+    { echo "  FAIL  a machine with no second slot fetched a newer tree"; fail=1; }
 bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
     org.freedesktop.sysupdate1.Target GetVersion > "$F/noslots.txt"
 want "$F/noslots.txt" 's "0.2.13"'
@@ -490,14 +576,19 @@ prop Live > "$F/noslots.txt"
 want "$F/noslots.txt" "b false"
 stop_daemon
 [ "$fail" = 0 ] || exit 1
-echo "  a console machine is confirmed by rcS's mark; a single-root machine is offered nothing"
+echo "  a console machine is confirmed by rcS's mark; a single-root machine fetches the binhost index and is offered nothing"
 
 # ── the live medium ────────────────────────────────────────────────────────
 # No boot state and `/` an overlay, as kdos-bootctl reads /proc/mounts: Live
-# is true, nothing is offered, Acquire says to install KDOS rather than to
-# update in place, and the AppStream file names the live session.
+# is true, CheckNew fetches the release's binhost index and offers nothing,
+# Acquire says to install KDOS rather than to update in place, and the
+# AppStream file names the live session.
 printf 'overlay / overlay rw,lowerdir=/mnt/system,upperdir=/mnt/overlay/upper 0 0\n' > "$F/mounts"
-start_daemon
+{ grep -v '^binhost ' "$R/var/lib/kdos/update.state"
+  printf 'binhost ok 1000 binhost index of the release\n'; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+: > "$F/calls"
+start_daemon --refresh-after 3600
 prop Live > "$F/live.txt"
 want "$F/live.txt" "b true"
 prop Configured > "$F/live.txt"
@@ -505,16 +596,104 @@ want "$F/live.txt" "b false"
 bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
     org.freedesktop.sysupdate1.Target CheckNew > "$F/live.txt"
 want "$F/live.txt" 's ""'
+want "$F/calls" "update fetch --binhost-only"
+grep -q '^binhost ok [0-9]* ' "$R/var/lib/kdos/update.state" &&
+    ! grep -q '^binhost ok 1000 ' "$R/var/lib/kdos/update.state" ||
+    { echo "  FAIL  the live medium's CheckNew did not refetch the binhost index"; fail=1; }
 bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
     org.freedesktop.sysupdate1.Target Acquire st "" 0 > "$F/live.txt" 2>&1
 want_re "$F/live.txt" "this is the live medium.*install KDOS to update it"
+# An Acquire while the binhost fetch runs gets the same answer, not "try
+# again": no retry can install anything here.
+{ grep -v '^binhost ' "$R/var/lib/kdos/update.state"
+  printf 'binhost no-network %s the network is not reachable\n' "$(date +%s)"; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+echo 3 > "$F/checkdelay"
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/livecheck.txt" &
+_ck=$!
+wait_for 5 sh -c "[ \$(grep -c -- --binhost-only '$F/calls') = 2 ]" ||
+    { echo "  FAIL  a failed binhost fetch on the live medium was not retried"; fail=1; }
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target Acquire st "" 0 > "$F/live.txt" 2>&1
+want_re "$F/live.txt" "this is the live medium.*install KDOS to update it"
+wait "$_ck"
+rm -f "$F/checkdelay"
+want "$F/livecheck.txt" 's ""'
 want_re "$R/run/kdos/sysupdate/io.kdos.system.metainfo.xml" \
     '<summary>The KDOS live session, which system updates do not reach</summary>'
 grep -q '<release ' "$R/run/kdos/sysupdate/io.kdos.system.metainfo.xml" &&
     { echo "  FAIL  the live medium's AppStream file offers a release"; fail=1; }
+# A caller polkit does not allow to check, as one outside the active session
+# gets a challenge nobody can answer, is answered from the document with no
+# error and no fetch, although a fetch is due.
+{ grep -v '^binhost ' "$R/var/lib/kdos/update.state"
+  printf 'binhost ok 1000 binhost index of the release\n'; } > "$F/state.new"
+mv "$F/state.new" "$R/var/lib/kdos/update.state"
+echo "org.freedesktop.sysupdate1.check challenge" > "$F/pk.rules"
+: > "$F/calls"
+bc --allow-interactive-authorization=no call org.freedesktop.sysupdate1 \
+    /org/freedesktop/sysupdate1/target/host org.freedesktop.sysupdate1.Target \
+    CheckNew > "$F/livechallenge.txt" 2>&1
+want "$F/livechallenge.txt" 's ""'
+grep -q -- --binhost-only "$F/calls" &&
+    { echo "  FAIL  a CheckNew polkit did not allow fetched the binhost index"; fail=1; }
+# ... and waits for a check already running, so its answer is never the
+# document that check is replacing.
+: > "$F/pk.rules"
+echo 3 > "$F/checkdelay"
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/livecheck.txt" &
+_ck=$!
+wait_for 5 grep -q -- --binhost-only "$F/calls" ||
+    { echo "  FAIL  the allowed CheckNew started no binhost fetch"; fail=1; }
+echo "org.freedesktop.sysupdate1.check challenge" > "$F/pk.rules"
+_t0=$(date +%s)
+bc --allow-interactive-authorization=no call org.freedesktop.sysupdate1 \
+    /org/freedesktop/sysupdate1/target/host org.freedesktop.sysupdate1.Target \
+    CheckNew > "$F/livechallenge.txt" 2>&1
+_t1=$(date +%s)
+want "$F/livechallenge.txt" 's ""'
+[ $((_t1 - _t0)) -ge 2 ] ||
+    { echo "  FAIL  a CheckNew polkit did not allow was answered while a check ran"; fail=1; }
+wait "$_ck"
+rm -f "$F/checkdelay"
+: > "$F/pk.rules"
 stop_daemon
 printf '/dev/vda2 / ext4 rw 0 0\n' > "$F/mounts"
 mv "$F/bootstate.saved" "$KDOS_BOOTSTATE"
 [ "$fail" = 0 ] || exit 1
-echo "  the live medium is named as such, offered nothing and told to install KDOS"
+echo "  the live medium fetches the binhost index, is named as such, offered nothing and told to install KDOS"
+
+# ── a trial set aside at the boot menu, and a root picked for one boot ─────
+# kdos-bootctl's own `abandoned` and `visiting` reach ListSlots as the slot's
+# state: neither is a failure, and the KCM and kdos-notice say so.
+kdos-bootctl cancel >/dev/null
+kdos-bootctl try b 1 >/dev/null || { echo "  FAIL  kdos-bootctl try b was refused"; exit 1; }
+kdos-bootctl select a >/dev/null 2>&1 || { echo "  FAIL  kdos-bootctl select a was refused"; exit 1; }
+start_daemon
+bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/abandoned.txt"
+want_re "$F/abandoned.txt" '"id" s "b" .* "trial" b false "failed" b false "abandoned" b true "incomplete" b false .* "state" s "abandoned"'
+stop_daemon
+printf 'kdos_slot=b root=UUID=BBBB-2222 rw\n' > "$F/cmdline"
+start_daemon
+bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/visiting.txt"
+want_re "$F/visiting.txt" '"id" s "b" .* "running" b true "confirmed" b false "trial" b false .* "state" s "visiting"'
+stop_daemon
+printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$F/cmdline"
+[ "$fail" = 0 ] || exit 1
+echo "  a trial set aside at the boot menu is abandoned, not failed; a root picked for one boot is visiting"
+
+# ── a slot an update stopped writing ───────────────────────────────────────
+# `kdos-bootctl unfill b`, as `kdos update` marks the slot before its first
+# byte: Slots1 reports it incomplete, not bootable, until a deploy clears it.
+kdos-bootctl cancel >/dev/null
+kdos-bootctl unfill b >/dev/null || { echo "  FAIL  kdos-bootctl unfill b was refused"; exit 1; }
+start_daemon
+bc call io.kdos.Slots1 /io/kdos/Slots1 io.kdos.Slots1 ListSlots > "$F/unfilled.txt"
+want_re "$F/unfilled.txt" '"id" s "b" .* "incomplete" b true "bootable" b false "reason" s "An update stopped while writing this slot\. The next update writes it again; to write it at once, run kdos update apply --mount as root\." "state" s "incomplete"'
+want_re "$F/unfilled.txt" '"id" s "a" .* "incomplete" b false .* "id" s "b"'
+stop_daemon
+[ "$fail" = 0 ] || exit 1
+echo "  an unfilled slot is incomplete and not bootable"
 exit 0

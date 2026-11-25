@@ -27,6 +27,25 @@ splash() {
     return 0
 }
 
+# THE SPLASH'S VERDICT ON ONE SERVICE STAGE, from its exit status and its log:
+# `fail` for a non-zero exit, `skip` for a script that started nothing, `ok`
+# otherwise. A script started nothing when it printed a `[SKIP]` line and the
+# supervisor reported no service of it: ksvc prints `Supervisor started` for
+# each one it starts and `already supervised` for one already up (80_cups.sh
+# starts cups-browsed and ipp-usb before rcS reaches them), so a stage that
+# skips some of its parts and starts others (18_timers.sh, 53_xfs_healer.sh)
+# reads OK, and a service `service list` shows DOWN never does.
+stage_verdict() {   # <exit status> <log>
+    if [ "$1" != 0 ]; then
+        echo fail
+    elif grep -q '^\[SKIP\]' "$2" 2>/dev/null &&
+         ! grep -qE 'Supervisor started|already supervised' "$2" 2>/dev/null; then
+        echo skip
+    else
+        echo ok
+    fi
+}
+
 # Tell the progress bar how many stages this half of boot will add: fstab,
 # one per enabled service script, and the session hand-off.
 _n=2
@@ -77,6 +96,13 @@ if command -v fsck >/dev/null 2>&1; then
     _fsck_rc=$?
 fi
 mount -a
+# The initramfs mounts the root with no options, and `mount -a` skips a
+# filesystem that is already mounted, so the root's fstab options (noatime,
+# a btrfs compress=) apply only through this remount, which takes them from
+# fstab. A root with no fstab line — the live medium's overlay — is left alone.
+if findmnt -s -n / >/dev/null 2>&1; then
+    mount -o remount /
+fi
 [ -n "$_fsck_out" ] && printf '%s\n' "$_fsck_out" > /run/kdos-fsck.log
 if [ $((_fsck_rc & 4)) -ne 0 ]; then
     splash detail "fsck: errors left uncorrected, see /run/kdos-fsck.log"
@@ -171,8 +197,9 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
     "$_script" start >"$_log" 2>&1
     _rc=$?
     cat "$_log"
-    if [ "$_rc" = 0 ]; then
-        splash ok
+    _verdict=$(stage_verdict "$_rc" "$_log")
+    if [ "$_verdict" != fail ]; then
+        splash "$_verdict"
     else
         splash fail
         # The reason, not just the verdict. On the live medium this output
@@ -182,7 +209,7 @@ for _script in "${INIT_DIR}"/[0-9][0-9]_*.sh; do
         done < <(tail -n 6 "$_log" 2>/dev/null)
         unset _l
     fi
-    unset _rc
+    unset _rc _verdict
 done
 
 unset _script
@@ -213,21 +240,24 @@ if [ ! -x /usr/sbin/kdos-sysupdated ] || [ -f "${DISABLED_DIR}/sysupdated" ]; th
     fi
 fi
 
-# HAND THE SCREEN TO THE DISPLAY MANAGER. `handoff` runs the power-off
-# animation and leaves the framebuffer black, and tty1 in graphics mode with
-# its text cleared and its cursor hidden: nothing printed after it — the line
-# below, init's runlevel message, a kernel message — is drawn between the
-# splash's last frame and the first frame of the greeter's compositor, which
-# takes tty1 from elogind still in graphics mode. A single-user boot puts
-# sulogin on the console instead, which needs text, and gets `quit`: the same
-# animation, with the console left in text mode and its cursor shown. The
+# HAND THE SCREEN TO THE DISPLAY MANAGER. `handoff` draws the settled frame
+# (STARTING SESSION closed, the bar at the hold KSplash starts from) and
+# leaves it on the framebuffer, with tty1 in graphics mode, its text cleared
+# and its cursor hidden: nothing printed after it — the line below, init's
+# runlevel message, a kernel message — is drawn over that frame, which stays
+# until the greeter's compositor, taking tty1 from elogind still in graphics
+# mode, draws its first frame. The splash blanks the framebuffer and exits
+# a margin after the compositor becomes the display's DRM master, once its
+# first frame has replaced the held one, so a compositor that exits later
+# uncovers black, not the boot. A single-user boot puts sulogin on the
+# console instead, which needs text, and gets `quit`: the power-off animation
+# to black, with the console left in text mode and its cursor shown. The
 # runlevel is the one a word on the kernel command line asks init for.
 #
-# SYNCHRONOUS. Either returns only once the splash has stopped drawing, so the
-# compositor's modeset — started from inittab, which init reaches only after
-# this script returns — acquires a device the splash has already let go. A
-# splash that let go asynchronously would race that modeset, and the loser of
-# the race is a black screen with a running session behind it.
+# SYNCHRONOUS. Either returns only once the splash has drawn its last frame,
+# so the compositor's modeset — started from inittab, which init reaches only
+# after this script returns — never races a frame the splash is drawing, and
+# the loser of such a race is a black screen with a running session behind it.
 _next=handoff
 _words=()
 { read -r -a _words < /proc/cmdline; } 2>/dev/null

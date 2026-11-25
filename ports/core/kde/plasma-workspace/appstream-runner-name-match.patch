@@ -1,0 +1,102 @@
+Subject: appstream runner: offer only components the query names, unless an installed application or command has that name
+
+The runner offers a component only when every word of the query occurs in
+its name, id, package name or one of its keywords, not on a hit in its
+summary or description alone. It stays silent only when an installed
+application is named exactly what was typed, or an installed command is
+(the shell runner's match for the query's first word), not on any
+executable match another runner found, which includes the services
+runner's fuzzy hits.
+---
+--- a/runners/appstream/appstreamrunner.cpp	2026-11-22 19:15:44.087490625 +0530
++++ b/runners/appstream/appstreamrunner.cpp	2026-11-22 19:15:55.290787069 +0530
+@@ -14,6 +14,7 @@
+ #include <QDebug>
+ #include <QDesktopServices>
+ #include <QDir>
++#include <QFileInfo>
+ #include <QIcon>
+ #include <QTimer>
+ 
+@@ -21,6 +22,7 @@
+ #include <KIO/OpenUrlJob>
+ #include <KLocalizedString>
+ #include <KNotificationJobUiDelegate>
++#include <KShell>
+ #include <KSycoca>
+ 
+ #include "debug.h"
+@@ -65,6 +67,24 @@
+     return ret;
+ }
+ 
++// A component is offered only when every word of the query occurs in its
++// name, id, package name or one of its keywords: AppStream's search also
++// matches summaries and descriptions, and over a large catalogue that
++// answers almost any query with applications it does not name.
++static bool namesEveryWord(const AppStream::Component &component, const QStringList &words)
++{
++    QStringList fields{component.name().toCaseFolded(), component.id().toCaseFolded()};
++    for (const QString &package : component.packageNames())
++        fields << package.toCaseFolded();
++    for (const QString &keyword : component.keywords())
++        fields << keyword.toCaseFolded();
++    return !words.isEmpty() && std::ranges::all_of(words, [&fields](const QString &word) {
++        return std::ranges::any_of(fields, [&word](const QString &field) {
++            return field.contains(word);
++        });
++    });
++}
++
+ void InstallerRunner::match(KRunner::RunnerContext &context)
+ {
+     // Give the other runners a bit of time to produce results
+@@ -75,11 +95,30 @@
+         return;
+     }
+ 
+-    // Check if other plugins have already found an executable, if that is the case we do
+-    // not want to ask the user to install anything else
++    // Nothing is offered when an installed application or command is named exactly what was
++    // typed, case-insensitively: an executable match whose text is the query (the services
++    // runner's "KCalc" for "kcalc"), or one whose command's file name is the query's first
++    // word (the shell runner's "Run gimp" for "gimp", "Run htop" for "htop"). Any other
++    // executable match does not count: the services runner also answers with fuzzy hits
++    // ("galculator" finds KCalc), and counting those would hide every component whose name
++    // merely resembles an installed application's.
+     const QList<KRunner::QueryMatch> matches = context.matches();
+-    const bool execFound = std::ranges::any_of(matches, [](const KRunner::QueryMatch &match) {
+-        return match.id().startsWith(QLatin1String("exec://"));
++    const QString query = context.query().trimmed();
++    QString typedCommand;
++    for (const QString &word : KShell::splitArgs(query)) {
++        if (!word.contains(u'=')) {
++            typedCommand = QFileInfo(word).fileName();
++            break;
++        }
++    }
++    const bool execFound = std::ranges::any_of(matches, [&query, &typedCommand](const KRunner::QueryMatch &match) {
++        if (!match.id().startsWith(QLatin1String("exec://")))
++            return false;
++        if (match.text().compare(query, Qt::CaseInsensitive) == 0)
++            return true;
++        const QStringList command = KShell::splitArgs(match.id().mid(7));
++        return !typedCommand.isEmpty() && !command.isEmpty()
++            && QFileInfo(command.first()).fileName().compare(typedCommand, Qt::CaseInsensitive) == 0;
+     });
+     if (execFound) {
+         return;
+@@ -87,10 +126,13 @@
+ 
+     std::unordered_set<QString> uniqueIds;
+     const auto components = findComponentsByString(context.query());
++    const QStringList words = context.query().toCaseFolded().split(u' ', Qt::SkipEmptyParts);
+ 
+     for (auto it = components.cbegin(); it != components.cend() && uniqueIds.size() < 3; it = std::next(it)) {
+         if (it->kind() != AppStream::Component::KindDesktopApp)
+             continue;
++        if (!namesEveryWord(*it, words))
++            continue;
+ 
+         const QString componentId = it->id();
+         const auto servicesFound = KApplicationTrader::query([&componentId](const KService::Ptr &service) {

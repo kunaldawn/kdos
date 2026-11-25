@@ -11,7 +11,14 @@
  * ruling), and the formats for dates, numbers and money are a person's own
  * choice in System Settings afterwards. The time zone is asked here because
  * it is the machine's, not a person's: tzdata's zone1970.tab, which a typed
- * filter narrows, with the zone's local time beside it.
+ * filter narrows, with the zone's local time beside it. A filter that
+ * matches nothing leaves the chosen zone shown and chosen.
+ *
+ * The firmware row says when Secure Boot is on, and a warning says what it
+ * costs: the installed machine does not start until it is off.
+ *
+ * A line names the release this medium installs (Backend.release), in
+ * the form the splash, `kdos version` and the greeter give it.
  */
 
 import QtQuick
@@ -49,10 +56,27 @@ WizardPage {
         }
     }
     property string clock: Backend.localTime(Backend.answers.timezone)
-    complete: disks.length > 0 && Backend.answers.timezone.length > 0
+    /* kinstall's refusal of the first disk it refuses, as a sentence: its
+     * clauses start in lower case to follow a front end's own words. */
+    readonly property string firstRefusal: {
+        for (let i = 0; i < disks.length; i++) {
+            const t = disks[i].problem || "";
+            if (t.length > 0) {
+                return t.charAt(0).toUpperCase() + t.slice(1) + ".";
+            }
+        }
+        return "";
+    }
+    /* Welcome stops when no disk can take the install, as on a laptop
+     * whose only disk in sight is the stick it runs from: the Disk page
+     * would offer nothing to choose. */
+    complete: usableDisks > 0 && Backend.answers.timezone.length > 0
     problem: Backend.busy && disks.length === 0
         ? i18n("Looking at this computer's disks…")
-        : disks.length === 0 ? i18n("No disk was found to install on.") : ""
+        : disks.length === 0 ? i18n("No disk was found to install on.")
+        : usableDisks === 0 && firstRefusal.length > 0
+        ? i18nc("@info %1 why the first disk is refused", "No disk here can take the install: %1", firstRefusal)
+        : usableDisks === 0 ? i18n("No disk here can take the install.") : ""
 
     QQC2.Label {
         Layout.fillWidth: true
@@ -65,6 +89,25 @@ WizardPage {
         type: Kirigami.MessageType.Warning
         visible: Backend.probe.live === false
         text: i18n("This is not the live medium. Installing from a running system copies this system, and any disk chosen later is erased; the disk this system runs from is not offered.")
+    }
+
+    /* Limine's EFI loader is unsigned and KDOS enrols no keys, so the
+     * install completes and the installed machine does not start until
+     * Secure Boot is off. Said before a disk is chosen, not after. */
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        type: Kirigami.MessageType.Warning
+        visible: Backend.probe.secure_boot === true
+        text: i18n("Secure Boot is on. KDOS installs, but the installed computer will not start until Secure Boot is turned off in the firmware setup.")
+    }
+
+    /* The release in the form `kdos version`, the splash and the greeter
+     * give, so a person knows which KDOS goes on the disk. */
+    QQC2.Label {
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
+        visible: Backend.release.length > 0
+        text: i18nc("@info %1 the release, such as 0.2.1", "This installs KDOS %1.", Backend.release)
     }
 
     Kirigami.FormLayout {
@@ -89,7 +132,7 @@ WizardPage {
             model: page.zones
             currentIndex: page.zones.indexOf(Backend.answers.timezone)
             displayText: currentIndex >= 0 ? currentText
-                       : page.zones.length === 0 ? i18nc("@item:inlistbox", "No zone matches")
+                       : page.zones.length === 0 ? i18nc("@item:inlistbox %1 the chosen zone", "%1 (no zone matches the filter)", Backend.answers.timezone)
                        : i18nc("@item:inlistbox %1 the chosen zone, not among the matches", "%1 (choose a match)", Backend.answers.timezone)
             enabled: page.zones.length > 0
             popup.width: width
@@ -139,6 +182,7 @@ WizardPage {
             Kirigami.FormData.label: i18nc("@label", "Firmware:")
             text: Backend.probe.firmware === "uefi"
                 ? (Backend.probe.firmware_bits === 32 ? i18n("UEFI (32-bit)") : i18n("UEFI"))
+                  + (Backend.probe.secure_boot === true ? i18nc("@info after the firmware", ", Secure Boot on") : "")
                 : Backend.probe.firmware === "bios" ? i18n("Legacy BIOS") : "—"
             Accessible.name: i18nc("@info:whatsthis", "Firmware: %1", text)
         }
@@ -151,7 +195,7 @@ WizardPage {
         }
         QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Install size:")
-            text: Backend.probe.payload_kb ? Backend.formatSize(Backend.probe.payload_kb * 1024) : "—"
+            text: Backend.installSizeText(Backend.probe)
             Accessible.name: i18nc("@info:whatsthis", "Install size: %1", text)
         }
     }

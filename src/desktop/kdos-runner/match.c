@@ -13,25 +13,39 @@
  *   route:setup.wifi  that route, exactly; `kdos menu` asks for one this way
  *   accent amber      a kdos verb with its arguments filled in from the
  *   box stop www      words typed; a verb typed in part offers each way of
- *                     finishing it (`accent` lists the eight accents and
- *                     `next` and `prev`)
+ *                     finishing it (`accent` lists `next` and `prev`,
+ *                     then the accents in the boot menu's order; KRunner
+ *                     shows eight rows of a runner, so the last two
+ *                     accents need `accent <letters>`)
  *   lib photosynth    KRunner opened again with the offline library alone
  *   setup network     a route of menu.conf, by the words of its name, shown
  *                     as `Set up network`
- *   install gimp      a pack or set on the boot medium, opened in Discover
- *                     to install from there
+ *   install gimp      a search in Discover, and a pack or set on the boot
+ *                     medium, opened in Discover to install from there;
+ *                     where the installer's entry is installed (the live
+ *                     medium), `install kdos` and each prefix of it answer
+ *                     nothing, so that entry, Install KDOS, is the row
+ *                     Enter starts
  *   keys tile         the chords whose action matches, as KGlobalAccel has
  *                     them now
  *
- * KDOS's own System Settings pages are not here: System Settings' runner
- * finds them by the X-KDE-Keywords of their metadata, and a row from each
- * would be the same page twice.
+ *   KDOS Look         a KDOS System Settings page, by its whole title
+ *                     only, opened in System Settings
+ *
+ * A KDOS settings page answers here only to its whole title. Otherwise
+ * System Settings' runner finds it, by its name and the X-KDE-Keywords of
+ * its metadata, and a row from each would be the same page twice. The
+ * whole title is the exception because krunnerrc ranks Applications above
+ * System Settings and the Applications runner forgives a letter in each
+ * word: without a palette row, `KDOS Look` + Enter opens The KDOS Book.
  *
  * THE PALETTE RANKS ABOVE APPLICATIONS only because krunnerrc names `kdos`
  * first among KRunner's favourite runners (/usr/share/kdos/xdg/krunnerrc);
  * a category's relevance never lifts it over a favourite's. That is also
  * why a medium pack answers only after `install`: its row would otherwise
- * sit above the installed application of the same name.
+ * sit above the installed application of the same name; and why `install
+ * kdos` answers nothing while the installer's entry is there, or Enter
+ * would search Discover for the installer.
  *
  * EVERY ROW IS AN ARGUMENT VECTOR built here, word by word. A word the user
  * typed — a box name, a path for `why`, a search for Discover — is one
@@ -44,6 +58,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <unistd.h>
 
 #include "kcolor.h"
 #include "runner.h"
@@ -53,7 +69,7 @@
 /* What a slot in a verb accepts. */
 enum {
 	SL_NONE,
-	SL_ACCENT,		/* the libkcolor schemes, then next, prev   */
+	SL_ACCENT,		/* next, prev, then the libkcolor schemes   */
 	SL_ONOFF,		/* on, off                                  */
 	SL_DESK,		/* kdos, dock, tiling                       */
 	SL_BOX,			/* a box with a profile                     */
@@ -122,7 +138,7 @@ static const Verb verbs[] = {
 	 * itself only when started from a terminal. */
 	{ "box enter", SL_BOX, "A shell in the box %s", "utilities-terminal",
 	  RN_RUN_DETACH, { "kdos-box", "enter", "%s", "--window" } },
-	{ "install", SL_REST, "Find “%s” in Discover", "plasma-discover",
+	{ "install", SL_REST, "Find “%s” in Discover", "plasmadiscover",
 	  RN_RUN_DETACH, { "plasma-discover", "--search", "%s" } },
 	{ "why", SL_REST, "Why is %s the way it is?", "help-about",
 	  RN_RUN_TERM, { "kdos", "why", "%s" } },
@@ -187,12 +203,15 @@ static const char *const *slot_values(int slot, int *n)
 	case SL_ACCENT: {
 		int k = 0;
 
-		for (int i = 0; i < kcol_nscheme && i < KCOL_IDX_COUNT; i++)
-			accents[k++] = kcol_schemes[i].name;
 		/* `kdos theme next|prev` step through the schemes in the
-		 * order the boot menu shows them. */
+		 * order the boot menu shows them. They lead: KRunner shows
+		 * only a runner's first eight rows, and after eight accents
+		 * the two steps would never be on screen for a bare
+		 * `accent`. */
 		accents[k++] = "next";
 		accents[k++] = "prev";
+		for (int i = 0; i < kcol_nscheme && i < KCOL_IDX_COUNT; i++)
+			accents[k++] = kcol_schemes[i].name;
 		accents[k] = NULL;
 		v = accents;
 		break;
@@ -237,7 +256,30 @@ static void slot_shown(int slot, const char *value, char *out, size_t n)
 			*out = (char)(*out - 'a' + 'A');
 		return;
 	}
+	if (slot == SL_DESK) {
+		/* The names the desk picker gives them. */
+		snprintf(out, n, "%s", !strcmp(value, "kdos") ? "KDOS"
+				       : !strcmp(value, "dock") ? "Dock"
+				       : !strcmp(value, "tiling") ? "Tiling"
+								  : value);
+		return;
+	}
 	kb_strlcpy(out, value, n);
+}
+
+/*
+ * `install` followed by `kdos`, or a prefix of it, is the installer's name
+ * being typed. The palette ranks above Applications, so a Discover row here
+ * would take Enter from the Install KDOS entry. Only the live medium has that
+ * entry; elsewhere the words search Discover like any other.
+ */
+static int is_installer_name(const RnQuery *q, int at)
+{
+	char path[512];
+
+	return q->nw == at + 1 && rn_prefix("kdos", q->w[at]) &&
+	       access(rn_sys("/usr/share/applications/kdos-installer.desktop",
+			     path, sizeof(path)), F_OK) == 0;
 }
 
 /*
@@ -279,6 +321,8 @@ static void match_verb(const Verb *v, const RnQuery *q, RnList *out)
 		 * otherwise offer to search Discover for nothing. */
 		if (!exact || !*rest)
 			return;
+		if (!strcmp(v->words, "install") && is_installer_name(q, at))
+			return;
 		add_verb(out, v, rest, rest, 0.9);
 		return;
 	}
@@ -300,6 +344,13 @@ static void match_verb(const Verb *v, const RnQuery *q, RnList *out)
 				    : 0.6;
 			if (!exact)
 				rel -= 0.1;
+			/* Rows of one relevance reach KRunner in no order it
+			 * keeps, and it shows only the first few of a runner;
+			 * a step per row shown holds the slot's own order:
+			 * `next` and `prev`, then the accents as the boot menu
+			 * lists them. At most twelve
+			 * steps, so no row falls to the tier below its own. */
+			rel -= shown * 0.01;
 			slot_shown(v->slot, vals[i], label, sizeof(label));
 			add_verb(out, v, vals[i], label, rel);
 			if (++shown >= 12)
@@ -433,6 +484,82 @@ static void match_routes(const RnQuery *q, RnList *out)
 	}
 }
 
+/* ── KDOS's settings pages ─────────────────────────────────────────────── */
+
+/*
+ * Every installed kcm_kdos_*.desktop with a Name, the entry by which System
+ * Settings opens a page alone, read once: one listing of the applications
+ * directory and one parse per page, so a caller holding many titles reads
+ * them all against one call rather than one call each. The library reads its
+ * rows' titles against this list, so that a row and the page it shares a
+ * name with cannot disagree about what a settings title is.
+ */
+int rn_settings_load(RnSetting *v, int cap)
+{
+	char dir[512];
+	char **files;
+	int n = 0;
+
+	files = kb_listdir(rn_sys("/usr/share/applications", dir, sizeof(dir)),
+			   NULL);
+	for (char **f = files; f && *f && n < cap; f++) {
+		size_t l = strlen(*f);
+
+		if (strncmp(*f, "kcm_kdos_", 9) || l <= 9 + 8 ||
+		    strcmp(*f + l - 8, ".desktop") || l - 8 >= sizeof(v[n].id))
+			continue;
+		memcpy(v[n].id, *f, l - 8);
+		v[n].id[l - 8] = '\0';
+		if (rn_desktop_entry(v[n].id, v[n].name, sizeof(v[n].name),
+				     v[n].icon, sizeof(v[n].icon)) &&
+		    *v[n].name)
+			n++;
+	}
+	kb_strv_free(files);
+	return n;
+}
+
+/* The page of V[0..N) whose Name is TEXT, whole and in any case, or NULL. */
+const RnSetting *rn_settings_find(const RnSetting *v, int n, const char *text)
+{
+	for (int i = 0; i < n; i++)
+		if (!strcasecmp(v[i].name, text))
+			return &v[i];
+	return NULL;
+}
+
+/*
+ * The query, whole, as a settings page's Name. A partial title gives
+ * nothing: System Settings' own runner answers it. The library calls this
+ * too, to rank its rows under the page's. The row reads `Open <Name>` over
+ * `System Settings`: System Settings' own runner lists the page under its
+ * bare Name, and two rows of one title read as one answer shown twice.
+ */
+const RnSetting *rn_settings_title(const RnQuery *q, const RnSetting *v,
+				   int n)
+{
+	return rn_settings_find(v, n, q->raw);
+}
+
+static void match_settings(const RnQuery *q, RnList *out)
+{
+	RnSetting pages[RN_SETTINGS_MAX];
+	const RnSetting *p;
+	RnMatch *m;
+
+	p = rn_settings_title(q, pages, rn_settings_load(pages, RN_SETTINGS_MAX));
+	if (!p || !(m = rn_add(out)))
+		return;
+	snprintf(m->text, sizeof(m->text), "Open %s", p->name);
+	kb_strlcpy(m->subtext, "System Settings", sizeof(m->subtext));
+	kb_strlcpy(m->icon, *p->icon ? p->icon : "preferences-system",
+		   sizeof(m->icon));
+	m->catrel = RN_CAT_HIGHEST;
+	m->rel = 1.0;
+	rn_arg(m, "systemsettings");
+	rn_arg(m, p->id);
+}
+
 /* ── install from the boot medium ──────────────────────────────────────── */
 
 /*
@@ -440,7 +567,8 @@ static void match_routes(const RnQuery *q, RnList *out)
  * Discover opens the file itself (--local-filename), which its KDOS backend
  * lists under the `medium` origin, and installing it there copies nothing
  * from a network. A bare `gimp` does not ask: the palette ranks above
- * Applications, and the pack would sit above the installed GIMP.
+ * Applications, and the pack would sit above the installed GIMP. Nor does
+ * `install kdos` where the installer's own entry is installed.
  */
 static void match_medium(const RnQuery *q, RnList *out)
 {
@@ -448,7 +576,8 @@ static void match_medium(const RnQuery *q, RnList *out)
 	int n = rn_medium(&p), shown = 0;
 	RnQuery rest;
 
-	if (!n || q->nw < 2 || strcmp(q->w[0], "install"))
+	if (!n || q->nw < 2 || strcmp(q->w[0], "install") ||
+	    is_installer_name(q, 1))
 		return;
 	rn_query(&rest, rn_query_rest(q, 1));
 	for (int i = 0; i < n && shown < 8; i++) {
@@ -530,6 +659,7 @@ void rn_palette_match(const char *text, RnList *out)
 	if (!q.nw)
 		return;
 	match_codes(&q, out);
+	match_settings(&q, out);
 	match_routes(&q, out);
 	if (!strncmp(q.low, "route:", 6))
 		return;

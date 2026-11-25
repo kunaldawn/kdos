@@ -57,6 +57,15 @@ static const struct {
 
 int main(int argc, char **argv)
 {
+	/*
+	 * Line-buffered before anything prints. kpkg forks builds and hooks that
+	 * share its stdout, so each of its own lines must be out before a child
+	 * writes: block-buffered into a pipe or a log, every `==>` line would land
+	 * after the output it announces, and a reader waiting on one (Discover's
+	 * helper, a `tee` log) would see it late or never.
+	 */
+	setvbuf(stdout, NULL, _IOLBF, 0);
+
 	const char *self = strrchr(argv[0], '/');
 	self = self ? self + 1 : argv[0];
 	kb_set_progname(self);

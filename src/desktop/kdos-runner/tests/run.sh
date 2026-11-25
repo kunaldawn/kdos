@@ -62,14 +62,17 @@ first "Switch the accent to Amber" "accent amber"
 has "  sub kdos theme amber" "the subtext is the command"
 has "+term" "a background kdos verb offers Konsole"
 q accent
-[ "$(grep -c '^Switch the accent to' "$OUTF")" -ge 8 ] || fail "accent alone offers every accent"
+[ "$(grep -c '^Switch the accent to' "$OUTF")" -ge 10 ] || fail "accent alone offers every accent, the next and the previous"
+[ "$(grep '^Switch the accent to' "$OUTF" | head -3 | tr '\n' '|')" = \
+  "Switch the accent to the next one|Switch the accent to the previous one|Switch the accent to Phosphor|" ] ||
+	fail "accent lists the next and the previous one first, inside KRunner's eight rows"
 q "acc bo"; first "Switch the accent to Bone" "a verb typed in part"
 q "accent nosuch"; hasnt "Switch the accent" "an accent that is not one"
 q "accent next"; first "Switch the accent to the next one" "accent next"; has "  sub kdos theme next" "accent next runs kdos theme next"
 q "accent pr"; has "Switch the accent to the previous one" "accent prev in part"; has "  [prev]" "accent prev's vector"
 q "phosphor on"; has "  [phosphor]" "phosphor on"; has "  [on]" "phosphor on"
 q "tiling of"; first "Automatic tiling off" "a slot typed in part"
-q "desk dock"; first "Lay the desktop out as the dock desk" "desk dock"
+q "desk dock"; first "Lay the desktop out as the Dock desk" "desk dock"
 q "night light"; first "Turn Night Light on or off" "night light"; has "  [night-light]" "night light"
 q "reduced motion"; first "Reduced motion on or off" "reduced motion"; has "  sub kdos toggle reduced-motion" "reduced motion's vector"
 q "up ch"; first "Check for a system update" "update check in part"; has " term" "update check runs in Konsole"
@@ -103,6 +106,19 @@ q "keys launch konsole"; has "Launch Konsole: Ctrl+Alt+T" "a service group's cho
 q "keys region"; has "Capture Rectangular Region: Meta+Shift+Print, Meta+Shift+S" "a default from /usr/share/kglobalaccel"
 q "tile"; hasnt "Meta+T" "chords answer only after keys"
 ok "routes merged by name and titled, chords from three places"
+
+# ── a KDOS settings page, by its whole title ───────────────────────────
+printf '%s\n' '[Desktop Entry]' Type=Application NoDisplay=true \
+	'Exec=systemsettings kcm_kdos_look' Icon=preferences-desktop-color 'Name=KDOS Look' \
+	> "$D/root/usr/share/applications/kcm_kdos_look.desktop"
+q "KDOS Look"; first "Open KDOS Look" "a settings page's whole title"
+has "  sub System Settings" "the row names where the page opens"; hasnt "  sub systemsettings" "a settings row hides its command"
+has "  [systemsettings]" "the page opens in System Settings"; has "  [kcm_kdos_look]" "the page's own module"
+has "cat KDOS 100 1.00" "the title ranks first in the palette"
+q "kdos   look"; first "Open KDOS Look" "the title in any case and spacing"
+q "kdos lo"; hasnt "kcm_kdos_look" "part of a title is System Settings' own runner's"
+q "look"; hasnt "kcm_kdos_look" "one word of a title is System Settings' own runner's"
+ok "a KDOS settings page answers its whole title, and nothing less"
 
 # ── install from the boot medium ───────────────────────────────────────
 q gimp; hasnt "on medium" "a medium pack answers only after install"
@@ -148,6 +164,15 @@ has "3.1 Photosynthesis of slots & trees" "an h3 with its entities"
 has "file://$D/root/usr/share/doc/kdos/02-user-guide/updates.html#photosynthesis-of-slots" "the heading's anchor"
 has "cat Offline library 30" "a plain query ranks the library low"
 lib "too deep"; hasnt "Too deep" "h4 is not indexed"
+lib "lantern"
+grep -qx "The lantern gate in Administration" "$OUTF" || fail "a heading two chapters share names the first chapter in its title"
+grep -qx "The lantern gate in The security model" "$OUTF" || fail "a heading two chapters share names the second chapter in its title"
+! grep -qx "The lantern gate" "$OUTF" || fail "a row of a shared heading reads its bare heading"
+grep -qx "Lantern keys" "$OUTF" || fail "a heading no other row shares keeps its bare title"
+[ "$(grep -c '^[^ ]' "$OUTF")" = "$(grep '^[^ ]' "$OUTF" | sort -u | wc -l)" ] || fail "two library rows read the same"
+lib "lamp notes"
+[ "$(grep -cx "Lamp notes in Administration" "$OUTF")" = 2 ] || fail "two headings of one text in one chapter both name their chapter"
+has "file://$D/root/usr/share/doc/kdos/02-user-guide/administration.html#lamp-notes-1" "each heading of a chapter's pair opens its own anchor"
 lib "?updating"; hasnt "Offline library 100" "a ? is no prefix of the library's"
 lib "48.8584, 2.2945"; first "Show 48.85840, 2.29450 on the map" "a coordinate"; has "  [geo:48.858400,2.294500]" "a geo: link"
 lib "geo:91,0"; hasnt "on the map" "a latitude past 90"
@@ -156,6 +181,18 @@ mv "$D/root/usr/share/doc/kdos/02-user-guide/updates.html" "$D/root/usr/share/do
 lib "photosynthesis"; has "02-user-guide/updates.html#" "the cache stands until the package changes"
 mkdir -p "$D/root/var/lib/kpkg/db"; echo "kdos-doc 1" > "$D/root/var/lib/kpkg/db/kdos-doc"
 lib "photosynthesis"; has "02-user-guide/upd.html#" "a changed book rebuilds the cache"
+printf '<!doctype html><html><body><h1 id="kdos-look">KDOS Look</h1></body></html>\n' \
+	> "$D/root/usr/share/doc/kdos/02-user-guide/look.html"
+echo "kdos-doc 2" > "$D/root/var/lib/kpkg/db/kdos-doc"
+lib "look"; has "02-user-guide/look.html#kdos-look" "a page's own heading"
+awk '/^  cat Offline library/ && $NF > 0.5 { f = 1 } END { exit !f }' "$OUTF" ||
+	fail "one word of a page's title ranks its heading as usual"
+lib "KDOS Look"; has "02-user-guide/look.html#kdos-look" "the heading about a settings page"
+has "KDOS Look in KDOS book" "a heading named as the page says where it is"
+! grep -qix "KDOS Look" "$OUTF" || fail "a library row reads the settings page's own title"
+hasnt "README.html" "a heading opens its own page"
+! awk '/^  cat Offline library/ && $NF > 0.5 { f = 1 } END { exit !f }' "$OUTF" ||
+	fail "a settings page's whole title ranks a library row above 0.5"
 ok "books with anchors, manual pages, places, the index cache"
 
 if [ "$("$MT" zeal)" = yes ] && [ -s "$D/home/.local/share/Zeal/Zeal/docsets/Python_3.docset/Contents/Resources/docSet.dsidx" ]; then
@@ -223,7 +260,8 @@ ok "ask: a model chosen, the question sent once, failures and a timeout said"
 kill $FS 2>/dev/null; wait $FS 2>/dev/null
 lib "photosynthesis" 300
 hasnt "Photosynthesis basics" "no server, no rows"; has "3.1 Photosynthesis" "and the local rows still"
-ask "ask anything"; first "No local model is answering" "no llama-server"
+ask "ask anything"; first "No local model: install a language-model pack" "no llama-server"
+[ "$(sed -n 2p "$OUTF")" = "  sub " ] || fail "the advice is the whole row, with no subtext for KRunner to elide"
 ok "kiwix-serve and Kolibri over loopback, a deadline, no server at all"
 
 # ── speed ──────────────────────────────────────────────────────────────

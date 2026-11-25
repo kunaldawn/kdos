@@ -42,9 +42,9 @@ come from:
 
 An application row and its description, as an example:
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=327-327 pin=db241a9ade70 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=332-332 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=530-530 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=549-549 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -67,7 +67,7 @@ KWin reads the same file for the box's `grant` line.
 The session wrapper's `kdos_session_boxes`, in `fs/usr/local/lib/kdos/session-common.sh`, starts
 the warmup in the background, once at every login:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=118-121 pin=c05799d7b245 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=149-152 pin=c05799d7b245 -->
 
 The idle sweep is a row of the per-user timers, run under the user service `timers` from the
 user's first login to the last, from `fs/etc/kdos/user-services/timers.d/40-box-gc.timer`:
@@ -174,35 +174,62 @@ A launch starts the box if it is stopped, and composes a pack box's root first.
 kdos-box list                          # every box: base, state, persistence, disk use, accent
 kdos-box enter app.hugin               # a shell inside it, in a new terminal window
 kdos-box enter app.hugin ls /usr/bin   # one command, in place
-kdos-box stop app.hugin                # SIGTERM to it and its apps, 10 seconds, then SIGKILL
+kdos-box stop app.hugin                # hang up its shells, SIGTERM to it and its apps, 10 seconds, then SIGKILL
 kdos-box start app.hugin
 kdos-box remove app.hugin              # the profile and ~/.local/share/kdos/boxes/<name> stay
 ```
 
 `kdos-box list` prints one row per box under `BOX BASE STATE PERSIST DISK ACCENT`; a box whose
 profile exists and whose container does not is `not created`, and a box with no accent shows
-`none`. `kdos-box stop` does not use `podman stop`, which signals nothing in a box that shares the
-host's process table and has no cgroup of its own, as every store box does: it signals the
-applications the box's launches started and the box's init itself, and an application that ignores
-SIGTERM is killed after ten seconds. See
+`none`. `kdos-box stop` does not use `podman stop`, which in a box that shares the host's process
+table and has no cgroup of its own, as every store box does, signals the box's init and its
+descendants and leaves its applications running: it signals the applications the box's launches
+started, every launch still waiting for the box, and the box's init itself, and an application
+that ignores SIGTERM is killed after ten seconds. The box's exec shells (a `kdos-box enter`, a
+`distrobox enter`) are hung up first, so they end at once rather than at the end of the grace
+period, and whatever a dead init left under the container's main conmon is ended too. The stop
+returns once nothing of the box holds its storage, so the box starts again at once. See
 [kdos-box](../../kdos/04-programs/kdos-appbox.md#kdos-box).
 
 `remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
 `<name> removed — its profile is kept in ~/.config/kdos/boxes/<name>.conf`, followed by
 `and its writable layer, snapshots and home in ~/.local/share/kdos/boxes/<name>` when that
 directory exists, and exits 0. A store box has no such directory: its writes were inside its
-container and go with it. When podman refuses, podman's own error is printed, then
-`<name> was not removed (podman rm exited N)`, which without `--force` goes on to say that a
-running box needs `kdos-box stop` first, and `kdos-box remove` exits with podman's status;
+container and go with it. When podman refuses, one line is printed,
+`<name> was not removed: <podman's reason>`, with any container id in podman's reason replaced by
+the box's name, which without `--force` goes on to say that a running box needs `kdos-box stop`
+first, and `kdos-box remove` exits with podman's status;
 the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
 it. `--force` (`kdos-box remove app.hugin --force`) runs `kdos-box stop`'s sequence first and adds
-`-f` to `podman rm`, so a running box goes with it. A box with no container, such as one whose `create` failed, has its profile deleted
+`-f` to `podman rm`, so a running box goes with it. `--purge` deletes the profile too, and runs
+`podman rmi` on an `image:` base no other box's profile names, saying whether the image was
+released or why it was kept. A
+profile a remove kept carries that remove's mark, and a later remove that finds no container keeps
+it and answers ``<name> has no container; its profile is kept in …; `kdos-box remove <name>
+--purge` deletes it``, exit 0. A box with no container and an unmarked profile, such as one whose
+`create` failed, has its profile deleted
 and any composed stack released, answers `<name> had no container — its profile is removed` and
-exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
+exits 0; a name with neither a container nor a profile answers `there is no box named <name>`
 and exits 1, after releasing any composed stack the same way.
 
-`kdos-box enter` with no command, from a terminal, opens a new Konsole window in the box's accent
-profile; with `KDOS_BOX_NOTERM` set to anything it runs in the current terminal.
+`kdos-box enter` with no command, typed at a shell in a terminal, opens a new Konsole window in the
+box's accent profile; run as a terminal's own program (`konsole -e kdos-box enter <box>`) it runs in
+that terminal and titles its tab `<box> — KDOS box`; with `KDOS_BOX_NOTERM` set to anything it runs
+in the current terminal. The window opens at once. Until the box's init has finished this start,
+the shell that runs in place waits up to 120 seconds (`KDOS_BOX_SETUP_WAIT=<seconds>` changes it),
+silently for the first 3; a restart of a box set up before, after a reboot too, is ready well
+within them, in about half a second. A box still not ready then prints one line: `kdos-box:
+setting up <box> for its first use; this can take a minute` when its log holds no
+`container_setup_done` from any start, `kdos-box: waiting for <box> to start` when it does
+(`/.containersetupdone` in the box answers only for a log podman cannot read back). A wait
+that runs out names `podman logs <box>` and, in the box's own window, waits for Enter before the
+window closes, and a
+`kdos-box stop <box>` meanwhile ends it with `kdos-box: <box> was stopped before it was ready` and
+exit status 1. When the wait ran in the box's own window, the `kdos-box enter` that opened it
+prints the same line in the shell you typed it in and exits 1 once the window closes. The box is
+ready when its log since the end of its previous run holds `container_setup_done`, so an earlier
+run's marker does not count; how the check bounds the start is in
+[the launch path](../../kdos/04-programs/kdos-appbox.md#the-launch-path), step 8.
 Inside, `KDOS_BOX` holds the box's name.
 
 ### Changing what a box may share
@@ -217,7 +244,8 @@ Inside, `KDOS_BOX` holds the box's name.
 2. Set keys. For a box that has a container it answers `<name>: written`, reminds you that
    namespaces and volumes apply at create time, and prints the profile again; for one with no
    container yet it says the profile applies when the box is created. `autostop=30m` is stored as
-   `autostop=1800s`:
+   `autostop=1800s`. A value its key does not take, such as `network=maybe`, is refused with one
+   line ending `nothing was written`, and none of the keys on that command line is written:
 
    ```bash
    kdos-box profile app.hugin home=private network=private
@@ -314,7 +342,8 @@ A box made from a container image is a working environment, not tied to an appli
    nothing for an image, such as Alpine's, that has none. `export` starts the box and reads the
    entry's `Exec`, `Name`, `Icon` and `StartupWMClass`, so an id that is not itself a program,
    such as `org.gnome.TextEditor`, runs the program its entry names; a word that names no entry
-   is taken as the command itself. It writes
+   is taken as the command itself, refused when the box has no such command, and exported as a
+   terminal launcher with the terminal's icon. It writes
    `~/.local/share/applications/<desktop-id>.scratch.desktop`, whose command is
    `kdos-box run scratch` followed by the entry's command, and a shim
    `~/.local/bin/<command>@scratch`, named after the program in that command, which splits its
@@ -350,9 +379,11 @@ kdos app remove app.hugin
 
 It removes the box, the application's image, and each runtime image above the base that no
 remaining box's chain names, then regenerates the launchers. The base image is never removed, and
-neither is the box's profile. The box is removed with `kdos-box remove`, which refuses a running
-box: the remove then prints `kdos-appbox: app.hugin was not uninstalled` and touches no image, so
-stop the box first with `kdos-box stop app.hugin`.
+neither is the box's profile. Removing the last box over the base, a `deb:` one too, says it was
+kept, with the image it is built on, their size and the `podman rmi kdos/base debian:trixie-slim`
+that gives it back. The box is removed with `kdos-box remove`, which refuses a running box: the
+remove then prints `kdos-appbox: app.hugin was not uninstalled` and touches no image, so stop the
+box first with `kdos-box stop app.hugin`.
 
 ### Updating an application
 

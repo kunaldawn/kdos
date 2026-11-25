@@ -1,0 +1,9 @@
+S:disk/by-id/ata-Kingston-SA400S37_QM00001
+I:4201342
+E:ID_ATA=1
+E:ID_TYPE=disk
+E:ID_BUS=ata
+E:ID_MODEL=Kingston-SA400S37
+E:ID_MODEL_ENC=Kingston-SA400S37\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20
+E:ID_SERIAL=Kingston-SA400S37_QM00001
+G:systemd

@@ -9,12 +9,24 @@
  *   70-Privacy.qml — what reaches the network, and the wallet
  *
  * Three facts a person should not have to discover: KDOS downloads nothing
- * on its own; the firewall lets services in by name, and anything that
- * listens (KDE Connect pairing a phone, desktop sharing) needs its name
- * allowed; and with automatic login there is no password at login for the
- * wallet to open with, so it asks for its own on first use. The last is
- * shown only on a machine that logs in automatically, read from SDDM's
- * kde_settings.conf.
+ * on its own, and Firefox's background traffic of its own is its security
+ * data (Safe Browsing and tracking-protection lists, remote settings'
+ * certificate revocations and blocklists, add-on update checks) and its
+ * push connection (the firefox-esr port's kdos.js and policies turn off
+ * its studies, telemetry and connectivity probes and leave exactly these
+ * on, so the sentence must change with them); the firewall lets services in by
+ * name, and anything that listens (KDE Connect pairing a phone, desktop
+ * sharing) needs its name allowed; and with automatic login there is no
+ * password at login for the wallet to open with, so it asks for its own on
+ * first use. The last is shown only on a machine that logs in
+ * automatically, read from SDDM's kde_settings.conf. On the live medium,
+ * which always logs in automatically, the wallet is off
+ * (/usr/share/kdos/xdg-live/kwalletrc), so the paragraph says the live
+ * session keeps no wallet and an installed system's asks for its own
+ * password, and offers no Wallet Settings button, which would open on a
+ * switched-off subsystem. Live is the --live-environment argument Welcome
+ * Center's kded module and the live medium's launcher entry pass, the one
+ * 35-Persist.qml reads.
  * ---------------------------------
  */
 
@@ -33,12 +45,13 @@ Welcome.ScrollablePage {
     id: page
 
     heading: i18ndc("kdos-welcome", "@title:window", "Privacy and Network")
-    description: i18ndc("kdos-welcome", "@info:usagetip", "Nothing on KDOS phones home. Updates, firmware and add-ons are fetched only when you ask, and nothing listens on the network until you allow it.")
+    description: i18ndc("kdos-welcome", "@info:usagetip", "KDOS itself phones home for nothing: updates, firmware and add-ons are fetched only when you ask, and nothing listens on the network until you allow it. Firefox keeps its own security data current from Mozilla and Google: its Safe Browsing and tracking-protection lists, certificate revocations and blocklists, and updates for its add-ons. It also keeps a connection open to Mozilla for site notifications. None of these sends the pages you visit.")
 
     Kdos.Run {
         id: run
     }
 
+    readonly property bool live: Qt.application.arguments.indexOf("--live-environment") >= 0
     property string autologinUser: ""
     property string failure: ""
 
@@ -77,11 +90,13 @@ Welcome.ScrollablePage {
         }
 
         Kdos.Point {
-            visible: page.autologinUser.length > 0
+            visible: page.live || page.autologinUser.length > 0
             icon: "kwalletmanager"
             title: i18ndc("kdos-welcome", "@title", "The wallet and automatic login")
-            text: i18ndc("kdos-welcome", "@info", "This machine logs in without a password, so the wallet that keeps your saved passwords cannot be opened by your login. It asks for its own password the first time an application needs it; you may leave that empty if the disk is encrypted.")
-            action: i18ndc("kdos-welcome", "@action:button", "Wallet Settings…")
+            text: page.live
+                ? i18ndc("kdos-welcome", "@info", "The live session logs in without a password and keeps no wallet: nothing it is asked to save is kept, and a program that asks to save a password finds no wallet to save it in. On an installed system that logs in automatically, the wallet asks for its own password the first time an application needs it.")
+                : i18ndc("kdos-welcome", "@info", "This machine logs in without a password, so the wallet that keeps your saved passwords cannot be opened by your login. It asks for its own password the first time an application needs it; you may leave that empty if the disk is encrypted.")
+            action: page.live ? "" : i18ndc("kdos-welcome", "@action:button", "Wallet Settings…")
             actionIcon: "kwalletmanager"
             onTriggered: page.open(["kcmshell6", "kcm_kwallet5"])
         }

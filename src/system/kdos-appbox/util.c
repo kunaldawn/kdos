@@ -77,7 +77,9 @@ void tracef(const char *fmt, ...)
  * already puts on the host: this program compiles in its libk* sources and
  * links no library of anybody else's, libnotify included. Only reachable at
  * all because the session bus lives at a fixed path in $XDG_RUNTIME_DIR,
- * which the appbox shares.
+ * which the appbox shares. The sender and the x-kde-appname hint are
+ * kb_notify's, "KDOS Tools" and kdos, so a box's notices join the KDOS tools'
+ * one history group in Plasma.
  */
 void notify(const char *summary, const char *body)
 {
@@ -93,13 +95,13 @@ void notify(const char *summary, const char *body)
 	kb_argv_add(&a, "/org/freedesktop/Notifications");
 	kb_argv_add(&a, "--method");
 	kb_argv_add(&a, "org.freedesktop.Notifications.Notify");
-	kb_argv_add(&a, "KDOS");
+	kb_argv_add(&a, "KDOS Tools");
 	kb_argv_add(&a, "0");
 	kb_argv_add(&a, "distributor-logo-kdos");
 	kb_argv_add(&a, summary);
 	kb_argv_add(&a, body);
 	kb_argv_add(&a, "[]");
-	kb_argv_add(&a, "{}");
+	kb_argv_add(&a, "{'x-kde-appname': <'kdos'>}");
 	kb_argv_add(&a, "8000");
 	kb_argv_end(&a);
 	kb_run_detach(&a);

@@ -13,16 +13,26 @@
  * plates are opaque and sit on the screen edge, so the edge stays a target
  * the pointer cannot overshoot.
  *
- * A panel does not wrap or scroll. Short of room it narrows the pinned apps
- * and the meters' lines; what still does not fit is cut off at the screen's
- * edge, the clock and Show Desktop first. Everything but the pinned apps is
- * about 69 grid units wide at its preferred width; the pinned apps bring the
- * full desk to about 78. A screen narrower in logical pixels than that
- * drops parts of it when it is laid out: under 78 grid units the Start
- * label and the network meter, under 64 the pager as well. Under 50 grid
- * units even that does not fit, and the Dock or Tiling desk is the one to
- * use. The widths are the screen's when the desk is laid out; `kdos desk
- * kdos` lays it out again after a change of scale.
+ * A panel does not wrap or scroll. Short of room it takes the meters'
+ * lines first, then narrows the pinned apps; what still does not fit is
+ * cut off at the screen's edge, the clock and Show Desktop first.
+ * Everything but the task manager is about 64 grid units wide at its
+ * preferred width, the network meter 11 of them, and each task takes about
+ * 3: the four pinned apps bring the full desk to about 76, and six tasks
+ * to about 82. A screen narrower in logical pixels than 78 grid units
+ * drops parts of the desk when it is laid out: the Start label and the
+ * network meter, and under 64 the pager as well. Under 50 grid units even
+ * that does not fit, and the Dock or Tiling desk is the one to use. These
+ * widths are the screen's when the desk is laid out, and `kdos desk kdos`
+ * lays it out again after a change of scale. The network meter of a full
+ * desk also steps out at run time: its face, org.kdos.meters, is given
+ * stepOutBelow 82 and draws it one pixel wide while the panel is narrower
+ * than that, so a desk with up to six tasks keeps every task at full size
+ * on a panel too narrow for the meter beside them. The face reads the
+ * setting again from the applet's configuration at each resize, so a desk
+ * laid out in the running session steps the meter out at the next change
+ * of panel width. Between 78 and 82 grid units the meter is laid out and
+ * stays stepped out.
  *
  * THE PINNED APPS ARE THE FIRST WORDS OF ~/.config/kdos/favorites. That file
  * is also the list of boxes warmed at login, and a launcher here that it does
@@ -46,22 +56,22 @@ var favorites = [
     "org.kde.discover.desktop",
 ];
 
-// The clock wears the fixed-width face in force when the desk is laid out,
-// read from kdeglobals rather than named here, so the desk never pins a face
-// the global theme did not set. A manual font is a manual weight too: the
-// applet's own default, 50, is Qt 5's scale and draws the thinnest cut.
-function fixedFamily() {
-    var fixed = String(ConfigFile("kdeglobals", "General").readEntry("fixed") || "");
-    return fixed.split(",")[0];
-}
-
 // A meter's total sensor is what its button speaks: the applet's tooltip
 // subtext is "<sensor name>: <value>" of the first total sensor and empty
 // without one, and a screen reader reads the panel button as "Open " and
 // that subtext. The stock network preset names none. The entry is a JSON
-// array, as the face controller reads it.
-function addMeter(panel, plugin, face, total) {
+// array, as the face controller reads it. A face setting lives in the
+// applet's [<face id>][General] group, where the face controller's config
+// loader reads its main.xml keys, and the face's settings are written
+// before its chartFace, so the group holds them whenever the face reads it.
+function addMeter(panel, plugin, face, total, settings) {
     var meter = panel.addWidget(plugin);
+    if (settings) {
+        meter.currentConfigGroup = [face, "General"];
+        for (var key in settings) {
+            meter.writeConfig(key, settings[key]);
+        }
+    }
     meter.currentConfigGroup = ["Appearance"];
     meter.writeConfig("chartFace", face);
     meter.currentConfigGroup = ["Sensors"];
@@ -135,7 +145,8 @@ for (var s = 0; s < screenCount; s++) {
     addMeter(panel, "org.kde.plasma.systemmonitor.cpu", "org.kdos.meters", "cpu/all/usage");
     addMeter(panel, "org.kde.plasma.systemmonitor.memory", "org.kdos.meters", "memory/physical/used");
     if (full) {
-        addMeter(panel, "org.kde.plasma.systemmonitor.net", "org.kdos.meters", "network/all/download");
+        addMeter(panel, "org.kde.plasma.systemmonitor.net", "org.kdos.meters", "network/all/download",
+                 {stepOutBelow: 82});
     }
 
     // KDE's own rule for the input-method panel, by the locale's language.
@@ -148,16 +159,13 @@ for (var s = 0; s < screenCount; s++) {
 
     addTray(panel);
 
+    // No font keys: the applet's own font fits the panel's height and the
+    // font in force, so it grows with the display scale and larger fonts. A
+    // manual font is sized against the screen's pixel density, which the
+    // scale cancels, and stays the same size at 200%.
     var clock = panel.addWidget("org.kde.plasma.digitalclock");
     clock.currentConfigGroup = ["Appearance"];
     clock.writeConfig("showDate", true);
-    var family = fixedFamily();
-    if (family.length > 0) {
-        clock.writeConfig("autoFontAndSize", false);
-        clock.writeConfig("fontFamily", family);
-        clock.writeConfig("fontSize", 10);
-        clock.writeConfig("fontWeight", 400);
-    }
 
     panel.addWidget("org.kde.plasma.showdesktop");
 }

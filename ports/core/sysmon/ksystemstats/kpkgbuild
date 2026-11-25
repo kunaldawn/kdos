@@ -10,7 +10,7 @@
 
 name        = ksystemstats
 version     = 6.8.2
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
 sha256      = 2a71fa12b3dd8ad4a6c31feae253b1d1ed7fb0ddd44c8d27a32b63583f8b4889  ksystemstats-6.8.2.tar.xz
 description = Plasma's sensor daemon — CPU, memory, disks, network, GPUs, power and hardware sensors over D-Bus

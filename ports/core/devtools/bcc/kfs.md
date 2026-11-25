@@ -73,3 +73,11 @@ The libbpf-tools are a separate `Makefile` outside the CMake build, run with `ma
 builds from the submodule's sources, which is a copy inside that executable and not a second
 libbpf in any process that loads the shared one. The tools carry `vmlinux.h` per architecture
 in the source, so nothing is read from the build machine's kernel.
+
+`/usr/share/licenses/bcc` holds bcc's Apache-2.0 text and, because the libbpf-tools are licensed
+apart from it, the texts they ship under: `libbpf/` for the static libbpf in every tool
+(LGPL-2.1 OR BSD-2-Clause), `libbpf-tools/LICENSE.GPL-2.0`, taken from the `bpftool`
+submodule, for the tools under GPL-2.0, and `libbpf-tools/LICENSE.GPL-3.0` for `bpf-wakeuptime`,
+whose BPF program `wakeuptime.bpf.c` is GPL-3.0. The source carries no GPL-3.0 text, so that one
+is [bison](#port-bison)'s `COPYING`, a full GPL version 3 that bison, a build dependency, installs
+in the build tree. The `license` key names all four.

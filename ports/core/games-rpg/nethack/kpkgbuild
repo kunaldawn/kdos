@@ -10,7 +10,7 @@
 
 name        = nethack
 version     = 5.0.0
-release     = 1
+release     = 2
 _luaver     = 5.4.8
 source      = $name-$version.tar.gz::https://www.nethack.org/download/$version/nethack-${version//./}-src.tgz
 source      = https://www.lua.org/ftp/lua-$_luaver.tar.gz

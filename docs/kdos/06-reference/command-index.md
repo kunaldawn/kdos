@@ -39,7 +39,7 @@ that only another program starts go in `/usr/libexec`.
 | `/usr/local/bin` | `kdos` and the other session-side names of the `ksvc` binary, `kdos-appbox` with `kdos-box`, `xdg-open` and one shim per boxed application, and the session scripts from `fs/` |
 | `/usr/local/sbin` | `kdos-dm`, which `/etc/inittab` runs on `tty1` and which runs SDDM, and `kdos-getty`, which `/etc/inittab` runs on `tty2` |
 | `/usr/libexec/kdos` | `kdos-boxinit`, which runs inside a box; `kdos-runner`, started by D-Bus for KRunner; `kdos-fwask` and `kdos-library-place`, started by the session's autostart; and the `about-*` scripts the Health page and About this System run |
-| `/usr/libexec/kdos-discover` | `kdos-ports-helper` and `kdos-ports-builder`, which Discover runs through polkit to install a port prebuilt or build it here |
+| `/usr/libexec/kdos-discover` | `kdos-ports-helper` and `kdos-ports-builder`, which Discover runs through polkit to install a port prebuilt, build it here, or remove one installed on request |
 | `/usr/lib/turnstile` | `ksvc`, the per-user service backend `turnstiled` runs at a user's first login |
 
 ## Binaries with several names
@@ -75,7 +75,7 @@ carries no packs, so it ships none. An application you install gets its shim in 
 
 ## The `kdos` command
 
-`kdos` is the single entry point to the system's own tools. It has 41 subcommands, plus `help`,
+`kdos` is the single entry point to the system's own tools. It has 43 subcommands, plus `help`,
 which prints a cheat sheet of where software lives, the everyday commands and the default
 keys. It is installed as `/usr/local/bin/kdos`, a name of the `ksvc` binary. Each subcommand below
 links to its section of [The kdos command](../04-programs/kdos-command.md).
@@ -83,7 +83,7 @@ links to its section of [The kdos command](../04-programs/kdos-command.md).
 | Subcommand | Does |
 |---|---|
 | [`kdos help`](../04-programs/kdos-command.md#kdos-help) | The cheat sheet: where software lives, the everyday commands and the default keys; `--keys` prints the keys alone, `--pager` pages it; also `-h` and `--help` |
-| [`kdos version`](../04-programs/kdos-command.md#kdos-version) | Kernel, C library, userland, session and accent; also `-V` |
+| [`kdos version`](../04-programs/kdos-command.md#kdos-version) | The release and its build, kernel, C library, userland, session and accent; also `--version` and `-V` |
 | [`kdos status`](../04-programs/kdos-command.md#kdos-status) | Packages, boxes, exported applications and the session |
 | [`kdos doctor`](../04-programs/kdos-command.md#kdos-doctor) | Check for the faults known to occur on KDOS, each reported as `ok`, `warn` or `skip`; `--json`, `--cve` |
 | [`kdos theme [NAME]`](../04-programs/kdos-command.md#kdos-theme) | Set the accent everywhere at once (`next`, `prev` and `list` too); `style FILE` applies a style file, `--audit` checks the generated colours |
@@ -120,7 +120,7 @@ links to its section of [The kdos command](../04-programs/kdos-command.md).
 | [`kdos restarts`](../04-programs/kdos-command.md#kdos-restarts) | Which running processes still use code an upgrade replaced or removed |
 | [`kdos march`](../04-programs/kdos-command.md#kdos-march) | Measure per-machine optimisation (`probe`, `run PORT…`) and read the recorded verdicts (`report`) |
 | [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) | Which pinned versions carry known vulnerabilities, from an offline database |
-| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (what is behind the signed tree, what the binhost holds and whether a newer slot image exists; `--json`), `fetch` (the newest signed ports tree, and the release index through which the binhost index and slot image manifest are taken; `--binhost-only` the binhost index of the tree in place alone), `install PORT\|GROUP` (one port or group and what it lacks, `--prebuilt` from the signed binhost or `--source` built here, `--build-deps=prebuilt\|source`, `--root DIR`; `--pending` what the installer recorded; `--dev PORT\|GROUP…` installed ports again whole, with the development files the image left out), `groups` (every group, installed or not, and its download size; `--json`), `apply` (the newer slot image and then the world set, or the binhost's packages, into the inactive slot, each package by its origin's route; `--source` builds them here instead), `notes` and `theme` |
+| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (what is behind the signed tree, what the binhost holds and whether a newer slot image exists; `--json`), `fetch` (the newest signed ports tree, and the release index through which the binhost index and slot image manifest are taken; `--binhost-only` the binhost index of the tree in place alone), `install PORT\|GROUP` (one port or group and what it lacks, `--prebuilt` from the signed binhost or `--source` built here, `--build-deps=prebuilt\|source`, `--root DIR`; `--pending` what the installer recorded; `--dev PORT\|GROUP…` installed ports again whole, with the development files the image left out), `remove PORT` (one port with a world line that nothing installed needs, with the packages it brought that nothing else needs, removed by `kpkg remove`, and the cached files of every package not installed out of the binhost cache; `--dry-run`), `removable` (the installed world ports that `remove` takes, those an installed package keeps and what keeps each, and the packages left by removals; `--json`), `groups` (every group, installed or not, and its download size; `--json`), `apply` (the newer slot image and then the world set, or the binhost's packages, into the inactive slot, each package by its origin's route; `--source` builds them here instead), `notes` and `theme` |
 | [`kdos firmware sync`](../04-programs/kdos-command.md#kdos-firmware) | Install the vendor firmware ports this machine's devices and kernel log ask for, prebuilt; `--dry-run` (`--json`) names each and why, `--all` every vendor port, `--root DIR` into another root |
 | [`kdos image`](../04-programs/kdos-command.md#kdos-image) | Signed whole-slot images: `make`, `verify`, `unpack` into a root, and `carry` what a slot keeps from the running one |
 | [`kdos rebuild WORKDIR`](../04-programs/kdos-command.md#kdos-rebuild) | Rebuild the image from the sources on the medium; `--dry-run`, `--iso-only` |
@@ -138,9 +138,9 @@ the Discover backend, the KRunner runner, the KIO worker) are listed in
 |---|---|---|---|
 | `kdos-dm` | `/usr/local/sbin` | Run SDDM on `tty1` from `/etc/inittab`, and give a password prompt on that console when SDDM is missing or exits three times in a minute | [Boot and init](../03-architecture/boot-and-init.md) |
 | `kdos-session-wrapper` | `/usr/local/bin` | SDDM's session command: start Plasma from a login shell, on the one session bus at `$XDG_RUNTIME_DIR/bus`, with the desktop's environment set | [The session](../03-architecture/session.md#starting-a-session) |
-| `kdos-notice` | `/usr/bin` | The system's notices as Plasma notifications: restarts after an update, CVEs, the trial slot, a rollback, memory kills; `--scan` looks once, `--bless` confirms this boot once Plasma has stayed up | [The Plasma shell](../04-programs/plasma-shell.md#kdos-notice) |
+| `kdos-notice` | `/usr/bin` | System notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills; `--scan` looks once, `--bless` confirms the boot | [The Plasma shell](../04-programs/plasma-shell.md#kdos-notice) |
 | `kdos-installer-gui` | `/usr/bin` | Install KDOS: the graphical installer, which runs `kinstall` through `pkexec` | [kinstall](../04-programs/kinstall.md) |
-| `kdos-discover-catalog` | `/usr/bin` | Write the AppStream catalogue of the ports a root has installed, or a binary host can add, for Discover; `--root DIR`, `--out FILE`, `--origin NAME`, `--package NAME` | [Discover](../04-programs/discover.md) |
+| `kdos-discover-catalog` | `/usr/bin` | Write Discover's AppStream catalogue of installed ports or a binary host's: `--root DIR`, `--out FILE`, `--origin NAME`, `--package NAME` | [Discover](../04-programs/discover.md) |
 | `kdos-shot` | `/usr/local/bin` | Screenshots through Spectacle, to the clipboard and `~/Pictures/Screenshots`: `region` (the default), `screen` (also `full`), `window`, `qr` | [The kdos command](../04-programs/kdos-command.md#kdos-shot) |
 | `kdos-updatedb` | `/usr/local/bin` | Rebuild this user's own `plocate` index, scoped to `$HOME` | [Configuration](configuration.md#etckdostimersd-and-configkdostimersd) |
 | `kdos-runner` | `/usr/libexec/kdos` | The KDOS rows of KRunner and the offline library, on the session bus as `io.kdos.Runner`; `--query TEXT` and `--library TEXT` answer once on standard output | [The Plasma shell](../04-programs/plasma-shell.md#krunner-and-the-kdos-runner) |
@@ -179,12 +179,13 @@ and its client are always the same version.
 
 | Command | What it does | Documented in |
 |---|---|---|
-| `kdos-powerd` | The firewall's named services and the look of the machine before a login, for a desktop that is not root: on a socket for `kdos` and as `io.kdos.Power1` on the system bus | [The daemons](../04-programs/daemons.md#kdos-powerd) |
+| `kdos-powerd` | The firewall's named services and the look before a login, for a desktop that is not root: a socket for `kdos`, and `io.kdos.Power1` on the system bus | [The daemons](../04-programs/daemons.md#kdos-powerd) |
 | `kdos-power` | `kdos-powerd`'s client; `suspend`, `poweroff` and `reboot` go to `loginctl` and never reach the daemon | [The daemons](../04-programs/daemons.md#the-client) |
 | `kdos-energyd` | Per-application energy attribution: which application is using the processor's power | [The daemons](../04-programs/daemons.md#kdos-energyd) |
 | `kdos-energy` | The per-application energy report; `--json`, `ping` | [The daemons](../04-programs/daemons.md#kdos-energyd) |
 | `kdos-oomd` | The memory-pressure daemon, which spares the desktop | [The daemons](../04-programs/daemons.md#kdos-oomd) |
 | `kdos-packd` | The pack daemon, the only program that mounts a pack | [The daemons](../04-programs/daemons.md#kdos-packd) |
+| `kdos-mdnsd` | `/usr/sbin/kdos-mdnsd`: answers `.local` host names in DNS from Avahi, behind NetworkManager's dnsmasq, as `nobody` | [The daemons](../04-programs/daemons.md#kdos-mdnsd) |
 | `kdos-settingsd` | `org.freedesktop.hostname1`, `timedate1` and `locale1` on the system bus, over the files KDOS keeps | [KDOS's settings pages](../04-programs/kdos-settings.md#kdos-settingsd) |
 | `kdos-sysupdated` | `org.freedesktop.sysupdate1` and `io.kdos.Slots1` on the system bus: system updates into the inactive A/B slot, for Discover and System Settings | [Discover](../04-programs/discover.md#kdos-sysupdated) |
 
@@ -208,13 +209,13 @@ A **box** is the container an application runs in; see the [glossary](glossary.m
 | `kdos-box` | `/usr/local/bin` | Manage boxes: create, enter, freeze, export, snapshot, profile | [kdos-appbox](../04-programs/kdos-appbox.md#kdos-box) |
 | `xdg-open` | `/usr/local/bin` | Open a file or a link with its handler | [kdos-appbox](../04-programs/kdos-appbox.md#the-open-path) |
 | `xdg-terminal-exec` | `/usr/local/bin` | Run a command in a Konsole window, for `Terminal=true` handlers launched through GLib | [kdos-appbox](../04-programs/kdos-appbox.md#terminal-entries) |
-| `kdos-boxsock` | `/usr/bin` | Open a launcher's tagged Wayland socket in a box's private runtime directory, so KWin knows which box a window came from; `kdos-boxsock [-s confined\|tagged] BOX [LAUNCHER-ID]` | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
+| `kdos-boxsock` | `/usr/bin` | Open a launcher's tagged Wayland socket in a box, so KWin knows a window's box: `kdos-boxsock [-s confined\|tagged] BOX [LAUNCHER-ID]` | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
 | `kdos-boxinit` | `/usr/libexec/kdos` | Process 1 inside a pack box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
-| `kdos-openarchive` | `/usr/local/bin` | Extract, with `ouch`, an archive beside itself; the default handler for comic books packed as 7z or rar | [Applications](../02-user-guide/applications.md) |
+| `kdos-openarchive` | `/usr/local/bin` | Extract, with `ouch`, an archive beside itself; the default handler for comic books packed as 7z or rar | [Applications](../02-user-guide/applications.md#default-applications) |
 | `kdos-pack` | `/usr/bin` | Build, sign, re-stamp, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-podman-api` | `/usr/bin` | Run a container client against this account's Podman API socket, starting `podman system service` when nothing answers on it | [Configuration](configuration.md#containers) |
-| `kdos-ports-helper` | `/usr/libexec/kdos-discover` | Install one port and what it lacks prebuilt from the signed binary host, as root through polkit (`io.kdos.ports.install`), for Discover: `kdos-ports-helper install PORT` | [Discover](../04-programs/discover.md#host-software) |
-| `kdos-ports-builder` | `/usr/libexec/kdos-discover` | Build one port on this computer and install it, as root through polkit (`io.kdos.ports.build`), for Discover: `kdos-ports-builder install [--build-deps=prebuilt\|source] PORT` | [Discover](../04-programs/discover.md#host-software) |
+| `kdos-ports-helper` | `/usr/libexec/kdos-discover` | Install a port from the signed binary host, or remove one installed on request, as root for Discover: `kdos-ports-helper install\|remove PORT` | [Discover](../04-programs/discover.md#host-software) |
+| `kdos-ports-builder` | `/usr/libexec/kdos-discover` | Build and install a port here, as root through polkit, for Discover: `kdos-ports-builder install [--build-deps=prebuilt\|source] PORT` | [Discover](../04-programs/discover.md#host-software) |
 
 `kdos-appbox` takes `run`, `open`, `throwaway`, `catalogue`, `install`, `uninstall`, `store`,
 `import`, `export`, `warmup`, `status`, `session save` and `session restore`, `list`, `apps`,
@@ -239,14 +240,14 @@ All five names are one binary in `/usr/bin`.
 | `kpkgdepends` | Print the resolved install order | [Packaging](../03-architecture/packaging.md#kpkg) |
 
 `kpkg` takes `install` (also `i`), `remove` (also `r`), `list` (also `l`, with `--json`), `info`
-(with `--json`), `check` (packages by name, or `--all`), `facets` (`--strip [PACKAGE…]` removes
+(with `--json`), `check` (packages by name, or `--all`; `--brief` prints only the faults and the summary, `--log FILE` keeps every line), `facets` (`--strip [PACKAGE…]` removes
 installed packages' development and documentation files as `FACETS=run` leaves them out, `--list
 PACKAGE` prints what one was installed without; see
 [Facets](../03-architecture/packaging.md#facets)), `needs` (`PACKAGE` prints what the package
 needs at run time as its install recorded it, `--resolve PACKAGE` names the installed package
 providing each edge and exits 1 when nothing provides one, `--scan PACKAGE` measures it from the
 installed files without writing; see
-[Run-time needs](../03-architecture/packaging.md#run-time-needs)), `meta`, `fetch` (the sources a port lacks, from the archive and then upstream), `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
+[Run-time needs](../03-architecture/packaging.md#run-time-needs)), `meta`, `fetch` (the sources a port lacks, from the archive and then upstream), `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`, and `--buildonly FILE` to write each stanza's `N:` line),
 `verify-index`, `verify-pkg`, `delta`, `apply-delta` (with `--expect SHA256`, which deletes the
 reconstructed package unless its checksum matches; see [Deltas](../03-architecture/packaging.md#deltas)),
 `binhost`, `store gc DIR MAX-SIZE` and `help`, and the options
@@ -259,11 +260,21 @@ recently used first, until the store fits `MAX-SIZE` (bytes, or a `K`, `M`, `G` 
 `kpkg help` describes each.
 
 The other four names take few options. `kpkgadd [-f|--force] [--root PATH] FILE` installs one
-package file, `kpkgdel [--root PATH] PACKAGE…` removes packages, and
+package file, `kpkgdel [--root PATH] PACKAGE…` removes packages and drops each one's lines from
+the world set and origin record of that root, `/var/lib/kdos/world` and `/var/lib/kdos/origin`
+(the root is `/` by default), so the next `kdos update` does not install it again, and
 `kpkgdepends [--root PATH] PORT…` prints the install order on one line. `kpkgbuild` takes no
 arguments: it builds the port in the current directory.
 
-`kpkg` has no `update` subcommand: `kpkg update` prints the usage text and exits 1. `kdos update`
+`kpkg` has no `update` subcommand. A word `kpkg` does not know, `update` among them, prints
+`kpkg: unknown command '<word>' — try: kpkg help` on standard error and exits 1; a bare `kpkg`
+prints the usage and exits 1, and `kpkg help`, `--help` and `-h` print it and exit 0.
+`kpkg --version` (or `-V`) before the command word prints `kpkg 1.0-kdos` and exits 0. `--root
+<path>` may come before the command word (`kpkg --root <path> <command> …`) for every command that
+reads a root; before one that reads none it prints `kpkg: option '--root' is not for '<command>'`
+and exits 1, and an unknown option there prints `kpkg: unknown option '<word>' — try: kpkg help`
+and exits 1. A `--root` that does not exist or is not a directory, a regular file included, is
+`no such directory: <path>`, exit 1, for `list` and for every command that writes. `kdos update`
 is the command that updates the system; see
 [Updating a machine](../03-architecture/packaging.md#updating-a-machine).
 
@@ -271,12 +282,12 @@ is the command that updates the system; see
 
 | Command | Installed in | What it does | Documented in |
 |---|---|---|---|
-| `kdos-splash` | `/usr/bin` | The boot splash: a fade from black, or Phosphor mode's CRT power-on; `handoff` leaves the screen to SDDM, `preview WxH T OUT [modern\|phosphor]` writes one frame to a file | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
-| `kdos-bootctl` | `/usr/bin` | A/B root slot selection, trial and confirmation, each slot's kernel on the ESP, the boot entries, the splash's motion, and the colours of the boot menu and text consoles | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
+| `kdos-splash` | `/usr/bin` | The boot splash, a fade or Phosphor mode's CRT power-on; `skip` closes a skipped stage, `handoff` leaves SDDM the last frame, `preview` draws one | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
+| `kdos-bootctl` | `/usr/bin` | A/B root slot selection, trial and confirmation, the slots' kernels on the ESP, the boot entries, the splash's motion, boot menu and console colours | [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) |
 | `kdos-getty` | `/usr/local/sbin` | Load the console font, palette and keymap onto a VT, then run a getty: `kdos-getty TTY GETTY [ARGS…]` | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
 | `kdos-banner` | `/usr/local/bin` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
 | `ksvc` | `/usr/sbin` | The service supervisor, for the system's services and, with `--user`, each user's own | [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
-| `service` | `/usr/sbin` | The same supervisor, under the conventional name | [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
+| `service` | `/usr/sbin` | The service supervisor `ksvc` under the conventional name: start, stop, restart and status of a system service | [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
 | `kinstall` | `/usr/bin` | The installer: the terminal wizard, and the backend the graphical installer drives through `--events` | [kinstall](../04-programs/kinstall.md) |
 
 `/etc/inittab` runs `kdos-dm` on the first console and
@@ -337,10 +348,10 @@ procedures call them by name. `/sbin` is a link to `/usr/sbin`.
 | Command | Installed in | What it does | Documented in |
 |---|---|---|---|
 | `kdos-bb` | `/usr/bin` | The ASCII-art demo | [kdos-bb](../04-programs/kdos-bb.md) |
-| `kdos-doc` | `/usr/bin` | Open the KDOS book in the Help Center, at a page: `kdos-doc [CHAPTER/PAGE[#ANCHOR]]` | [The kdos command](../04-programs/kdos-command.md#manual-pages-and-the-book) |
+| `kdos-doc` | `/usr/bin` | Open the KDOS book at a page, in the Help Center, the browser, or `lynx` on a console: `kdos-doc [CHAPTER/PAGE[#ANCHOR]]` | [The kdos command](../04-programs/kdos-command.md#manual-pages-and-the-book) |
 | `kdos-theme` | `/usr/bin` | Generate the identity kit for an accent at build time: `kde-colors`, `syntax-themes`, `konsole`, `qt5ct-colors`, `wallpaper`, `greeter-globals`, `contrast`, `accents` | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-share` | `/usr/local/bin` | Send files to another machine over `croc`; `--clipboard` sends the clipboard | [The kdos command](../04-programs/kdos-command.md#kdos-share) |
-| `kdos-sfx` | `/usr/local/bin` | The machine's sounds: `login`, `notify`, `error`, `degauss`, `logout`, `warning`, `complete`, `added`, `removed`; `--route` prints the output it would use; `render DIR [--format oga\|wav]` writes the sound theme | [The kdos command](../04-programs/kdos-command.md#kdos-sfx) |
+| `kdos-sfx` | `/usr/local/bin` | Play a system sound (`login`, `notify`, `error`, `warning` and five more); `--route` prints the output; `render DIR [--format oga\|wav]` writes the theme | [The kdos command](../04-programs/kdos-command.md#kdos-sfx) |
 | `kdos-mpctl` | `/usr/local/bin` | Music control: `toggle`, `stop`, `next`, `prev` to mpd or an MPRIS player; `mpris` serves mpd on the session bus as `org.mpris.MediaPlayer2.mpd` | [The kdos command](../04-programs/kdos-command.md#kdos-mpctl) |
 | `kdos-fetch-app` | `/usr/local/bin` | Install an application from another distribution into a distrobox; `--box`, `--image`, `--remove` | [The kdos command](../04-programs/kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
 | `kdos-fetch-static` | `/usr/local/bin` | Fetch one static binary and verify it: `kdos-fetch-static NAME URL SHA256` | [The kdos command](../04-programs/kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |

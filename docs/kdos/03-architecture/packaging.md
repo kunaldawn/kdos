@@ -62,8 +62,10 @@ from the metadata's own syntax.
 reasoning in full.
 
 A recipe's `depends =` line is the only dependency list. It names every port that must be
-installed before this one builds, and serves as the runtime dependency list as well; there is no
-separate list of build-only dependencies.
+installed before this one builds, and serves as the runtime dependency list as well; a recipe has
+no separate list of build-only dependencies. What is build-only is said once for the whole tree,
+by `ports/buildonly`: the ports a build needs and a running system does not, which the base
+image's closure does not follow (see [The base image](#the-base-image)).
 
 ### Repositories and shelves
 
@@ -71,13 +73,13 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,399 | Upstream software, filed on 102 shelves |
-| `/kdos/src/system` | `src/system/` | 8 | KDOS's own `kdos` command and tools, the packer, the box runtime, its init and its Wayland socket holder, the installer, and the two books on the image |
+| `/ports/core` | `ports/core/` | 2,402 | Upstream software, filed on 102 shelves |
+| `/kdos/src/system` | `src/system/` | 8 | KDOS's own `kdos` command and tools, the packer, the box runtime, its init and its Wayland socket holder, the installer, and the two books: `kdos-doc`, the KDOS book on the image, and `kdos-kfs`, *KDOS from Scratch*, which is not on the image and installs with `sudo kdos update install kdos-kfs` |
 | `/kdos/src/art` | `src/art/` | 8 | KDOS's own theme generator, icon themes, wallpapers, sounds, login screen, boot splash, offline add-ons and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 21 | KDOS's own Plasma code and data: the global themes and Plasma style, the settings pages, widgets, KWin effects and scripts, the KRunner runner, the Discover backend, the welcome pages, the kded module and the graphical installer |
-| `/kdos/src/daemons` | `src/daemons/` | 6 | KDOS's own root daemons |
+| `/kdos/src/daemons` | `src/daemons/` | 7 | KDOS's own root daemons, and `kdos-mdnsd` |
 
-That is 2,442 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,446 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -124,7 +126,7 @@ operate on the tree rather than recipes: `fetch` and `publish` for sources, `src
 library both share), `releaselib.sh` (the [release index](#the-release-index)'s writer, shared by
 `publish` and the image phase), `update` for upstream version checks, `hackage-vendor` for Haskell vendor
 bundles, `Containerfile.fetch` for the container that generates vendor bundles, the source
-index `sources.idx`, and `unbuilt`, the recipes no phase builds (see
+index `sources.idx`, and `unbuilt`, the recipes no phase builds on purpose (see
 [Phases, package lists and shelves](#phases-package-lists-and-shelves)). Each of these tools names a port by its bare name and finds it on any shelf.
 
 ### The recipes under src/
@@ -154,8 +156,10 @@ Three directories under `src/system` are special:
   `script/phases/10_bootstrap/120_kpkg.sh` cross-compiles it, because nothing can read a recipe
   before `kpkg` exists. It is therefore not an installed package and is not in the package
   database.
-- `kdos-installer` has a recipe but is built by the bootstrap step `130_kinstall.sh`, from the
-  same sources, rather than from a package list.
+- `kdos-installer` is compiled twice from the same sources: by the bootstrap step
+  `130_kinstall.sh`, for the trees before any package phase, and as a package by `41_system`,
+  whose list names it last. The package adopts the `/usr/bin/kinstall` the step left unowned (see
+  [Who owns a file](#who-owns-a-file)), so the image and the binhost carry the package.
 - `kinstall-core` is the installer's one backend, with no recipe of its own: `kdos-installer`
   compiles it into the terminal installer, and the graphical installer in `src/desktop` runs that
   same binary headless and reads its event stream, so the two front ends cannot disagree about what
@@ -181,19 +185,18 @@ as one list. A phase has one or the other, never both.
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 185 | 185 |
-| `41_system` | `packages.d/`, 98 files | 1,044 | 1,044 |
-| `42_graphics` | `packages.d/`, 53 files | 188 | 188 |
+| `41_system` | `packages.d/`, 98 files | 1,048 | 1,048 |
+| `42_graphics` | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | `packages.d/`, 61 files | 422 | 422 |
-| `50_desktop` | `packages.txt` | 91 | 91 |
+| `50_desktop` | `packages.txt` | 92 | 92 |
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,436 distinct ports and install 2,440:
-2,398 of the 2,399 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
-the bootstrap builds by name. The one recipe in `ports/core` no list reaches is `texlive-doc`,
-which `ports/unbuilt` names: a recipe kept for `kpkg install` and built by no phase, and removed
-from the image by the orphan sweep if an earlier build left it installed. Any other recipe no list
+that no earlier phase did. Between them the lists name 2,442 distinct ports and install 2,446:
+2,402 of the 2,402 in `ports/core`, and every recipe under `src/`. `ports/unbuilt` is where a
+recipe kept for `kpkg install` and built by no phase would be named, removed from the image by the
+orphan sweep if an earlier build left it installed; it names none. Any other recipe no list
 reaches would never be built, so `testing/bookcounts.py`, run by `testing/docscheck.sh`, refuses
 one, and refuses a name in `ports/unbuilt` that a phase does install.
 
@@ -365,8 +368,8 @@ decide the set:
 
 | File | What it says |
 |---|---|
-| `ports/base` | The seeds. Each line names ports (any number to a line), `phase <dir>` (every port that phase's list names) or `src <area>` (every recipe under `src/<area>`). It names the run time the system's scripts need (`musl`, `gcc` for `libstdc++` and `libgcc_s`, `python3`, `perl`), KDOS's own ports by name in `src/system` but `kdos-kfs`, and the `art`, `desktop` and `daemons` areas whole; the Plasma session, which is `kde-plasma`'s list without the KDE wallpaper and Oxygen collections, the Chinese, Japanese and Korean input engines and `fcitx5-gtk`; the applications every desk pins and the KIO workers, Dolphin plugins and thumbnailers they use; `firefox-esr` (the desks pin it); the kernel and firmware, the base userland, the login, networking, disks and filesystems, the box stack, the hardware plumbing, PipeWire, printing and scanning, the archivers, the tools `70_image` runs on the stage (`squashfs-tools`, `erofs-utils`, `libisoburn`) and the fonts |
-| `ports/buildonly` | Ports the closure does not follow a `depends =` edge into unless `ports/base` names them: the compilers and their bootstraps, among them `clang`, `libclc` and `spirv-llvm-translator`, which Mesa compiles its Intel and NVIDIA kernels with and does not load, and `binutils`; the build systems and generators (`cmake`, `meson`, `ninja`, `make`, `autoconf`, `automake`, `pkgconf`, `bison`, `flex` and the rest); the headers, protocol files and shader compilers a build reads (`vulkan-headers`, `spirv-tools`, `shaderc`, `boost` and others; not `glslang`, whose library `libplacebo` links); the Python build backends; the font builders; and the documentation generators (`doxygen`, `python3-sphinx`, `docbook-xsl`, `asciidoctor` with `ruby`, `pandoc`, `typst`). `llvm` is not listed, because Mesa loads `libLLVM`, nor `gcc`, whose package carries `libstdc++` and `libgcc_s`, nor `libtool`, which carries `libltdl` |
+| `ports/base` | The seeds. Each line names ports (any number to a line), `phase <dir>` (every port that phase's list names) or `src <area>` (every recipe under `src/<area>`). It names the run time the system's scripts need (`musl`, `gcc` for `libstdc++` and `libgcc_s`, `python3`, `perl`), KDOS's own ports by name in `src/system` but `kdos-kfs`, and the `art`, `desktop` and `daemons` areas whole; the Plasma session, which is `kde-plasma`'s list without the KDE wallpaper and Oxygen collections, the Chinese, Japanese and Korean input engines and `fcitx5-gtk`; the applications every desk pins and the KIO workers, Dolphin plugins and thumbnailers they use, and ISO Image Writer (`isoimagewriter`), which an `.iso` file and the menu's burn route open; the everyday programs beside them, `haruna`, the default video player, `kolourpaint`, `skanpage`, `filelight`, `kfind`, `kcharselect`, `kclock` and `kwalletmanager`; `firefox-esr` (the desks pin it); the accessibility ports, the Orca screen reader, BRLTTY and `liblouis`'s braille tables, which Meta+Alt+S and the welcome tour start (BRLTTY's service skips until `/etc/brltty.conf` names a display); the kernel and firmware, the base userland with `plocate`, whose `locate` index `kdos-updatedb` rebuilds at every login and nightly; the login, networking, disks and filesystems, the box stack, the hardware plumbing with `adwaita-icon-theme` (Adwaita is in both KDOS icon themes' `Inherits`, and is seeded here rather than by a `depends =` of `kdos-icons`, which builds in `41_system`, a phase before the `44_apps` that GTK puts Adwaita in), PipeWire, printing and scanning, the archivers, the tools `70_image` runs on the stage (`squashfs-tools`, `erofs-utils`, `libisoburn`) and the fonts. Ports reach the base through `depends =` too: `kdos-tools` depends on `wl-clipboard`, whose `wl-copy` and `wl-paste` `kdos-shot` and `kdos-share` reach the clipboard with |
+| `ports/buildonly` | Ports the closure does not follow a `depends =` edge into unless `ports/base` names them: the compilers and their bootstraps, among them `clang`, `libclc` and `spirv-llvm-translator`, which Mesa compiles its Intel and NVIDIA kernels with and does not load, `compiler-rt`, `crubit`, `esbuild` and `typescript-go`, which Chromium builds with and does not run, and `binutils`; the build systems and generators (`cmake`, `meson`, `ninja`, `make`, `autoconf`, `automake`, `pkgconf`, `bison`, `flex` and the rest); the headers, protocol files and shader compilers a build reads (`vulkan-headers`, `spirv-tools`, `shaderc`, `boost` and others; not `glslang`, whose library `libplacebo` links); the Python build backends; the font builders; and the documentation generators (`doxygen`, `python3-sphinx`, `asciidoctor` with `ruby`, `pandoc`, `typst`). `llvm` is not listed, because Mesa loads `libLLVM`, nor `gcc`, whose package carries `libstdc++` and `libgcc_s`, nor `libtool`, which carries `libltdl` |
 | `ports/groups` | Not part of the set: the named sets of applications a machine installs in one step (see [Groups](#groups)) |
 | `script/lib/imageset.py` | The closure of the seeds over each recipe's first `depends =` line, not followed into `ports/buildonly`. `--keep` and `--drop` print the installed packages a root's database holds inside and outside it, `--sizes` their counts and bytes, `--why <port>` the shortest dependency path from a seed to a port (or "not in the base"), `--ledger` every installed package with its bytes and that path, largest first, which `70_image/088_ledger.sh` writes to `build/image-ledger` and `110_iso.sh`'s size gate prints, `--check` refuses a name in any of the three files that is not a port, a phase or area that does not exist, and a group id that is a port's name; preflight runs `--check` as "the installation medium's base names ports that exist". `--verify` fails a kept package whose [run-time needs](#run-time-needs) only a package outside the base provides; `087_gates.sh` runs it on the stage |
 
@@ -387,7 +390,7 @@ packages is met inside the base; the edges it found outside are `libplacebo`'s `
 the base) and three left by builds older than their recipes (Mesa's `libclang-cpp`,
 `kdeplasma-addons`' two Qt WebEngine libraries).
 
-Measured on a full build tree, the base is 853 of 2,430 packages and 5.5 GB of their 49.8 GB of
+Measured on a full build tree, the base is 899 of 2,440 packages and 5.5 GB of their 48.9 GB of
 files, about 4.5 GB once the development and documentation facets are left out. The largest are
 `linux-firmware` (0.6 GB), Firefox ESR, `gcc` (0.34 GB, of which the run-time libraries every
 C++ program loads are 15 MB and the compiler, its drivers and its static libraries the rest),
@@ -401,11 +404,11 @@ What the base leaves out is one install away, prebuilt from the binhost:
 
 | Left out | Installed with |
 |---|---|
-| The compilers and build tools | `kdos update install build-tools` (a group, below) |
+| The compilers and build tools | `kdos update install build-tools` (a group, below), which also restores the development files of `gcc`, `musl` and `linux`: a working `cc` with the C library's and kernel's headers |
 | Chinese, Japanese and Korean input and fonts | the `lang-zh`, `lang-ja` and `lang-ko` groups |
-| The rest of KDE Gear: torrents, remote desktop, Samba sharing, online accounts, Filelight, KFind, the Help Center and the others | the `kde-network`, `kde-system` and `kde-*` subject groups |
+| The rest of KDE Gear: torrents, remote desktop, Samba sharing, online accounts, Sweeper, KSystemLog, the Help Center and the others | the `kde-network`, `kde-system` and `kde-*` subject groups |
 | The KDE wallpaper collection and Oxygen | the `kde-artwork` group |
-| *KDOS from Scratch*, the build book | `kdos update install kdos-kfs` |
+| *KDOS from Scratch*, the build book | `sudo kdos update install kdos-kfs` |
 | OpenCL | `kdos update install mesa-opencl`, Mesa's rusticl with clang |
 | Firmware for NVIDIA GPUs, Qualcomm, Atheros and Broadcom Wi-Fi and Bluetooth, the Cirrus and TI sound amplifiers and the less common hardware | `sudo kdos firmware sync`, which installs the vendor ports this machine's devices and kernel log ask for; `--all` installs all of them, and `kdos update install linux-firmware` is the same |
 
@@ -546,6 +549,13 @@ empty skips the archive, and a directory is an archive disk laid out as `<tag>/<
 | 1 | A source could not be had: no copy verified, or neither the archive nor a `source =` URL names it (a vendor bundle the archive lacks) |
 | 3 | No copy could be reached at all: the network is down |
 
+`kpkg fetch --size <pkg>…` downloads nothing. For each file the fetch would download it asks the
+same URLs in the same order for the `Content-Length` of their final response (`curl -sIL`, 15
+seconds a request; a file in parts is the sum of its parts) and prints `<file> <bytes>`, or `<file>
+?` when no copy answered with one; a file two of the ports share is printed once. The size is a
+server's word, not a verified one, and is what `kdos update` reckons a build's space from before
+its sources are here. Its exit status is the table's, 1 meaning a size is not known.
+
 A build fetches on its own only with `KPKG_FETCH=1`, which
 [`kdos update apply`](#updating-a-machine) sets so that a dependency a new tree adds has its sources
 fetched as `kpkg install` reaches it. Without it a missing source fails the build: `make build`
@@ -564,7 +574,7 @@ names as symbolic links, and what it does depends on the name it was run as:
 | `kpkg` | The front end, with the commands below |
 | `kpkgadd` | Install a prebuilt package file: `kpkgadd [-f] [--root <path>] <file>`; `-f` skips the [conflict scan](#who-owns-a-file) and leaves a contested path claimed by both packages |
 | `kpkgbuild` | Build the port in the current directory into a package without installing it |
-| `kpkgdel` | Remove packages: `kpkgdel [--root <path>] <package>…` |
+| `kpkgdel` | Remove packages: `kpkgdel [--root <path>] <package>…`; it also drops each removed package's line from the root's world set and origin record (see [Upgrades and removals](#upgrades-and-removals)) |
 | `kpkgdepends` | Print the resolved install order, and nothing else: `kpkgdepends [--root <path>] <package>…` |
 
 The `kpkgbuild` command shares its name with the recipe file it reads; this chapter says "the
@@ -583,12 +593,12 @@ The front end's commands:
 | `facets --list [--root <path>] <pkg>` | Print what a package was installed without, or `<pkg>: every facet installed` |
 | `needs [--resolve \| --scan] [--root <path>] <pkg>` | Print what a package needs at run time as its install recorded it; `--resolve` names the installed package providing each edge and exits 1 when nothing provides one, `--scan` measures it from the installed files without writing; see [Run-time needs](#run-time-needs) |
 | `meta <pkg or portdir>` | Print the recipe's metadata as shell assignments, which `ports/fetch` reads |
-| `fetch <pkg>…` | Download each source the port directory and `SOURCE_DIR` lack; see [Fetching sources on a machine](#fetching-sources-on-a-machine) |
+| `fetch [--size] <pkg>…` | Download each source the port directory and `SOURCE_DIR` lack, or with `--size` print the size each would download; see [Fetching sources on a machine](#fetching-sources-on-a-machine) |
 | `verify <pkg>` | Build the current recipe and a candidate written beside it as `kpkgbuild.new` (with an optional `build.sh.new`), then compare the two packages; exits 0 when their payloads match, 1 when they differ, a build fails or there is no `kpkgbuild.new` |
 | `verify --repro <pkg>` | Build the same recipe twice; exits 0 only when the two packages are byte-identical. Either form leaves the two packages at `/tmp/kpkg-verify-0.tar.xz` and `/tmp/kpkg-verify-1.tar.xz` |
 | `keygen <name>` | Make an Ed25519 signing key pair |
 | `sign <file> <key>` | Write `<file>.sig`, one signature over any file, which `verify-pkg` checks; a release's `SHA256SUMS` is signed this way |
-| `index <dir> [--sign <key>]` | Write `PACKAGES` for a directory of packages, optionally signing it and every package |
+| `index <dir> [--sign <key>] [--buildonly <file>]` | Write `PACKAGES` for a directory of packages, optionally signing it and every package; with `--buildonly`, each measured package's `N:` line |
 | `verify-index <dir>` | Check `PACKAGES` against the trusted keys |
 | `verify-pkg <file>` | Check `<file>.sig` against the trusted keys |
 | `delta <old> <new> [-o <file>]` | Write the difference between two packages |
@@ -597,13 +607,30 @@ The front end's commands:
 | `store gc <dir> <max-size>` | Shrink a [package store](#the-package-store) to a size such as `60G`; see [Eviction](#eviction) |
 | `help` | Print usage |
 
+`kpkg help`, `--help` and `-h` print the usage and exit 0; a bare `kpkg` prints it and exits 1. An
+unknown command prints `kpkg: unknown command '<word>' — try: kpkg help` on standard error, with no
+usage text, and exits 1. The options may also come before the command word, as `kpkg [--root
+<path>] [-f] <command> …`: a `-` word there that the usage does not list under Options prints `kpkg:
+unknown option '<word>' — try: kpkg help` and exits 1, an install-only option before any command but
+`install` prints `kpkg: option '<word>' is for install only`, and a leading `--root` before a
+command that reads no root prints `kpkg: option '--root' is not for '<command>'`, each exiting 1.
+A `--root` that is not a directory makes `list` print `no such directory: <path>` and exit 1, and
+one it cannot reach for another reason, such as a parent it may not search, `cannot read <path>:
+<reason>`, also exit 1; a directory with no package database lists nothing and exits 0, as a
+fresh sysroot does. The
+commands that write — `install`, `remove`, `facets --strip` — test whether the root is a writable
+directory, not whether they run as uid 0, and name the reason they cannot: `no such directory:
+<path>` for a root that is missing or not a directory (a regular file included, as for `list`),
+`<path> is read-only`, or `cannot write to <path> — run as root` when permission is what is
+missing.
+
 Options and environment:
 
 | Option or variable | Effect |
 |---|---|
-| `--root <path>`, `KPKG_ROOT` | Install into, remove from or read another root directory, such as an installer's target. Only the install and the package database move: a build still runs on this system, with its compiler, headers and libraries. `install`, `remove`, `list`, `info`, `check`, `facets`, `needs`, `binhost`, `kpkgadd`, `kpkgdel` and `kpkgdepends` take `--root` |
+| `--root <path>`, `KPKG_ROOT` | Install into, remove from or read another root directory, such as an installer's target. Only the install and the package database move: a build still runs on this system, with its compiler, headers and libraries. `install`, `remove`, `list`, `info`, `check`, `facets`, `needs`, `binhost`, `kpkgadd`, `kpkgdel` and `kpkgdepends` take `--root`, and the `kpkg` commands among them take it before the command word too |
 | `--keep-cache`, `KPKG_KEEP_CACHE=1` | Keep each built package in `PACKAGE_DIR` after installing it, compressed with the kept `xz -9` setting; by default it is compressed with `xz -0` and deleted once installed |
-| `-f`, `--force` | Rebuild the named packages, though not their dependencies. The rebuilt package is installed through the same [conflict scan](#who-owns-a-file) as any other |
+| `-f`, `--force` | Rebuild the named packages; a dependency is built only when it is not installed, and the walk stops at an installed package. The rebuilt package is installed through the same [conflict scan](#who-owns-a-file) as any other |
 | `install --build-only <pkg>…` | Build exactly the named ports into `PACKAGE_DIR` and install nothing; see [Building apart from installing](#building-apart-from-installing) |
 | `install --commit <pkg>…` | Install what `--build-only` built for each named port, in the order named |
 | `KPKG_CONF` | Configuration file (default `/etc/kpkg.conf`) |
@@ -689,6 +716,7 @@ A package is a compressed tar archive plus a database entry.
 |---|---|
 | File name | `<name>-<version>-<release>.tar.xz`, parsed from the right because a name may contain hyphens |
 | Compression | `xz -9 -T0 --block-size=32MiB --no-adjust` for every package that outlives its install; `xz -0 -T0 --block-size=8MiB --no-adjust` for one `kpkg install` deletes straight after installing it. See [Reproducible packages](#reproducible-packages) |
+| Decompression | One xz thread, whatever the core count: `kpkgadd` extracts with `tar --use-compress-program="xz -T1"`, the compressor split into its words by tar and not by a shell. A `-9` package with 32 MiB blocks needs about 100 MB a decoding thread, so the default of one thread per core can be killed for memory on a 4 GB machine; one thread peaks at about 65 to 70 MB |
 | Database entry | `/var/lib/kpkg/db/<name>`: the version and release on the first line, then the manifest |
 | Manifest | Every path the package owns, one per line, `./`-prefixed, directories with a trailing slash. Each line is the name's own bytes, as `tar --quoting-style=literal` lists it, so a name outside ASCII is stored as the UTF-8 the package holds rather than as tar's octal escapes; a name holding a newline cannot be stored |
 | Recipe hash | `/var/lib/kpkg/db/.recipe/<name>`, one line, written by `kpkg install`, `--commit` and `kpkg binhost`, which records the matched stanza's `E:`. `kpkgadd` removes any existing record before it writes the entry, so a direct `kpkgadd` leaves the package with no record. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
@@ -712,7 +740,9 @@ carries more than 1 MiB of debug sections outside ghc's `-debug` runtimes; see [
 The file name is the only metadata a package carries. The install hook is a standalone bash
 script: a shebang, the recipe's metadata, then `postinstall.sh` byte for byte. `kpkgadd` lifts it
 out before placing any file, so it is never installed and never in the manifest, and runs it after
-the install; a hook that fails produces a warning, not a failed install.
+the install with `PKG_ROOT` set to the root and `PKG_OLD_VERSION` to the `<version>-<release>` the
+install replaced (empty on a first install); a hook that fails produces a warning, not a failed
+install.
 
 `kpkgadd` extracts into a staging directory on the target filesystem, so placing a file is a
 rename. The archive is decompressed once: the extraction runs with `--quoting-style=literal`, its
@@ -829,6 +859,13 @@ removed rather than left on disk owned by nothing, unless another package claims
 it is that package's file and stays. "Absent" is judged on the canonical path, so `./bin/x` in the
 old version and `./usr/bin/x` in the new are one file.
 
+An install of the version and release already installed (a `--dev` restore, a forced reinstall)
+leaves in place every regular file whose size, mode, owner and bytes match the staged copy, and
+prints `Keeping <n> unchanged files in place`. Only a file that differs is replaced. A file renamed
+over gets a new inode with the same contents, and every running program that maps it then maps a
+deleted file, which the restarts check behind `kdos-notice` reports as a desktop update. An
+install of any other version replaces every file.
+
 A path the new version ships as a directory where the root holds a file, such as a zipped Python
 egg the new version ships unpacked, is asked about like a staged file: claimed by another package,
 it is a conflict; otherwise the file is unlinked and `kpkgadd` prints `Replacing file <path> with a
@@ -843,7 +880,31 @@ claims once and takes each removed package's off as it goes, so a directory goes
 package listing it does. A file another installed package claims is left in place. One run takes
 any number of names. `kpkgdel` does not check reverse dependencies: `kpkgdel bash` removes
 bash. The entry's sidecars in `.recipe/`, `.pkgsha/`, `.files/`, `.facets/` and `.needs/` go with it. A name that is not installed
-is reported and skipped, and the rest of the command line is still processed.
+is reported (`ERROR: Package '<name>' not installed`) and skipped, the rest of the command line is
+still processed, and the command exits 1.
+
+A removal also takes the package out of what `kdos update` installs back. Every line whose first
+word is a removed package (read as `kdos update` reads it: leading blanks skipped, cut at a blank,
+a carriage return or `#`) is dropped from `<root>/var/lib/kdos/world` and
+`<root>/var/lib/kdos/origin`, so the next update does not reinstall it. Each file is rewritten
+whole through a temporary file and a rename, mode 0644, and only when it exists and a line was
+dropped; a missing file is not created, other packages' lines are kept, and a name that was not
+installed stays in both. A rewrite that fails prints `ERROR: cannot rewrite <path>: <reason>` and
+exits 1.
+
+The removal reaches this root only. The other A/B slot is a separate root: a slot an update has
+already filled has the package installed, and a slot it has armed was also given a copy of this
+root's world set and origin record at the arm, so it boots with the package installed and listed,
+and its updates keep it. Removing it there means running `kpkg remove` again once that slot is
+running.
+
+`kpkgadd` prints `==> Installing <name>-<version>-<release>`, or `==> Upgrading <name> (<old> =>
+<new>)`, then the facets line, any `Skipping`, `Keeping <n> unchanged files in place`, `Removing
+orphan`, `Keeping` and `Taking` lines and
+warnings, and `==> Package '<name>' installed successfully`; it prints no line per file. When the
+extraction fails, tar's and xz's own messages (`xz: (stdin): Unexpected end of input`, `Cannot
+allocate memory`, a full disk) are printed between the `Installing` line and `ERROR: Failed to
+extract <file>`, in that order in a log that collects both streams, and it exits 1.
 
 An install or removal ends by rebuilding the shared indexes its manifest fed, from everything then
 on disk: the GSettings schemas, the GIO module and pixbuf loader caches, the MIME database, the
@@ -879,7 +940,9 @@ mode `kpkgadd` took from every regular file it placed. Each finding is one line:
 | `<package>: config mode <path> <now>, installed <then>` | A recorded file under `/etc` whose permission bits differ |
 | `unowned <path>` | With `--all`: a file or link under `/usr` or `/opt` that no package claims |
 
-A summary line follows, counting each kind. The exit status is 1 when anything is missing, changed
+A summary line follows, counting each kind. `--brief` prints only the `missing`, `changed` and
+`mode` lines and the summary, which still counts `config` and unowned files, and `--log <file>`
+writes every line to `<file>`; neither changes the exit status. The exit status is 1 when anything is missing, changed
 or has a changed mode, 0 otherwise, and 2 for a usage error or a name that is not installed. A
 `config` line and an unowned file do not change the status: a package's file under `/etc` is a
 default the machine is meant to edit, so a check that failed on it would fail every configured
@@ -903,9 +966,10 @@ leaves out the build tree's logs and caches, but recreates every directory a pac
 ([the live medium](boot-and-init.md#the-live-medium-and-persistence)); a package that installed a
 file there, rather than a directory, would be `missing` on the image.
 
-`kdos update apply` runs `kpkg check --all` on an A/B slot it installed into, before it puts the
-slot's kernel on the ESP and marks the slot to be tried; a slot that fails the check is not tried,
-and one whose only findings are `config` lines is.
+`kdos update apply` runs `kpkg check --all --brief --log /var/log/kdos-update-check.log` on an A/B
+slot it installed into, before it puts the slot's kernel on the ESP and marks the slot to be tried,
+so an apply prints the faults and the summary and the slot's whole file list is in that log; a slot
+that fails the check is not tried, and one whose only findings are `config` lines is.
 See [Updating a machine](#updating-a-machine).
 
 ### Facets
@@ -926,8 +990,8 @@ and the binhost index are the same either way.
 | `dev` | `usr/share/gir-1.0/` (GObject introspection's XML; the compiled typelibs under `usr/lib` are run time) and `usr/share/vala*/vapi/` | 73 MB |
 | `dev` | man sections 0, 2 and 3: the POSIX headers, the system calls and the library functions | 42 MB |
 | `dev` | a symbolic link `usr/lib/lib<x>.so` whose target is that name plus a version (`libz.so -> libz.so.1.3.1`), the link `-lz` resolves through. A real file named `lib<x>.so` is run time, since most plugins and every library built without a version are one, and so is a link to anything else, unless it points into its own package's `dev` facet (below) | 0 |
-| `doc` | `usr/share/doc/` except `HTML/` (KDE's handbooks, which `help:/` and every Help menu open) and `kdos/` and `kfs/` (the two books, which the desktop links into) | 20 MB |
-| `doc` | `usr/share/info/` and `usr/share/gtk-doc/` | 35 MB |
+| `doc` | `usr/share/doc/` except `HTML/` (KDE's handbooks, which `help:/` and every Help menu open) and `kdos/` and `kfs/` (the KDOS book, and *KDOS from Scratch* once `kdos-kfs` is installed, which the desktop links into) | 20 MB |
+| `doc` | `usr/share/info/`, and `usr/share/gtk-doc/html/`, the generated API references; the rest of `usr/share/gtk-doc/` is gtk-doc's own `python/` and `data/` (the stylesheets `gtkdoc-mkhtml` reads and the `gtk-doc.make` files `gtkdocize` copies), which are run time | 35 MB |
 | `run` | everything else, man sections 1 and 4 to 8 among it | |
 
 The figures are measured over the 853 packages of the [base](#the-base-image) on a full build
@@ -946,7 +1010,9 @@ matched against each of its own package's paths without the `./` (`*` crosses `/
 the rules call run time into `dev`; nothing moves a file out of `dev` or `doc`. `gcc` uses it for
 its compiler: the drivers in `/usr/bin`, everything under `/usr/lib/gcc/`, the sanitizer runtimes
 and its manual pages, 270 MB of its 339 MB beyond the rules' 59 MB, so the base keeps gcc's 10 MB of run-time
-libraries (`libstdc++`, `libgcc_s`, `libgfortran`, `libgomp`) and nothing of the compiler. The rules are `kp_facet_of` in `libkpkg`,
+libraries (`libstdc++`, `libgcc_s`, `libgfortran`, `libgomp`) and nothing of the compiler.
+`python3-pyside6` uses it for its `shiboken6` binding generator, which links `libclang`, so the
+package's run-time needs name no `clang` (see [The binary host](#the-binary-host)). The rules are `kp_facet_of` in `libkpkg`,
 and both spellings of a merged-`/usr` path match, so `./lib/libz.a` is a static library.
 
 `FACETS` in `/etc/kpkg.conf`, with `KPKG_FACETS` over it, says which facets an install places:
@@ -1112,14 +1178,21 @@ at the top of `$SRC` whose name starts, in any case, with `LICENSE`, `LICENCE`, 
 name (REUSE's `LICENSES/`) to a subdirectory there. Source files named like a licence
 (`license.c`, `COPYING.in`) are skipped, a symlink is followed only into the source tree or
 `/usr/share`, and whatever `build.sh` already put at a target name, file or symlink, is kept and
-never written through. The recipe's `license =` key states the SPDX expression the texts belong to, and
+never written through. A text the source keeps anywhere else (`doc/COPYING`, a README section, the
+comment in a header) is installed by `build.sh`, which copies a licence the source only names
+from a package already in the tree, and a public-domain or CC0 source, which holds none, installs
+none; 70_image's `087_gates.sh` reports every package left with no
+`usr/share/licenses/<name>`. The ports of our own carry no copy of KDOS's MIT text: 70_image's
+`105_ports.sh` installs the repository's `LICENSE` as `/usr/share/licenses/kdos/LICENSE` and links
+each such package's `LICENSE` to it. The recipe's `license =` key states the SPDX expression the texts belong to, and
 `kpkg info` prints it. It then applies the
 [size and language policy](../05-developer/writing-ports.md#size-and-language-policy): HTML and PDF
 manuals under `usr/share/doc` and `usr/share/texmf-dist/doc` (except the HTML a program opens
 itself: mednafen's manual, the book, R's help index and style sheet, and the in-app manuals and
 About pages of geany, gimagereader, texstudio, wsjtx, Wireshark, hatari, FreeCAD and SMPlayer),
-every non-English message catalog, Qt translation, KDE handbook and manual-page directory, and
-every directory that leaves empty are removed, and `objcopy --strip-all --keep-section=.debug_*`
+every non-English message catalog, Qt translation, KDE handbook and manual-page directory, the
+section-8 manual pages of systemd units (`*.service.8` and the other unit types; section 5
+stays), and every directory that leaves empty are removed, and `objcopy --strip-all --keep-section=.debug_*`
 takes `.symtab` and `.strtab` out of each ELF executable or shared object over 32 MiB that
 carries nothing after its sections. `usr/share/licenses` is never pruned. These steps run on `$PKG` before the archive and its
 manifest exist, so a removed path is never owned by the package. It then deletes every
@@ -1420,7 +1493,8 @@ Each setting removes one source of difference between two builds:
 Multi-threaded `xz` is deterministic: any `-T` of one or more in its multi-threaded mode writes the
 same bytes on one core or sixteen, which the self-test checks by recompressing a package with
 `xz -9 -T+1 --block-size=32MiB` and comparing. `-T1` is a different encoder, the single-threaded
-mode, with different output, and is never used for a package. `--no-adjust` turns a memory limit
+mode, with different output, and is never used to compress a package; decoding takes `-T1`
+(`kpkgadd`'s extraction), which bounds an install's memory and changes no bytes. `--no-adjust` turns a memory limit
 that would lower the dictionary into a failure instead of a different package. Both `xz` builds in
 the tree are built with threads, which the multi-threaded mode needs.
 
@@ -1497,6 +1571,7 @@ opens the file. Each package stanza carries:
 | `B:` | The build-config hash of the machine that wrote the index |
 | `E:` | The recipe hash, taken from the ports tree on that machine; empty for a package whose port that tree does not have, or for a file whose version and release are not the ones its recipe there declares |
 | `T:` | The recipe's description |
+| `N:` | Written by `kpkg index --buildonly <file>` only: the ports of that list the package needs at run time, space-separated, from its run-time needs record in the indexing machine's database (empty: measured, none needed). Absent for a file whose version and release are not the installed ones or a package with no record, which a client reads as unmeasured |
 
 Three equality tests decide whether a prebuilt package is usable, and there is no "close enough":
 the architecture, the build-config hash `B:`, and the recipe hash `E:`. Anything else builds from
@@ -1523,28 +1598,51 @@ of the build keeps the package it made, and the image phase, `70_image`, moves t
 indexes them with the key `build/binhost-key/kdos-binhost.key`, made on the first such run and
 never replaced; its public half is copied beside the index as `kdos-binhost.pub`. Beside them it
 writes `swcatalog--xml--kdos-binhost.xml`, signed with the same key: the AppStream catalogue of the
-applications those packages install, from which Discover offers ports to install. Every name in
+applications those packages install, from which Discover offers ports to install. Its writer,
+`kdos-discover-catalog`, takes a metainfo component that names no `desktop-id` launchable to launch
+`usr/share/applications/<id>` (or `<id>.desktop`) when the same package owns that entry: the
+component is written with that launchable and, when it names no icon, the entry's `Icon=`, and the
+entry is not written again as a component of its own. Every name in
 the directory is flat, because a release asset cannot sit in a directory, and the last thing the
 phase writes is the directory's [release index](#the-release-index), `kdos-update.idx`, signed with
 the binhost key, which names each file at the path a client asks for (`binhost/PACKAGES`,
 `binhost/<package>`, `binhost/swcatalog/xml/kdos-binhost.xml`) with its size and SHA-256. The
 directory, copied to a stick or served as it is, is a place `binhost =` in `update.conf` can name. The directory
-accumulates: each run adds the packages it built and keeps what earlier runs left, and neither a
-later run nor `--fresh` removes anything from it. `kpkg index` takes each package's `E:` from the
+accumulates: each run adds the packages it built and keeps the current ones earlier runs left, and
+`--fresh` removes nothing from it. `kpkg index` takes each package's `E:` from the
 ports tree it runs on, looked up by package name, and writes it only for the file whose version and
 release are the ones that recipe declares. The step indexes with `PORT_REPO` set to every
 repository the build installs from, `/ports/core` and the four `src/` areas, so a package of
 KDOS's own carries its recipe hash like any other; a machine finds the same recipes under
-`/ports/src/<area>` and computes the same hash. A superseded file an earlier run left gets an
-empty `E:`, is listed in `PACKAGES`, and matches no client, so a client is only ever handed the
-current recipe's build.
+`/ports/src/<area>` and computes the same hash. A superseded file an earlier run left, or a file of
+a port the tree has no recipe for, gets an empty `E:`; the step moves each such file and its `.sig` to
+`build/binhost-superseded/`, outside the directory, and indexes again, so `PACKAGES`, the catalogue
+and the release index name the same files and a client is only ever handed the current recipe's
+build. A delta (a stanza with `O:`) stays.
 
-**The release index leaves the superseded files out.** A package stanza with no `O:` (which
-marks a delta) and an empty `E:` is a file no client takes, so it and its `.sig` stay in
-`build/binhost` and are not named in `kdos-update.idx`, and a release carries exactly its own
-tree's packages. A current package file larger than one release asset (`KDOS_PART_SIZE`,
-1,900 MiB) fails the step, because `kdos update install` takes a package whole and the release
-could not carry it.
+**Each package's `N:` line names the build-only ports it needs at run time.** The step runs
+`kpkg index --buildonly /ports/buildonly` over the build tree's database: for a file of the
+version and release installed there, `kpkg index` reads the package's
+[run-time needs](#run-time-needs) record, resolves each edge to the installed package that
+provides it, and writes the ones `ports/buildonly` lists, in that file's order, as `N:<port> …`.
+An empty `N:` says the package was measured and needs none of them; a stanza with no `N:` (a
+package installed with no needs record) is unmeasured. `kcharselect`'s line
+is empty, so a prebuilt install of it takes no `cmake`; `wesnoth`'s names `boost`. The record
+reads the run-time facet alone, so a program only a build runs, linked against a build-only
+port, belongs in the recipe's [`facet_dev =`](#facets): `python3-pyside6` puts its `shiboken6`
+binding generator there, the one file of the package that links `libclang`, and its `N:` line
+then names no `clang`, so a prebuilt Falkon or FreeCAD installs the bindings without the
+compiler. `chromium`'s line is empty, and `ports/buildonly` lists the `compiler-rt`, `crubit`,
+`esbuild` and `typescript-go` its build runs, so a prebuilt Chromium takes none of them, nor
+`crubit`'s `rust`.
+`70_image/087_gates.sh` fails a `KDOS_MAKE_BINHOST=1` build that leaves a current stanza (one with
+an `E:` and no `O:`) without an `N:` line.
+
+**The release index names what `PACKAGES` names.** Both are written over the directory once the
+superseded files are out of it, so a release carries exactly its own tree's packages and a
+client is never pointed by `PACKAGES` at a file no release holds. A package file larger than one
+release asset (`KDOS_PART_SIZE`, 1,900 MiB) fails the step, because `kdos update install` takes a
+package whole and the release could not carry it.
 
 **The binhost is the release's package repository.** It holds every port the release built, the
 ones its [base image](#the-base-image) leaves out included, and a machine takes the binhost of
@@ -1686,6 +1784,13 @@ in a slot image), and the image record itself; under `var/log`, `var/cache` and 
 the directories, which packages own, and none of the files. A file carrying a file capability or an
 ACL is refused rather than carried without it.
 
+**The system's trees have one owner.** A slot is written with the owners its manifest gives, so a
+builder's uid recorded on `/` or `/ports` would hand the root directory and the recipe tree to the
+machine's first account. `kdos image make` and `kdos image verify` (exit 3) refuse a manifest in
+which `.`, a top-level entry, or anything under `etc/`, `usr/`, `boot/` or `ports/` has an owner
+other than the root directory's, and `make` run as root, and a root slot fill, refuse one where
+that owner is not root. Elsewhere (`var`, root's home) other owners are the system's own.
+
 **Every file is found through the release index.** `kdos image make` writes `kdos-update.idx`
 beside the manifest, signed with the same key, naming the manifest, its signature, every part and
 every delta at `image/<name>` with its size and SHA-256 (see [The release index](#the-release-index)).
@@ -1694,11 +1799,17 @@ as the index says and names the index's version, and read each bundle from the U
 
 `script/release-image.sh` is the release step that runs `kdos image make` over the root the ISO is
 squashed from, with this checkout's own `kdos-tools`, and verifies the result against the key's
-public half before it ends. With `--upper` that root is a read-only overlay of the recipe tree
-`105_ports.sh` staged (`build/image-ports`, or `--ports`), the image stage's upper layer and
-`build/fs`, which is what the ISO carries: its `/ports` is appended to the squashfs after the
-stage, so an image of the stage alone would boot a slot with no recipes, and would carry no
-`TREE` time for a machine to judge it newer by. `ports/publish --release` publishes the directory it wrote; see
+public half before it ends. It always works in a mount namespace of its own, over a read-only
+overlay whose top layer is the run's own: `/mnt` and `/media` (0755, root's), as `110_iso.sh` adds
+them, an empty `/boot/efi` (0755, root's), and whiteouts over `/kdos` and `/build`, which the ISO
+excludes. The image names `/boot/efi` for a machine still running v0.2: that release's apply
+deletes every path the manifest does not name and makes no fstab mount points, so without it the
+slot would boot with no ESP mounted and roll back. With `--upper` the layers
+below are the image stage's upper layer and `build/fs`, and the top layer also holds a copy of the
+recipe tree `105_ports.sh` staged (`build/image-ports`, or `--ports`), owned by root as the ISO's
+`/ports` is, since `build/image-ports` belongs to the builder. That is what the ISO carries: its
+`/ports` is appended to the squashfs after the stage, so an image of the stage alone would boot a
+slot with no recipes, and would carry no `TREE` time for a machine to judge it newer by. `ports/publish --release` publishes the directory it wrote; see
 [Publishing a release](#publishing-a-release).
 
 ## The release index
@@ -1744,7 +1855,7 @@ updates beside them, published the way the source archive is:
 | Release | Holds |
 |---|---|
 | `<tag>` | The ISO, `sources.sha256`, `kdos-ports.tar.xz` and its signature, `SHA256SUMS` and its signature, `kdos-release.pub`, and `kdos-update.idx` with `kdos-update.idx.sig` |
-| `binhost-<tag>-01`, `-02`, … | The binhost (`--binhost`, default `build/binhost`): every file its release index names, superseded packages not among them, sorted by path and split into releases of at most 1,000 assets, GitHub's limit |
+| `binhost-<tag>-01`, `-02`, … | The binhost (`--binhost`, default `build/binhost`): every file its release index names, sorted by path and split into releases of at most 1,000 assets, GitHub's limit |
 | `image-<tag>` | The slot image (`--image`, default `build/release/<tag>/image`), which `script/release-image.sh` makes for version `<tag>` |
 
 Each lane is taken from its directory's own `kdos-update.idx`, and every file is hashed against it
@@ -1756,9 +1867,37 @@ holding more than 1,000 assets stops before uploading to it. The release's own
 `kdos-update.idx` is written from the names GitHub reported storing, with a `releases` line naming
 the repository's download root, and signed with the release key and, when
 `build/binhost-key/kdos-binhost.key` is there, with the binhost key as a second line, so a machine
-trusting either verifies it. The recipe tree's `TREE` carries `version <tag>`, which is how a
-machine holding the tree finds the release's index again. `--dry-run` prints every release, its
+trusting either verifies it. The recipe tree `kdos-ports.tar.xz` carries the tag's `ports/RELEASE`
+as `/ports/RELEASE` beside its `TREE`, and the tag's `ports/buildonly` and `ports/buildheaders`
+beside them, which `kdos update` reads to cut a prebuilt plan and to install the header ports a
+build needs; its `TREE` carries `version <tag>`, which is how a machine holding the tree finds the
+release's index again. `--dry-run` prints every release, its
 asset count and size, and the index, hashing every file and touching no network.
+
+**A release image must name its release.** Before it hashes or uploads anything, `--release`
+reads the ISO's `/ports/TREE` and `/ports/RELEASE` out of its `system.sfs` (with `xorriso` and
+`unsquashfs`, which it needs with `xxd`) and refuses an ISO whose `TREE` names another commit, has
+no `version <tag>` or names another release, and one that carries no `/ports/RELEASE`; it refuses a
+tag that has no `ports/RELEASE`, or one over 16 KiB, the most `kdos update notes` reads. A real run
+then stops with `<iso> is not a release image of <tag>; build the ISO from a clean checkout of the
+tag, then run again`; a dry run prints each as a `FAILED` line and exits 1. A machine installed from
+a released image therefore always finds its release's binhost.
+
+The release's notes are written from the tag: About this release (the tag's `ports/RELEASE`,
+each of its headings moved one level down so its sections sit inside that one); the live ISO and
+its `kdos` account, password `kdos`, also root's; what it needs (x86-64, UEFI or BIOS firmware,
+4 GB of memory, Secure Boot off), what the image carries and the medium to write it to. The tag's
+`ports/RELEASE` says what the image carries, so its notes leave that sentence out, and a
+`ports/RELEASE` with a `What it needs` section of its own names the live account and the
+requirements, so its notes keep only the medium line under Download and leave out the account,
+the machine and the disk sentences; each fact is stated once. The disk sentence gives the disk two
+system slots need, worked out from the ISO's `system.sfs` and the tag's `kinstall-core` figures
+(`kinstall-core.h`'s limits, `KI_DISK_MARGIN` and `KI_ROOT_FREE_MB`, `conf.c`'s `KI_VOLUME_META_MB` and default
+`cfg.swap_mb`), with and without the default swap, and the smallest disk one slot takes. The notes end with links to
+the tag's Getting started and Installation pages and how to check `SHA256SUMS` and, with OpenSSL 3
+and `xxd` on a system that is not KDOS, its signature. A figure the tag's sources do not give, or
+give twice, leaves the disk sentence out with a `FAILED` line rather than a guess. `--dry-run`
+writes the notes to `build/release/<tag>/notes.md`.
 
 ## Updating a machine
 
@@ -1781,8 +1920,23 @@ New versions arrive with the ports tree, because a recipe pins its version. Ever
 the recipe-only tree at `/ports`, without the source archives; see
 [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image). A newer one arrives
 over the network: `ports/publish --release` puts the tree of the release's commit beside the ISO as
-`kdos-ports.tar.xz`, with a `TREE` stamp naming the commit and its time, signed with the release key
-as `kdos-ports.tar.xz.sig`. `kdos update fetch` downloads both, from the latest release unless
+`kdos-ports.tar.xz`, with a `TREE` stamp naming the commit, its time and the release, signed with
+the release key as `kdos-ports.tar.xz.sig`.
+
+**The image's own tree names its release when the build was a release build.** `105_ports.sh`
+writes `/ports/TREE` with `kdos-tree 1`, `commit` and `time`, and adds `version <tag>` only when
+`KDOS_GIT_RELEASE` is set: `script/chroot/exec.sh` sets it to the one release tag on `HEAD`
+(`KDOS_GIT_TAG`, from `git tag --points-at HEAD --list 'v[0-9]*'`, so an archive tag such as
+`sources-N` never names a release; named by hand when `HEAD` carries several, and `none` for no
+release) when the checkout is clean, untracked files included, and leaves it empty otherwise. The build's
+log says `/ports/TREE names release <tag>`, or why it does not. An image built that way finds its
+release's binhost with no `update.conf`. Any other image names only its commit, and until it takes
+a published tree its prebuilt installs need `binhost =` in `/etc/kdos/update.conf` or
+`$KDOS_UPDATE_BINHOST`. A fetch repairs an unnamed tree: when the published tree is the same commit
+and names a release, it replaces the installed one, which names no release, and the next fetch
+reports `the ports tree is current (<commit>)`. `/ports/RELEASE` holds the release's notes,
+copied from `ports/RELEASE`, which `kdos update notes` and What's New read; the build fails without
+it, or with one over 16 KiB. `kdos update fetch` downloads both, from the latest release unless
 `--from`, `KDOS_UPDATE_TREE` or `tree =` in `/etc/kdos/update.conf` names another place, verifies
 the signature against `/etc/kdos/keys/tree`, which holds the public half of the release key the
 image was built with, and only then unpacks the tree and exchanges it with `/ports`. A tree older
@@ -1790,8 +1944,21 @@ than the installed one is refused. The same fetch takes the release's
 [release index](#the-release-index) and, through it alone, the binhost index (`PACKAGES` and
 `PACKAGES.sig`) into `/var/lib/kdos/binhost` and the slot-image manifest into
 `/var/lib/kdos/image/offer`. The binhost's index is read from `binhost =` in `update.conf`,
-`KDOS_UPDATE_BINHOST`, or the release `<version>` that the tree's `TREE` names, and must be for
-that version; the image's from `image =`, `KDOS_UPDATE_IMAGE`, or the latest release. Each index
+`KDOS_UPDATE_BINHOST`, or the release `<version>` that the tree's `TREE` names, and when the tree
+names a release the release index must be for that version (a `build/binhost` carries the build's
+`KDOS_GIT_RELEASE` as its index version on a clean tagged build, and otherwise the commit cut to
+twelve characters, so it serves the tree the same build wrote, named or not); the image's from `image =`,
+`KDOS_UPDATE_IMAGE`, or the latest release. `fetch --binhost-only` exits 1 when no binhost is
+found, with ``kdos update: no binhost is named: <root>/TREE names no release and
+/etc/kdos/update.conf has no `binhost =` line; `sudo kdos update fetch` takes a published tree
+that names its release``, or `kdos update: no binhost is published at <base>`; a full fetch prints
+the same line and keeps its own exit status. When the last fetch refused the published tree as
+older than this machine's, which a build newer than the release is, that fetch would only refuse
+it again, so the line is ``kdos update: no binhost is named: <root>/TREE names no release, and
+the published tree is older than this machine's; name one with `binhost =` in
+/etc/kdos/update.conf``, and `check`'s `binhost:` line says the same. When `binhost =` or `$KDOS_UPDATE_BINHOST` names a
+binhost the last fetch did not see, the refusals and hints say ``<base> names a binhost the last
+fetch did not see; `sudo kdos update fetch --binhost-only` takes its signed index``. Each index
 is verified against `/etc/kdos/keys`, each file it names is kept only with the size and hash it
 gives, and the binhost index and manifest are verified by their own signatures too; everything
 lands under a `new/` directory first and replaces the cached set only once all of it holds. Every
@@ -1818,6 +1985,13 @@ An image is newer when its release time is later than the running root's (`TREE_
 `/etc/kdos-release`, else the time of the image the root was written from); with no time known on
 either side the versions decide, so a signed manifest of an older release is never offered.
 
+The `VERSION` a filled slot's `/etc/kdos-release` records has one form, the image build's and
+`kdos update`'s alike: a release gives its number without its tag's `v` (`0.2.1`), anything else
+`os-release`'s `VERSION_ID`, `+` and the commit as the tree's `TREE` file records it, twelve
+characters (`0.2.1+4dc1f7f826a3`: the image build's short hash, with `-dirty` from an image built from
+a tree git had not recorded). The tree's `version` line keeps its tag (`v0.2.1`), the
+name the binhost index is found by.
+
 **An update keeps the route each package arrived by.** `/var/lib/kdos/origin` holds one
 `<package> prebuilt|source` line for every package an install or an update added, and a package
 with no line is `prebuilt`, which is how everything the image brought arrived. In the binhost lane
@@ -1831,16 +2005,28 @@ package is installed. `check` runs the same tests against the cached index, so w
 exactly what `apply` will take, and the update document counts the packages the update will build
 here as `builds`.
 
+**A prebuilt apply carries what the world packages run with, not what they were built with.**
+The binhost lane and the image lane's world step take every package that is behind, every world
+package the slot lacks, and the dependencies of those, cut the way a prebuilt
+[`kdos update install`](../04-programs/kdos-command.md#install-routes-and-groups) cuts one port's, from all of them at once: an
+edge into a port `ports/buildonly` lists is followed only where the package's `N:` line in the
+index names that port, or where the package's origin is `source` and it is compiled in the slot,
+whose own edges are all followed. `kmines` and `micro` from the binhost bring `openal-soft` and
+`libkdegames` and no CMake, Ninja, Go, pip or Python build backend. A stanza with no `N:` line
+keeps every edge, and the source lane keeps them all, because it compiles.
+
 **A slot image is the base alone**, so the image lane carries the world set over itself. After it
 writes the slot, `apply` installs every package of `/var/lib/kdos/world` the image lacks, with
 every dependency it needs, from the same release's binhost, building the ones whose origin is
-`source`. A port built here gets what it compiles against first: the build tools, the development
-files of what it builds with, and, under `build-deps = prebuilt` (the default), every package of
+`source`. A port built here gets what it compiles against first: the build tools, the build-only
+header ports its dependencies' headers include (`ports/buildheaders`), the development files of
+what it builds with, and, under `build-deps = prebuilt` (the default), every package of
 its own dependency closure the slot lacks and the binhost covers, prebuilt. The base leaves
 `ports/buildonly` out, so without that last part `kpkg install` would build such a package from
 source in the slot (`doxygen`, which `libxml2` names, under `llvm`, under `rust`, under `bat`).
 Whether it can is decided before the slot is written: the world set and every
-dependency of it, walked through the tree's recipes, must be built here or covered by the signed
+dependency of it the world step installs, walked through the tree's recipes over the same cut
+edges, must be built here or covered by the signed
 index, or the image lane is refused with `N package(s) of what was installed on purpose is/are not
 in release X's binhost`, naming the first few, and nothing is written. A machine with no world set
 takes no world step.
@@ -1861,8 +2047,13 @@ and builds each package with `chroot <slot> kpkg install -f`, in dependency orde
 on the slot's own compiler, headers and libraries, so a package whose dependency was upgraded
 earlier in the run links the copy just installed. Into the chroot it binds `/proc`, `/sys`, `/dev`,
 the ports tree, the running root's source cache that the fetch filled (named to the slot's `kpkg`
-as `SOURCE_DIR`) and `/etc/resolv.conf` when the slot has a regular file there, and it unmounts
-them all before checking the slot. It needs the network for the sources, and compiles on the
+as `SOURCE_DIR`) and `/etc/resolv.conf` when the slot has a regular file there, each made a slave
+of the running root's mounts before anything runs in the chroot, and it unmounts them all before
+checking the slot; the unmount leaves the running root's `/dev/pts`, `/dev/shm`, `/sys/fs/cgroup`
+and efivarfs in place. A bind that cannot be made a slave stops the apply with `cannot make <dir>
+private` after a second try. That bind stays mounted, and so does the slot unless nothing holds
+it: the apply says `slot stays mounted at <dir>` and unmounts neither lazily, since a lazy
+unmount of a shared copy would take those mounts with it. It needs the network for the sources, and compiles on the
 machine, for hours on a large set. `--root DIR` does none of the slot handling: it points
 `KPKG_ROOT` at `DIR`, which moves only the installs and the package database, and builds on the
 running root. `--in-place` updates the running root instead of a slot, which gives up the rollback.
@@ -1875,9 +2066,17 @@ An update is two steps, because Discover shows progress for the first and not th
 1. **Acquire** (`apply --acquire`) does all the long work: the download, the write or install into
    the slot, and [`kpkg check --all`](#checking-an-installed-root) on the slot, which leaves it
    unarmed on a missing file or a changed one outside `/etc`. It refuses on a boot that is itself
-   running a slot on trial, and an armed slot is disarmed before its first byte is rewritten. With
-   `--progress FD` it writes one line per event for a program to read; `--mount` mounts an
-   inactive slot nobody mounted at `/run/kdos/slot-<x>` for the run.
+   running a slot on trial. Before the first byte of the slot is rewritten, in every lane, it
+   cancels any trial of the slot and runs `kdos-bootctl unfill <x>`, which marks the slot
+   `incomplete` until the arm's deploy clears it: a slot an update stopped writing is neither tried
+   nor offered on the boot menu (see [`kdos-bootctl`](boot-and-init.md#kdos-bootctl)). A mark that
+   cannot be written stops the update as a failed build, with `slot <x> could not be marked as
+   being written` (the source-build lane says `the slot could not be marked as being written`). With `--progress FD` it writes one line per event for a program to read;
+   `--mount` mounts an inactive slot nobody mounted at `/run/kdos/slot-<x>` for the run, and
+   unmounts it at the end of the run whichever way it ends, a stop by `SIGTERM`, `SIGINT` or
+   `SIGHUP` included (a group signal such as Ctrl-C also kills the install in flight, and the run
+   ends as a failed install), and
+   `--dry-run --mount` on an unmounted slot says what it would mount and exits 0.
 2. **Arm** (`apply --arm`) takes only a slot an acquire of this tree or image filled. It carries
    this machine's configuration into the slot, copies `/ports` into it unless an image brought its
    own tree, records its version, puts the slot's kernel on the ESP, and asks `kdos-bootctl` to try
@@ -1892,9 +2091,9 @@ carries them into the slot, by one rule per file:
 | File | Rule |
 |---|---|
 | A file a package installed and nobody edited (its hash is the one the running root's package database recorded) | The slot keeps its own copy, the newer default |
-| A file somebody edited, or one no package owns (the hostname, `fstab`, the machine id, the host keys, network profiles) | The running root's copy wins, and a different copy the slot held is kept beside it as `<file>.kdos-new` |
+| A file somebody edited, or one no package owns (the hostname, `fstab`, the machine id, the host keys, network profiles) | The running root's copy wins, and a different copy the slot held is kept beside it as `<file>.kdos-new`; inside a directory whose name ends in `.d` it is kept as the dotfile `.<file>.kdos-new`, because a program that reads such a directory whole (SDDM's `sddm.conf.d`, `cron.d`) skips a hidden file and would otherwise read the slot's copy too, after the machine's |
 | `passwd`, `group`, `shadow`, `gshadow`, `subuid`, `subgid` | Merged by name: every running entry, then every entry only the slot has, so an account made since and a system account the new release adds both survive |
-| `fstab` | The running root's, with the slot's own root line, from the boot state |
+| `fstab` | The running root's, with the slot's own root line, from the boot state. Every absolute mount point it names that the slot lacks is created (mode 0755, owned by root), at every arm and without following a symbolic link, because a slot written from an image holds only what the image names, and an image need not name every mount point the machine's fstab adds |
 | `kdos-release`, `mtab`, `ld.so.cache`, `udev/hwdb.bin` | The slot's own, never carried |
 
 Machine state under `/var` follows as whole trees: the world set, the origin file, the pending boxed applications, the D-Bus machine id, and the state of Bluetooth, AccountsService, SDDM, ALSA,
@@ -1913,11 +2112,18 @@ the machine could verify, a build, an install
 or an image write that failed), and `kdos update check` reports it. `check --json` is the update document:
 what is behind, the version on offer and its `lane` (`image`, `binhost` or none), the size to
 download, how many packages the update `builds` here (each counts as covered, so the update is
-still offered), the date of the release, the key that signed it, and the last problem. The `update-check`
+still offered), the date of the release, the key that signed it, the origins the image and the
+binhost are read from (`image` and `binhost`, which decide whether Discover says the size is "to
+copy" or "to download"), and the last problem. The `update-check`
 timer writes it nightly to `/var/lib/kdos/update.json` from the tree, index and manifest already in
-place, without fetching; the network is reached only when somebody asks, through Discover's "Check
-for updates" (`check --fetch`, run by `kdos-sysupdated`) or `kdos update fetch`. Discover's update
-notifier and `kdos-sysupdated` read the document. The update path has not been run against a
+place, without fetching; the network is reached only when somebody asks, through Discover's
+Refresh on its Updates page (`check --fetch`, run by `kdos-sysupdated`; on a machine with no second
+root slot, the live medium among them, `fetch --binhost-only` alone) or `kdos update fetch`.
+Discover's update notifier and `kdos-sysupdated` read the document. With no binhost index,
+`check` names the next step: `kdos update apply --source` when something is behind, `sudo kdos
+update fetch --binhost-only` when `update.conf`, `$KDOS_UPDATE_BINHOST` or a tree that names its
+release gives a binhost, and otherwise that the tree names no release and `sudo kdos update fetch`
+takes one that does; its tree line shows `(<version>)` only for a tree that names a release. The update path has not been run against a
 published release; see
 [Known gaps](../06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree).
 Every option is in [the kdos command](../04-programs/kdos-command.md#kdos-update).
@@ -1930,12 +2136,12 @@ own release, or builds itself:
 ```sh
 kdos update install [--dry-run] [--prebuilt | --source] [--build-deps=prebuilt|source] [--root DIR] <port|group>
 kdos update install [--dry-run] [--prebuilt | --source] --pending
-kdos update install [--dry-run] --dev [--root DIR] <port|group>...
+kdos update install [--dry-run] --dev [--deps] [--root DIR] <port|group>...
 ```
 
 | Route | What it does |
 |---|---|
-| `--prebuilt` | The port and every package it lacks from the release binhost `kdos update fetch` keeps in `/var/lib/kdos/binhost`, each through `kpkg binhost` under `KPKG_REQUIRE_SIG`. A package the signed index does not cover refuses the whole install before anything is fetched, naming `kdos update install --source <port>` |
+| `--prebuilt` | The port and every package it lacks from the release binhost `kdos update fetch` keeps in `/var/lib/kdos/binhost`, each through `kpkg binhost` under `KPKG_REQUIRE_SIG`. A package the signed index does not cover refuses the whole install before anything is fetched, naming `kdos update install --source <port>`. With no signed index on the machine it refuses with `kdos update: no signed binhost index is on this machine`, followed by the step that gets one: the no-binhost-named line of [Updating a machine](#updating-a-machine) when the last fetch found none, otherwise `` `sudo kdos update fetch --binhost-only` fetches the release's signed index `` |
 | `--source` | The port built here: `kpkg fetch` of every source first, then `kpkg install` under `/etc/kdos/chroot.env`, so the package's `B:` is the binhost's. Each package it lacks is downloaded (`--build-deps=prebuilt`, and one the index does not cover is built instead) or built too (`--build-deps=source`) |
 
 With neither flag, `install =` in `/etc/kdos/update.conf` names the route and `build-deps =` the
@@ -1957,8 +2163,34 @@ The rules every install keeps:
   the port joins the world set only once everything installed.
 - `--dry-run` decides all of it, touches nothing and needs no root. It prints one line per package,
   `<pkg> prebuilt <file> <bytes>` or `<pkg> source <version>-<release>`, then
-  `total <prebuilt-count> <bytes> <source-count>`; an install prints
+  `total <prebuilt-count> <bytes> <source-count>`, whose bytes are what is still to download:
+  nothing for a file the cache holds, and for a cut download the rest its `.part` lacks; an install prints
+  `==> downloading <file> (<size>)` as each download the cache lacks starts, then
   `==> installing <pkg> (prebuilt)` or `(built here)` per package.
+- **A cut download is continued.** The bytes that arrived stay in the cache as `<file>.part`, the
+  install exits 1 saying where it was cut off and that the same command continues it, and that
+  command asks for the rest with a Range request; the joined file is checked against the signed
+  index's hash like any other.
+- **The download must fit.** Before anything is downloaded, its size is compared with the free
+  space of the filesystem the cache is on; when it does not fit, the install prints `kdos update:
+  the packages to download take <size> and <cache> has <size> free; nothing was downloaded` and
+  exits 1, and `--dry-run` prints its plan and then the same refusal, without the last clause, and
+  exits 1 too.
+- **On the live medium the cache does not keep what it installed.** The cache is in the RAM
+  overlay there, so each package file and its `.sig` is deleted once it is installed, and a run of
+  installs does not fill the memory the session runs in.
+- **A prebuilt install takes what a package runs with, not what it was built with.** `depends =`
+  names build and run-time needs alike, so following every edge would bring `cmake`, `sphinx` and
+  `pip` with a prebuilt `kcharselect`. The image's `/ports` and every published tree carry
+  `buildonly`, and each binhost stanza an `N:` line (the build-only ports that package needs at
+  run time, measured where it was built; see [The binary host](#the-binary-host)): an edge into a listed port is followed only when
+  the package's `N:` line names it, and an empty `N:` line drops every such edge. The named port
+  is always kept, and a stanza with no `N:` line was not measured and keeps every edge. A
+  `--source` install cuts its order the same way except where something is compiled: the port
+  itself, and every package the run builds (with `--build-deps=source`, or one the index does not
+  cover), follow every edge, and a package that comes prebuilt follows only its `N:` edges, so
+  `extra-cmake-modules` comes prebuilt without Sphinx, pip or the Python build backends it was
+  built with.
 - `--root DIR` installs into a root that is not running, with `DIR` absolute, and only prebuilt,
   since a build compiles against the root it runs in: `--source` with it is a usage error. The
   package database, the world set and the origin file are `DIR`'s.
@@ -1971,20 +2203,74 @@ application; see [Discover](../04-programs/discover.md).
 A machine installed from the image has `FACETS=run`, so its packages lack the files a compile
 reads, and its base carries no build tools (`build-tools` is a [group](#groups)): gcc is there
 for its run-time libraries, with its compiler in its `dev` facet. Before the first
-build of a run, a source install does two things, and prints each as it does it:
+build of a run, a source install does three things, and prints each as it does it:
 
 - **It installs every member of the `build-tools` group that is not installed** (the base
-  carries none of binutils, make, CMake, Meson, Ninja, pkgconf or the autotools), and every
-  package they lack, prebuilt from the binhost, whatever `--build-deps` says, each printed as
-  `==> installing <pkg> (prebuilt, for building)`; each member joins the world set. A tree with no
-  `build-tools` group stands for it with `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja` and
-  `pkgconf`.
+  carries none of binutils, make, CMake, Meson, Ninja, pkgconf, the autotools or
+  `fortify-headers`, whose `/usr/include/fortify` every build's `-D_FORTIFY_SOURCE=2` needs on
+  musl), and every
+  package they lack at run time, prebuilt from the binhost, whatever `--build-deps` says, each
+  printed as `==> installing <pkg> (prebuilt, for building)`; each package records `prebuilt` in
+  the origin record and each member joins the world set.
+  The tools come prebuilt, so their own `ports/buildonly` dependencies are cut by their `N:`
+  lines as in any prebuilt install: Sphinx, the Python build backends, Muon and scdoc stay out. A tree with no
+  `build-tools` group stands for it with `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja`,
+  `pkgconf` and `fortify-headers`.
+- **It installs the build-only ports that installed packages' headers include.** The image leaves
+  out `ports/buildonly`, and the walk stops at an installed package, so nothing would order
+  `xorgproto` under an installed `libX11`, whose `X11/Xlib.h` includes `X11/X.h` and whose
+  `x11.pc` requires `xproto`. `ports/buildheaders` (`/ports/buildheaders`) lists the build-only
+  ports whose headers, pkg-config files or protocol files other packages' development files
+  include: `xorgproto`, `xcb-proto`, `wayland-protocols`, `vulkan-headers`, `spirv-headers`,
+  `opencl-headers` and `nlohmann-json`. Each one that a package of a built port's declared closure
+  names in `depends =`, when that package is installed or the run installs it prebuilt (as a build
+  tool, a dependency or what another header port needs), and that is not installed, is installed
+  prebuilt with what it lacks at run time, printed as `==> installing <pkg> (prebuilt, for
+  building)` (`<pkg> prebuilt` in a dry run). A header port joins the world set as a build tool
+  does, whichever step of the plan installs it, so `removable` lists it, `remove` takes it and an A/B apply installs it in the next slot,
+  and it and what it lacks at run time record `prebuilt` in the origin record; with no origin line
+  the removal graph would read them as the image's. One the index does not cover refuses the install
+  with `kdos update: <pkg>, whose headers <m>'s headers include, cannot be installed prebuilt:
+  <reason>`, the reason being the stanza test that failed (`not in the binhost`, `different
+  recipe`, …); a package the header port needs at run time is named as `<dep>, which <pkg> needs
+  (<m>'s headers include <pkg>'s)`. `boost` is not listed: its `numpy` edge would bring `numpy` and `openblas` to every
+  such build.
 - **It restores the `dev` facet** of every installed package the builds compile against — each
   built port's declared closure, `musl`, `linux` and the build tools — that is installed without
   it, by installing that package again whole from the binhost, printed as
   `==> restoring the development files of <pkg> (prebuilt)`. A package this machine built itself
   (origin `source`) is built again instead. One the index does not cover, or that is older than
-  its recipe, refuses the install before anything is fetched.
+  its recipe, refuses the install before anything is fetched. The kernel's API headers under
+  `/usr/include` are in the `linux` package, so the first source build downloads the whole kernel
+  package for them (about 190 MiB, beside about 80 MiB for gcc's compiler), however small the
+  port. Its reinstall changes no file the machine runs: unchanged files keep their inodes (see
+  [Upgrades and removals](#upgrades-and-removals)), and the kernel's hook prints `linux <version>
+  is already on the ESP` and writes nothing there. The closure, not the port, sets the size: the
+  first build of a KDE application on a fresh install restores the development files of most of
+  Qt, KDE Frameworks and the libraries under them, about 170 to 260 packages, and with the build
+  tools that build downloads roughly 600 MiB and takes about 1.5 GB of the root slot, most of it
+  the restored development files (a source install of `kcolorchooser` takes `/` from 57% to 74%
+  used). A later build against the same closure restores nothing, and
+  `sudo kdos update install --dev --deps <pkg>` is the same restore asked for by name.
+
+The room the builds need is checked before the first of them, by `kdos update install` and by
+both lanes of `kdos update apply` that build. A run's builds go one after another, and each that
+succeeds removes its tree, so the work directory holds one tree at a time. The run is reckoned
+at six times the source archives of its largest build, plus each other distinct archive once for
+the package and installed files every earlier build leaves, plus 512 MiB once for a build's
+scratch. Ports that build from one archive (`openmp`, `clang` and `lld` from `llvm-project`)
+count it once. An archive not on the machine yet counts at the size
+[`kpkg fetch --size`](#fetching-sources-on-a-machine) reads for it, one call for the run, and one
+no server gave a size for counts nothing and is named on a dry run's stderr. A run that the
+filesystem of `/var/cache/kpkg/work` cannot hold is refused, once before anything is fetched and
+again once every source is. The figures are an estimate, not a bound: a build can outgrow them, and a run
+they refuse might have fitted. So every build `kdos update` starts runs under
+`KPKG_CLEAN_FAILED=1`, which has `kpkg` remove a failed build's work directory and record in
+`/var/cache/kpkg/work/.kpkg-failed` the free space it measured before the removal; from that
+record `kdos update` tells a root that filled up from any other failure. A build that is stopped
+or killed removes nothing: its directory stays until it is deleted or the port is built again.
+Without the variable, as in the tree's own build, a failed build keeps its directory for the
+developer to read.
 
 Everything a run that builds installs, it installs whole (`KPKG_FACETS=all`), so a port built
 later in the run finds what an earlier step placed, and each such package stays whole across
@@ -1993,12 +2279,31 @@ the source lane, inside the slot. `--dry-run` lists it first: `<pkg> prebuilt <f
 for a build tool, `<pkg> dev <file> <bytes>` for a restore, `<pkg> dev-source
 <version>-<release>` for a package built again, each counted in the `total` line.
 
+The build dependencies a source-built package's own recipe names stay with it and go with its
+removal. The removal graph keeps every recipe edge of a package whose origin is `source`, its
+`ports/buildonly` edges among them, since the next update builds it here again against the same
+dependencies; the index's `N:` line measures the binhost's build, not this one. After
+`kdos update install --source kcolorchooser`, `removable` lists `kcolorchooser`, then `cmake` and
+`ninja`, which its recipe names, under `kept, needed by an installed package:` as `(needed by
+kcolorchooser)`, and nothing left by removals; and `kdos update remove kcolorchooser` takes the prebuilt `extra-cmake-modules` its
+build brought, when nothing else installed needs it. A build-only port brought for a dependency
+the same plan installs prebuilt is held by neither: that dependency's `N:` line cuts its edge, so
+it is listed under `left by removals:` and `remove` takes it by name.
+
 `kdos update install --dev <port|group>...` is the restore asked for by name: each named port, or
 every installed member of a group, is installed again whole, prebuilt from the binhost (built
 again here when its origin is `source`), and stays whole across updates. A port not installed is
 named and skipped (and fails the command when it was named directly), one installed whole prints
 `every file of <port> is installed`, and one older than its recipe refuses. `--dry-run` prints
-the `dev` lines and a `total` line.
+the `dev` lines and a `total` line. `--dev --deps` adds, for each named port, the set the second
+step above restores before building it (kp_facet_wanted: its declared closure, `musl`, `linux` and
+`gcc`), so a project built against `qt6-qtbase` finds the `libglvnd` and `mesa` headers Qt's CMake
+files look for.
+
+`kdos update install build-tools` installs the toolchain without a build: each member it adds goes
+in whole, and it then restores the `dev` facet of every installed member and of `musl`, `linux`
+and `gcc` that lacks it, as `--dev` does, the kernel package among them. Afterwards `cc` builds a
+C program against the C library's and the kernel's headers.
 
 ### Groups
 
@@ -2010,7 +2315,7 @@ them, a `group <id> <title>` line and then its member ports, and the image stage
 |---|---|
 | `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | The `kde-gear-*` meta of the same subject |
 | `kde-network` | `ktorrent`, `krdc`, `krfb`, `kio-gdrive`, `kaccounts-providers`, `kdenetwork-filesharing` |
-| `kde-system` | `filelight`, `sweeper`, `kfind`, `ksystemlog`, `kwalletmanager`, `kcharselect`, `isoimagewriter`, `khelpcenter` |
+| `kde-system` | `filelight`, `sweeper`, `kfind`, `ksystemlog`, `kwalletmanager`, `kcharselect`, `khelpcenter` |
 | `kde-artwork` | `plasma-workspace-wallpapers`, `oxygen` |
 | `office` | `libreoffice`, `calibre`, `texstudio` |
 | `graphics` | `gimp`, `krita`, `inkscape`, `darktable`, `blender` |
@@ -2020,8 +2325,8 @@ them, a `group <id> <title>` line and then its member ports, and the image stage
 | `science` | `octave`, `qgis`, `stellarium`, `freecad`, `kicad`, `openscad` |
 | `development` | `rust`, `go`, `nodejs`, `zig`, `gdb`, `valgrind`, `strace`, `lldb` |
 | `windows` | `wine` |
-| `build-tools` | `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja`, `pkgconf`, `autoconf`, `automake`, `libtool`, `bison`, `flex` |
-| `lang-zh`, `lang-ja`, `lang-ko` | `fcitx5-chinese-addons`, `fcitx5-anthy` or `fcitx5-hangul`, with `fcitx5-gtk` and `noto-cjk` |
+| `build-tools` | `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja`, `pkgconf`, `autoconf`, `automake`, `libtool`, `bison`, `flex`, `fortify-headers` (the overlay headers `chroot.env`'s `-D_FORTIFY_SOURCE=2` needs on musl) |
+| `lang-zh`, `lang-ja`, `lang-ko` | `fcitx5-chinese-addons`, `fcitx5-anthy` or `fcitx5-hangul`, with `fcitx5-gtk`, `noto-cjk` and `noto-cjk-prefer-zh`, `-ja` or `-ko` |
 
 A group is no package. `kdos update install <id>` installs each member as the port it is, with the
 same flags, and each member joins the world set by its own name, so a member a later tree drops

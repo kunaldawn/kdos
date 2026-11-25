@@ -19,6 +19,13 @@
  * panels were changed since they were laid out, the page says so before it
  * applies anything, and offers the undo after.
  *
+ * THE CARDS ARE A RADIO GROUP. Each is checkable and checked where its
+ * desk is the one chosen, so the accessibility layer reports the checked
+ * state itself. A click toggles `checked`, which leaves a value the page
+ * did not set, so `checked` is bound to the choice again after every
+ * toggle and whenever the choice moves. Choosing a card applies nothing;
+ * the Use button below the cards does.
+ *
  * The auto-tile checkbox is `kdos tiling on|off` on its own, for a KDOS or
  * Dock desk whose windows should tile anyway.
  * ---------------------------------
@@ -189,13 +196,20 @@ Welcome.ScrollablePage {
             Accessible.role: Accessible.Grouping
             Accessible.name: i18ndc("kdos-welcome", "@title:group", "Desk")
 
+            /* One Tab stop for the group, on the chosen card, or on every
+             * card while none is chosen; the arrow keys move focus only,
+             * wrapping and skipping a disabled card, and Space or Enter
+             * chooses. */
             Repeater {
+                id: deskRepeater
+
                 model: page.desks
 
                 delegate: QQC2.AbstractButton {
                     id: card
 
                     required property var modelData
+                    required property int index
 
                     readonly property bool isChosen: page.chosen === modelData.name
 
@@ -205,14 +219,44 @@ Welcome.ScrollablePage {
                     Layout.preferredWidth: 1
                     padding: Kirigami.Units.largeSpacing
                     hoverEnabled: true
-                    focusPolicy: Qt.StrongFocus
-                    onClicked: page.chosen = modelData.name
+                    focusPolicy: card.isChosen || page.chosen.length === 0 ? Qt.StrongFocus : Qt.ClickFocus
+                    checkable: true
+                    checked: isChosen
+                    onClicked: choose()
+
+                    function choose(): void {
+                        page.chosen = modelData.name;
+                    }
+
+                    function bindChecked(): void {
+                        checked = Qt.binding(() => card.isChosen);
+                    }
+
+                    // The next enabled card `step` places away, wrapping;
+                    // a Tab reason so the focus frame is drawn.
+                    function focusNeighbour(step: int): void {
+                        const n = deskRepeater.count;
+                        for (let k = 1; k < n; ++k) {
+                            const next = deskRepeater.itemAt((((index + step * k) % n) + n) % n);
+                            if (next && next.enabled) {
+                                next.forceActiveFocus(Qt.TabFocusReason);
+                                return;
+                            }
+                        }
+                    }
+
+                    onToggled: bindChecked()
+                    onIsChosenChanged: bindChecked()
+                    Keys.onLeftPressed: focusNeighbour(-1)
+                    Keys.onUpPressed: focusNeighbour(-1)
+                    Keys.onRightPressed: focusNeighbour(1)
+                    Keys.onDownPressed: focusNeighbour(1)
+                    Keys.onReturnPressed: choose()
+                    Keys.onEnterPressed: choose()
 
                     Accessible.role: Accessible.RadioButton
                     Accessible.name: modelData.title
                     Accessible.description: modelData.text
-                    Accessible.checkable: true
-                    Accessible.checked: isChosen
 
                     background: Rectangle {
                         color: card.isChosen ? Qt.alpha(Kirigami.Theme.highlightColor, 0.12) : "transparent"

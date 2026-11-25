@@ -15,6 +15,10 @@ operations run as root in kpmcore's helper, after polkit has asked through
   package-wide English-only rule would remove anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
+## Patches
+
+`size-dialog-ranges.patch` is to be offered upstream.
+
 ## Notes
 
 The configure asks for kpmcore at the version of its own release branch (26.07 for a 26.08

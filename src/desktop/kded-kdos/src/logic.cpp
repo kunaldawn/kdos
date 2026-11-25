@@ -110,4 +110,9 @@ bool startAllowed(QList<qint64> &starts, qint64 now, int max, qint64 windowMs)
     return true;
 }
 
+bool accountOnlyRun(const QString &markerPath, bool firstEvaluation, bool forced)
+{
+    return firstEvaluation && !forced && !QFileInfo::exists(markerPath);
+}
+
 }

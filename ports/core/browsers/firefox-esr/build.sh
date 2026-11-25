@@ -112,7 +112,6 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     "DisableTelemetry": true,
     "DisableFirefoxStudies": true,
     "DisableRemoteImprovements": true,
-    "DisableRemoteSettingsAndAcceptSecurityConsequences": true,
     "DisableAppUpdate": true,
     "DisableSystemAddonUpdate": true,
     "DisableFeedbackCommands": true,
@@ -122,12 +121,10 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     "DNSOverHTTPS": { "Enabled": false, "Locked": true },
     "NetworkPrediction": false,
     "SearchSuggestEnabled": false,
-    "TranslateEnabled": false,
     "IPProtectionAvailable": false,
     "SkipTermsOfUse": true,
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
-    "GenerativeAI": { "Enabled": false, "Locked": true },
     "AIControls": { "Default": { "Value": "blocked", "Locked": true } },
     "FirefoxHome": {
       "Weather": false,
@@ -177,6 +174,14 @@ pref("media.gmp-gmpopenh264.visible", false);
 pref("browser.newtabpage.activity-stream.telemetry", false);
 pref("datareporting.healthreport.uploadEnabled", false);
 pref("datareporting.usage.uploadEnabled", false);
+pref("browser.region.network.url", "");
+pref("browser.region.update.enabled", false);
+pref("geo.provider.network.url", "");
+pref("geo.provider.use_geoclue", false);
+pref("app.normandy.enabled", false);
+pref("app.normandy.api_url", "");
+pref("app.shield.optoutstudies.enabled", false);
+pref("network.connectivity-service.enabled", false);
 EOF
 
 for _png in browser/branding/official/default*.png; do

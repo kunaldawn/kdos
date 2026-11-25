@@ -308,7 +308,7 @@ certificates.
 A KDOS image runs under QEMU on any host with [KVM]{.idx}. The build tree's `make run` target is the
 command line KDOS is developed against; it is in the repository's `Makefile`:
 
-<!-- kfs:include Makefile lines=231-236 pin=f6593b8c0706 lang=make -->
+<!-- kfs:include Makefile lines=249-254 pin=f6593b8c0706 lang=make -->
 
 That target runs on the build machine and expects its OVMF at `/usr/share/ovmf/OVMF.fd`; on a KDOS
 host, use the firmware paths from [Running a guest with QEMU directly](#running-a-guest-with-qemu-directly).

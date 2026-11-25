@@ -37,6 +37,8 @@ _dirs=(
 make "${_dirs[@]}"
 make install "${_dirs[@]}" DESTDIR="$PKG" INSTALL_VERBOSE=false
 
+install -Dm644 doc/GPL.txt "$PKG/usr/share/licenses/$name/GPL.txt"
+
 for _size in 16 32 48 64 128 256; do
 	install -Dm644 "share/icons/openMSX-logo-$_size.png" \
 		"$PKG/usr/share/icons/hicolor/${_size}x${_size}/apps/openmsx.png"

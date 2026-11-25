@@ -13,6 +13,11 @@
  * only on an encrypted disk, where the passphrase at every start already
  * asks who is at the machine; anywhere else the login screen is that
  * question and is never skipped.
+ *
+ * Each password, the account's and root's, has the same strength line
+ * under it, as wide as its field, which keeps its room while that field
+ * is shown, typed in or not, so the second field never moves; and its
+ * second field says it wants the password again.
  */
 
 import QtQuick
@@ -29,10 +34,19 @@ WizardPage {
     property bool userEdited: false
 
     readonly property string accountProblem: {
-        if (!answers.hostnameOk(answers.hostname)) {
-            return i18n("The computer's name may hold letters, digits and dashes.");
+        if (answers.hostname.length === 0) {
+            return i18n("Give the computer a name.");
         }
-        if (!answers.rootLocked && (rootPass.text.length === 0 || rootPass.text !== rootAgain.text)) {
+        if (!answers.hostnameOk(answers.hostname)) {
+            return i18n("The computer's name may hold letters a–z, digits and dashes, and not start or end with a dash.");
+        }
+        if (!answers.rootLocked && rootPass.text.length === 0) {
+            return i18n("Give root a password, typed twice the same, or lock root.");
+        }
+        if (!answers.rootLocked && rootAgain.text.length === 0) {
+            return i18n("Type root's password again.");
+        }
+        if (!answers.rootLocked && rootPass.text !== rootAgain.text) {
             return i18n("Give root a password, typed twice the same, or lock root.");
         }
         if (!answers.rootLocked && !answers.fitsAnswerFile(rootPass.text)) {
@@ -48,13 +62,16 @@ WizardPage {
             return i18n("Your name cannot hold a colon.");
         }
         if (!answers.usernameOk(answers.username)) {
-            return i18n("The user name may hold lowercase letters, digits, - and _, and not start with a digit.");
+            return i18n("The user name may hold lowercase letters, digits, - and _, and start with a letter or _.");
         }
         if (answers.usernameReserved(answers.username)) {
             return i18n("That user name belongs to the system; choose another.");
         }
         if (pass.text.length === 0) {
             return i18n("Choose a password.");
+        }
+        if (again.text.length === 0) {
+            return i18n("Type the password again.");
         }
         if (pass.text !== again.text) {
             return i18n("The two passwords do not match.");
@@ -89,7 +106,7 @@ WizardPage {
         Layout.maximumWidth: Kirigami.Units.gridUnit * 30
         visible: page.answers.oem
         wrapMode: Text.Wrap
-        text: i18n("No account is made now. The first time the computer starts, a setup wizard asks for the language, keyboard, time zone and network, and makes an administrator's account. Use this for a computer you are preparing for someone else.")
+        text: i18n("No account is made now. The first time the computer starts, a setup wizard asks for the keyboard, time zone and network, and makes an administrator's account. Use this for a computer you are preparing for someone else.")
     }
 
     Kirigami.FormLayout {
@@ -97,6 +114,7 @@ WizardPage {
 
         QQC2.TextField {
             id: fullname
+            objectName: "fullname"
             Kirigami.FormData.label: i18nc("@label:textbox", "Your name:")
             visible: !page.answers.oem
             Layout.fillWidth: true
@@ -126,19 +144,44 @@ WizardPage {
             visible: !page.answers.oem
             Layout.fillWidth: true
             Accessible.name: i18nc("@label:textbox", "Password")
+            /* Tab goes to the second field, past this field's reveal
+             * button, so what is typed after one Tab is the confirmation;
+             * Shift+Tab from the second field reaches the reveal button
+             * (the second field's backtab handler). */
+            KeyNavigation.tab: again
             onTextChanged: page.answers.password = text
         }
         StrengthLabel {
-            visible: !page.answers.oem && pass.text.length > 0
+            visible: !page.answers.oem
             secret: pass.text
+            field: pass
+            available: page.availableWidth
             passphrase: false
         }
         Kirigami.PasswordField {
             id: again
-            Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
+            Kirigami.FormData.label: i18nc("@label:textbox", "Password, again:")
             visible: !page.answers.oem
             Layout.fillWidth: true
+            placeholderText: i18nc("@info:placeholder", "Password, again")
             Accessible.name: i18nc("@label:textbox", "Password, again")
+            /* Shift+Tab goes to the first field's reveal button, which Tab
+             * from the first field passes over; the backtab the first
+             * field's KeyNavigation.tab sets here lands in the field itself.
+             * This handler takes the key first, KeyNavigation coming after
+             * the field's own handling, and the first field is the stop
+             * when it has no reveal button. */
+            KeyNavigation.backtab: pass
+            KeyNavigation.priority: KeyNavigation.AfterItem
+            Keys.onBacktabPressed: event => {
+                const reveal = pass.nextItemInFocusChain(true);
+                let inside = false;
+                for (let up = reveal; up && !inside; up = up.parent) {
+                    inside = up === pass;
+                }
+                (inside ? reveal : pass).forceActiveFocus(Qt.BacktabFocusReason);
+                event.accepted = true;
+            }
         }
         QQC2.CheckBox {
             visible: !page.answers.oem
@@ -199,14 +242,42 @@ WizardPage {
             visible: !page.answers.rootLocked
             Layout.fillWidth: true
             Accessible.name: i18nc("@label:textbox", "Root's password")
+            /* As the account's password: Tab to the second field, Shift+Tab
+             * from it to this field's reveal button. */
+            KeyNavigation.tab: rootAgain
             onTextChanged: page.answers.rootPassword = text
+        }
+        StrengthLabel {
+            visible: !page.answers.rootLocked
+            secret: rootPass.text
+            field: rootPass
+            available: page.availableWidth
+            passphrase: false
         }
         Kirigami.PasswordField {
             id: rootAgain
             Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
             visible: !page.answers.rootLocked
             Layout.fillWidth: true
+            placeholderText: i18nc("@info:placeholder", "Password, again")
             Accessible.name: i18nc("@label:textbox", "Root's password, again")
+            /* Shift+Tab goes to the first field's reveal button, which Tab
+             * from the first field passes over; the backtab the first
+             * field's KeyNavigation.tab sets here lands in the field itself.
+             * This handler takes the key first, KeyNavigation coming after
+             * the field's own handling, and the first field is the stop
+             * when it has no reveal button. */
+            KeyNavigation.backtab: rootPass
+            KeyNavigation.priority: KeyNavigation.AfterItem
+            Keys.onBacktabPressed: event => {
+                const reveal = rootPass.nextItemInFocusChain(true);
+                let inside = false;
+                for (let up = reveal; up && !inside; up = up.parent) {
+                    inside = up === rootPass;
+                }
+                (inside ? reveal : rootPass).forceActiveFocus(Qt.BacktabFocusReason);
+                event.accepted = true;
+            }
         }
     }
 }

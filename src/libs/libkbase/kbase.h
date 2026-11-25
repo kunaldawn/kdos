@@ -201,7 +201,13 @@ const char *kb_home_dir(void);		/* $HOME, or /root                 */
  * from a crash, and a VM's lid event is a stray ACPI report. Misses a
  * hypervisor not on its list, which fails in the safe direction. */
 int kb_in_vm(void);
-char *kb_path_join(const char *a, const char *b);	/* malloc'd        */
+/* a + "/" + b, malloc'd, with exactly one slash at the join: none is added
+ * after an `a` that ends in one, and the leading slashes of `b` are dropped,
+ * so ("/", "usr/share/man") is "/usr/share/man". An empty `a` gives "/" + b.
+ * A doubled slash names the same file but not the same string, and a tool
+ * that compares a base directory with its files' paths by prefix (makewhatis
+ * -d) refuses every file under "//usr/share/man". */
+char *kb_path_join(const char *a, const char *b);
 int kb_mkdir_p(const char *path);
 
 /* flock() wrapper. Returns the held fd, or -1. Close to release. */
@@ -314,6 +320,11 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n);
  * it silently raises nothing, which is what a machine with no notification
  * daemon should do. gdbus's output and its errors both go to /dev/null, so a
  * refused toast prints nothing on the caller's terminal.
+ *
+ * The sender is always kdos.notifyrc's Name, "KDOS Tools", with the hint
+ * x-kde-appname=kdos, and `app` is ignored: Plasma heads the toast and files
+ * its history under the sender, so another name would split one application
+ * into two history groups.
  */
 void kb_notify(const char *app, const char *summary, const char *body);
 /* Same, unbounded: stdout is appended to a growing buffer, NUL terminated,

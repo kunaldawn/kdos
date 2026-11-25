@@ -34,7 +34,8 @@
 #      of its own (dbus-run-session as CMAKE_TEST_LAUNCHER) — tests that serve
 #      fakes of the same D-Bus name run in parallel without taking it from
 #      each other. Ports build in the order their depends put them, each
-#      seeing the ones before it on CMAKE_PREFIX_PATH and PATH.
+#      seeing the ones before it on CMAKE_PREFIX_PATH and PATH, and what they
+#      installed under /usr/share/kdos at that path (share_kdos below).
 #   2. plugins. Every plugin a port installs under lib/qt6/plugins is loaded
 #      with QPluginLoader: a missing symbol, a library the image lacks or
 #      metadata with no KPlugin.Name is a plugin Plasma drops without a word.
@@ -49,7 +50,10 @@
 #   4. qmllint. Every QML file a port installs, every QML file of its source
 #      it does not install as it is (a KCM's, compiled into its plugin), and
 #      every QML file of a port not built, is linted against the installed QML
-#      modules and the ones the ports just built. A context property (a KCM's
+#      modules and the ones the ports just built, the modules in their build
+#      trees among them (an applet's plasma.applet.<id>, compiled into its
+#      plugin with no qmldir installed, which its own files import to read
+#      the C++ types it registers). A context property (a KCM's
 #      `kcm`, the greeter's `sddm`) and a type a C++ plugin registers at run
 #      time cannot be resolved by reading the file, so unqualified access,
 #      unresolved types and unused imports are reported without failing. A
@@ -101,8 +105,15 @@ if [ -n "$missing" ]; then
 fi
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/plasmatest.XXXXXX")
-if [ "$keep" = 1 ]; then echo "plasmatest: scratch tree $W"
-else trap 'rm -rf "$W"' EXIT; fi
+# /usr/share/kdos, while this run serves it (share_kdos below): the link is
+# removed on the way out, kept tree or not.
+SHARELINK=""
+leave() {
+    [ "$SHARELINK" = 1 ] && [ -L /usr/share/kdos ] && rm -f /usr/share/kdos
+    [ "$keep" = 1 ] || rm -rf "$W"
+}
+trap leave EXIT
+[ "$keep" = 1 ] && echo "plasmatest: scratch tree $W"
 mkdir -p "$W/home" "$W/run" "$W/root" "$W/logs"
 chmod 700 "$W/run"
 
@@ -419,9 +430,11 @@ src_packages() {      # <dir>: complete KPackages in a source tree
 # so an installed file is held to the system's QML files of the same name
 # under $PT_UPSTREAM (/usr/share and the QML module directory): one identical
 # to such a file is upstream's and is not linted. One made from such a file —
-# at least eight of its substantive lines, and four in five of them, are the
-# upstream file's word for word — has a finding on such a line reported as a
-# note. A substantive line is one that is not an import and holds more than
+# at least eight of its substantive lines are the upstream file's word for
+# word, and they are four in five of its own lines or four in five of the
+# upstream file's (a patch that adds a block of KDOS's to upstream's file
+# keeps nearly all of it) — has a finding on such a line reported as a note.
+# A substantive line is one that is not an import and holds more than
 # brackets and eight characters, so a small file of KDOS's own that opens the
 # way every plasmoid does is never taken for upstream's, and a finding on an
 # import is always KDOS's. Every file under src/ is KDOS's whole.
@@ -433,7 +446,9 @@ import hashlib, json, os, re, subprocess, sys
 # by that program is right to import it.
 HOST_MODULES = {
     "org.kde.discover": "Discover registers it for its backends' delegates",
+    "org.kde.kwin": "kwin_wayland registers it for its scripts and effects",
     "org.kde.plasma.welcome.private": "plasma-welcome registers it for its pages",
+    "org.kdos.installer": "kdos-installer-gui registers it in its executable",
 }
 LEVELS = ["--unqualified", "info", "--unresolved-type", "info", "--unused-imports", "info",
           "--context-properties", "info", "--deprecated", "info"]
@@ -490,7 +505,8 @@ def upstream_of(path):
         shared = lines_of(theirs)
         if len(mine & shared) > score:
             best, score = shared, len(mine & shared)
-    if best is not None and score >= 8 and 5 * score >= 4 * len(mine):
+    if best is not None and score >= 8 and \
+            (5 * score >= 4 * len(mine) or 5 * score >= 4 * len(best)):
         return "made", best
     return None, None
 
@@ -580,7 +596,8 @@ lint_qml() {          # <file>... -> 0 clean
     local r n
     printf '%s\n' "$@" > "$W/qmllint.list"
     # shellcheck disable=SC2086
-    python3 "$W/qmllint.py" "$QMLLINT" "$W/qmllint.list" "$ROOT" ${PT_QML//:/ } > "$W/logs/qmllint.out" 2>&1
+    python3 "$W/qmllint.py" "$QMLLINT" "$W/qmllint.list" "$ROOT" ${PT_QML//:/ } ${PT_BUILDQML//:/ } \
+        > "$W/logs/qmllint.out" 2>&1
     grep -v '^COUNT	' "$W/logs/qmllint.out"
     n=$(awk -F'\t' '$1 == "COUNT" { print $3 }' "$W/logs/qmllint.out")
     if [ -z "$n" ]; then bad "qmllint: the linter did not run: $(tail -1 "$W/logs/qmllint.out")"; return 1; fi
@@ -601,12 +618,43 @@ layouts_ok() {        # <file>...
 
 TYPES=$(kpackagetool6 --list-types 2>/dev/null | awk '$1 ~ /^[A-Za-z0-9]+\/[A-Za-z0-9]+$/ { print $1 }')
 plugincheck_build
-PT_PREFIX="" PT_LIBS="" PT_PLUGINS="" PT_QML="" PT_PATH=""
+PT_PREFIX="" PT_LIBS="" PT_PLUGINS="" PT_QML="" PT_PATH="" PT_BUILDQML=""
 for d in /usr/lib/qt6/qml /usr/lib/qml; do [ -d "$d" ] && PT_QML="${PT_QML:+$PT_QML:}$d"; done
+
+# A build.sh reads what the KDOS ports before it installed under
+# /usr/share/kdos by that path, as the build, which installs each port before
+# the next, lets it: the SDDM theme draws its preview from kdos-plasma-look's
+# greeter sets. A KDOS port is the only owner of that directory, so where the
+# system has none, /usr/share/kdos is linked to the merged usr/share/kdos of
+# every port built so far. Where it exists it is a KDOS system's own and is
+# left alone; where the link cannot be made, a port that reads it fails to
+# build. A note says which of the two happened.
+share_kdos() {        # <port name> <pkg root>
+    [ -d "$2/usr/share/kdos" ] || return 0
+    mkdir -p "$W/share/kdos"
+    cp -a "$2/usr/share/kdos/." "$W/share/kdos/"
+    [ -n "$SHARELINK" ] && return 0
+    # A link into a scratch tree that is gone is a killed run's, which never
+    # reached its EXIT trap; left alone it would pass for the system's own.
+    if [ -L /usr/share/kdos ] && [ ! -e /usr/share/kdos ]; then
+        case $(readlink /usr/share/kdos) in
+        */plasmatest.*/share/kdos) rm -f /usr/share/kdos ;;
+        esac
+    fi
+    if [ -e /usr/share/kdos ] || [ -L /usr/share/kdos ]; then
+        nb "$1: /usr/share/kdos is this system's; a later build.sh reads it, not what $1 built"
+        SHARELINK=0
+    elif ln -s "$W/share/kdos" /usr/share/kdos 2>/dev/null; then
+        SHARELINK=1
+    else
+        nb "$1: cannot link /usr/share/kdos; a later build.sh that reads it fails"
+        SHARELINK=0
+    fi
+}
 
 declare -A BUILT ATTEMPTED
 run_ports() {         # <portdir>... ; builds, tests, loads, installs
-    local d n pkg rc r=0
+    local d n pkg rc bd r=0
     for d in $(port_order "$@"); do
         n=$(basename "$d")
         ATTEMPTED[$n]=$d
@@ -614,6 +662,13 @@ run_ports() {         # <portdir>... ; builds, tests, loads, installs
         rc=$?
         [ "$rc" = 0 ] || r=1
         [ "$rc" = 2 ] && continue
+        # A QML module a port compiles into its plugin (an applet's
+        # plasma.applet.<id>, a KCM's) installs no qmldir; its build tree's
+        # does, and its source files import it to read the types it registers.
+        for bd in $(sort -u "$W/ports/$n/builddirs" 2>/dev/null); do
+            [ -n "$(find "$bd/bin" -name qmldir -type f 2>/dev/null | head -1)" ] &&
+                PT_BUILDQML="${PT_BUILDQML:+$PT_BUILDQML:}$bd/bin"
+        done
         pkg=$W/ports/$n/pkg
         [ -d "$pkg/usr" ] || continue
         BUILT[$n]=$pkg
@@ -622,6 +677,9 @@ run_ports() {         # <portdir>... ; builds, tests, loads, installs
         [ -d "$pkg/usr/lib" ] && PT_LIBS="$pkg/usr/lib${PT_LIBS:+:$PT_LIBS}"
         [ -d "$pkg/usr/lib/qt6/plugins" ] && PT_PLUGINS="$pkg/usr/lib/qt6/plugins${PT_PLUGINS:+:$PT_PLUGINS}"
         [ -d "$pkg/usr/lib/qt6/qml" ] && PT_QML="$pkg/usr/lib/qt6/qml:$PT_QML"
+        # kdos-theme's greeter pictures read the wallpapers from this root.
+        [ -d "$pkg/usr/share/wallpapers" ] && export KDOS_WALLPAPERS="$pkg/usr/share/wallpapers"
+        share_kdos "$n" "$pkg"
         check_plugins "$n" "$pkg" || r=1
         while read -r p; do install_package "$n" "$p" || r=1; done < <(packages_of "$pkg")
         while read -r p; do check_sddm_theme "$n" "$p" || r=1; done < <(find "$pkg/usr/share/sddm/themes" \

@@ -13,6 +13,7 @@ patch -p1 -i "$PORT_SRC/musl-lfs64.patch"
 patch -p1 -i "$PORT_SRC/musl-dns-resolver.patch"
 patch -p1 -i "$PORT_SRC/wayland-cancel-read.patch"
 patch -p1 -i "$PORT_SRC/no-source-tree.patch"
+patch -p1 -i "$PORT_SRC/openurl-local-file.patch"
 
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev \

@@ -33,6 +33,10 @@ certificate at all.
 The converter drops every root that has already expired when it runs, so a rebuild after a root
 expires ships one fewer even though the sources have not changed.
 
+`certdata.txt` is under MPL-2.0 and the source carries no copy of the licence, only the notice
+in its first four lines, which says where the text is. `build.sh` installs those lines as
+`/usr/share/licenses/ca-certificates/NOTICE`.
+
 `/etc/ssl/cert.pem` is written by `postinstall.sh` rather than shipped, because a file the package
 owned would be replaced on every upgrade and lose the local roots appended to it.
 `update-ca-certificates` builds it in a temporary file and renames it into place, so no reader sees

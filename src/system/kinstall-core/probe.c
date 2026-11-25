@@ -18,7 +18,6 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <ftw.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -133,22 +132,18 @@ static void trim_label(char *s)
  * /run/udev/data/b<major>:<minor> is world-readable and carries the
  * properties udev's own blkid run found, one `E:KEY=value` line each; the
  * graphical installer's dumps run as the session's user, who is not in
- * `disk`, and without this every partition would read as empty. The device
- * node is stat()ed, never opened, so its mode does not matter.
+ * `disk`, and without this every partition would read as empty.
+ * udev_file_prop() reads one key out of the record at `path`.
  */
-static int udev_prop(const char *dev, const char *key, char *out, size_t cap)
+static int udev_file_prop(const char *path, const char *key, char *out,
+			  size_t cap)
 {
-	struct stat st;
-	char path[64], line[512];
+	char line[512];
 	size_t kl = strlen(key);
 	FILE *f;
 	int found = 0;
 
 	out[0] = 0;
-	if (stat(dev, &st) < 0 || !S_ISBLK(st.st_mode))
-		return 0;
-	snprintf(path, sizeof(path), "/run/udev/data/b%u:%u",
-		 major(st.st_rdev), minor(st.st_rdev));
 	f = fopen(path, "re");
 	if (!f)
 		return 0;
@@ -164,9 +159,25 @@ static int udev_prop(const char *dev, const char *key, char *out, size_t cap)
 	return found;
 }
 
+/* The same key out of the record for the device node `dev`, which is
+ * stat()ed for its number and never opened, so its mode does not matter. */
+static int udev_prop(const char *dev, const char *key, char *out, size_t cap)
+{
+	struct stat st;
+	char path[64];
+
+	out[0] = 0;
+	if (stat(dev, &st) < 0 || !S_ISBLK(st.st_mode))
+		return 0;
+	snprintf(path, sizeof(path), "/run/udev/data/b%u:%u",
+		 major(st.st_rdev), minor(st.st_rdev));
+	return udev_file_prop(path, key, out, cap);
+}
+
 /* The superblock facts out of udev's database, for a device the probe
- * cannot read: the type, label and uuid, and the GPT type that marks an ESP
- * or a BIOS boot partition. */
+ * cannot read: the type, label and uuid, and the partition type that marks
+ * an ESP (GPT's type GUID, or MBR's 0xef as udev writes it) or a BIOS boot
+ * partition. */
 static void sniff_udev(const char *path, Part *p)
 {
 	char type[64];
@@ -175,26 +186,27 @@ static void sniff_udev(const char *path, Part *p)
 	udev_prop(path, "ID_FS_LABEL", p->label, sizeof(p->label));
 	udev_prop(path, "ID_FS_UUID", p->uuid, sizeof(p->uuid));
 	if (udev_prop(path, "ID_PART_ENTRY_TYPE", type, sizeof(type))) {
-		if (!strcasecmp(type, "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"))
+		if (!strcasecmp(type, "c12a7328-f81f-11d2-ba4b-00a0c93ec93b") ||
+		    !strcasecmp(type, "0xef"))
 			p->is_esp = 1;
 		if (!strcasecmp(type, KI_GUID_BIOS_BOOT))
 			p->is_bios_boot = 1;
 	}
 }
 
-/* A small blkid: enough of every superblock KDOS can create or meet. */
-static void sniff_fs(const char *path, Part *p)
+/* A small blkid: enough of every superblock KDOS can create or meet, read
+ * from `path` with the filesystem starting `off` bytes in. 0 when `path`
+ * cannot be opened. */
+static int sniff_fs_at(const char *path, off_t off, Part *p)
 {
 	int fd = open(path, O_RDONLY | O_CLOEXEC);
-	if (fd < 0) {
-		sniff_udev(path, p);
-		return;
-	}
+	if (fd < 0)
+		return 0;
 
 	unsigned char sb[4096];
 	unsigned char boot[512];
 
-	if (pread(fd, boot, sizeof(boot), 0) == (ssize_t)sizeof(boot)) {
+	if (pread(fd, boot, sizeof(boot), off) == (ssize_t)sizeof(boot)) {
 		if (!memcmp(boot, "LUKS\xba\xbe", 6)) {
 			/* The container's uuid is ASCII in the header, the
 			 * same text `cryptsetup luksUUID` prints. */
@@ -204,6 +216,10 @@ static void sniff_fs(const char *path, Part *p)
 			trim_label(p->uuid);
 		} else if (!memcmp(boot + 3, "NTFS    ", 8)) {
 			kb_strlcpy(p->fstype, "ntfs", sizeof(p->fstype));
+		} else if (!memcmp(boot + 3, "EXFAT   ", 8)) {
+			/* Its label is a root-directory entry, not a boot
+			 * sector field: udev's record supplies it. */
+			kb_strlcpy(p->fstype, "exfat", sizeof(p->fstype));
 		} else if (!memcmp(boot + 0x52, "FAT32", 5)) {
 			kb_strlcpy(p->fstype, "vfat", sizeof(p->fstype));
 			snprintf(p->uuid, sizeof(p->uuid), "%02X%02X-%02X%02X",
@@ -228,7 +244,7 @@ static void sniff_fs(const char *path, Part *p)
 
 	/* ext2/3/4 superblock lives at 1 KiB, magic 0xEF53 at +0x38. */
 	if (!p->fstype[0] &&
-	    pread(fd, sb, 1024, 1024) == 1024 &&
+	    pread(fd, sb, 1024, off + 1024) == 1024 &&
 	    sb[0x38] == 0x53 && sb[0x39] == 0xef) {
 		unsigned incompat = (unsigned)sb[0x60] | ((unsigned)sb[0x61] << 8) |
 				    ((unsigned)sb[0x62] << 16) | ((unsigned)sb[0x63] << 24);
@@ -245,7 +261,7 @@ static void sniff_fs(const char *path, Part *p)
 	 * an f2fs root reads back with no UUID, and do_config cannot write
 	 * fstab or the boot entry's root=. */
 	if (!p->fstype[0] &&
-	    pread(fd, sb, 1024, 1024) == 1024 &&
+	    pread(fd, sb, 1024, off + 1024) == 1024 &&
 	    sb[0] == 0x10 && sb[1] == 0x20 && sb[2] == 0xf5 && sb[3] == 0xf2) {
 		kb_strlcpy(p->fstype, "f2fs", sizeof(p->fstype));
 		uuid_fmt(p->uuid, sb + 0x6c);
@@ -261,13 +277,13 @@ static void sniff_fs(const char *path, Part *p)
 		trim_label(p->label);
 	}
 
-	if (!p->fstype[0] && pread(fd, sb, 4096, 0x10000) == 4096 &&
+	if (!p->fstype[0] && pread(fd, sb, 4096, off + 0x10000) == 4096 &&
 	    !memcmp(sb + 0x40, "_BHRfS_M", 8)) {
 		kb_strlcpy(p->fstype, "btrfs", sizeof(p->fstype));
 		uuid_fmt(p->uuid, sb + 0x20);
 	}
 
-	if (!p->fstype[0] && pread(fd, sb, 4096, 0) == 4096 &&
+	if (!p->fstype[0] && pread(fd, sb, 4096, off) == 4096 &&
 	    !memcmp(sb + 4086, "SWAPSPACE2", 10)) {
 		kb_strlcpy(p->fstype, "swap", sizeof(p->fstype));
 		uuid_fmt(p->uuid, sb + 0x40c);
@@ -277,7 +293,7 @@ static void sniff_fs(const char *path, Part *p)
 	 * sectors, and pvcreate puts it in the second. Named as blkid names
 	 * it, so the Layout page and `blkid -t TYPE=LVM2_member` — what the
 	 * initramfs asks — agree about which device is one. */
-	if (!p->fstype[0] && pread(fd, sb, 2048, 0) == 2048)
+	if (!p->fstype[0] && pread(fd, sb, 2048, off) == 2048)
 		for (int s = 0; s < 4; s++)
 			if (!memcmp(sb + s * 512, "LABELONE", 8) &&
 			    !memcmp(sb + s * 512 + 24, "LVM2 001", 8)) {
@@ -286,7 +302,61 @@ static void sniff_fs(const char *path, Part *p)
 				break;
 			}
 
+	/* ISO 9660: the primary volume descriptor at 32 KiB, type 1 and
+	 * "CD001", with its volume id at +40 in 32 space-padded bytes. Tried
+	 * last, because a partition reformatted over an old image may keep
+	 * the descriptor; on the whole device of a written stick nothing
+	 * before it matches, and the stick reads as the image it holds. */
+	if (!p->fstype[0] && pread(fd, sb, 2048, off + 0x8000) == 2048 &&
+	    !memcmp(sb, "\x01" "CD001", 6)) {
+		kb_strlcpy(p->fstype, "iso9660", sizeof(p->fstype));
+		memcpy(p->label, sb + 40, 32);
+		p->label[32] = 0;
+		trim_label(p->label);
+	}
+
 	close(fd);
+	return 1;
+}
+
+/* What the signatures above leave to udev, out of the device's own record
+ * `rec`: an exFAT volume's label and uuid, and the type, label and uuid of a
+ * filesystem none of them matches. Without it a Ventoy stick's data
+ * partition, and any filesystem this blkid does not know, reads as empty. */
+static void sniff_udev_fs(const char *rec, Part *p)
+{
+	char type[sizeof(p->fstype)];
+
+	if (!rec[0] || !udev_file_prop(rec, "ID_FS_TYPE", type, sizeof(type)) ||
+	    (p->fstype[0] && strcmp(p->fstype, type)))
+		return;
+	if (!p->fstype[0])
+		kb_strlcpy(p->fstype, type, sizeof(p->fstype));
+	udev_file_prop(rec, "ID_FS_LABEL", p->label, sizeof(p->label));
+	udev_file_prop(rec, "ID_FS_UUID", p->uuid, sizeof(p->uuid));
+}
+
+/* The node's facts: its signature, then its udev record `rec` for what the
+ * signature leaves out; udev's alone when the node cannot be opened. */
+static void sniff_fs_rec(const char *path, const char *rec, Part *p)
+{
+	if (!sniff_fs_at(path, 0, p)) {
+		sniff_udev(path, p);
+		return;
+	}
+	if (!p->fstype[0] || !strcmp(p->fstype, "exfat"))
+		sniff_udev_fs(rec, p);
+}
+
+static void sniff_fs(const char *path, Part *p)
+{
+	struct stat st;
+	char rec[64] = "";
+
+	if (!stat(path, &st) && S_ISBLK(st.st_mode))
+		snprintf(rec, sizeof(rec), "/run/udev/data/b%u:%u",
+			 major(st.st_rdev), minor(st.st_rdev));
+	sniff_fs_rec(path, rec, p);
 }
 
 /* Re-read one device after mkfs has changed it under us. */
@@ -298,9 +368,48 @@ void probe_part(const char *path, Part *p)
 	sniff_fs(path, p);
 }
 
-/* GPT: read the header, then the entry that matches this partition number, so
- * an ESP is identified by its type GUID rather than by "it looks like FAT". */
-static void read_gpt(Disk *d)
+/* A PARTITION WHOSE NODE ANSWERS FOR ANOTHER DEVICE IS READ THROUGH ITS DISK,
+ * at its own offset. Ventoy's hook gives /dev/<its boot partition> the device
+ * number of the ISO's dm mapping, so a read through the node finds the ISO
+ * and names the partition iso9660 by the image's label; udev's record for the
+ * partition's own number was probed through the swapped node too and says the
+ * same. The disk's bytes at p->start are the partition's own: Ventoy's
+ * VTOYEFI reads as the FAT it is. */
+void ki_part_facts(Part *p, const char *node_mm, const char *sys_mm,
+		   const char *root, const char *disk)
+{
+	char path[PATH_MAX], link[PATH_MAX], kname[64] = "", dmname[64] = "";
+	ssize_t n;
+
+	if (!node_mm[0] || !sys_mm[0] || !strcmp(node_mm, sys_mm)) {
+		if (sys_mm[0]) {
+			snprintf(path, sizeof(path), "%s/run/udev/data/b%s",
+				 root, sys_mm);
+			sniff_fs_rec(p->path, path, p);
+		} else {
+			sniff_fs(p->path, p);
+		}
+		return;
+	}
+	snprintf(path, sizeof(path), "%s/sys/dev/block/%s", root, node_mm);
+	n = readlink(path, link, sizeof(link) - 1);
+	if (n > 0) {
+		link[n] = 0;
+		kb_strlcpy(kname, kb_basename(link), sizeof(kname));
+	}
+	if (kname[0])
+		sysfs_str(dmname, sizeof(dmname), "%s/sys/class/block/%s/dm/name",
+			  root, kname);
+	kb_strlcpy(p->remap, dmname[0] ? dmname : kname[0] ? kname : node_mm,
+		   sizeof(p->remap));
+	sniff_fs_at(disk, (off_t)(p->start * 512), p);
+}
+
+/* The partition table: GPT's header, then the entry that matches each
+ * partition's start, so an ESP is identified by its type GUID rather than by
+ * "it looks like FAT"; on an MBR disk the primary entries typed 0xef, which
+ * is how a hybrid ISO written to a stick marks its ESP. */
+void ki_disk_table(Disk *d)
 {
 	/* Set before the open, not after: a disk we could not open at all
 	 * (running unprivileged, or a device that vanished mid-probe) has an
@@ -322,8 +431,27 @@ static void read_gpt(Disk *d)
 
 	unsigned char hdr[512], mbr[512];
 
-	if (pread(fd, mbr, 512, 0) == 512 && mbr[510] == 0x55 && mbr[511] == 0xaa)
+	if (pread(fd, mbr, 512, 0) == 512 && mbr[510] == 0x55 && mbr[511] == 0xaa) {
+		/* An MBR entry counts logical sectors; sysfs counts 512 bytes. */
+		unsigned long long unit = d->sector_size > 512
+					  ? (unsigned long long)d->sector_size / 512 : 1;
+
 		kb_strlcpy(d->table, "dos", sizeof(d->table));
+		for (int e = 0; e < 4; e++) {
+			const unsigned char *m = mbr + 446 + 16 * e;
+			unsigned long long lba = (unsigned long long)m[8] |
+						 ((unsigned long long)m[9] << 8) |
+						 ((unsigned long long)m[10] << 16) |
+						 ((unsigned long long)m[11] << 24);
+
+			if (m[4] != 0xef)
+				continue;
+			for (int k = 0; k < d->nparts; k++)
+				if (d->part[k].start == lba * unit &&
+				    !d->part[k].remap[0])
+					d->part[k].is_esp = 1;
+		}
+	}
 
 	if (pread(fd, hdr, 512, 512) != 512 || memcmp(hdr, "EFI PART", 8)) {
 		close(fd);
@@ -360,7 +488,7 @@ static void read_gpt(Disk *d)
 		unsigned long long first = 0;
 		memcpy(&first, ent + 32, 8);
 		for (int k = 0; k < d->nparts; k++) {
-			if (d->part[k].start != first)
+			if (d->part[k].start != first || d->part[k].remap[0])
 				continue;
 			if (!memcmp(ent, GUID_ESP, 16))
 				d->part[k].is_esp = 1;
@@ -373,6 +501,24 @@ static void read_gpt(Disk *d)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
+
+/* The kernel name (dm-N) of the device-mapper block device whose node is
+ * dev, read through /sys/dev/block/MAJ:MIN; 0 when dev is not a block node
+ * or not a dm device. */
+static int dm_kernel_name(const char *dev, char *out, size_t outsz)
+{
+	struct stat st;
+	char path[64], real[PATH_MAX];
+
+	if (strncmp(dev, "/dev/", 5) || stat(dev, &st) || !S_ISBLK(st.st_mode))
+		return 0;
+	snprintf(path, sizeof(path), "/sys/dev/block/%u:%u",
+		 major(st.st_rdev), minor(st.st_rdev));
+	if (!realpath(path, real) || strncmp(kb_basename(real), "dm-", 3))
+		return 0;
+	kb_strlcpy(out, kb_basename(real), outsz);
+	return 1;
+}
 
 static void apply_mounts(void)
 {
@@ -393,6 +539,19 @@ static void apply_mounts(void)
 
 		int boot_media = !strcmp(type, "iso9660") || !strcmp(type, "squashfs");
 
+		/* A MEDIUM ON A dm DEVICE IS TRACED TO ITS DISK. A Ventoy stick's
+		 * medium is mounted as /dev/mapper/ventoy, a mapping over the ISO
+		 * file on the stick's data partition, and names no disk or
+		 * partition in /proc/mounts; without the walk down its slaves the
+		 * stick is offered as an install target. The kernel name comes
+		 * from the node's device number, not its path: /dev/mapper/ventoy
+		 * may be a node of its own rather than a link to dm-N. */
+		char kname[64];
+		if (boot_media && dm_kernel_name(dev, kname, sizeof(kname)))
+			for (int i = 0; i < ki_ndisk; i++)
+				if (ki_dev_on_disk(kname, ki_disk[i].name))
+					ki_disk[i].is_boot_media = 1;
+
 		for (int i = 0; i < ki_ndisk; i++) {
 			if (!strcmp(ki_disk[i].path, dev) && boot_media)
 				ki_disk[i].is_boot_media = 1;
@@ -408,6 +567,92 @@ static void apply_mounts(void)
 		}
 	}
 	free(buf);
+}
+
+/* An id is 16 lower-case hex digits; anything else is not a KDOS medium's. */
+static int medium_id_ok(const char *id)
+{
+	return strlen(id) == 16 && strspn(id, "0123456789abcdef") == 16;
+}
+
+/* The medium id an ISO 9660 image on the whole of `path` carries: its
+ * primary volume descriptor's Volume Set Identifier at 32 KiB + 190, which
+ * 110_iso.sh sets to the id kdos.medium= names. A disk this process cannot
+ * open (the graphical installer's probes as the session's user, who is not
+ * in `disk`) is read from its udev record `rec` instead: 110_iso.sh writes
+ * the same id as the Publisher Identifier, upper-cased there, which udev's
+ * blkid exports as ID_FS_PUBLISHER_ID where it exports no volume set. 1 with
+ * the id in `out`, 0 for a device holding no image or an image with no id. */
+int ki_medium_id(const char *path, const char *rec, char *out, size_t cap)
+{
+	unsigned char pvd[318];
+	char id[129];
+	int fd, ok;
+
+	out[0] = 0;
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) {
+		if (!rec || !rec[0] ||
+		    !udev_file_prop(rec, "ID_FS_PUBLISHER_ID", id, sizeof(id)))
+			return 0;
+		for (char *c = id; *c; c++)
+			*c = (char)tolower((unsigned char)*c);
+		if (!medium_id_ok(id))
+			return 0;
+		kb_strlcpy(out, id, cap);
+		return 1;
+	}
+	ok = pread(fd, pvd, sizeof(pvd), 0x8000) == (ssize_t)sizeof(pvd) &&
+	     !memcmp(pvd, "\x01" "CD001", 6);
+	close(fd);
+	if (!ok)
+		return 0;
+	memcpy(id, pvd + 190, 128);
+	id[128] = 0;
+	trim_label(id);
+	if (!medium_id_ok(id))
+		return 0;
+	kb_strlcpy(out, id, cap);
+	return 1;
+}
+
+/* EVERY COPY OF THE RUNNING MEDIUM IS REFUSED. Two copies of one build carry
+ * one id, and the initramfs mounts whichever answers first, which need not be
+ * the one the firmware started; nothing on either tells them apart, so each
+ * disk but the mounted one whose image carries the id kdos.medium= names in
+ * `cmdline` is marked is_boot_copy. A cmdline with no id marks nothing.
+ * `root` stands for / where sysfs and udev's records are read, so that the
+ * mark is the same for a probe that can open the disk and one that cannot. */
+void ki_mark_boot_copies(const char *cmdline, const char *root)
+{
+	char want[32], have[32], mm[32], rec[PATH_MAX];
+	const char *at = cmdline;
+	size_t n;
+
+	while ((at = strstr(at, "kdos.medium=")) &&
+	       at != cmdline && !isspace((unsigned char)at[-1]))
+		at++;
+	if (!at)
+		return;
+	at += strlen("kdos.medium=");
+	n = strcspn(at, " \t\n");
+	if (!n || n >= sizeof(want))
+		return;
+	memcpy(want, at, n);
+	want[n] = 0;
+	for (int i = 0; i < ki_ndisk; i++) {
+		if (ki_disk[i].is_boot_media)
+			continue;
+		rec[0] = 0;
+		sysfs_str(mm, sizeof(mm), "%s/sys/block/%s/dev", root,
+			  ki_disk[i].name);
+		if (mm[0])
+			snprintf(rec, sizeof(rec), "%s/run/udev/data/b%s", root,
+				 mm);
+		if (ki_medium_id(ki_disk[i].path, rec, have, sizeof(have)) &&
+		    !strcmp(have, want))
+			ki_disk[i].is_boot_copy = 1;
+	}
 }
 
 static int is_disk_name(const char *n)
@@ -541,12 +786,50 @@ int ki_dev_on_disk(const char *dev, const char *disk)
 }
 
 /*
+ * AN ACTIVE VOLUME OF THE GROUP STANDING ON ANOTHER DISK, read from sysfs:
+ * every LVM volume is a dm device whose uuid starts `LVM-`, whose name is
+ * `vg-lv` and whose `slaves` are the physical volumes it lies on. sysfs needs
+ * no privilege, so this is what an unprivileged front end's plan sees, where
+ * `pvs` cannot read the labels.
+ */
+static int vg_active_off_disk(const char *vg, const char *disk)
+{
+	char **ents = kb_listdir("/sys/block", NULL);
+	int hit = 0;
+
+	for (char **e = ents; e && *e && !hit; e++) {
+		char p[320], uuid[160] = "", name[160] = "", g[128], lv[128];
+		char **sl;
+
+		if (strncmp(*e, "dm-", 3))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/uuid", *e);
+		kb_read_line_file(p, uuid, sizeof(uuid));
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/name", *e);
+		kb_read_line_file(p, name, sizeof(name));
+		if (strncmp(uuid, "LVM-", 4) ||
+		    ki_dm_split(name, g, sizeof(g), lv, sizeof(lv)) ||
+		    strcmp(g, vg))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/slaves", *e);
+		sl = kb_listdir(p, NULL);
+		for (char **s = sl; s && *s && !hit; s++)
+			hit = !ki_dev_on_disk(*s, disk);
+		kb_strv_free(sl);
+	}
+	kb_strv_free(ents);
+	return hit;
+}
+
+/*
  * THE GROUP BY NAME, FROM LVM'S OWN LIST OF PHYSICAL VOLUMES. The active
  * volumes in ki_lv miss a group with no volume, one whose volumes did not
  * activate, and the other half of a group that spans the target disk and
  * another. `pvs` reads every label, so each of those still shows as a PV of
- * the group on a device off the disk. A `pvs` that does not run is taken as
- * no group: without lvm there is no vgcreate for the name to stop.
+ * the group on a device off the disk. `pvs` reads labels only as root, so
+ * the group's active volumes are asked of sysfs as well, and a plan made
+ * unprivileged refuses the clash the install would. With no lvm at all
+ * there is no vgcreate for the name to stop.
  */
 int ki_vg_off_disk(const char *vg, const char *disk)
 {
@@ -557,6 +840,8 @@ int ki_vg_off_disk(const char *vg, const char *disk)
 
 	if (!kb_have_prog("lvm"))
 		return 0;
+	if (vg_active_off_disk(vg, disk))
+		return 1;
 	kb_argv_add(&a, "lvm");
 	kb_argv_add(&a, "pvs");
 	kb_argv_add(&a, "--noheadings");
@@ -594,6 +879,263 @@ int ki_vg_off_disk(const char *vg, const char *disk)
 	}
 	kb_buf_free(&out);
 	return hit;
+}
+
+/*
+ * A PHYSICAL VOLUME'S GROUP, for a whole disk or a partition named `name`
+ * (sda, sda3) at `path`. An active volume on it lists the device among its
+ * `slaves`, which sysfs shows anybody; `lvm pvs` names the group of an
+ * inactive one, and reads labels only as root.
+ */
+static void pv_vg(const char *name, const char *path, char *out, size_t cap)
+{
+	char **ents = kb_listdir("/sys/block", NULL);
+	KbArgv a = {0};
+	KbBuf out_b = {0};
+
+	out[0] = 0;
+	for (char **e = ents; e && *e && !out[0]; e++) {
+		char p[320], uuid[160] = "", dname[160] = "", g[64], lv[128];
+
+		if (strncmp(*e, "dm-", 3))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/slaves/%.31s", *e,
+			 name);
+		if (!kb_path_exists(p))
+			continue;
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/uuid", *e);
+		kb_read_line_file(p, uuid, sizeof(uuid));
+		snprintf(p, sizeof(p), "/sys/block/%.64s/dm/name", *e);
+		kb_read_line_file(p, dname, sizeof(dname));
+		if (!strncmp(uuid, "LVM-", 4) &&
+		    !ki_dm_split(dname, g, sizeof(g), lv, sizeof(lv)))
+			kb_strlcpy(out, g, cap);
+	}
+	kb_strv_free(ents);
+	if (out[0] || geteuid() != 0 || !kb_have_prog("lvm"))
+		return;
+	kb_argv_add(&a, "lvm");
+	kb_argv_add(&a, "pvs");
+	kb_argv_add(&a, "--noheadings");
+	kb_argv_add(&a, "-o");
+	kb_argv_add(&a, "vg_name");
+	kb_argv_add(&a, path);
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &out_b) == 0 && out_b.p) {
+		char *v = out_b.p, *end;
+
+		while (isspace((unsigned char)*v))
+			v++;
+		end = v + strcspn(v, " \t\r\n");
+		*end = 0;
+		kb_strlcpy(out, v, cap);
+	}
+	kb_buf_free(&out_b);
+}
+
+/* An ISO 9660 image's own size: the primary volume descriptor's block
+ * count (+80) times its block size (+128), both little-endian; 0 when the
+ * device cannot be read. */
+static unsigned long long iso_bytes(const char *path)
+{
+	unsigned char pvd[2048];
+	unsigned long long blocks, bsize;
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	ssize_t n;
+
+	if (fd < 0)
+		return 0;
+	n = pread(fd, pvd, sizeof(pvd), 0x8000);
+	close(fd);
+	if (n != (ssize_t)sizeof(pvd) || memcmp(pvd, "\x01" "CD001", 6))
+		return 0;
+	blocks = (unsigned long long)pvd[80] | ((unsigned long long)pvd[81] << 8) |
+		 ((unsigned long long)pvd[82] << 16) |
+		 ((unsigned long long)pvd[83] << 24);
+	bsize = (unsigned long long)pvd[128] | ((unsigned long long)pvd[129] << 8);
+	return blocks * bsize;
+}
+
+/* Whether every partition of `d` is a hybrid window of the ISO 9660
+ * image on its whole device. A window holds FAT (the image's ESP), ISO
+ * 9660 or nothing of its own. With the descriptor read (`sized`), each
+ * ends inside the image's d->fs_bytes; unread, as to the session's user,
+ * some partition starts inside the first MiB, where xorriso and isohybrid
+ * put the first window and where parted, fdisk and Windows never start
+ * one. A disk repartitioned after it was written fails both, as the new
+ * table leaves the descriptor at 32 KiB in place, and its partitions are
+ * what an erase destroys. */
+static int iso_windows(const Disk *d, int sized)
+{
+	int early = !d->nparts;
+
+	for (int k = 0; k < d->nparts; k++) {
+		const Part *p = &d->part[k];
+
+		if (p->fstype[0] && strcmp(p->fstype, "vfat") &&
+		    strcmp(p->fstype, "iso9660"))
+			return 0;
+		if (sized && (p->start + p->sectors) * 512 > d->fs_bytes)
+			return 0;
+		if (p->start < 2048)
+			early = 1;
+	}
+	return sized || early;
+}
+
+void ki_disk_signature(Disk *d)
+{
+	Part p;
+
+	memset(&p, 0, sizeof(p));
+	d->fstype[0] = d->label[0] = d->vg[0] = 0;
+	d->fs_bytes = 0;
+	d->iso_image = 0;
+	sniff_fs(d->path, &p);
+	kb_strlcpy(d->fstype, p.fstype, sizeof(d->fstype));
+	kb_strlcpy(d->label, p.label, sizeof(d->label));
+	if (!strcmp(d->fstype, "LVM2_member"))
+		pv_vg(d->name, d->path, d->vg, sizeof(d->vg));
+	if (strcmp(d->fstype, "iso9660"))
+		return;
+	/* Unreadable, as to the session's user, the image ends where its
+	 * last partition does: a hybrid image's partitions all lie inside
+	 * it, and xorriso's last one, KDOS's among them, reaches its end. */
+	d->fs_bytes = iso_bytes(d->path);
+	d->iso_image = iso_windows(d, d->fs_bytes != 0);
+	for (int k = 0; !d->fs_bytes && k < d->nparts; k++) {
+		unsigned long long end = d->part[k].start + d->part[k].sectors;
+		int last = 1;
+
+		for (int j = 0; j < d->nparts; j++)
+			if (d->part[j].start + d->part[j].sectors > end)
+				last = 0;
+		if (last)
+			d->fs_bytes = end * 512;
+	}
+}
+
+void ki_disk_contents(const Disk *d, int max, char *out, size_t cap)
+{
+	/* The room an entry leaves for the tail naming those that do not
+	 * fit: ", and 2147483647 more partitions" and its NUL. */
+	const size_t tail = 40;
+	size_t at = 0;
+	int i;
+
+	out[0] = 0;
+	/* A written stick's hybrid partitions are windows into the image on
+	 * the whole device, and hold nothing of their own to name. */
+	if (d->iso_image) {
+		snprintf(out, cap, "ISO 9660 image%s%s%s on the whole disk%s%s",
+			 d->label[0] ? " \u201c" : "", d->label,
+			 d->label[0] ? "\u201d" : "", d->fs_bytes ? ", " : "",
+			 d->fs_bytes ? kb_human_size(d->fs_bytes) : "");
+		return;
+	}
+	if (!d->nparts) {
+		if (!strcmp(d->fstype, "LVM2_member") && d->vg[0])
+			snprintf(out, cap, "LVM physical volume (volume group %s)",
+				 d->vg);
+		else if (!strcmp(d->fstype, "LVM2_member"))
+			snprintf(out, cap, "LVM physical volume");
+		else if (d->fstype[0])
+			snprintf(out, cap, "%s on the whole disk", d->fstype);
+		return;
+	}
+	for (i = 0; i < d->nparts && (max <= 0 || i < max); i++) {
+		const Part *p = &d->part[i];
+		char kind[128], one[256];
+		int n;
+
+		/* A remapped node's partition is named for what it is: its
+		 * own filesystem is not what the node reads. */
+		if (!strcmp(p->remap, "ventoy"))
+			n = snprintf(one, sizeof(one), "%sVentoy's boot partition %s",
+				     i ? ", " : "",
+				     kb_human_size(p->sectors * 512));
+		else if (p->remap[0])
+			n = snprintf(one, sizeof(one), "%smapped to %s %s",
+				     i ? ", " : "", p->remap,
+				     kb_human_size(p->sectors * 512));
+		else {
+			if (p->is_esp)
+				kb_strlcpy(kind, "EFI system", sizeof(kind));
+			else if (p->is_bios_boot)
+				kb_strlcpy(kind, "BIOS boot", sizeof(kind));
+			else if (!strcmp(p->fstype, "LVM2_member") && p->vg[0])
+				snprintf(kind, sizeof(kind),
+					 "LVM physical volume (volume group %s)",
+					 p->vg);
+			else if (!strcmp(p->fstype, "LVM2_member"))
+				kb_strlcpy(kind, "LVM physical volume",
+					   sizeof(kind));
+			else
+				kb_strlcpy(kind,
+					   p->fstype[0] ? p->fstype : "empty",
+					   sizeof(kind));
+			n = snprintf(one, sizeof(one), "%s%s%s%s%s %s",
+				     i ? ", " : "", kind,
+				     p->label[0] ? " \u201c" : "", p->label,
+				     p->label[0] ? "\u201d" : "",
+				     kb_human_size(p->sectors * 512));
+		}
+		/* An entry goes in whole or not at all, so the list never ends
+		 * inside a label or a UTF-8 sequence; the last one may use the
+		 * tail's room, as nothing follows it. */
+		if (n < 0 || (size_t)n >= sizeof(one) ||
+		    at + (size_t)n + (i + 1 < d->nparts ? tail : 0) >= cap)
+			break;
+		memcpy(out + at, one, (size_t)n + 1);
+		at += (size_t)n;
+	}
+	if (i < d->nparts && at + tail <= cap)
+		snprintf(out + at, cap - at, "%s%d more partition%s",
+			 i ? ", and " : "", d->nparts - i,
+			 d->nparts - i == 1 ? "" : "s");
+}
+
+int ki_udev_model(const char *data, char *model, size_t cap)
+{
+	char line[512], dec[256];
+	size_t n = 0, ml = strlen(model);
+	const char *v = NULL, *s;
+	FILE *f = fopen(data, "re");
+
+	if (!f)
+		return 0;
+	while (fgets(line, sizeof(line), f)) {
+		if (!strncmp(line, "E:ID_MODEL_ENC=", 15)) {
+			line[strcspn(line, "\n")] = 0;
+			v = line + 15;
+			break;
+		}
+	}
+	fclose(f);
+	if (!v)
+		return 0;
+	for (s = v; *s && n + 1 < sizeof(dec); s++) {
+		unsigned int c;
+
+		if (s[0] == '\\' && s[1] == 'x' && isxdigit((unsigned char)s[2]) &&
+		    isxdigit((unsigned char)s[3]) &&
+		    sscanf(s + 2, "%2x", &c) == 1) {
+			dec[n++] = (char)c;
+			s += 3;
+		} else {
+			dec[n++] = *s;
+		}
+	}
+	dec[n] = 0;
+	while (n && isspace((unsigned char)dec[n - 1]))
+		dec[--n] = 0;
+	s = dec;
+	while (isspace((unsigned char)*s))
+		s++;
+	if (strlen(s) <= ml || strncmp(s, model, ml) || strlen(s) >= cap)
+		return 0;
+	kb_strlcpy(model, s, cap);
+	return 1;
 }
 
 /*
@@ -840,6 +1382,16 @@ void probe_disks(void)
 		if (!d->model[0])
 			sysfs_str(d->model, sizeof(d->model),
 				  "/sys/block/%s/device/name", d->name);
+		{
+			char mm[32] = "", data[64];
+
+			sysfs_str(mm, sizeof(mm), "/sys/block/%s/dev", d->name);
+			if (mm[0]) {
+				snprintf(data, sizeof(data), "/run/udev/data/b%s",
+					 mm);
+				ki_udev_model(data, d->model, sizeof(d->model));
+			}
+		}
 		disk_transport(d);
 		if (!d->model[0])
 			disk_fallback_name(d);
@@ -874,7 +1426,22 @@ void probe_disks(void)
 				p->sectors = sysfs_ull("/sys/block/%s/%s/size",
 						       d->name, pe->d_name);
 				p->held = has_holders(pe->d_name);
-				sniff_fs(p->path, p);
+				{
+					char sys_mm[32], node_mm[32] = "";
+					struct stat st;
+
+					sysfs_str(sys_mm, sizeof(sys_mm),
+						  "/sys/block/%s/%s/dev",
+						  d->name, pe->d_name);
+					if (!stat(p->path, &st) &&
+					    S_ISBLK(st.st_mode))
+						snprintf(node_mm, sizeof(node_mm),
+							 "%u:%u",
+							 major(st.st_rdev),
+							 minor(st.st_rdev));
+					ki_part_facts(p, node_mm, sys_mm, "",
+						      d->path);
+				}
 				d->nparts++;
 			}
 			closedir(pd);
@@ -891,7 +1458,7 @@ void probe_disks(void)
 			d->part[k + 1] = t;
 		}
 
-		read_gpt(d);
+		ki_disk_table(d);
 		ki_ndisk++;
 	}
 	closedir(dir);
@@ -907,16 +1474,93 @@ void probe_disks(void)
 	}
 
 	apply_mounts();
+	{
+		char *cmdline = kb_read_all("/proc/cmdline", NULL);
+
+		if (cmdline) {
+			ki_mark_boot_copies(cmdline, "");
+			free(cmdline);
+		}
+	}
 	probe_lvs();
+	/* After the activation, so a whole-disk volume's group is in sysfs. */
+	for (int i = 0; i < ki_ndisk; i++) {
+		Disk *d = &ki_disk[i];
+
+		ki_disk_signature(d);
+		for (int k = 0; k < d->nparts; k++)
+			if (!strcmp(d->part[k].fstype, "LVM2_member"))
+				pv_vg(d->part[k].name, d->part[k].path,
+				      d->part[k].vg, sizeof(d->part[k].vg));
+	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static unsigned long long walk_kb, walk_appbox_kb;
+static unsigned long long walk_link_bytes, walk_link_appbox_bytes;
 static size_t appbox_len;
+
+/* The inodes with more than one name seen so far, by (st_dev, st_ino), in an
+ * open-addressed table kept at most half full. */
+static struct walk_ino {
+	dev_t dev;
+	ino_t ino;
+	int used;
+} *walk_inos;
+static size_t walk_ino_cap, walk_ino_n;
+
+static size_t walk_ino_slot(struct walk_ino *t, size_t cap, dev_t dev,
+			    ino_t ino)
+{
+	size_t h = ((size_t)ino * 0x9E3779B97F4A7C15ull) ^ (size_t)dev;
+
+	for (h &= cap - 1; t[h].used && (t[h].dev != dev || t[h].ino != ino);
+	     h = (h + 1) & (cap - 1))
+		;
+	return h;
+}
+
+/* Non-zero when this inode was seen before; records it otherwise. */
+static int walk_ino_seen(dev_t dev, ino_t ino)
+{
+	size_t h;
+
+	if (2 * (walk_ino_n + 1) > walk_ino_cap) {
+		size_t cap = walk_ino_cap ? walk_ino_cap * 2 : 4096;
+		struct walk_ino *t = kb_calloc(cap, sizeof(*t));
+
+		for (size_t i = 0; i < walk_ino_cap; i++)
+			if (walk_inos[i].used)
+				t[walk_ino_slot(t, cap, walk_inos[i].dev,
+						walk_inos[i].ino)] = walk_inos[i];
+		free(walk_inos);
+		walk_inos = t;
+		walk_ino_cap = cap;
+	}
+	h = walk_ino_slot(walk_inos, walk_ino_cap, dev, ino);
+	if (walk_inos[h].used)
+		return 1;
+	walk_inos[h] = (struct walk_ino){ dev, ino, 1 };
+	walk_ino_n++;
+	return 0;
+}
 static const char appbox_path[] = "/home/kdos/.local/share/containers";
 static const char livehome_path[] = "/home/kdos/";
 static const char batcache_path[] = "/home/kdos/.cache/bat";
+
+/* The kind of each entry the copy carries, in rsync's order (KI_ENT_*). */
+static unsigned char *walk_kind;
+static size_t walk_nkind, walk_kind_cap;
+
+static void walk_kind_add(unsigned char k)
+{
+	if (walk_nkind == walk_kind_cap) {
+		walk_kind_cap = walk_kind_cap ? walk_kind_cap * 2 : 65536;
+		walk_kind = kb_realloc(walk_kind, walk_kind_cap);
+	}
+	walk_kind[walk_nkind++] = k;
+}
 
 /*
  * WHAT THE COPY CARRIES, AND NOTHING ELSE. Of the live account's home the
@@ -924,42 +1568,216 @@ static const char batcache_path[] = "/home/kdos/.cache/bat";
  * is the live session's own (its desktop layout, its wallet, its indexes) and
  * is left on the medium, so it is not counted either.
  */
-static int walk_cb(const char *path, const struct stat *st, int type,
-		   struct FTW *ftw)
+static void walk_entry(const char *path, const struct stat *st)
 {
-	(void)type;
-	(void)ftw;
 	unsigned long long kb = (unsigned long long)st->st_blocks / 2;
 	int store = !strncmp(path, appbox_path, appbox_len);
+	int later = 0;
 
 	if (!store &&
 	    !strncmp(path, livehome_path, sizeof(livehome_path) - 1) &&
 	    strncmp(path, batcache_path, sizeof(batcache_path) - 1))
-		return 0;
+		return;
 	walk_kb += kb;
 	if (store)
 		walk_appbox_kb += kb;
-	return 0;
+	/* Every name of a file after its first: rsync -H counts each in the
+	 * bytes of its percentage and makes it a link at no copy cost. */
+	if (S_ISREG(st->st_mode) && st->st_nlink > 1 &&
+	    walk_ino_seen(st->st_dev, st->st_ino)) {
+		later = 1;
+		walk_link_bytes += (unsigned long long)st->st_size;
+		if (store)
+			walk_link_appbox_bytes += (unsigned long long)st->st_size;
+	}
+	walk_kind_add((unsigned char)((S_ISREG(st->st_mode) && !later
+					       ? KI_ENT_FILE
+					       : KI_ENT_OTHER) |
+				      (store ? KI_ENT_STORE : 0)));
+}
+
+typedef struct {
+	char *name;
+	struct stat st;
+} WalkEnt;
+
+/* rsync's order inside one directory: every entry that is not a directory,
+ * then the directories, each by its name's bytes. */
+static int walk_ent_cmp(const void *a, const void *b)
+{
+	const WalkEnt *x = a, *y = b;
+	int dx = S_ISDIR(x->st.st_mode), dy = S_ISDIR(y->st.st_mode);
+
+	if (dx != dy)
+		return dx - dy;
+	return strcmp(x->name, y->name);
+}
+
+/* The directory open at `fd`, whose path is `path` (`len` bytes, in a
+ * PATH_MAX buffer): its entries in rsync's order, each directory's own
+ * entries straight after it. Another filesystem is never entered. */
+static void walk_dir(int fd, char *path, size_t len, dev_t dev)
+{
+	DIR *d = fdopendir(fd);
+	struct dirent *de;
+	WalkEnt *e = NULL;
+	size_t n = 0, cap = 0;
+
+	if (!d) {
+		close(fd);
+		return;
+	}
+	while ((de = readdir(d))) {
+		struct stat st;
+
+		if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, ".."))
+			continue;
+		if (fstatat(dirfd(d), de->d_name, &st, AT_SYMLINK_NOFOLLOW) ||
+		    st.st_dev != dev)
+			continue;
+		if (n == cap) {
+			cap = cap ? cap * 2 : 64;
+			e = kb_realloc(e, cap * sizeof(*e));
+		}
+		e[n].name = kb_strdup(de->d_name);
+		e[n].st = st;
+		n++;
+	}
+	qsort(e, n, sizeof(*e), walk_ent_cmp);
+	for (size_t i = 0; i < n; i++) {
+		size_t nl = strlen(e[i].name);
+		size_t at = len > 1 ? len : 0;
+		int sub;
+
+		if (at + 1 + nl >= PATH_MAX)
+			continue;
+		path[at] = '/';
+		memcpy(path + at + 1, e[i].name, nl + 1);
+		walk_entry(path, &e[i].st);
+		if (S_ISDIR(e[i].st.st_mode)) {
+			sub = openat(dirfd(d), e[i].name,
+				     O_RDONLY | O_DIRECTORY | O_NOFOLLOW |
+					     O_CLOEXEC);
+			if (sub >= 0)
+				walk_dir(sub, path, at + 1 + nl, dev);
+		}
+		path[len] = 0;
+	}
+	for (size_t i = 0; i < n; i++)
+		free(e[i].name);
+	free(e);
+	closedir(d);
 }
 
 /* One pass over the live tree, once, before the screen is taken over. It is
  * the only honest input to "will this fit" — the squashfs knows its
  * compressed size and nothing on the system knows the expanded one.
  *
- * FTW_MOUNT does all the excluding that matters: /proc /sys /dev /run /tmp
- * are each their own filesystem, so the walk never enters them and there is
- * no path blacklist to keep in sync with fstab.
+ * Staying on the root's filesystem does all the excluding that matters:
+ * /proc /sys /dev /run /tmp are each their own filesystem, so the walk never
+ * enters them and there is no path blacklist to keep in sync with fstab.
+ *
+ * IN RSYNC'S ORDER, so the copy's profile (KiCopyProfile) lines up with its
+ * `to-chk` count: in each directory the entries that are not directories by
+ * name, then each directory by name followed by everything under it.
  *
  * SEPARATE FROM probe_system() because it is the one slow probe: seconds on
  * a live medium and minutes on a development machine. `--dump plan` asks
  * for it only when the answer depends on it. */
 void probe_payload(void)
 {
+	char path[PATH_MAX] = "/";
+	struct stat st;
+	int fd;
+
 	walk_kb = walk_appbox_kb = 0;
+	walk_link_bytes = walk_link_appbox_bytes = 0;
+	walk_nkind = 0;
 	appbox_len = sizeof(appbox_path) - 1;
-	nftw("/", walk_cb, 24, FTW_PHYS | FTW_MOUNT);
+	fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (fd >= 0 && !fstat(fd, &st)) {
+		walk_entry(path, &st);
+		walk_dir(fd, path, 1, st.st_dev);
+	} else if (fd >= 0) {
+		close(fd);
+	}
+	free(walk_inos);
+	walk_inos = NULL;
+	walk_ino_cap = walk_ino_n = 0;
 	ki_sys.payload_kb = walk_kb;
 	ki_sys.appbox_kb = walk_appbox_kb;
+	ki_sys.link_extra_bytes = walk_link_bytes;
+	ki_sys.link_extra_appbox_bytes = walk_link_appbox_bytes;
+	ki_copy_profile(&ki_sys.copy_prof, walk_kind, walk_nkind, 1);
+	ki_copy_profile(&ki_sys.copy_prof_sys, walk_kind, walk_nkind, 0);
+	free(walk_kind);
+	walk_kind = NULL;
+	walk_nkind = walk_kind_cap = 0;
+}
+
+/* Whether interface `ifc` carries traffic: operstate up (or unknown, which a
+ * tun device and some drivers report while working) and carrier 1. A cable
+ * pulled leaves the route and reads operstate down. */
+static int if_up(const char *root, const char *ifc)
+{
+	char p[PATH_MAX], v[32];
+
+	if (!*ifc || !strcmp(ifc, "lo") || strchr(ifc, '/'))
+		return 0;
+	snprintf(p, sizeof(p), "%s/sys/class/net/%s/operstate", root, ifc);
+	if (kb_read_file(p, v, sizeof(v)) <= 0)
+		return 0;
+	v[strcspn(v, "\n")] = 0;
+	if (strcmp(v, "up") && strcmp(v, "unknown"))
+		return 0;
+	snprintf(p, sizeof(p), "%s/sys/class/net/%s/carrier", root, ifc);
+	return kb_read_file(p, v, sizeof(v)) > 0 && v[0] == '1';
+}
+
+/* A default route, IPv4 (/proc/net/route: destination 00000000, RTF_UP) or
+ * IPv6 (/proc/net/ipv6_route: ::/0, RTF_UP and not RTF_REJECT, the kernel's
+ * own unreachable entry on lo), on an interface that is up. */
+static int default_route(const char *root, int v6)
+{
+	char p[PATH_MAX];
+	char *data, *l;
+	int found = 0;
+
+	snprintf(p, sizeof(p), "%s/proc/net/%s", root,
+		 v6 ? "ipv6_route" : "route");
+	data = kb_read_all(p, NULL);
+	for (l = data; l && *l && !found;) {
+		char *nl = strchr(l, '\n');
+		char ifc[32] = "", dst[40] = "", plen[8] = "";
+		unsigned long flags = 0;
+
+		if (nl)
+			*nl = 0;
+		if (!v6) {
+			if (sscanf(l, "%31s %39s %*s %lx", ifc, dst, &flags) == 3 &&
+			    !strcmp(dst, "00000000") && (flags & 0x1) &&
+			    if_up(root, ifc))
+				found = 1;
+		} else if (sscanf(l, "%39s %7s %*s %*s %*s %*s %*s %*s %lx %31s",
+				  dst, plen, &flags, ifc) == 4 &&
+			   !strcmp(dst, "00000000000000000000000000000000") &&
+			   !strcmp(plen, "00") && (flags & 0x1) &&
+			   !(flags & 0x200) && if_up(root, ifc)) {
+			found = 1;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return found;
+}
+
+void ki_probe_network(void)
+{
+	const char *root = getenv("KDOS_NET_ROOT");
+
+	if (!root)
+		root = "";
+	ki_sys.network = default_route(root, 0) || default_route(root, 1);
 }
 
 void probe_system(void)
@@ -967,6 +1785,7 @@ void probe_system(void)
 	memset(&ki_sys, 0, sizeof(ki_sys));
 
 	ki_sys.uefi = kb_path_exists("/sys/firmware/efi");
+	ki_probe_network();
 
 	/*
 	 * AND WHICH EFI BINARY THIS MACHINE CAN EXECUTE. The kernel publishes
@@ -1251,12 +2070,146 @@ static const char *groups_path(void)
 	return env && *env ? env : "/ports/groups";
 }
 
+/*
+ * HOW MANY PORTS A MEMBER INSTALLS. A meta port is a recipe with no
+ * `source =` line, which installs nothing of its own and pulls in its
+ * `depends`; a group of one such port (kde-gear-games) holds a whole Gear
+ * set, and counted by its line it would read as one program. The recipes
+ * are beside the groups file, at <dir>/core/<shelf>/<name>/kpkgbuild, as
+ * on the image's /ports; a member with no recipe there counts as one.
+ */
+static int member_ports(const char *dir, const char *name)
+{
+	char core[PATH_MAX / 2], path[PATH_MAX];
+	char **shelves;
+	char *data = NULL;
+	int n = 1, meta = 1, deps = 0;
+
+	snprintf(core, sizeof(core), "%.2000s/core", dir);
+	shelves = kb_listdir(core, NULL);
+	for (char **sh = shelves; sh && *sh && !data; sh++) {
+		snprintf(path, sizeof(path), "%s/%.255s/%.255s/kpkgbuild",
+			 core, *sh, name);
+		data = kb_read_all(path, NULL);
+	}
+	kb_strv_free(shelves);
+	if (!data)
+		return 1;
+	for (char *l = data, *nl; l && *l; l = nl ? nl + 1 : NULL) {
+		char *key = l, *v;
+		size_t kl;
+
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		while (*key == ' ' || *key == '\t')
+			key++;
+		kl = strcspn(key, " \t=");
+		v = key + kl;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		if (*v != '=' || *key == '#')
+			continue;
+		v++;
+		if (kl == 6 && !strncmp(key, "source", 6))
+			meta = 0;
+		if (kl == 7 && !strncmp(key, "depends", 7))
+			for (char *w = strtok(v, " \t\r"); w;
+			     w = strtok(NULL, " \t\r"))
+				deps++;
+	}
+	free(data);
+	if (meta && deps)
+		n = deps;
+	return n;
+}
+
+int ki_binhost_named;
+
+/* One `key = value` line's value in a file, into out; 0 when absent. */
+static int conf_line(const char *path, const char *key, char *out, size_t cap)
+{
+	char *data = kb_read_all(path, NULL);
+	size_t kl = strlen(key);
+	int found = 0;
+
+	for (char *l = data; l && *l && !found;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		while (*l == ' ' || *l == '\t')
+			l++;
+		if (*l != '#' && !strncmp(l, key, kl) &&
+		    (l[kl] == ' ' || l[kl] == '\t' || l[kl] == '=')) {
+			char *v = l + kl;
+			while (*v == ' ' || *v == '\t' || *v == '=')
+				v++;
+			v[strcspn(v, " \t\r")] = 0;
+			if (*v) {
+				kb_strlcpy(out, v, cap);
+				found = 1;
+			}
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+	return found;
+}
+
+/* A release name is made of the characters `kdos update` takes in one. */
+static int release_ok(const char *v)
+{
+	if (!*v || strlen(v) > 40)
+		return 0;
+	for (; *v; v++)
+		if (!((*v >= '0' && *v <= '9') || (*v >= 'a' && *v <= 'z') ||
+		      (*v >= 'A' && *v <= 'Z') || *v == '.' || *v == '+' ||
+		      *v == '-' || *v == '_' || *v == '~'))
+			return 0;
+	return 1;
+}
+
+/*
+ * WHETHER A BINHOST IS NAMED, in `kdos update`'s order: `binhost =` in
+ * /etc/kdos/update.conf, then $KDOS_UPDATE_BINHOST, then a `version` line in
+ * the TREE stamp beside the groups file, which only a published release's
+ * tree carries. With none, the Packs step downloads nothing and the chosen
+ * groups go to groups-pending, so the step's weight is its short one.
+ */
+static int binhost_named(const char *dir)
+{
+	char v[256];
+	const char *e = getenv("KDOS_UPDATE_BINHOST");
+	char *tree;
+	int named;
+
+	if (conf_line("/etc/kdos/update.conf", "binhost", v, sizeof(v)))
+		return 1;
+	if (e && *e)
+		return 1;
+	tree = kb_path_join(dir, "TREE");
+	named = conf_line(tree, "version", v, sizeof(v)) && release_ok(v);
+	free(tree);
+	return named;
+}
+
 /* The format is ports/groups': a `group <id> <title>` line, then member
  * ports up to the next group line; `#` starts a comment. */
 void probe_groups(void)
 {
-	char *data = kb_read_all(groups_path(), NULL);
+	const char *gp = groups_path();
+	char *data = kb_read_all(gp, NULL);
+	char dir[PATH_MAX];
+	char *slash;
 
+	kb_strlcpy(dir, gp, sizeof(dir));
+	slash = strrchr(dir, '/');
+	if (slash)
+		*slash = 0;
+	else
+		kb_strlcpy(dir, ".", sizeof(dir));
+
+	ki_binhost_named = binhost_named(dir);
 	ki_nnative = 0;
 	for (char *l = data; l && *l;) {
 		char *nl = strchr(l, '\n');
@@ -1287,8 +2240,12 @@ void probe_groups(void)
 				g->chosen = 0;
 			}
 		} else if (ki_nnative > 0) {
-			for (char *w = strtok(l, " \t\r"); w; w = strtok(NULL, " \t\r"))
-				ki_native[ki_nnative - 1].nports++;
+			char *save = NULL;
+
+			for (char *w = strtok_r(l, " \t\r", &save); w;
+			     w = strtok_r(NULL, " \t\r", &save))
+				ki_native[ki_nnative - 1].nports +=
+					member_ports(dir, w);
 		}
 		l = nl ? nl + 1 : NULL;
 	}

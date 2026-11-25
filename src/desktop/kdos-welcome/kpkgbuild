@@ -10,7 +10,7 @@
 
 name        = kdos-welcome
 version     = 1.0.0
-release     = 1
+release     = 2
 description = The KDOS tour in Welcome Center — accessibility, accent, Phosphor mode, desk, system, help and program-group pages
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT

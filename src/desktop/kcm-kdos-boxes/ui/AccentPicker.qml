@@ -65,7 +65,9 @@ Flow {
              * Toggle both land in onCheckedChanged; Press alone does not
              * reach a button whose role is a radio button. */
             checkable: true
-            checked: picker.current === accentId
+            /* An accent no swatch names is drawn neutral by KWin, as
+             * `kdos-box profile` warns, so Neutral shows as the choice. */
+            checked: picker.current === accentId || standsIn
             /* Neutral is the profile's default and needs no scheme of its
              * own to be chosen: without KDOSBox installed it is drawn in
              * the page's colours. */
@@ -80,8 +82,19 @@ Flow {
             QQC2.ToolTip.visible: hovered
             QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
 
+            /* Neutral checked for an accent no swatch names is what is
+             * shown, not a choice: only a click makes it one, so opening
+             * such a box leaves the page unmodified. `kcm` is null while
+             * the page is torn down. */
+            readonly property bool standsIn: accentId === "session" && kcm !== null && kcm.accents.indexOf(picker.current) < 0
+
             onCheckedChanged: {
-                if (checked && picker.current !== accentId) {
+                if (checked && picker.current !== accentId && !standsIn) {
+                    picker.picked(accentId);
+                }
+            }
+            onClicked: {
+                if (standsIn) {
                     picker.picked(accentId);
                 }
             }

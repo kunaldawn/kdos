@@ -1,0 +1,31 @@
+Subject: Keep fractional units in the size dialog's ranges
+
+SizeDialogBase::setupConstraints() stored the capacity limits, which
+sectorsToDialogUnit() returns as a double in the preferred unit, in
+qint64, so each was cut to a whole unit: in the default GiB an 8 GiB
+disk offered at most 7 GiB for a new partition, and the free-space
+spin boxes stopped a unit short. Keep them as doubles; the spin boxes
+round them to their decimals and onSpinCapacityChanged() still bounds
+the length to the real maximum in sectors.
+
+--- a/src/gui/sizedialogbase.cpp
++++ b/src/gui/sizedialogbase.cpp
+@@ -139,14 +139,14 @@ void SizeDialogBase::setupConstraints()
+     dialogWidget().partResizerWidget().setMaximumFirstSector(maximumFirstSector());
+     dialogWidget().partResizerWidget().setMinimumLastSector(minimumLastSector());
+ 
+-    const qint64 totalCapacity = sectorsToDialogUnit(device(), maximumLastSector() - minimumFirstSector() + 1);
++    const double totalCapacity = sectorsToDialogUnit(device(), maximumLastSector() - minimumFirstSector() + 1);
+ 
+-    const qint64 minCapacity = sectorsToDialogUnit(device(), minimumLength());
+-    const qint64 maxCapacity = sectorsToDialogUnit(device(), maximumLength());
++    const double minCapacity = sectorsToDialogUnit(device(), minimumLength());
++    const double maxCapacity = sectorsToDialogUnit(device(), maximumLength());
+     dialogWidget().spinCapacity().setRange(minCapacity, maxCapacity);
+     minCapacity > maxCapacity ? okButton->setEnabled(false) : okButton->setEnabled(true);
+ 
+-    const qint64 maxFree = totalCapacity - minCapacity;
++    const double maxFree = totalCapacity - minCapacity;
+ 
+     dialogWidget().spinFreeBefore().setRange(0, maxFree);
+     dialogWidget().spinFreeAfter().setRange(0, maxFree);

@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = noto-cjk-prefer-zh
+version     = 1
+release     = 1
+description = Noto Sans CJK SC first for sans-serif, serif and monospace — Simplified Chinese Han glyph forms
+homepage    = https://github.com/notofonts/noto-cjk
+license     = OFL-1.1
+depends     = noto-cjk

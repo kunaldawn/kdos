@@ -42,6 +42,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 
 #include "kbase.h"
@@ -158,6 +159,130 @@ static void boot_medium(char *out, size_t cap)
 	mount_at("/mnt/iso", out, cap, type, sizeof(type));
 	if (strcmp(type, "iso9660") || strncmp(out, "/dev/", 5))
 		out[0] = 0;
+}
+
+/*
+ * WHETHER A DISK CAN TAKE A STORE, before anything is written to it. A disc
+ * is read-only. A device-mapper disk is a mapping over another disk and has
+ * no partition table of its own to append to: the one a Ventoy stick boots
+ * from (named ventoy, or the boot medium) maps the ISO file out of the
+ * stick's exFAT partition, and a partition added to the mapping would be
+ * written inside that file. THE PHYSICAL STICK UNDER THAT MAPPING IS THE
+ * SAME VENTOY STICK: its exFAT partition holds the mapping (the partition's
+ * holders/ names the dm device), and a store appended to its partition
+ * table would land in space Ventoy keeps for itself and is never asked for
+ * by the boot, which mounts the mapping and not the stick. Status, create,
+ * the candidate list and the Welcome page give one answer for both names,
+ * so none offers what another refuses.
+ */
+enum { DISK_OK, DISK_DISC, DISK_VENTOY, DISK_MAPPED };
+
+/*
+ * The kernel name of the device a node opens, read from its device number:
+ * /sys/dev/block/<major>:<minor> links to the device's sysfs directory.
+ * THE NODE'S NAME IS NOT THE DEVICE. Ventoy's BIOS hook points the stick's
+ * second-partition node at its mapping (253:0), so /dev/sda2 opens dm-0;
+ * read by name it would pass as an ordinary partition of a writable stick.
+ * A node that is not a block device falls back to the name its path
+ * resolves to.
+ */
+static void node_base(const char *dev, char *out, size_t cap)
+{
+	char path[64], real[PATH_MAX];
+	struct stat st;
+
+	if (stat(dev, &st) == 0 && S_ISBLK(st.st_mode)) {
+		snprintf(path, sizeof(path), "/sys/dev/block/%u:%u",
+			 major(st.st_rdev), minor(st.st_rdev));
+		if (realpath(path, real)) {
+			kb_strlcpy(out, bname(real), cap);
+			return;
+		}
+	}
+	kb_strlcpy(out, bname(realpath(dev, real) ? real : dev), cap);
+}
+
+/* Is the device-mapper disk `base` (dm-N) the one Ventoy boots from? */
+static int dm_ventoy(const char *base)
+{
+	char medium[128], mbase[64], name[64];
+	char path[PATH_MAX + 32];
+
+	snprintf(path, sizeof(path), "/sys/class/block/%s/dm/name", base);
+	if (kb_read_line_file(path, name, sizeof(name)) >= 0 &&
+	    !strcmp(name, "ventoy"))
+		return 1;
+	boot_medium(medium, sizeof(medium));
+	if (!medium[0])
+		return 0;
+	node_base(medium, mbase, sizeof(mbase));
+	return !strcmp(mbase, base);
+}
+
+/* Does a Ventoy mapping sit on `node` (a disk or a partition of one)? */
+static int holds_ventoy(const char *node)
+{
+	char path[PATH_MAX + 32];
+	int n = 0, hit = 0;
+
+	snprintf(path, sizeof(path), "/sys/class/block/%s/holders", node);
+	char **names = kb_listdir(path, &n);
+	for (int i = 0; names && i < n && !hit; i++)
+		hit = !strncmp(names[i], "dm-", 3) && dm_ventoy(names[i]);
+	kb_strv_free(names);
+	return hit;
+}
+
+/* Is the whole disk `disk` the stick a Ventoy mapping is made from? */
+static int ventoy_under(const char *disk)
+{
+	char path[PATH_MAX + 32], sub[PATH_MAX + 96];
+	int n = 0, hit = holds_ventoy(disk);
+
+	snprintf(path, sizeof(path), "/sys/class/block/%s", disk);
+	char **names = kb_listdir(path, &n);
+	for (int i = 0; names && i < n && !hit; i++) {
+		snprintf(sub, sizeof(sub), "%s/%s/partition", path, names[i]);
+		hit = kb_path_exists(sub) && holds_ventoy(names[i]);
+	}
+	kb_strv_free(names);
+	return hit;
+}
+
+static int disk_kind(const char *dev)
+{
+	char base[64];
+
+	node_base(dev, base, sizeof(base));
+	if (!strncmp(base, "dm-", 3))
+		return dm_ventoy(base) ? DISK_VENTOY : DISK_MAPPED;
+	if (ventoy_under(base))
+		return DISK_VENTOY;
+	return blk_attr(base, "ro") == 1 ? DISK_DISC : DISK_OK;
+}
+
+/* disk_kind() as --json names it for a page. */
+static const char *kind_name(int kind)
+{
+	static const char *const names[] = {
+		[DISK_OK] = "stick", [DISK_DISC] = "disc",
+		[DISK_VENTOY] = "ventoy", [DISK_MAPPED] = "mapped",
+	};
+	return names[kind];
+}
+
+/* The refusal `create` prints for a disk disk_kind() does not pass. */
+static void disk_refusal(const char *dev, int kind)
+{
+	static const char *const why[] = {
+		[DISK_DISC] = "is read-only (a disc)",
+		[DISK_VENTOY] = "is a Ventoy stick, which cannot take a KDOS "
+				"store",
+		[DISK_MAPPED] = "is a device-mapper device, which has no "
+				"partition table to add a store to",
+	};
+	fprintf(stderr, "kdos persist: %s %s — name a USB stick or disk: "
+			"sudo kdos persist create /dev/sdX\n", dev, why[kind]);
 }
 
 /* Is this device on the disk the medium is mounted from? */
@@ -345,7 +470,7 @@ static int booted_nopersist(void)
 
 /* Disks a store could be made on from a page: the boot medium when it is
  * writable, then every removable or USB disk of at least PERSIST_MIN that is
- * writable and has nothing of it mounted. A floppy drive reports itself
+ * writable, passes disk_kind() and has nothing of it mounted. A floppy drive reports itself
  * removable and writable and holds a few kilobytes. */
 #define PERSIST_MIN (256ULL << 20)
 
@@ -386,7 +511,8 @@ static int candidates(char list[][128], int max)
 	int n = 0, nd = 0;
 
 	boot_medium(medium, sizeof(medium));
-	if (medium[0] && blk_attr(bname(medium), "ro") == 0)
+	if (medium[0] && disk_kind(medium) == DISK_OK &&
+	    blk_attr(bname(medium), "ro") == 0)
 		kb_strlcpy(list[n++], medium, 128);
 
 	char **disks = kb_listdir("/sys/block", &nd);
@@ -399,8 +525,9 @@ static int candidates(char list[][128], int max)
 			continue;
 		if (medium[0] && !strcmp(d, bname(medium)))
 			continue;
-		if (!is_removable(d) || blk_attr(d, "ro") != 0 ||
-		    dev_bytes(d) < PERSIST_MIN || disk_mounted(d))
+		if (!is_removable(d) || disk_kind(d) != DISK_OK ||
+		    blk_attr(d, "ro") != 0 || dev_bytes(d) < PERSIST_MIN ||
+		    disk_mounted(d))
 			continue;
 		snprintf(list[n++], 128, "/dev/%s", d);
 	}
@@ -473,10 +600,35 @@ static int cmd_status(void)
 
 	store_state(&s);
 	if (!strcmp(s.state, "none")) {
+		char medium[128];
+
+		boot_medium(medium, sizeof(medium));
 		printf("no persistence store\n\n");
+		if (!medium[0]) {
+			printf("  This session did not start from a live medium:\n"
+			       "  `sudo kdos persist create /dev/sdX` puts a store\n"
+			       "  on the stick or disk you name.\n");
+			return 0;
+		}
 		printf("  This session's writes are in RAM and go when it is\n");
-		printf("  powered off. `kdos persist create` makes a store in\n");
-		printf("  the free space after the image on the boot medium.\n");
+		printf("  powered off.\n");
+		switch (disk_kind(medium)) {
+		case DISK_DISC:
+			printf("  The boot medium %s is a disc and cannot hold\n"
+			       "  a store: `sudo kdos persist create /dev/sdX`\n"
+			       "  makes one on a USB stick or disk.\n", medium);
+			break;
+		case DISK_VENTOY:
+		case DISK_MAPPED:
+			printf("  The boot medium %s is a Ventoy stick, which\n"
+			       "  cannot take a KDOS store: `sudo kdos persist\n"
+			       "  create /dev/sdX` makes one on another USB stick\n"
+			       "  or disk.\n", medium);
+			break;
+		default:
+			printf("  `kdos persist create` makes a store in the free\n"
+			       "  space after the image on the boot medium.\n");
+		}
 		return 0;
 	}
 
@@ -525,8 +677,9 @@ static int cmd_status(void)
 /*
  * THE SAME ANSWER FOR A PAGE, as one line so a reader needs no stream
  * parser: whether this is a live session (a boot medium is mounted), the
- * store's state as the page switches on it, the medium and whether it can be
- * written, and the disks a store could be made on.
+ * store's state as the page switches on it, the medium, what kind of disk it
+ * is (stick, disc, ventoy) and whether it can be written, and the disks a
+ * store could be made on.
  */
 static int cmd_status_json(void)
 {
@@ -554,8 +707,14 @@ static int cmd_status_json(void)
 		kb_json_str(&b, medium);
 	else
 		kb_buf_str(&b, "null");
+	int kind = medium[0] ? disk_kind(medium) : -1;
+	kb_buf_str(&b, ", \"kind\": ");
+	if (kind >= 0)
+		kb_json_str(&b, kind_name(kind));
+	else
+		kb_buf_str(&b, "null");
 	kb_buf_printf(&b, ", \"writable\": %s, \"candidates\": [",
-		      medium[0] && blk_attr(bname(medium), "ro") == 0
+		      kind == DISK_OK && blk_attr(bname(medium), "ro") == 0
 			      ? "true" : "false");
 	for (int i = 0; i < ncand; i++) {
 		if (i)
@@ -660,17 +819,19 @@ static int cmd_create(const char *want, int assume_yes)
 		fprintf(stderr, "kdos persist: %s is not a block device\n", disk);
 		return 1;
 	}
+	/* The kind before the partition test: a Ventoy BIOS boot's medium
+	 * is named as the stick's second partition, and naming the stick
+	 * it is on would send somebody to a disk refused as Ventoy anyway. */
+	int kind = disk_kind(disk);
+	if (kind != DISK_OK) {
+		disk_refusal(disk, kind);
+		return 1;
+	}
 	if (is_partition(disk)) {
 		char whole[64];
 		parent_disk(disk, whole, sizeof(whole));
 		fprintf(stderr, "kdos persist: %s is a partition — name the disk "
 				"it is on: /dev/%s\n", disk, whole);
-		return 1;
-	}
-	if (blk_attr(bname(disk), "ro") == 1) {
-		fprintf(stderr, "kdos persist: %s is read-only (a disc) — name a "
-				"USB stick or disk: sudo kdos persist create "
-				"/dev/sdX\n", disk);
 		return 1;
 	}
 

@@ -92,6 +92,21 @@ TestCase {
         compare(rows[3].group, "system");
     }
 
+    function test_keyOrder() {
+        const row = (keys, defaults) => CardModel.rows([
+            ["KDOS Key Card", "Show Key Card", "kwin", "KWin", "default", "Default", keys, defaults],
+        ], Groups.rules)[0].keys;
+        const f1 = 0x11000030, slash = 0x1000002f, ctrlF1 = 0x15000030, q = 0x10000051;
+        compare(row([f1, slash], [f1]), ["Meta+F1", "Meta+/"], "a default key comes first");
+        compare(row([slash, f1], [f1]), ["Meta+F1", "Meta+/"], "whatever order the keys arrive in");
+        compare(row([ctrlF1, q, slash], []), ["Meta+/", "Meta+Q", "Meta+Ctrl+F1"], "then the shorter chord, then by text");
+        compare(row([q, ctrlF1, slash], []), ["Meta+/", "Meta+Q", "Meta+Ctrl+F1"]);
+        compare(row([q, ctrlF1], [ctrlF1, q]), ["Meta+Q", "Meta+Ctrl+F1"], "two defaults are ordered like any two keys");
+        const plus = 0x1000002b, ctrlPlus = 0x1400002b;
+        compare(row([q, plus], []), ["Meta++", "Meta+Q"], "the Plus key is one key, not a modifier");
+        compare(row([ctrlF1, ctrlPlus, plus], []), ["Meta++", "Meta+Ctrl++", "Meta+Ctrl+F1"]);
+    }
+
     function test_unloadedScript() {
         const list = infos().concat([
             ["KrohnkiteFocusLeft", "Krohnkite: Focus Left", "kwin", "KWin", "default", "Default", [0x10000048], [0x10000048]],

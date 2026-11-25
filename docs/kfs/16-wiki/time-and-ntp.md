@@ -48,13 +48,13 @@ The file belongs to the package: an upgrade of chrony installs it again over an 
 nothing is there at boot, as on every boot of the live medium, `rcS` links UTC, from
 `fs/etc/init.d/rcS`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=123-129 pin=c9969d56d2ea -->
+<!-- kfs:include fs/etc/init.d/rcS lines=149-155 pin=c9969d56d2ea -->
 
 **[`/etc/profile.d/20-timezone.sh`]{.idx}** sets `TZ` for every login shell. It is not in the tree: the
 installer writes it, and kdos-settingsd writes it on every zone change, so the live medium has
 none until the first one. The text, from `src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=992-998 pin=1d4f357ad56c -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=994-1000 pin=1d4f357ad56c -->
 
 **`/etc/modprobe.d/kdos-regdom.conf`** is the wireless regulatory country, written from the zone
 by the same call; see

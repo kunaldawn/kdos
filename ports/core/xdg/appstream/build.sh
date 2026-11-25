@@ -34,3 +34,5 @@ meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 
 rm -rf "$PKG/usr/share/installed-tests"
+
+install -Dm644 "$SRC/AppStream-$version/COPYING" "$PKG/usr/share/licenses/$name/COPYING"

@@ -10,7 +10,7 @@
 
 name        = kdos-splash
 version     = 1.2
-release     = 1
+release     = 2
 description = Boot splash drawn on the framebuffer — a fade from black, or Phosphor mode's CRT power-on
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT AND OFL-1.1

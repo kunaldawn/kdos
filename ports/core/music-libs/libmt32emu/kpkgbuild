@@ -11,7 +11,7 @@
 
 name        = libmt32emu
 version     = 2.8.3
-release     = 1
+release     = 2
 _tag        = libmt32emu_${version//./_}
 source      = $name-$version.tar.gz::https://github.com/munt/munt/archive/refs/tags/$_tag.tar.gz
 sha256      = 81f8c462f46bc8901618762ae34cf9de93894ff81f41db73c79472fa3baef875  libmt32emu-2.8.3.tar.gz

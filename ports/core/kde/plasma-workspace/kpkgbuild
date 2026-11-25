@@ -10,7 +10,7 @@
 
 name        = plasma-workspace
 version     = 6.8.2
-release     = 1
+release     = 4
 source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
 sha256      = 52bee29adbac15d0e2f8db98e6440d4ae042fc38340423ed736ac20189778b64  plasma-workspace-6.8.2.tar.xz
 description = KDE Plasma workspace — plasmashell, session start and shutdown, KRunner, notifications, the panel applets and the workspace settings

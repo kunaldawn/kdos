@@ -533,11 +533,14 @@ void rn_ask_rows(const char *question, RnList *out)
 	case AQ_ABSENT:
 		if (!(m = row(out, "dialog-information")))
 			return;
-		kb_strlcpy(m->text, "No local model is answering",
+		/* The advice is the title, on as many lines as it needs, and
+		 * the row has no subtext: KRunner elides a subtext to the room
+		 * the title leaves it, which on its default width cuts the
+		 * advice down to its first and last words. */
+		kb_strlcpy(m->text,
+			   "No local model: install a language-model pack",
 			   sizeof(m->text));
-		snprintf(m->subtext, sizeof(m->subtext),
-			 "llama-server answers on 127.0.0.1:%d once a "
-			 "language-model pack is installed", rn_ask_port());
+		m->multiline = 1;
 		break;
 	case AQ_FAILED:
 	case AQ_TIMEOUT:

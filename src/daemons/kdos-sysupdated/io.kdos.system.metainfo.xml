@@ -5,6 +5,7 @@
 <component type="operating-system">
   <id>io.kdos.system</id>
   <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
   <name>KDOS</name>
   <summary>The KDOS system, updated as a whole into the other root slot</summary>
   <developer id="io.kdos">

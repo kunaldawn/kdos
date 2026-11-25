@@ -45,6 +45,9 @@ Kirigami.ApplicationWindow {
         { id: "done",       title: i18nc("@title wizard step", "Done"),         page: donePage }
     ]
     property int current: 0
+    /* The furthest step shown: a page past Welcome once reached holds
+     * answers, even after Back returns to Welcome. */
+    property int reached: 0
     readonly property var currentPage: steps[current].page
     readonly property bool locked: steps[current].id === "install" || steps[current].id === "done"
 
@@ -53,6 +56,7 @@ Kirigami.ApplicationWindow {
             return;
         }
         current = index;
+        reached = Math.max(reached, index);
         steps[index].page.entered();
     }
     /* Next, as the button and Alt+Right both take it: not off the Summary,
@@ -93,25 +97,51 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    /* Closing the window during an install would orphan nothing — kinstall
-     * runs to its end as root — but would hide how it ended, so it asks.
-     * While pkexec still waits for permission nothing has been written, and
-     * the window may go: closing it ends pkexec, and the request with it. */
+    /* Once the install has started the window stays open until it ends:
+     * closing it would orphan nothing — kinstall runs to its end as root —
+     * but would hide how it ended. While pkexec still waits for permission
+     * nothing has been written, and the window may go: closing it ends
+     * pkexec, and the request with it. Before the install, once any page
+     * past Welcome has been reached the window holds answers that closing
+     * loses, so it asks first, Back on Welcome included; a window that has
+     * shown only Welcome holds only the time zone, chosen again in a
+     * moment, and Done has nothing left to lose. */
     property bool closeAnyway: false
+    readonly property bool hasAnswers: !locked && reached > 0
     onClosing: close => {
-        if (Backend.installing && !closeAnyway) {
+        if (closeAnyway) {
+            return;
+        }
+        if (Backend.installing) {
             close.accepted = false;
             quitDialog.open();
+        } else if (hasAnswers) {
+            close.accepted = false;
+            leaveDialog.open();
         }
     }
 
+    /* Both prompts dim the page under them, in the window's own background
+     * colour, so the page's text does not read through at the sheet's edges. */
     Kirigami.PromptDialog {
         id: quitDialog
+        objectName: "quitDialog"
+        QQC2.Overlay.modal: Rectangle {
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+
+            /* The popup sets the dim's opacity as it opens and closes. */
+            Behavior on opacity {
+                OpacityAnimator {
+                    duration: Kirigami.Units.longDuration
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
         readonly property bool started: Backend.events.started
         title: started ? i18nc("@title:dialog", "The install is still running")
                        : i18nc("@title:dialog", "The install is waiting for permission")
         subtitle: started
-            ? i18n("Closing this window does not stop it: the disk is still being written, and its log is %1. Keep the window open to see how it ends.", Backend.logPath)
+            ? i18n("The window stays open until the install ends: the disk is still being written, and its log is %1.", Backend.logPath)
             : i18n("The install has not started and nothing has been written. Closing the window now cancels it.")
         standardButtons: Kirigami.Dialog.NoButton
         customFooterActions: [
@@ -133,14 +163,80 @@ Kirigami.ApplicationWindow {
         ]
     }
 
+    Kirigami.PromptDialog {
+        id: leaveDialog
+        objectName: "leaveDialog"
+        QQC2.Overlay.modal: Rectangle {
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+
+            /* The popup sets the dim's opacity as it opens and closes. */
+            Behavior on opacity {
+                OpacityAnimator {
+                    duration: Kirigami.Units.longDuration
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
+        title: i18nc("@title:dialog", "Leave the installer?")
+        subtitle: i18n("The answers given so far are lost.")
+        standardButtons: Kirigami.Dialog.NoButton
+        /* The prompt opens on Keep Going, so Space (or Escape) keeps the
+         * window and Quit is reached only by a deliberate Tab. */
+        onOpened: leaveDialog.customFooterButton(keepGoing).forceActiveFocus(Qt.TabFocusReason)
+        customFooterActions: [
+            Kirigami.Action {
+                id: keepGoing
+                text: i18nc("@action:button", "Keep Going")
+                icon.name: "go-next"
+                onTriggered: leaveDialog.close()
+            },
+            Kirigami.Action {
+                text: i18nc("@action:button", "Quit")
+                icon.name: "application-exit"
+                onTriggered: {
+                    leaveDialog.close();
+                    root.closeAnyway = true;
+                    root.close();
+                }
+            }
+        ]
+    }
 
     Kirigami.PromptDialog {
         id: eraseDialog
+        QQC2.Overlay.modal: Rectangle {
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+
+            /* The popup sets the dim's opacity as it opens and closes. */
+            Behavior on opacity {
+                OpacityAnimator {
+                    duration: Kirigami.Units.longDuration
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
+        /* The disk by model, size and node, and what is on it by type,
+         * label and size, in the Summary's words; Backend.probe is read
+         * so a new probe names it again. */
+        readonly property string disk: Backend.probe && Backend.answers.disk ? Backend.diskName(Backend.answers.disk) : ""
+        readonly property string erased: Backend.probe && Backend.answers.disk ? Backend.diskErased(Backend.answers.disk) : ""
+        /* On the reuse plan, the partitions formatted, as the Summary's
+         * banner names them. */
+        readonly property string root: Backend.probe && Backend.answers.root ? Backend.partitionName(Backend.answers.root) : ""
+        readonly property string esp: Backend.probe && Backend.answers.esp ? Backend.partitionName(Backend.answers.esp) : ""
         title: i18nc("@title:dialog", "Start the install?")
         subtitle: Backend.answers.plan === "wipe"
-            ? i18n("Everything on %1 will be erased. There is no undo after this.", Backend.answers.disk)
-            : i18n("The root partition %1 will be formatted. Other partitions are kept.", Backend.answers.root)
+            ? (eraseDialog.erased
+               ? i18n("Everything on %1 will be erased: %2. There is no undo after this.", eraseDialog.disk, eraseDialog.erased)
+               : i18n("Everything on %1 will be erased. There is no undo after this.", eraseDialog.disk))
+            : Backend.answers.formatEsp
+              ? i18n("The root partition %1 and the EFI system partition %2 will be formatted. Other partitions are kept.",
+                     eraseDialog.root, eraseDialog.esp)
+              : i18n("The root partition %1 will be formatted. Other partitions are kept.", eraseDialog.root)
         standardButtons: Kirigami.Dialog.Cancel
+        /* The prompt opens on Cancel, so Space (or Escape) dismisses it
+         * and the erasing Install is reached only by a deliberate Tab. */
+        onOpened: eraseDialog.standardButton(Kirigami.Dialog.Cancel).forceActiveFocus(Qt.TabFocusReason)
         customFooterActions: [
             Kirigami.Action {
                 text: i18nc("@action:button", "Install")
@@ -290,15 +386,106 @@ Kirigami.ApplicationWindow {
                     QQC2.Button {
                         text: i18nc("@action:button", "Quit")
                         icon.name: "application-exit"
+                        /* The disabled Next takes no focus, so Quit is where
+                         * Tab lands beside it: a screen reader speaks why
+                         * the install cannot go on with Quit's name. */
+                        Accessible.description: problem.text
+                        /* No Alt+Q: the mnemonic would fire from inside a
+                         * text field, and AltGr+Q types "@" on some layouts. */
+                        Kirigami.MnemonicData.enabled: false
                         onClicked: root.close()
                     }
+                    /* Why Next is disabled. A screen reader is told the
+                     * reason 800 ms after the reason and the focused field
+                     * have both held still, while the window is in front; a
+                     * plain label would be read only when found. Announcing
+                     * each change at once would speak the half-way reasons a
+                     * page steps through as a field is typed in, and a reason
+                     * that holds while a field is typed ("The two passwords
+                     * do not match." through the whole of the second one) is
+                     * half-way too until typing pauses. Nothing is
+                     * announced while Backend is busy, so a probe's passing
+                     * "Looking…" is never spoken; the reason it settles on
+                     * is announced 800 ms after it ends. Orca drops an announcement that comes
+                     * close behind another, so one due within 1500 ms of
+                     * the last waits out the rest of that time instead.
+                     * The reason just spoken is not spoken again while the
+                     * page is unchanged. */
                     QQC2.Label {
+                        id: problem
+                        objectName: "problem"
                         Layout.fillWidth: true
                         text: root.currentPage.complete ? "" : (root.currentPage.problem || "")
                         color: Kirigami.Theme.neutralTextColor
                         wrapMode: Text.Wrap
                         elide: Text.ElideRight
                         maximumLineCount: 2
+                        Accessible.role: Accessible.StatusBar
+                        Accessible.name: text
+                        /* When the last announcement went out (Date.now()),
+                         * what it said, and on which step. */
+                        property real lastSpoken: 0
+                        property string spokenText
+                        property int spokenStep: -1
+                        readonly property int gap: 1500
+                        function retime() {
+                            holdOff.stop();
+                            settle.restart();
+                        }
+                        onTextChanged: retime()
+                        Timer {
+                            id: settle
+                            interval: 800
+                            onTriggered: {
+                                if (problem.text.length === 0 || !root.active || Backend.busy) {
+                                    return;
+                                }
+                                if (problem.text === problem.spokenText && root.current === problem.spokenStep) {
+                                    return;
+                                }
+                                const wait = problem.lastSpoken + problem.gap - Date.now();
+                                if (wait > 0) {
+                                    holdOff.interval = wait;
+                                    holdOff.restart();
+                                    return;
+                                }
+                                problem.lastSpoken = Date.now();
+                                problem.spokenText = problem.text;
+                                problem.spokenStep = root.current;
+                                problem.Accessible.announce(problem.text);
+                            }
+                        }
+                        /* The rest of the gap after the last announcement. */
+                        Timer {
+                            id: holdOff
+                            onTriggered: settle.triggered()
+                        }
+                        Connections {
+                            target: root
+                            function onActiveChanged() {
+                                problem.retime();
+                            }
+                            function onCurrentChanged() {
+                                problem.retime();
+                            }
+                            function onActiveFocusItemChanged() {
+                                problem.retime();
+                            }
+                        }
+                        /* Each edit in the focused field restarts the settle. */
+                        Connections {
+                            target: root.activeFocusItem
+                            ignoreUnknownSignals: true
+                            function onTextChanged() {
+                                problem.retime();
+                            }
+                        }
+                        Connections {
+                            target: Backend
+                            function onBusyChanged() {
+                                problem.retime();
+                            }
+                        }
                     }
                     QQC2.Button {
                         text: i18nc("@action:button", "Back")
@@ -311,6 +498,7 @@ Kirigami.ApplicationWindow {
                         text: last ? i18nc("@action:button", "Install…") : i18nc("@action:button", "Next")
                         icon.name: last ? "run-install" : "go-next"
                         enabled: root.currentPage.complete && !Backend.busy
+                        Accessible.description: problem.text
                         onClicked: {
                             if (last) {
                                 eraseDialog.open();

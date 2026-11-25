@@ -10,8 +10,15 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/locales.patch"
+patch -p1 -i "$PORT_SRC/region-no-generation.patch"
 patch -p1 -i "$PORT_SRC/kdos-bootctl-entry.patch"
 patch -p1 -i "$PORT_SRC/sandbox-badge.patch"
+patch -p1 -i "$PORT_SRC/notifications-group-expander.patch"
+patch -p1 -i "$PORT_SRC/appstream-runner-name-match.patch"
+patch -p1 -i "$PORT_SRC/appstream-runner-icon.patch"
+patch -p1 -i "$PORT_SRC/desktop-view-title.patch"
+patch -p1 -i "$PORT_SRC/timezone-selector-width.patch"
+patch -p1 -i "$PORT_SRC/kcm-colors-accent-names.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -24,6 +31,7 @@ cmake -S . -B build -G Ninja \
 	-D WITH_X11_SESSION=OFF \
 	-D INSTALL_SDDM_WAYLAND_SESSION=ON \
 	-D GLIBC_LOCALE_GEN=OFF \
+	-D GLIBC_LOCALE=OFF \
 	-D BUILD_GEOTIMEZONED=OFF \
 	-D BUILD_CAMERAINDICATOR=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_AccountsService=ON \

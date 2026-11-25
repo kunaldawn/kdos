@@ -71,7 +71,9 @@ export PATH="$D/bin:$PATH" XDG_STATE_HOME=$D/state XDG_DATA_HOME=$D/data \
 	KDOS_OOMD_SOCK=$D/oomd.sock KDOS_NOTICE_PKGDB=$D/db \
 	KDOS_NOTICE_UPDATE_JSON=$D/var/update.json \
 	KDOS_NOTICE_BOOTSTATE=$D/run/bootstate.json \
-	KDOS_APPS_PENDING=$D/var/apps-pending
+	KDOS_APPS_PENDING=$D/var/apps-pending \
+	KDOS_GROUPS_PENDING=$D/var/groups-pending \
+	KDOS_NOTICE_GROUPS=$D/var/groups
 
 now restarts restarts-apps.json
 now cve cve-3.json
@@ -143,10 +145,10 @@ ok "an action from the server runs its vector with the token; a forged one does 
 printf 'org.kde.kate\norg.gimp.GIMP\n' > "$D/var/apps-pending"
 dbus-send --session --print-reply --dest=io.kdos.Notice /io/kdos/Notice \
 	io.kdos.Notice1.Rescan > /dev/null || fail "Rescan"
-waitfor nis notify 6 || fail "the pending applications were not announced"
-grep -q "^notify [0-9]* 0 0 2 applications chosen during install are not installed yet$" "$D/log" ||
+waitfor nis notify 6 || fail "the pending selections were not announced"
+grep -q "^notify [0-9]* 0 0 Software chosen during install is not installed yet$" "$D/log" ||
 	fail "the pending notice, persistent"
-ok "the applications still to install are announced, persistent"
+ok "the selections still to install are announced, persistent"
 
 kill $FBP; wait $FBP 2>/dev/null
 "$FB" notify "$D/log2" & FBP=$!; PIDS="$PIDS $FBP"
@@ -154,7 +156,7 @@ waitfor grep -qs "^notify" "$D/log2" || fail "a new notification server was not 
 sleep 2.5
 grep -q "^notify [0-9]* 0 0 2 known vulnerabilities in installed packages$" "$D/log2" ||
 	fail "the CVE notice was not posted afresh to the new server"
-grep -q "^notify [0-9]* 0 0 2 applications chosen during install are not installed yet$" "$D/log2" ||
+grep -q "^notify [0-9]* 0 0 Software chosen during install is not installed yet$" "$D/log2" ||
 	fail "the pending notice was not posted afresh to the new server"
 [ "$(grep -c '^notify' "$D/log2")" = 2 ] || fail "the new server was given more than the notices still waiting"
 grep -q "^close" "$D/log2" && fail "an id of the old server was closed on the new one"
@@ -164,6 +166,8 @@ n_log=$(( $(count notify) + $(grep -c '^notify' "$D/log2") ))
 n_mon=$(grep -c 'member=Notify' "$D/monitor")
 [ "$n_log" = "$n_mon" ] || fail "the server saw $n_log Notify calls and dbus-monitor $n_mon"
 ok "dbus-monitor counts the same $n_mon Notify calls"
+grep -q 'string "KDOS Tools"' "$D/monitor" || fail "a notice is not sent as KDOS Tools"
+! grep -q 'string "KDOS"$' "$D/monitor" || fail "a notice is sent as KDOS"
 kill $KNP 2>/dev/null; wait $KNP 2>/dev/null
 
 # ── --bless ────────────────────────────────────────────────────────────

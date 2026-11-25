@@ -10,3 +10,4 @@
 # ---------------------------------
 
 make DESTDIR=$PKG PREFIX=/usr install
+install -Dm644 UNLICENSE "$PKG/usr/share/licenses/$name/UNLICENSE"

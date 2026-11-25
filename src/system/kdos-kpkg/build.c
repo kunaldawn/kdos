@@ -47,6 +47,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 
 #include "kdos-kpkg.h"
 
@@ -607,6 +608,43 @@ static void strip_font_dirs(const char *pkg)
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
+/*
+ * A FAILED BUILD'S WORK DIRECTORY GOES WHEN KPKG_CLEAN_FAILED IS SET to
+ * anything but 0. `kdos update` sets it: on a user's machine a tree left
+ * half-built under $WORK_DIR holds up to gigabytes, and a build that failed
+ * because the disk filled keeps the disk full. Unset, the directory stays for
+ * the developer reading the failure.
+ *
+ * The free space of its filesystem is measured BEFORE the removal and written
+ * to $WORK_DIR/.kpkg-failed as "<name> <free bytes> <total bytes>", after it,
+ * when there is room to write: the removal gives the space back, so a caller
+ * measuring once this returns could not tell a full disk from any other
+ * failure. Always returns 1, the build's failure.
+ */
+static int clean_failed(const KpConf *c, const char *name, const char *src_root)
+{
+	const char *e = getenv("KPKG_CLEAN_FAILED");
+	if (!e || !e[0] || !strcmp(e, "0"))
+		return 1;
+	struct statvfs sv;
+	int have = statvfs(c->work_dir, &sv) == 0;
+	kb_rmtree(src_root);
+	kp_msg("Removed the work directory %s", src_root);
+	if (!have)
+		return 1;
+	char *mark = kb_path_join(c->work_dir, ".kpkg-failed");
+	FILE *f = fopen(mark, "w");
+	if (f) {
+		fprintf(f, "%s %llu %llu\n", name,
+			(unsigned long long)sv.f_bavail * sv.f_frsize,
+			(unsigned long long)sv.f_blocks * sv.f_frsize);
+		if (fclose(f) != 0)
+			unlink(mark);
+	}
+	free(mark);
+	return 1;
+}
+
 /* The build, in the current directory, which is the port directory. */
 static int build_here(char *pkgout, size_t cap)
 {
@@ -695,7 +733,7 @@ static int build_here(char *pkgout, size_t cap)
 
 	if (r.source[0] &&
 	    extract_sources(&c, &r, portdir, src_dir, src_root) != 0)
-		return 1;
+		return clean_failed(&c, r.name, src_root);
 
 	/* Before build.sh: a config.guess older than musl support names this
 	 * host x86_64-pc-linux-gnu, and a configure that trusts it builds for
@@ -708,12 +746,12 @@ static int build_here(char *pkgout, size_t cap)
 	int brc = run_build(&c, decl, &r, portdir, src_root, src_dir, pkg);
 	if (brc != 0) {
 		kp_err("Build failed");
-		return 1;
+		return clean_failed(&c, r.name, src_root);
 	}
 
 	if (!kb_is_dir(pkg)) {
 		kp_err("the build left no $PKG directory");
-		return 1;
+		return clean_failed(&c, r.name, src_root);
 	}
 
 	kp_msg("Creating package...");
@@ -731,7 +769,7 @@ static int build_here(char *pkgout, size_t cap)
 	/* Last before the roll: every step above changes the tree, and the
 	 * lint must read the tree that is archived. */
 	if (kp_pkg_lint(pkg, r.name) != 0)
-		return 1;
+		return clean_failed(&c, r.name, src_root);
 
 	kb_mkdir_p(c.package_dir);
 	char pkgname[512];
@@ -745,7 +783,7 @@ static int build_here(char *pkgout, size_t cap)
 	clock_gettime(CLOCK_MONOTONIC, &t0);
 	if (roll_package(pkg, out) != 0) {
 		kp_err("Failed to create %s", out);
-		return 1;
+		return clean_failed(&c, r.name, src_root);
 	}
 	clock_gettime(CLOCK_MONOTONIC, &t1);
 	kp_msg("Packaged %s: %lld MB in %.1f s", r.name,

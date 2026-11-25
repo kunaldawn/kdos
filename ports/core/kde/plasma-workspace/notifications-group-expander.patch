@@ -1,0 +1,156 @@
+Subject: notifications: hide a history group's oldest entries and keep its expander count true
+
+The history collapses a notification group to its newest groupLimit
+children. With expandUnread it also keeps every unread child newer than
+lastRead, so a collapsed group hides an entry from its middle, and the
+count it offers as "Show %1 More" is not the number it hides. The
+history model turns expandUnread off, so a collapsed group shows its
+newest two children and hides exactly the older ones.
+
+"Show %1 More" is GroupChildrenCountRole less
+ExpandedGroupChildrenCountRole, both read on the group's last visible
+child, and each is re-announced to every child row of a group whenever
+a row joins or leaves it:
+
+- NotificationGroupingProxyModel reports the group's size on every
+  child. When tryToGroup adds a row to a group it announces
+  GroupChildrenCountRole on all of the group's children, and when a
+  member is removed it announces it on all remaining children, the
+  range taken from the group's own child count, not the number of
+  top-level rows.
+- NotificationGroupCollapsingProxyModel computes
+  ExpandedGroupChildrenCountRole as its row count under the group, so
+  it re-announces that role, with IsGroupExpandedRole, after a source
+  row is inserted or removed and after a ReadRole change, which moves
+  the expandUnread filter.
+
+The history draws "Show %1 More" (and "Show Fewer") on a group's last
+visible child, found by comparing ListView.section with nextSection. The
+section is the desktop entry, which is empty for a sender that names none,
+and nextSection is empty past the list's last row; a group of such a sender
+at the bottom of the list, or followed by another one, never draws the
+button, and its collapsed children cannot be reached. The row is taken as
+the group's last when the next row is not inside a group or there is none,
+which holds whatever the sections are.
+
+The next row is read from the model, which QML does not track, so the
+list keeps a revision that every layout change, move, insertion, removal
+and reset bumps, and the binding reads it.
+
+--- a/applets/notifications/FullRepresentation.qml
++++ b/applets/notifications/FullRepresentation.qml
+@@ -270,6 +270,19 @@
+             model: fullRepresentationRoot.appletInterface.expanded ? fullRepresentationRoot.historyModel : null
+             currentIndex: -1
+ 
++            // Bumped whenever a row may have a different successor; a binding that reads the
++            // next row from the model reads this too, since the model call itself is not tracked.
++            property int rowOrderRevision: 0
++
++            Connections {
++                target: fullRepresentationRoot.historyModel
++                function onLayoutChanged() { list.rowOrderRevision++; }
++                function onRowsMoved() { list.rowOrderRevision++; }
++                function onRowsInserted() { list.rowOrderRevision++; }
++                function onRowsRemoved() { list.rowOrderRevision++; }
++                function onModelReset() { list.rowOrderRevision++; }
++            }
++
+             topMargin: Kirigami.Units.largeSpacing
+             bottomMargin: Kirigami.Units.largeSpacing
+             spacing: Kirigami.Units.smallSpacing
+@@ -406,6 +419,15 @@
+                 required property int groupChildrenCount
+                 required property int expandedGroupChildrenCount
+ 
++                // The expander belongs on the group's last visible row: the one followed by a
++                // top-level row or by none. Sections cannot tell, because a sender without a
++                // desktop entry has an empty section, the same as nextSection past the last row.
++                // It re-evaluates on list.rowOrderRevision, which every reordering bumps.
++                readonly property bool isLastInGroup: list.rowOrderRevision >= 0 && isInGroup
++                    && (index >= list.count - 1
++                        || !fullRepresentationRoot.historyModel.data(fullRepresentationRoot.historyModel.index(index + 1, 0),
++                                                                    NotificationManager.Notifications.IsInGroupRole))
++
+                 // NOTE: The following animations replace the Transitions in the ListView
+                 // because they don't work when the items change size during the animation
+                 // (showing/hiding the show more/show less button) in that case they will
+@@ -620,7 +642,7 @@
+                                                             : i18nc("Expand to show n more notifications",
+                                                                     "Show %1 More", (delegate.groupChildrenCount - delegate.expandedGroupChildrenCount))
+                                 visible: (delegate.groupChildrenCount > delegate.expandedGroupChildrenCount || delegate.isGroupExpanded)
+-                                    && delegate.ListView.nextSection !== delegate.ListView.section
++                                    && delegate.isLastInGroup
+                                 onClicked: list.setGroupExpanded(delegate.index, !delegate.isGroupExpanded)
+                             }
+                         }
+--- a/applets/notifications/main.qml
++++ b/applets/notifications/main.qml
+@@ -179,7 +179,7 @@
+         sortMode: NotificationManager.Notifications.SortByDate
+         groupMode: NotificationManager.Notifications.GroupApplicationsFlat
+         groupLimit: 2
+-        expandUnread: true
++        expandUnread: false
+         ignoreBlacklistDuringInhibition: true
+         blacklistedDesktopEntries: notificationSettings.historyBlacklistedApplications
+         blacklistedNotifyRcNames: notificationSettings.historyBlacklistedServices
+--- a/libnotificationmanager/notificationgroupcollapsingproxymodel.cpp
++++ b/libnotificationmanager/notificationgroupcollapsingproxymodel.cpp
+@@ -32,8 +32,19 @@
+     QSortFilterProxyModel::setSourceModel(source);
+ 
+     if (source) {
+-        connect(source, &QAbstractItemModel::rowsInserted, this, &NotificationGroupCollapsingProxyModel::invalidateFilter);
+-        connect(source, &QAbstractItemModel::rowsRemoved, this, &NotificationGroupCollapsingProxyModel::invalidateFilter);
++        // A row arriving in or leaving a group changes which of its children the limit hides, and
++        // ExpandedGroupChildrenCountRole is computed rather than stored, so nothing tells a view
++        // that reads it to read it again unless the group roles are re-announced here.
++        connect(source, &QAbstractItemModel::rowsInserted, this, [this] {
++            beginFilterChange();
++            endFilterChange();
++            invalidateGroupRoles();
++        });
++        connect(source, &QAbstractItemModel::rowsRemoved, this, [this] {
++            beginFilterChange();
++            endFilterChange();
++            invalidateGroupRoles();
++        });
+ 
+         // When a group is removed, there is no item that's being removed, instead the item morphs back into a single notification
+         connect(source,
+@@ -51,6 +62,12 @@
+                             }
+                         }
+                     }
++
++                    // With expandUnread an unread child is kept past the limit, so a change of
++                    // read state changes how many children a collapsed group shows.
++                    if (roles.isEmpty() || roles.contains(Notifications::ReadRole)) {
++                        invalidateGroupRoles();
++                    }
+                 });
+     }
+ }
+--- a/libnotificationmanager/notificationgroupingproxymodel.cpp
++++ b/libnotificationmanager/notificationgroupingproxymodel.cpp
+@@ -74,6 +74,10 @@
+                 endInsertRows();
+ 
+                 Q_EMIT dataChanged(parent, parent);
++
++                // Every child reports the group's size in GroupChildrenCountRole, so all of them,
++                // not only the new one, have to be read again.
++                Q_EMIT dataChanged(index(0, 0, parent), index(rowMap.at(i)->count() - 1, 0, parent), {Notifications::GroupChildrenCountRole});
+             }
+ 
+             return true;
+@@ -229,7 +233,7 @@
+                             Q_EMIT dataChanged(parent, parent);
+ 
+                             // Signal children count change for all other items in the group.
+-                            Q_EMIT dataChanged(index(0, 0, parent), index(rowMap.count() - 1, 0, parent), {Notifications::GroupChildrenCountRole});
++                            Q_EMIT dataChanged(index(0, 0, parent), index(rowMap.at(j)->count() - 1, 0, parent), {Notifications::GroupChildrenCountRole});
+                         }
+ 
+                         break;

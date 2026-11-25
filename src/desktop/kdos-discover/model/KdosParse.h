@@ -15,8 +15,9 @@
  *
  * The one file read directly is the catalogue itself, for what no command
  * prints: each row's parent chain (how many images an install builds, which is
- * the install's progress) and its Debian packages (which AppStream component
- * describes it).
+ * the install's progress), its Debian packages (which AppStream component
+ * describes it), and for an application no component describes, its `deb`
+ * and `about` rows.
  * ---------------------------------
  */
 
@@ -44,6 +45,15 @@ struct CatalogueRow {
     QString category;
     QString tagline;
     quint64 bytes = 0;
+    // A `deb` row names this id: the application is its publisher's own .deb
+    // release, which no Debian component describes.
+    bool vendorDeb = false;
+    // An `about` row's fields, for a row no Debian component describes; a
+    // component fills only what these leave empty.
+    QString license;
+    QString author;
+    QString homepage;
+    QString description; // plain text
 };
 
 struct CatalogueGroup {
@@ -188,11 +198,14 @@ int countCveFindings(const QByteArray &out);
 // <version>-<release>` or `<pkg> dev-source <version>-<release>` line per
 // package built here, and `total <downloads> <bytes> <builds>`, which is
 // what the counts are taken from. A group's dry run has a total per member,
-// and they add up. `valid` is false when no total line came: the output is
-// not a dry run's.
+// and they add up. `downloads` counts the `dev` lines too, which restore the
+// development files of a package already installed, and `restores` counts
+// them alone, so the prebuilt installs are the difference. `valid` is false
+// when no total line came: the output is not a dry run's.
 struct InstallPreview {
     bool valid = false;
     int downloads = 0;
+    int restores = 0; // the `dev` lines, also in downloads
     quint64 bytes = 0;
     int builds = 0;
     QStringList built; // the packages built here, in the order printed
@@ -253,13 +266,37 @@ struct SlotsState {
     QString trying;
     QString runningVersion;
     QString otherVersion;
+    // State's `phase` and the version it is about ("armed" and the armed
+    // slot's version); bootctl's document has neither.
+    QString phase;
+    QString phaseVersion;
 };
 
 // State's own keys win (`rebootRequired`, `jobDone`, `jobTotal`); a document
-// without them is bootctl's, read by `trying` against `running`.
+// without them is bootctl's, read by `trying` against `running`, and its
+// `slots` give the two versions. State names no running version: that is
+// io.kdos.Slots1's ListSlots, read by readSlotList.
 SlotsState readSlotsState(const QVariantMap &state);
 
-// A restart is pending: readSlotsState(state).rebootRequired.
+// ListSlots' two dictionaries into `state`: the version of the slot whose
+// `running` is true, and the other one's. A reply without a running slot
+// leaves both as they were.
+void readSlotList(const QList<QVariantMap> &slotList, SlotsState *state);
+
+// The version the armed slot holds: State's `version` while its `phase` is
+// "armed", else the slot that is not running; "" while nothing is armed or
+// the version is not recorded.
+QString armedVersion(const SlotsState &state);
+
+// A restart that installs an update: a slot is armed, and the version it
+// holds is newer than the running one by compareVersions. Arming a slot of
+// the same or an older version is a switch between versions, which System
+// Versions and kdos-notice's trial notice speak for; Discover's "Restart is
+// required … for the updates to take effect" is for this alone. False when
+// either version is unknown.
+bool stagedUpdate(const SlotsState &state);
+
+// A slot is armed and not booted: readSlotsState(state).rebootRequired.
 bool slotArmed(const QVariantMap &state);
 
 // ── small rules ─────────────────────────────────────────────────────────

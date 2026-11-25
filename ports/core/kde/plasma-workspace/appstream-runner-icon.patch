@@ -1,0 +1,105 @@
+Subject: appstream runner: give a component an icon it can draw
+
+A cached or local icon is added only when its file exists, a stock name
+only when the icon theme has it, and a component with neither takes the
+icon of its first main desktop-entry category before package-x-generic.
+A catalogue that installs no icon files otherwise gives a non-null QIcon
+that draws nothing, and a stock name the theme lacks a placeholder.
+---
+--- a/runners/appstream/appstreamrunner.cpp	2026-11-23 11:21:38.518160241 +0530
++++ b/runners/appstream/appstreamrunner.cpp	2026-11-23 11:21:38.520278319 +0530
+@@ -15,6 +15,7 @@
+ #include <QDesktopServices>
+ #include <QDir>
+ #include <QFileInfo>
++#include <QHash>
+ #include <QIcon>
+ #include <QTimer>
+ 
+@@ -38,33 +39,64 @@
+     setMinLetterCount(2);
+ }
+ 
++// The icon of a main desktop-entry category, as Discover's KDOS backend
++// files a Debian application: an empty name for any other category.
++static QString categoryIconName(const QString &category)
++{
++    static const QHash<QString, QString> icons{
++        {u"AudioVideo"_s, u"applications-multimedia"_s},
++        {u"Development"_s, u"applications-development"_s},
++        {u"Education"_s, u"applications-education"_s},
++        {u"Game"_s, u"applications-games"_s},
++        {u"Graphics"_s, u"kcolorchooser"_s},
++        {u"Network"_s, u"applications-internet"_s},
++        {u"Office"_s, u"applications-office"_s},
++        {u"Science"_s, u"applications-science"_s},
++        {u"Settings"_s, u"preferences-system"_s},
++        {u"System"_s, u"applications-system"_s},
++        {u"Utility"_s, u"applications-utilities"_s},
++    };
++    return icons.value(category);
++}
++
++// An icon the row can draw: the component's cached or local icon files that
++// exist, else the first stock name the icon theme has, else the icon of its
++// first main category, else package-x-generic. A catalogue whose icon files
++// are not installed would otherwise give a QIcon that is not null and draws
++// nothing, and a stock name the theme lacks draws a placeholder.
+ static QIcon componentIcon(const AppStream::Component &comp)
+ {
+     QIcon ret;
++    QString stock;
+     const auto icons = comp.icons();
+-    if (icons.isEmpty()) {
+-        ret = QIcon::fromTheme(QStringLiteral("package-x-generic"));
+-    } else
+-        for (const AppStream::Icon &icon : icons) {
+-            QStringList stock;
+-            switch (icon.kind()) {
+-            case AppStream::Icon::KindLocal:
+-                ret.addFile(icon.url().toLocalFile(), icon.size());
+-                break;
+-            case AppStream::Icon::KindCached:
+-                ret.addFile(icon.url().toLocalFile(), icon.size());
+-                break;
+-            case AppStream::Icon::KindStock:
+-                stock += icon.name();
+-                break;
+-            default:
+-                break;
+-            }
+-            if (ret.isNull() && !stock.isEmpty()) {
+-                ret = QIcon::fromTheme(stock.constFirst());
+-            }
++    for (const AppStream::Icon &icon : icons) {
++        switch (icon.kind()) {
++        case AppStream::Icon::KindLocal:
++        case AppStream::Icon::KindCached: {
++            const QString path = icon.url().toLocalFile();
++            if (!path.isEmpty() && QFileInfo::exists(path))
++                ret.addFile(path, icon.size());
++            break;
++        }
++        case AppStream::Icon::KindStock:
++            if (stock.isEmpty() && QIcon::hasThemeIcon(icon.name()))
++                stock = icon.name();
++            break;
++        default:
++            break;
+         }
+-    return ret;
++    }
++    if (!ret.isNull())
++        return ret;
++    if (!stock.isEmpty())
++        return QIcon::fromTheme(stock);
++    const QStringList categories = comp.categories();
++    for (const QString &category : categories) {
++        const QString name = categoryIconName(category);
++        if (!name.isEmpty())
++            return QIcon::fromTheme(name);
++    }
++    return QIcon::fromTheme(QStringLiteral("package-x-generic"));
+ }
+ 
+ // A component is offered only when every word of the query occurs in its

@@ -13,7 +13,9 @@
  * profile.d/20-timezone.sh what musl and every login shell follow,
  * /etc/locale.conf what SDDM puts in the session's environment. A copy kept
  * anywhere else would be a second answer to one question, and the next boot
- * would believe the other one.
+ * would believe the other one. The one copy is the console keymap's on the
+ * ESP, for the initramfs, which runs before any root is open: it is written
+ * from /etc/keymap and never read here (see ks_esp_keymap_sync).
  *
  * NOTHING IS CACHED. Every getter reads its file, so a value the installer
  * or a person with an editor wrote is what the next caller sees.
@@ -1191,6 +1193,121 @@ bool ks_locale_assign_ok(const char *a, int *key, bool *empty)
 	return false;
 }
 
+/* Where a language is found: musl-locales' definitions, the directory
+ * `locale -a` lists, and the gettext catalogues, one directory per
+ * language a program is translated into. */
+static const char *const KS_LANG_DIRS[] = { "i18n/locales/musl", "locale" };
+
+static bool is_lower(char c)
+{
+	return c >= 'a' && c <= 'z';
+}
+
+static bool is_upper(char c)
+{
+	return c >= 'A' && c <= 'Z';
+}
+
+/* `ll[_CC][.codeset][@modifier]` in e[0..n): two or three lowercase
+ * letters, an underscore and two uppercase ones, `.UTF-8` or `.utf8` where
+ * `codeset` allows one, and a modifier of lowercase letters and digits.
+ * Returns the length of the language part, 0 when the shape is wrong. */
+static size_t locale_shape(const char *e, size_t n, bool codeset)
+{
+	size_t l = 0, i;
+
+	while (l < n && is_lower(e[l]))
+		l++;
+	if (l < 2 || l > 3)
+		return 0;
+	i = l;
+	if (i < n && e[i] == '_') {
+		if (i + 3 > n || !is_upper(e[i + 1]) || !is_upper(e[i + 2]))
+			return 0;
+		i += 3;
+	}
+	if (codeset && i < n && e[i] == '.') {
+		if (n - i >= 6 && !strncmp(e + i, ".UTF-8", 6))
+			i += 6;
+		else if (n - i >= 5 && !strncmp(e + i, ".utf8", 5))
+			i += 5;
+		else
+			return 0;
+	}
+	if (i < n && e[i] == '@') {
+		size_t m = ++i;
+
+		while (i < n && (is_lower(e[i]) || (e[i] >= '0' && e[i] <= '9')))
+			i++;
+		if (i == m)
+			return 0;
+	}
+	return i == n ? l : 0;
+}
+
+/* An entry of one of KS_LANG_DIRS named `<ll>` or `<ll>` followed by `_`,
+ * `.` or `@`. */
+static bool language_present(const char *ll, size_t n)
+{
+	bool hit = false;
+
+	for (size_t i = 0; !hit && i < sizeof(KS_LANG_DIRS) /
+					   sizeof(KS_LANG_DIRS[0]); i++) {
+		char p[KS_PATH];
+		struct dirent *d;
+		DIR *dir;
+
+		if (!ks_share_path(p, sizeof(p), KS_LANG_DIRS[i]) ||
+		    !(dir = opendir(p)))
+			continue;
+		while (!hit && (d = readdir(dir)))
+			hit = !strncmp(d->d_name, ll, n) &&
+			      (!d->d_name[n] || d->d_name[n] == '_' ||
+			       d->d_name[n] == '.' || d->d_name[n] == '@');
+		closedir(dir);
+	}
+	return hit;
+}
+
+static bool locale_name_known(const char *e, size_t n, bool codeset)
+{
+	size_t l;
+
+	if ((n == 1 && *e == 'C') ||
+	    (codeset && ((n == 7 && !strncmp(e, "C.UTF-8", 7)) ||
+			 (n == 5 && !strncmp(e, "POSIX", 5)))))
+		return true;
+	l = locale_shape(e, n, codeset);
+	return l && language_present(e, l);
+}
+
+/*
+ * A value is C, C.UTF-8, POSIX, or `ll[_CC][.UTF-8|.utf8][@modifier]` whose
+ * language `ll` has a musl-locales definition or a gettext catalogue
+ * directory on this system. SDDM hands LANG and the LC_* variables of
+ * /etc/locale.conf to every session, so a malformed name or a language
+ * code nothing knows would reach them all. The territory is not checked
+ * against the definitions: musl keeps a name it has no file for as the
+ * message locale, Qt and KDE take language and formats from the variable
+ * itself, so `ja_JP.UTF-8` still selects Japanese translations and formats
+ * (plasma-setup's language page sends LANG=<ll_CC>.UTF-8 for whichever
+ * language it offers). LANGUAGE is gettext's colon-separated list of
+ * message languages, each element the same shape without a codeset, or C.
+ */
+bool ks_locale_known(int key, const char *v)
+{
+	if (key != 1)
+		return *v && locale_name_known(v, strlen(v), true);
+	for (const char *e = v, *c; *e; e = *c ? c + 1 : c) {
+		c = strchr(e, ':');
+		if (!c)
+			c = e + strlen(e);
+		if (!locale_name_known(e, (size_t)(c - e), false))
+			return false;
+	}
+	return *v;
+}
+
 static bool locale_path(char *out, size_t n)
 {
 	return ks_etc_path(out, n, "locale.conf");
@@ -1298,16 +1415,133 @@ void ks_keymap(char *out, size_t n)
 		kb_strlcpy(out, line, n);
 }
 
+/*
+ * THE CONSOLE KEYMAP ON THE ESP, <esp>/EFI/kdos/keymap: one name, which the
+ * initramfs loads on tty1 before it asks for the disk passphrase. The
+ * initramfs is one image for every machine and runs before the root that
+ * holds /etc/keymap is unlocked, so without this file the passphrase prompt
+ * types with the kernel's US map, and a passphrase set on any other layout
+ * cannot be typed at all.
+ *
+ * A COPY OF /etc/keymap, NEVER A SECOND SETTING: ks_set_keymap writes both,
+ * and ks_esp_keymap_sync rewrites this one from /etc/keymap whenever the
+ * daemon starts, so an ESP without the file, or with a stale one, has it
+ * right before the next boot reads it. Only where <esp>/EFI/kdos exists,
+ * which is an installed machine with its ESP mounted; the live medium has
+ * none and is left alone.
+ *
+ * WRITTEN AS kdos-bootctl WRITES THE BOOT STATE: a temp file and its fsync,
+ * the rename, then the renamed file's fsync and a syncfs. On vfat a directory
+ * fsync does not carry a rename, and an ESP left with a zero-length file
+ * reads as "no keymap", which is the US map again. No fchmod: vfat refuses a
+ * mode its mount options cannot represent.
+ */
+static const char *ks_esp(void)
+{
+	const char *e = getenv("KDOS_SETTINGSD_ESP");
+
+	if (e && *e)
+		return e;
+	return ks_test_tree() ? NULL : "/boot/efi";
+}
+
+static bool esp_keymap_path(char *out, size_t n)
+{
+	struct stat st;
+	const char *esp = ks_esp();
+
+	if (!esp || !join(out, n, esp, "EFI/kdos") || stat(out, &st) != 0 ||
+	    !S_ISDIR(st.st_mode))
+		return false;
+	return join(out, n, esp, "EFI/kdos/keymap");
+}
+
+static int esp_settle(const char *path)
+{
+	int fd = open(path, O_RDONLY | O_CLOEXEC), rc = 0;
+
+	if (fd < 0)
+		return -1;
+	if (fsync(fd) != 0 && errno != EINVAL)
+		rc = -1;
+	if (syncfs(fd) != 0)
+		rc = -1;
+	close(fd);
+	return rc;
+}
+
+static int esp_keymap_write(const char *name)
+{
+	char p[KS_PATH], tmp[KS_PATH + 8], body[KS_NAME_MAX + 2], *old;
+	size_t n, off = 0;
+	int fd, same;
+
+	if (!esp_keymap_path(p, sizeof(p)))
+		return 0;
+	if (!*name) {
+		if (unlink(p) != 0)
+			return errno == ENOENT ? 0 : -1;
+		*strrchr(p, '/') = 0;
+		return esp_settle(p);
+	}
+	n = (size_t)snprintf(body, sizeof(body), "%s\n", name);
+	old = kb_read_all(p, NULL);
+	same = old && !strcmp(old, body);
+	free(old);
+	if (same)
+		return 0;
+	snprintf(tmp, sizeof(tmp), "%s.new", p);
+	fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	if (fd < 0)
+		return -1;
+	while (off < n) {
+		ssize_t w = write(fd, body + off, n - off);
+
+		if (w <= 0) {
+			if (w < 0 && errno == EINTR)
+				continue;
+			close(fd);
+			unlink(tmp);
+			return -1;
+		}
+		off += (size_t)w;
+	}
+	if (fsync(fd) != 0 || close(fd) != 0 || rename(tmp, p) != 0) {
+		unlink(tmp);
+		return -1;
+	}
+	return esp_settle(p);
+}
+
+/* /etc/keymap is the setting and is written first; the ESP copy failing
+ * leaves the setting made and says so, and the next start writes it. */
 int ks_set_keymap(const char *name)
 {
 	char p[KS_PATH], body[KS_NAME_MAX + 2];
+	int rc;
 
 	if (!ks_etc_path(p, sizeof(p), "keymap"))
 		return -1;
-	if (!*name)
-		return unlink(p) == 0 || errno == ENOENT ? 0 : -1;
-	snprintf(body, sizeof(body), "%s\n", name);
-	return kb_write_file_atomic(p, body);
+	if (!*name) {
+		rc = unlink(p) == 0 || errno == ENOENT ? 0 : -1;
+	} else {
+		snprintf(body, sizeof(body), "%s\n", name);
+		rc = kb_write_file_atomic(p, body);
+	}
+	if (rc == 0 && esp_keymap_write(name) != 0)
+		fprintf(stderr, "kdos-settingsd: cannot write the ESP's "
+				"keymap: %s\n", strerror(errno));
+	return rc;
+}
+
+void ks_esp_keymap_sync(void)
+{
+	char km[KS_NAME_MAX];
+
+	ks_keymap(km, sizeof(km));
+	if (esp_keymap_write(km) != 0)
+		fprintf(stderr, "kdos-settingsd: cannot write the ESP's "
+				"keymap: %s\n", strerror(errno));
 }
 
 /* ── XKB ─────────────────────────────────────────────────────────────────
@@ -1380,6 +1614,49 @@ int ks_set_xkb(const KsXkb *x)
 	kb_mkdir_p(dir);
 	r = ks_env_save(&e, p);
 	ks_env_free(&e);
+	return r;
+}
+
+/*
+ * /etc/xdg/kxkbrc IS THE SESSION'S LAYOUT. KWin and the keyboard KCM read
+ * the kxkbrc cascade before the XKB_DEFAULT_* environment startplasma hands
+ * KWin, so a system kxkbrc naming one layout outranks xkb.conf for every
+ * account that has no kxkbrc of its own, the lock screen included. The file
+ * is written whole, in the shape kinstall writes it, and an empty layout
+ * removes it, which leaves the session on xkb.conf's console-following
+ * layout. Every field has passed ks_xkb_check or comes from the console
+ * table, so no value can carry a line break into the file; the character
+ * check below keeps that true for any later caller.
+ */
+int ks_set_kxkbrc(const KsXkb *x)
+{
+	char p[KS_PATH], dir[KS_PATH];
+	KbBuf b = { 0 };
+	int r;
+
+	if (!ks_etc_path(p, sizeof(p), "xdg/kxkbrc") ||
+	    !ks_etc_path(dir, sizeof(dir), "xdg"))
+		return -1;
+	if (!x->layout[0])
+		return unlink(p) == 0 || errno == ENOENT ? 0 : -1;
+	if (!in_set(x->layout, KS_XKB_CHARS, KS_XKB_MAX - 1) ||
+	    !in_set(x->model, KS_XKB_CHARS, KS_XKB_MAX - 1) ||
+	    !in_set(x->variant, KS_XKB_CHARS, KS_XKB_MAX - 1) ||
+	    !in_set(x->options, KS_XKB_CHARS, KS_XKB_MAX - 1)) {
+		errno = EINVAL;
+		return -1;
+	}
+	kb_buf_printf(&b, "[Layout]\nLayoutList=%s\nVariantList=%s\n",
+		      x->layout, x->variant);
+	if (x->model[0])
+		kb_buf_printf(&b, "Model=%s\n", x->model);
+	if (x->options[0])
+		kb_buf_printf(&b, "Options=%s\nResetOldOptions=true\n",
+			      x->options);
+	kb_buf_str(&b, "Use=true\n");
+	kb_mkdir_p(dir);
+	r = kb_write_file_atomic(p, b.p);
+	kb_buf_free(&b);
 	return r;
 }
 
@@ -1698,10 +1975,13 @@ bool ks_vt_to_xkb(const char *keymap, char *layout, size_t ln, char *variant,
  * THE OTHER WAY, FOR `convert`: the console map nearest an XKB layout. The
  * rows are the inverse of the table above, tried for the layout and its
  * variant, then for the layout alone, so a variant the console has no map
- * for (`de(mac)`) still finds the layout's; after them, a map with the
- * layout's own name, then its `-latin1` form, which is how kbd names most of
- * them. Each candidate must be installed, and a layout with no console map at
- * all leaves the console as it was.
+ * for (`de(mac)`) still finds the layout's; after them, the layout's
+ * `-latin1` form, and only then a map with the layout's own name. A BARE kbd
+ * NAME IS THE 7-BIT MAP for most of Europe: `de`, `dk`, `no`, `fr`, `sg` and
+ * `fr_CH` are the ISO-646 national variants, where the keys for ü ö ä ß type
+ * @ [ ] \, and `pt` is the OLPC laptop's, so the rows name the 8-bit maps
+ * and the bare name is the last guess. Each candidate must be installed, and
+ * a layout with no console map at all leaves the console as it was.
  */
 static const struct {
 	const char *layout, *variant, *vt;
@@ -1719,6 +1999,7 @@ static const struct {
 	{ "de",		"nodeadkeys",	"de-latin1-nodeadkeys" },
 	{ "de",		"neo",		"neo" },
 	{ "de",		"dvorak",	"dvorak-de" },
+	{ "ch",		"fr",		"fr_CH-latin1" },
 	{ "ch",		"fr",		"fr_CH" },
 	{ "fr",		"bepo",		"fr-bepo" },
 	{ "fr",		"bepo_latin9",	"fr-bepo-latin9" },
@@ -1740,6 +2021,12 @@ static const struct {
 	{ "tr",		"alt",		"tralt" },
 	{ "us",		"",		"us" },
 	{ "gb",		"",		"uk" },
+	{ "de",		"",		"de-latin1" },
+	{ "fr",		"",		"fr-latin1" },
+	{ "dk",		"",		"dk-latin1" },
+	{ "no",		"",		"no-latin1" },
+	{ "pt",		"",		"pt-latin1" },
+	{ "ch",		"",		"sg-latin1" },
 	{ "ch",		"",		"sg" },
 	{ "si",		"",		"slovene" },
 	{ "hr",		"",		"croat" },
@@ -1782,13 +2069,13 @@ bool ks_xkb_to_vt(const char *layout, const char *variant, char *keymap,
 		if (!v[0])
 			break;
 	}
-	if (ks_keymap_installed(l)) {
-		kb_strlcpy(keymap, l, kn);
-		return true;
-	}
 	snprintf(c, sizeof(c), "%s-latin1", l);
 	if (ks_keymap_installed(c)) {
 		kb_strlcpy(keymap, c, kn);
+		return true;
+	}
+	if (ks_keymap_installed(l)) {
+		kb_strlcpy(keymap, l, kn);
 		return true;
 	}
 	return false;

@@ -8,7 +8,12 @@ colour scheme) and its permissions: network, home folder and what it writes, dev
 card and sound, memory, processor and process limits, when it stops while idle, whether its
 windows show, when it may use the X11 display, and which desktop-wide Wayland and bus grants it
 holds. While a box runs, the page says which boundary held for it — confined, tagged or not
-confined — and why, in the words kdos-appbox recorded at its last launch.
+confined — and why, in the words kdos-appbox recorded at its last launch. A running distrobox
+with no profile and no record, such as the one `kdos-fetch-app` makes and `distrobox enter`
+starts, reads as not confined, because a distrobox shares the home and the session's runtime
+directory, display and bus; the page knows it by the container's `manager` label in
+`kdos-box list --json`. kdos-box's own boxes carry that label too, since `distrobox create` makes
+them, but each has a profile, so one with no record stays unknown.
 
 The page writes no file of its own about a box and never calls podman. It reads the profile
 from `~/.config/kdos/boxes/<box>.conf`, shows beside each control what `kdos-box profile <box>`
@@ -29,9 +34,12 @@ box" badge links to it.
 A namespace, a volume or a podman limit cannot change on a live container, so a change to
 network, home folder, what it writes, devices, graphics card, the init process or a limit, on a box
 that has a container, is written and takes effect only when the box is created again. The page
-remembers such changes in `$XDG_STATE_HOME/kcm_kdos_boxesstaterc` and shows a Recreate banner until
-the box has been made again; Recreate stops, removes and creates the box with kdos-box. Only a
-pack box writes outside its container; any other box keeps its writes inside it, so recreating or
+remembers the changes made on it in `$XDG_STATE_HOME/kcm_kdos_boxesstaterc`, reads those made with
+`kdos-box profile` from the report's `!` line naming the keys that differ, and shows a Recreate
+banner until the box has been made again. For a labelled container (`created = matches` or
+`differs` in the report) the report is authoritative, and a remembered key it does not name is
+forgotten, whichever write set it back; an `unrecorded` container keeps the page's memory.
+Recreate stops, removes and creates the box with kdos-box. Only a pack box writes outside its container; any other box keeps its writes inside it, so recreating or
 removing one deletes them, and the confirmation says so.
 
 The list is read from `kdos-box list --json` alone. The table `kdos-box list` prints is for a

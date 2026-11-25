@@ -33,6 +33,13 @@ the tree link it.
 [entrycheck](../../../../testing/entrycheck.py) gate refuses a desktop entry whose program does not
 resolve. The patch is KDOS's own; no upstream merge request holds it.
 
+`places-size-hint.patch` makes `KFilePlacesView::sizeHint()` measure a row the way the delegate
+paints it: the delegate's own icon size, not `PM_SmallIconSize`, with the icon, text and eject
+areas and their margins, the widest group header, the frame and the vertical scroll bar. A dock
+takes the hint as its first width, so a hint short of the painted row opens Dolphin's Places panel,
+on a launch with no saved `dolphinstaterc`, too narrow for *Recent Locations*, which ends in an
+ellipsis; the file dialogs' places list sizes from the same hint. It is to be offered upstream.
+
 ## Notes
 
 Two of KIO's dependencies are optional upstream and used when the configure finds them:

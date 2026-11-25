@@ -105,9 +105,17 @@ case "$1" in
         fi
         ;;
     status)
+        # The kernel hands the ruleset only to root: an ordinary caller's
+        # `nft list ruleset` prints nothing, which would read as a firewall
+        # that is off. `service list` runs this for every account, so a
+        # caller that is not root is told so and the answer stays unknown.
         if [ ! -x "$NFT" ]; then
             echo "$NAME: not installed"
             exit 1
+        fi
+        if [ "$(id -u)" -ne 0 ]; then
+            echo "$NAME: needs root to read the ruleset"
+            exit 0
         fi
         if "$NFT" list ruleset 2>/dev/null | grep -q 'type filter hook input'; then
             echo "$NAME: ruleset loaded"

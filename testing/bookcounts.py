@@ -160,7 +160,10 @@ def phases(pc):
 
 
 def by_script(rec):
-    """Recipes a 00_cross or 10_bootstrap step compiles from their port: name -> phase."""
+    """Recipes a 00_cross or 10_bootstrap step compiles from their port: name -> phase.
+    The catalogue marks one `(by script)` only when no package phase installs it; a
+    package phase that does is the phase its row gives, as for every port a step
+    also builds."""
     out = {}
     base = os.path.join(ROOT, 'script', 'phases')
     for d in sorted(os.listdir(base)):
@@ -299,7 +302,7 @@ def main():
     phase_table(page, text, ph)
     expect(page, text, r'\| Total \| \| \| ([\d,]+) \| ([\d,]+) \|', [lines, reached],
            'the phase table total')
-    expect(page, text, r'that is every recipe but ([\d,]+), listed in `ports/unbuilt`', [len(skip)],
+    expect(page, text, r'marked `not built` in their tables; it lists ([\d,]+)\.', [len(skip)],
            'the recipes not built')
     expect(page, text, r'The lists hold ([\d,]+) lines naming ([\d,]+) distinct ports; ([\d,]+) of '
            r'those ports are named by more than one phase\. Following `depends =` from the lists '
@@ -353,15 +356,15 @@ def main():
             fail(f'{page}: {n} is catalogued under {title}; its recipe is in {home}')
         if cver != ver:
             fail(f'{page}: {n} is catalogued at {cver}; its recipe says {ver}')
-        if n in script:
-            want = f'`{script[n]}` (by script)'
-        elif n in first:
+        if n in first:
             want = f'`{first[n]}`'
             if first[n] not in named_by.get(n, []):
                 want += ' (as a dependency)'
             again = [d for d in named_by.get(n, []) if d != first[n]]
             if again:
                 want += ', named again by ' + ', '.join(f'`{d}`' for d in again)
+        elif n in script:
+            want = f'`{script[n]}` (by script)'
         else:
             want = 'not built'
         if cphase != want:

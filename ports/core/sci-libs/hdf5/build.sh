@@ -30,3 +30,5 @@ cmake .. -G Ninja \
 	-DHDF5_ENABLE_SZIP_SUPPORT=ON
 ninja
 DESTDIR=$PKG ninja install
+
+install -Dm644 "$SRC/$name-$version/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"

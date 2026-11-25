@@ -1,0 +1,11 @@
+Subject: Give FocusRect the focus state so the style draws the check box and radio button focus frame
+
+--- a/org.kde.desktop/private/FocusRect.qml	2026-10-02 18:54:16.000000000 +0530
++++ b/org.kde.desktop/private/FocusRect.qml	2026-11-17 23:25:41.993786813 +0530
+@@ -11,4 +11,6 @@
+ 
+ StylePrivate.StyleItem {
+     elementType: "focusrect"
++    // The style draws the frame only for an item that has the focus.
++    hasFocus: control?.activeFocus ?? false
+ }

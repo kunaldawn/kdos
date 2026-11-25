@@ -19,9 +19,20 @@ The texts themselves are installed with the packages. kpkg copies every file at 
 source whose name starts with `LICENSE`, `LICENCE`, `COPYING`, `COPYRIGHT` or `NOTICE`, in any
 case, into `/usr/share/licenses/<name>/`, which the size policy never prunes, along with the files
 of a top-level directory so named, such as REUSE's `LICENSES/`. A source file that only starts like
-one, `license.c` or `COPYING.in`, is not copied, and a licence kept elsewhere in the source is
-installed there by the port's `build.sh`. See
+one, `license.c` or `COPYING.in`, is not copied. A text the source keeps anywhere else, such as
+`doc/COPYING`, a section of a README or the comment that opens a header like `lua.h`, is installed
+there by the port's `build.sh`, and so is the licence a source only names, which its `build.sh`
+copies from a package already in the tree (`tessdata-eng` takes the Apache-2.0 text OpenSSL
+ships). A source that holds no text at all and is under no licence that asks for one,
+public-domain or CC0 code and data, or data published under terms no file of it carries
+(`sqlite`, `snooze`, `iana-etc`, `debian-dep11`, `fwupd-snapshot`), installs none. See
 [What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh).
+
+KDOS's own MIT text, the repository's `LICENSE`, is `/usr/share/licenses/kdos/LICENSE` on every
+image, and each package of our own whose licence names `MIT` that the image carries has a
+`LICENSE` link to it in its `/usr/share/licenses/<name>/`; see [The recipe tree and the source offer](../15-image/105-ports.md#kdoss-licence-text).
+`/usr/share/kdos/SOURCES` names the commit the image was built from and the archive releases that
+hold every upstream source.
 
 ## Every licence
 

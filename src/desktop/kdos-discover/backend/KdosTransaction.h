@@ -19,11 +19,29 @@
  *
  * A PREVIEW STEP WAITS FOR AN ANSWER. Its dry run's output becomes the
  * question Discover's proceed dialog asks; Proceed runs the next step and
- * Cancel, or the dialog closed, ends the transaction with nothing run.
+ * Cancel, or the dialog closed, ends the transaction with nothing run. An Ask
+ * step is the same question with no dry run: the plan wrote its title and
+ * text, and it starts no process.
+ *
+ * A STEP THAT DOWNLOADS IS REFUSED OFFLINE BEFORE IT STARTS, with the network
+ * named as the reason, whenever Qt's network information says anything but
+ * Online (offline()), as Discover's own offline sheet does.
  *
  * CANCEL ENDS THE RUNNING STEP'S WHOLE PROCESS GROUP. kdos-appbox runs podman
  * and podman runs apt; a signal to kdos-appbox alone would leave the build
- * going with nobody reading its output.
+ * going with nobody reading its output. A step through pkexec is root once
+ * the password is in, and the user's signal is refused: every step starts
+ * with its standard input an open pipe, and cancel closes it, which the
+ * ports helper takes as its stop (kdos-ports-helper.c, CANCEL IS STDIN
+ * CLOSING). That transaction ends Cancelled only when the process has
+ * exited, with the button disabled until then, so the backend's refresh
+ * after it never meets a root run still holding the package lock.
+ *
+ * A STEP SAYS DOWNLOADING UNTIL ITS FIRST `==> installing` OR `==> restoring
+ * the development files of` LINE. `kdos update install` fetches everything
+ * before it installs anything, and restoring a package built here rebuilds
+ * it, so from either line on the step is building or installing, which
+ * Discover says as Installing.
  * ---------------------------------
  */
 
@@ -34,6 +52,7 @@
 
 #include <Transaction/Transaction.h>
 
+#include <QNetworkInformation>
 #include <QProcess>
 #include <QStringList>
 
@@ -58,6 +77,9 @@ public:
     void cancel() override;
     void proceed() override;
 
+    // Whether a reachability refuses a step that downloads.
+    static bool offline(QNetworkInformation::Reachability reachability);
+
 private:
     void runStep();
     void stepSucceeded();
@@ -77,7 +99,7 @@ private:
     QByteArray m_stdout;
     QStringList m_stderrTail;
     QByteArray m_previewOut; // a Preview step's whole output
-    bool m_asking = false; // a Preview step's question is open
+    bool m_asking = false; // a Preview or Ask step's question is open
     bool m_cancelled = false;
     bool m_finished = false;
 };

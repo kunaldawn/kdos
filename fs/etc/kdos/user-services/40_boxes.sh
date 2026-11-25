@@ -15,10 +15,10 @@
 # lets one survive a logout at all, so a lingering user's boxes keep running.
 #
 # `kdos-box stop`, NOT `podman stop`. A box that shares the host's PID
-# namespace and has no cgroup of its own — every store box — is one `podman
-# stop` signals nothing in, and it would hold this stop for its whole timeout
-# and leave the box `stopping`. kdos-box signals each container's init and the
-# applications its launches started, all containers together.
+# namespace and has no cgroup of its own — every store box — is one whose
+# `podman stop` reaches the init and its descendants and leaves running every
+# application the box's launches started. kdos-box signals those applications,
+# every launch still waiting for the box, and the init, all containers together.
 #
 # THEN PODMAN'S PAUSE PROCESS. A rootless podman keeps one process per user
 # holding its user namespace open, named in $XDG_RUNTIME_DIR/libpod/tmp/
@@ -28,12 +28,14 @@
 # podman's _PODMAN_PAUSE=1, so a pid the kernel has given to something else
 # since is left alone.
 #
-# Bounded, because the backend's whole stop has to fit turnstile's kill
-# timeout (60 s), past which turnstiled signals the user's services again and
-# then gives up on them: thirty seconds here — ten for the containers to take
-# their SIGTERM, then SIGKILL and three more — then the stop grace of each
-# service stopped after this one: five seconds for five of them, mpd's three
-# and ssh-agent's one.
+# Bounded, because a login that arrives during the last logout's stop waits
+# for all of it (pam_turnstile holds it), and the whole stop has to fit
+# turnstile's kill timeout (60 s), past which turnstiled signals the user's
+# services again and then gives up on them: fifteen seconds here — kdos-box
+# stop's ten for the containers to take their SIGTERM, then SIGKILL and three
+# more, and its podman calls — then the stop grace of each service stopped
+# after this one: five seconds for five of them, mpd's three and ssh-agent's
+# one.
 
 NAME="boxes"
 
@@ -57,9 +59,9 @@ case "$1" in
         if [ "${#_boxes[@]}" -gt 0 ]; then
             echo "[KDOS] Stopping $NAME: ${#_boxes[@]} running container(s)"
             if [ -x /usr/local/bin/kdos-box ]; then
-                timeout 30 /usr/local/bin/kdos-box stop "${_boxes[@]}" >/dev/null
+                timeout 15 /usr/local/bin/kdos-box stop "${_boxes[@]}" >/dev/null
             else
-                timeout 30 podman stop --all --time 10 >/dev/null
+                timeout 15 podman stop --all --time 10 >/dev/null
             fi
         fi
         stop_pause

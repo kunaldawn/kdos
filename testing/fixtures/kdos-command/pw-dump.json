@@ -12,6 +12,12 @@
   { "id": 70, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Output/Video", "node.name": "kwin-screencast-300,300", "application.name": "kwin_wayland", "application.process.id": 900 } } },
   { "id": 71, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Input/Video", "node.name": "spectacle", "client.id": 69 } } },
   { "id": 72, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 70, "input-node-id": 71, "state": "active" } },
+  { "id": 74, "type": "PipeWire:Interface:Client", "info": { "props": { "pipewire.sec.pid": 4646, "application.process.id": 4646, "application.process.binary": "plasmashell" } } },
+  { "id": 75, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Input/Video", "node.name": "plasmashell", "client.id": 74 } } },
+  { "id": 76, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 70, "input-node-id": 75, "state": "active" } },
+  { "id": 77, "type": "PipeWire:Interface:Client", "info": { "props": { "pipewire.sec.pid": 4747, "application.process.id": 4646, "application.process.binary": "plasmashell", "application.name": "plasmashell" } } },
+  { "id": 78, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Input/Video", "node.name": "plasmashell", "application.name": "plasmashell", "application.process.binary": "plasmashell", "application.process.id": 4646, "client.id": 77 } } },
+  { "id": 79, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 70, "input-node-id": 78, "state": "active" } },
   { "id": 73, "type": "PipeWire:Interface:Node", "info": { "state": "idle", "props": { "media.class": "Stream/Output/Video", "node.name": "kwin-screencast-idle", "application.process.id": 900 } } },
   { "id": 80, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Output/Video", "node.name": "pipewiresink", "application.name": "gst-launch-1.0", "application.process.id": 950 } } },
   { "id": 81, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 80, "input-node-id": 51, "state": "active" } }

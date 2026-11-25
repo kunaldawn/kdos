@@ -51,3 +51,11 @@ _mk=(USE_BLAZESYM=0 BPFTOOL=/usr/sbin/bpftool prefix=/usr APP_PREFIX=bpf-
 	CFLAGS="$CFLAGS -Wno-error=missing-field-initializers")
 make -C ../libbpf-tools "${_mk[@]}"
 make -C ../libbpf-tools "${_mk[@]}" DESTDIR=$PKG install
+
+install -Dm644 ../LICENSE.txt "$PKG/usr/share/licenses/$name/LICENSE.txt"
+install -Dm644 ../libbpf-tools/bpftool/LICENSE.GPL-2.0 \
+	"$PKG/usr/share/licenses/$name/libbpf-tools/LICENSE.GPL-2.0"
+install -Dm644 /usr/share/licenses/bison/COPYING \
+	"$PKG/usr/share/licenses/$name/libbpf-tools/LICENSE.GPL-3.0"
+install -Dm644 -t "$PKG/usr/share/licenses/$name/libbpf" \
+	../src/cc/libbpf/LICENSE ../src/cc/libbpf/LICENSE.BSD-2-Clause ../src/cc/libbpf/LICENSE.LGPL-2.1

@@ -37,3 +37,21 @@ quit with a Dictionary widget on the desktop hangs this way about once in forty.
 the deferred locks and releases every one before either place that joins the thread, and a timer
 that runs afterwards finds nothing to release. It is to be offered upstream as a merge request
 against `frameworks/kguiaddons`.
+
+`help-local-page.patch` gives a `help:` URL a local fallback. KGuiAddons registers the handler
+that every Qt program linking it uses for `help:`, the address a Help button or a Help menu opens:
+it hands the URL to KHelpCenter when `khelpcenter` is on the `PATH`, and otherwise turns it into a
+docs.kde.org address only for a KDE program's own handbook or System Settings' `/kcontrol` pages,
+and opens nothing for any other path. The live system has no KHelpCenter, so unpatched, the Help
+button of a KDOS settings page, whose `X-DocPath` names a page of the KDOS book
+(`help:/kdos/04-programs/kdos-settings.html#kdos-look`), opens nothing. With the patch, when
+KHelpCenter is absent, a path that names an `.html` file under `doc/HTML/<language>/` in the
+data directories, in the user's language or in English, is handed to `QDesktopServices::openUrl()`
+as a `file:` URL with its fragment: the book is found through the link [kdos-doc](#port-kdos-doc)
+installs at `/usr/share/doc/HTML/en/kdos`. A local file with a fragment reaches Qt's `openUrl()`
+path, and [qt6-qtbase](#port-qt6-qtbase)'s `openurl-local-file.patch` gives it to `xdg-open`
+rather than to the desktop portal's `OpenURI`, which refuses a `file:` URI; in the Plasma session
+`xdg-open` runs `kde-open`, which opens the page in the default browser at the section. A path
+with a `..` component is refused, and a path ending in `/` names that directory's `index.html`. A
+KDE handbook is installed as DocBook, with no `.html` file, so it still goes to docs.kde.org. It
+is to be offered upstream as a merge request against `frameworks/kguiaddons`.

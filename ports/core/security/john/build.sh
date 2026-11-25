@@ -53,6 +53,9 @@ done
 
 rm -rf $PKG/usr/share/john/ztex
 
+install -Dm644 "$SRC/doc/COPYING" $PKG/usr/share/licenses/$name/COPYING
+install -Dm644 "$SRC/doc/LICENSE" $PKG/usr/share/licenses/$name/LICENSE
+
 for f in *2john*; do
 	[ -e $PKG/usr/bin/"$f" ] && continue
 	[ "$(head -c2 "$f")" = '#!' ] || continue

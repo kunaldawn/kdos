@@ -122,7 +122,7 @@ typedef struct {
 	char signer_key[32];
 	char signer_name[64];
 	long long verified;		/* when that key's signature was checked */
-	char channel[512];
+	char origin[512];		/* where the offered lane is fetched from */
 	char *notes;
 	char **pkgs;			/* names of what is behind */
 	int npkgs;
@@ -155,8 +155,9 @@ typedef struct {
 
 	Child *children;
 	Child *refresh;			/* the update check, while it runs */
-	int refresh_fetch;		/* ... and it asks the network */
-	int refetch;			/* a CheckNew wants a fetch after it */
+	int refresh_fetch;		/* ... its CHECK_ mode, 0 a local check */
+	int refetch;			/* the CHECK_ mode a CheckNew wants run
+					 * after it, 0 none */
 	sd_bus_message **waiters;	/* CheckNew calls waiting on it */
 	int nwaiters;
 } Su;
@@ -218,7 +219,7 @@ int run_sync(const char *const *argv, KbBuf *out, KbBuf *err);
 
 /* bus.c */
 int bus_setup(void);
-int bus_refresh(int fetch);
+int bus_refresh(int how);
 void bus_job_progress(void);
 void bus_job_removed(Job *j, int status);
 Job *bus_job_new(int kind, const char *owner);

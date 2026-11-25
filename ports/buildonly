@@ -13,9 +13,17 @@
 # `depends =` names a port's build and run-time needs alike. The image's
 # closure (ports/base, script/lib/imageset.py) does not follow a dependency
 # into a port listed here, so a compiler a recipe builds with stays off the
-# medium. A listed port is still built, still in the binhost and still
-# installed by `kdos update install` or a source build that needs it, and
-# ports/base naming one puts it back on the medium.
+# medium. A listed port is still built, still in the binhost and installed
+# when it is named itself or a source build needs it, and ports/base naming
+# one puts it back on the medium. A prebuilt `kdos update install` from a
+# tree that carries this file as /ports/buildonly follows a dependency into
+# a listed port only where the package's binhost index stanza names that
+# port on its `N:` line (its recorded run-time needs, as wesnoth's name
+# boost); a stanza with no `N:` line, and a tree without the file, keep
+# every edge, and a `--source` install follows every edge of the port and of
+# each package it builds, and cuts a prebuilt one's as above;
+# ports/buildheaders names the listed ports a build installs because
+# installed packages' headers include them.
 #
 # A PORT HERE MUST BE NOTHING A PROGRAM ON THE IMAGE RUNS OR LOADS. 087_gates
 # proves it: linkcheck fails the image when a DT_NEEDED or a #! resolves to
@@ -33,8 +41,11 @@
 # Compilers and their bootstraps. Mesa builds its own OpenCL C kernels for
 # the Intel and NVIDIA drivers with clang, libclc and the SPIR-V translator
 # and loads none of them; mesa-opencl, which loads them, is not in the base.
+# Chromium builds with compiler-rt, crubit, esbuild and typescript-go and
+# runs none of them, so its empty `N:` line keeps them, and crubit's rust,
+# out of a prebuilt Chromium.
 lldb rust go ghc ocaml zig nodejs clang libclc spirv-llvm-translator
-binutils
+binutils compiler-rt crubit esbuild typescript-go
 
 # Build systems, generators and the helpers over them.
 cmake meson muon ninja make bmake scons pkgconf autoconf automake
@@ -58,5 +69,5 @@ python3-meson-python python3-pyproject-metadata python3-setuptools-scm
 fonttools fontforge perl-font-ttf zopfli
 
 # Documentation generators.
-pandoc typst doxygen python3-sphinx docbook-xsl docbook-xml asciidoc
+pandoc typst doxygen python3-sphinx asciidoc
 asciidoctor ruby lowdown xmlto scdoc

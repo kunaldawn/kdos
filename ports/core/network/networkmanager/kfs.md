@@ -17,7 +17,11 @@ image installs.
 `build.sh` adds two files of its own. `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` sets
 `dns=dnsmasq`, so NetworkManager starts a caching [dnsmasq](#port-dnsmasq) on `127.0.0.1` and
 `::1` and feeds it each connection's servers ([Networking](../../../../docs/kdos/02-user-guide/administration.md#networking)
-describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, run in a terminal.
+describes the result). `nmtui.desktop` gives `nmtui` a menu entry under its own name, described
+as *Network connections in a terminal* and run in one. Its categories are `Network;ConsoleOnly;`
+and not `Settings`, so it sits beside the network applications rather than among the settings
+pages, and a search for *network* lists System Settings' Wi-Fi & Networking page and it as two
+plainly different things.
 
 ## Flags
 - `--libexecdir=/usr/lib` — Put the helper programs NetworkManager runs itself (`nm-dhcp-helper`,

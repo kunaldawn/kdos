@@ -18,6 +18,9 @@
         <entry name="maximumRows" type="Int">
             <default>12</default>
         </entry>
+        <entry name="stepOutBelow" type="Int">
+            <default>0</default>
+        </entry>
     </group>
 
 </kcfg>

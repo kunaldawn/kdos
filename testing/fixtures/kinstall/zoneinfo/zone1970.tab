@@ -1,0 +1,6 @@
+# fixture: four zones, none of them UTC; Puerto Rico's codes column is
+# the widest tzdata has
+AD	+4230+00131	Europe/Andorra
+AE,OM	+2518+05518	Asia/Dubai
+IN	+2232+08822	Asia/Kolkata
+PR,AG,CA,AI,AW,BL,BQ,CW,DM,GD,GP,KN,LC,MF,MS,SX,TT,VC,VG,VI	+182806-0660622	America/Puerto_Rico	AST - QC (Lower North Shore)

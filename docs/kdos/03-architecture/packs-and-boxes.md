@@ -84,6 +84,7 @@ counts every line kind in the shipped file:
 | `env` | An environment variable a row needs, `env <row> NAME=VALUE` | 7 |
 | `cmd` | A command a row provides that has no graphical launcher, `cmd <row> <name>` | 25 |
 | `deb` | An application Debian does not carry, `deb <row> <releases-api-url> <asset-pattern>` | 1 |
+| `about` | Licence, author, homepage and description for Discover, for a row no Debian component describes, `about <row> <licence>\|<author>\|<homepage>\|<description>`; read by Discover alone, in any position | 1 |
 | `needs` | A data row an application is useless without, `needs <app> <data>` | 0 |
 | `graft`, `boxgraft` | Where a data row's contents should appear, `graft <data> <path-in-pack> <destination>` | 2 and 1 |
 | `group` | A curated bundle that Discover, the installer and `kdos app install` offer as one choice | 17 lines, 7 groups |
@@ -695,7 +696,9 @@ any other container image is a distrobox container, created and initialised by d
 and it shares the session's runtime directory as distrobox does. In every case podman handles the
 hard parts of a container (user-namespace mapping, seccomp, cgroups, and the `conmon` monitor
 process that KDOS tools identify a box by), and a launch waits for the same readiness marker,
-`container_setup_done`.
+`container_setup_done`, in the box's log for the container's current start, read whole; how the
+check bounds that start, and its fallback for a log podman cannot read, are in
+[the launch path](../04-programs/kdos-appbox.md#the-launch-path), step 8.
 
 A box is created with the flag set distrobox uses for the same job, so an application behaves the
 same whatever its box is made of, and one flag distrobox does not have. The box shares a user

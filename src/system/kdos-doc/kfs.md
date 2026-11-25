@@ -12,11 +12,13 @@ them is in
 [Manual pages and the book](../../../docs/kdos/04-programs/kdos-command.md#manual-pages-and-the-book).
 
 `/usr/bin/kdos-doc`, built from `kdos-doc.c` beside the recipe, opens the book at a page:
-`kdos-doc 04-programs/kdos-command#kdos-theme` hands KHelpCenter that page's file URL, or the
-desktop's browser through `xdg-open` where there is no Help Center, or prints the file's path on a
-console with neither. The page name is checked against letters, digits and `._-/`, with no `..`,
-before it is used, so it can only name a page under `/usr/share/doc/kdos`, and it reaches the
-viewer as one argument through `exec`.
+`kdos-doc 04-programs/kdos-command#kdos-theme` hands KHelpCenter that page's file URL in a graphical
+session, or the desktop's browser through `xdg-open` where there is no Help Center; on a text
+console it opens the page in [lynx](#port-lynx), or `w3m` where lynx is absent, at the anchor's
+heading; and it prints the file's path when its output is not a terminal or no text browser is
+installed, so a pipe or a script gets the path. The page name is checked against letters, digits
+and `._-/`, with no `..`, before it is used, so it can only name a page under
+`/usr/share/doc/kdos`, and it reaches the viewer as one argument through `exec`.
 
 The book is read in the browser, and in the Help Center where [khelpcenter](#port-khelpcenter)
 is installed; the installation medium does not carry it, since it pulls in Qt WebEngine. The
@@ -27,7 +29,9 @@ handbooks, which stay under `help:/`; [kdos-kfs](#port-kdos-kfs) installs the se
 `/usr/share/doc/HTML/en/kdos` to `../../kdos`, and KIO's `help:` worker, which looks a path up
 among the handbooks under `/usr/share/doc/HTML/<language>`, serves `help:/kdos/<page>.html` from
 the book's own files. That is the address a KDOS settings page's Help button opens, from its
-`X-DocPath` (see [Help](../../../docs/kdos/04-programs/kdos-settings.md#help)), and kpkg's manual
+`X-DocPath` (see [Help](../../../docs/kdos/04-programs/kdos-settings.md#help)): in the Help Center
+where it is installed, and otherwise in the default browser at the page's `file:` address under
+the same link, which [kguiaddons](#port-kguiaddons)' `help:` handler finds there. kpkg's manual
 prune names the link as one it keeps. It also installs the menu's Library launcher,
 `kdos-library-kdos-book.desktop`, which opens the book in the browser through `xdg-open` and names
 it as an item of `library:/` (see [kio-library](#port-kio-library)); kdos-kfs installs the
@@ -68,6 +72,14 @@ for stale. See
 
 The build fails when a row of the command index links a section the book does not have, so a
 renamed heading is caught here rather than shipped as a manual page with no body.
+
+A page's NAME line is that row's description cell, held to ASCII. mandoc's `makewhatis` keeps the
+first 150 bytes of a NAME description's roff, an escape such as `\(dq` for `"` counted at its
+written length, and `apropos` prints what it kept, so `mkbook.py` ends a longer description before
+the last clause separator (a comma, semicolon or colon, an opening parenthesis, a ` -- `) that fits, or
+at the last space when none does, and never leaves a bracket open. The cells are written short
+enough that no shipped page is cut; `testing/selftest.sh` checks both. See
+[The manual index](../../../docs/kfs/15-image/080-whatis.md#a-pages-one-line-description).
 
 A command whose own port ships a `kdos-*.1` page, as [kdos-bb](#port-kdos-bb) does, is left to that
 port. Two packages that wrote the same path would be a conflict kpkg refuses, which is also why a

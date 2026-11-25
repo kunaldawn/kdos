@@ -10,7 +10,7 @@
 
 name        = plasma-desktop
 version     = 6.8.2
-release     = 1
+release     = 3
 source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
 sha256      = fff6177d217e60ab747cb34e35ef249afab41c72bbd5ea61d3471ef88864bd80  plasma-desktop-6.8.2.tar.xz
 description = KDE Plasma desktop shell — the desktop and panel containments, Kickoff, the task manager, the emoji selector and the input and session settings

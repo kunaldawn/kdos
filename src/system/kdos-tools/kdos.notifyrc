@@ -1,0 +1,34 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The notifications the kdos command and KDOS's notices post.
+#
+# Every notification sent through libkbase's kb_notify() (kdos remind, the
+# toggles, kdos verify --notify, kdos speech, kdos-shot, kdos-share),
+# `kdos notify`, every kdos-notice notice, and a kdos verb the runner
+# started that failed send the hint x-kde-appname=kdos, which names this
+# file. Plasma then draws them with
+# this file's icon, offers its Configure button, and lists them under
+# "KDOS Tools" on the Notifications page.
+#
+# The [Event/...] group is what makes them configurable: without one Plasma
+# files them under "other applications", which plasma-workspace's
+# /etc/xdg/plasmanotifyrc keeps out of the history, and a reminder that
+# fired while nobody looked would be gone. None of the senders names an
+# event, so the group's Action is not consulted; the page's switches for
+# "KDOS Tools" (popups, the history, Do Not Disturb) are.
+# ---------------------------------
+
+[Global]
+IconName=start-here-kdos
+Name=KDOS Tools
+Comment=The kdos command, reminders, quick toggles and system notices
+
+[Event/notice]
+Name=A KDOS notification
+Comment=A reminder, a toggle, a finished command, or a system notice
+Action=Popup

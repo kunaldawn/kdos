@@ -18,6 +18,12 @@ TL_ROOTS="collection-basic collection-latex collection-latexrecommended
 
 ITL_SRC="$SRC_ROOT/install-tl-$version"
 
+install -Dm644 "$ITL_SRC/LICENSE.TL" "$PKG/usr/share/licenses/$name/LICENSE.TL"
+install -Dm644 "$ITL_SRC/LICENSE.CTAN" "$PKG/usr/share/licenses/$name/LICENSE.CTAN"
+install -Dm644 "$SRC/texmf-dist/doc/bibtex/urlbst/LICENCE-gpl-2.0.txt" "$PKG/usr/share/licenses/$name/COPYING"
+install -Dm644 "$SRC/texmf-dist/doc/latex/base/lppl.txt" "$PKG/usr/share/licenses/$name/lppl.txt"
+head -n 9 "$SRC/texmf-dist/tex/plain/base/plain.tex" > "$PKG/usr/share/licenses/$name/knuth.txt"
+
 perl -I"$ITL_SRC/tlpkg" - "$SRC_ROOT" "$SRC" "$PKG/usr/share" $TL_ROOTS <<'PERL'
 use strict; use warnings;
 use File::Basename qw(dirname);

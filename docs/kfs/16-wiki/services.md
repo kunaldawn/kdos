@@ -31,7 +31,7 @@ Which services start at boot differs between the live medium and an installed sy
 
 | | Live medium | Installed system |
 |:--|:--|:--|
-| Markers in `/etc/service.disabled` | `sshd`, from the image | The [live session]{.idx term="live system"}'s markers, copied with the rest of the root, after which the installer writes or removes one for each of its five service choices. CUPS and the SSH server are off unless chosen |
+| Markers in `/etc/service.disabled` | `sshd`, from the image | The [live session]{.idx term="live system"}'s markers, copied with the rest of the root, after which the installer writes or removes one for each of its five service choices. The SSH server is off unless chosen; CUPS is on unless unticked |
 | Where a change is kept | In memory, gone at power-off, unless a persistence store exists; see [Live persistence](live-persistence.md) | On the root filesystem |
 
 The installer's five choices, and the `services` key of an answer file, are in
@@ -48,7 +48,7 @@ removing it. Nothing else records whether a service starts at boot. The image sh
 
 The installer writes or removes the markers for the services in its table:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=09936ab49b18 -->
 
 The last field is whether the service is on by default.
 
@@ -123,6 +123,9 @@ and supervises `dhcpcd`.
    is stopped as soon as it exits after `SIGTERM`, and killed if it is still running when its stop
    grace runs out (five seconds unless the script named another). `start` on a service that is
    already running starts nothing: it prints `[SKIP] <name>: already supervised (pid N)`.
+   `cups` takes its two companions with it: `80_cups.sh` starts `cups-browsed` and `ipp-usb`
+   after `cupsd` and stops them before it, and either one started while `cupsd` is not running
+   prints `[SKIP] <name>: CUPS is off`.
 
 2. A name that matches no script exactly is matched as part of one, so `service status ssh` reaches
    `70_sshd.sh`. Rely on this only for `status`, `start`, `stop` and `restart`; see the warning
@@ -205,7 +208,11 @@ same holds for every daemon a service script supervises; see the configuration r
   `/run/kdos-init.<service>.log`, under the service name. See [Logs](logs.md).
 - A service that is enabled but skips itself at boot prints a `[SKIP]` line with the reason, for
   example `[SKIP] ngircd: no /etc/ngircd.conf (/usr/share/doc/ngircd/sample-ngircd.conf is the
-  template)`. A script written this way changes nothing at install time: the service starts once
+  template)`, and its stage on the boot splash reads `SKIP` rather than `OK`: `rcS` closes the
+  stage of a script that exits 0 after a line starting `[SKIP]`, and whose log has no
+  `Supervisor started` or `already supervised` line from `ksvc`, with `kdos-splash skip`. A
+  stage that skipped one part and started another reads `OK`. A script
+  written this way changes nothing at install time: the service starts once
   its configuration exists.
 - `kdos doctor` checks that `kdos-powerd`, `kdos-energyd` and `kdos-oomd` are running, by their
   sockets, and warns about each one that is not with the `service start` command that starts it.

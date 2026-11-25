@@ -26,3 +26,6 @@ build against musl.
 `b64.patch`. The series includes
 `build-without-TLS-support.patch`, so this `nc` has none of OpenBSD's TLS options and links no TLS library.
 The program installs as `/usr/bin/nc`, where Debian names it `nc.openbsd`.
+`/usr/share/licenses/netcat` holds `debian/copyright`, with the BSD-2-Clause and BSD-3-Clause
+texts, and `base64-COPYRIGHT`, the ISC and IBM notices that open Alpine's `base64.c`; the IBM grant
+has no SPDX identifier, so the recipe names it `LicenseRef-IBM-DNS`.

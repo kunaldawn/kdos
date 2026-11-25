@@ -156,7 +156,9 @@ variants. KDOS's Qt code keeps the same rule with `QProcess` and an argument lis
 [Writing desktop software](writing-desktop-software.md#starting-a-program).
 
 The process helpers send a child's error output to `/dev/null` unless `kb_proc_verbose` is set, so
-anything whose failure is diagnosed by the child's own message has to turn that on.
+anything whose failure is diagnosed by the child's own message has to turn that on. Every helper
+flushes the caller's `stdout` and `stderr` before it forks, so a partial line printed before a
+`kb_run` comes out ahead of the child's output and never twice.
 
 A secret reaches a child on a descriptor and never in `argv`, because `/proc/<pid>/cmdline` is
 world-readable for the life of the process. The four feeding forms differ in what happens to the
@@ -390,6 +392,34 @@ DECRQM value of `0` means "not recognised" and `4` means "permanently reset", so
 `3` set `KT_CAP_SYNC`. The replies are consumed there, or they would be typed into the program as
 stray characters. The Linux VT answers neither and is skipped rather than waited on.
 
+The Linux VT sends F1 to F5 in a form of its own, `ESC [ [ A` to `ESC [ [ E`, and the decoder
+reads it as those keys. Read as an ordinary CSI, the second `[` would end the sequence and the
+letter after it would be typed into the field with the focus.
+
+On a terminal with `TERM=linux` the library finds the VT behind it once, when it takes the
+terminal, and holds that descriptor until it shuts down. `/dev/tty` is not a VT under `sudo`,
+which runs its command on a pseudo-terminal of its own while the screen stays the console, and
+every console ioctl fails there. The library therefore tries the terminal itself (`KDGKBTYPE`
+succeeds only on a VT), then the VT `sudo` was started from (`SUDO_TTY`, when it names
+`/dev/ttyN`), then `/dev/tty0` when standard input is a pseudo-terminal under a `sudo` that set no
+`SUDO_TTY`. A `sudo` whose `SUDO_TTY` names a pseudo-terminal, a pseudo-terminal outside `sudo`,
+such as an ssh login with `TERM=linux`, and any other `TERM` are not on this machine's screen and
+get no VT.
+
+The console keymap sends a plain Tab for `Shift+Tab`: keycode 15 has no shifted string, so the
+`ESC [ Z` a terminal emulator or an ssh session sends never arrives on a VT. When a Tab arrives and
+the library holds a VT, the decoder asks that VT which modifiers are held (`TIOCLINUX`,
+`TIOCL_GETSHIFTSTATE`) and reports `KT_K_BTAB` while Shift is down, so `Shift+Tab` moves back under
+`sudo kinstall` on tty2 as well as on a VT a program owns. On a VT that is not the caller's
+controlling terminal the kernel answers only a caller with `CAP_SYS_ADMIN`, so an unprivileged
+program there gets a plain Tab. Anywhere without a VT a Tab is a Tab.
+
+On the Linux VT the library sets the console's colour map to the theme's eight slots for as long as
+it owns the screen, and puts back the map it found (the `/etc/vtrgb` palette `kdos-getty` loaded)
+when it hands the screen back. The map is console-wide, so it is set through the VT descriptor
+above; with no VT, the palette is left alone. Without the map, the screen keeps the login
+palette, whose blue, magenta and cyan sit where the theme's rules and hints belong.
+
 A frame is bracketed where that bit is set: `CSI ? 2026 h` before the diff and `CSI ? 2026 l`
 after it. A diff frame is a scatter of cursor moves and single cells, and a terminal that draws
 them as they arrive shows a menu before the one under it is erased. The close is written again when
@@ -411,7 +441,10 @@ will draw against stale dimensions and silently fail its own bounds checks.
 The caret goes to the backend when the backend has one. `ktui_term_caret()` is the one call a
 program makes to say where it is typing, and it writes the terminal escape only when nothing else
 claims the answer: a backend that leaves the `caret` entry NULL keeps the escape, which is what the
-terminal backend does.
+terminal backend does. With no caret placed the cursor stays hidden, and on a Linux console each
+frame's flush sends the hide escape again (`ktui_term_caret_hold()`): the console's cursor state
+belongs to the virtual console, and another writer on it would otherwise turn the cursor back on
+wherever the last frame's write left it.
 
 The pointer follows the same rule. `KtuiBackend.pointer` is handed the cell the pointer is on and
 answers whether it drew a pointer itself; a backend that composites an arrow into a framebuffer it
@@ -420,6 +453,16 @@ under the pointer, which is the pointer a terminal, a `--dump` and the console c
 cannot be drawn in this library: it links nothing but musl, and an arrow needs a pixel buffer. The
 hook is called on every flush, with a negative `x` for no pointer, because that call is the only
 thing that tells a backend to take the last arrow off the screen.
+
+A program run on the real terminal leaves the screen and comes back through
+`ktui_run_console(argv)`: the terminal and the input layer are suspended, the program runs on the
+terminal as a shell would run it, `-- press Enter to return --` waits for Enter, and the screen is
+restored. `ktui_run_console_note(note, argv)` does the same and prints `note` on the restored
+terminal before the program starts, so a shell opened from a TUI says how to come back (the
+installer's failed-step **Shell** prints "A root shell. Type exit to return to the installer.").
+It starts the program with `SHLVL=2`: `bash.bashrc` draws its banner only in a terminal's first
+shell, and a banner taller than the console would scroll the note away before the prompt. Both
+return the program's wait status.
 
 Offscreen rendering takes a fixed size and writes the cell buffer out as plain text, with no
 terminal at all. A geometry defect is invisible to the compiler and to a test suite that cannot
@@ -447,7 +490,12 @@ and a focus the frame did not draw goes to whatever now stands where it last sto
 `ktui_id_base() + k` names the k-th control of a group only at depth 0, since inside a scope the
 next id is a hash. `ktui_state(id, n)` keeps a zeroed record of up to `KTUI_STATE_MAX` (64) bytes per
 id in a fixed 256-slot table; a record unasked-for in 600 frames can be reclaimed, and a full table
-answers NULL rather than growing, so a caller keeps a fallback. `ktui_input` keeps its caret there.
+answers NULL rather than growing, so a caller keeps a fallback. `ktui_input` keeps its caret there,
+with the frame it was last drawn with the focus: a field focused now that was not drawn focused in
+the frame before (reached by Tab, or on a page drawn again after it was left) puts its caret at the
+end of its text before the key is applied, so typing into a prefilled field appends to it and a
+reused id hands over no other field's caret. A click then places the caret where it pressed, and
+while the field keeps the focus from frame to frame the caret stays where the keys moved it.
 
 The text field is a `KtuiField`: the caller's buffer and capacity, a byte caret, a secret flag and
 a placeholder. `ktui_field_key` owns Left and Right (by word with Ctrl), Home, End, Backspace,
@@ -500,6 +548,25 @@ made itself, so a page moved onto it draws the cells it drew before; the install
 out through it. A row past the bottom of the rect is still handed out at its real position, because
 clipping is the draw calls' business.
 
+Text is drawn into a width: `ktui_draw_text()` stops at it, `ktui_para()` wraps into it (at the
+line's last space, or after its last `/` when the line has no space, so a path or a zone name
+breaks after a separator), and
+`ktui_draw_text_fit()` cuts a string a tier ellipsis short of it, so a reader sees that the row goes
+on. No control character reaches the terminal through the cell grid: `ktui_wcwidth()` gives a TAB
+one cell and every other C0 character, DEL and C1 character none, and `ktui_draw_text()` draws a
+TAB as one blank cell and skips the rest. A control byte sent as a glyph would move the terminal's
+cursor instead of painting a cell, every cell after it would land in another column than the diff
+believes, and the diff would never repaint them. A caller that wants a TAB's real stops expands it
+before drawing. `ktui_pw_meter()` rates a password with `ktui_pw_score()`, by its length in characters alone:
+under 8 `short`, 8 to 15 `fair`, 16 and over `long, good`, the tiers of the graphical installer's
+strength hint, so both installers rate one password the same. `ktui_draw_cut_count()` counts the
+`ktui_draw_text()` and `ktui_draw_textf()` calls since `ktui_draw_cut_reset()` whose string was
+wider than its width or reached past the right edge of the clip, the line a dump cannot tell from
+one that ends there. A fitted string is not counted, since `ktui_draw_text_fit()` hands over only
+the part it shows, and a text field draws only the part of its value it shows, so it is not counted
+either; `testing/fixtures/kinstall/pagedraw.c` prints it as `# cuts`, and `testing/selftest.sh`
+refuses any installer page at 80x33 whose count is not 0.
+
 The splitter and the fold are frame controls that are named rather than counted: each claims
 `ktui_id_str()` of its name and keeps what the hand did in `ktui_state()` under that id, so a
 control coming and going above one does not hand its state to the next. `ktui_split()` cuts a rect
@@ -508,6 +575,15 @@ the arrows along its axis and `Home` move. `ktui_fold_begin()` draws a section h
 marker and returns whether it is open; while it is open its body is drawn inside an id scope the
 fold pushed, closed by `ktui_fold_end()`, so the body's controls come and go without moving an id
 after the fold.
+
+A modal takes the focus ring over and hands it back on close. `ktui_modal_alert()` has one
+button; `ktui_modal_confirm(title, msg, yes, no, on_yes)` has two and opens with `no` selected,
+because every confirm guards something that cannot be taken back, so the Enter that arrives with
+the dialog, or a doubled one, answers no. `←`, `Tab` or `Shift+Tab` selects `yes`, `Enter` or
+`Space` then runs `on_yes`, and `Esc` always answers no. `ktui_modal_event()` answers the keys
+for a surface that runs no immediate-mode frame. The message breaks only at `\n`; its column is
+the dialog's width less six, at most 50 cells, and each button is wide enough for the longer label and its
+two focus markers.
 
 Three rules hold about the library's own state, each guarding a link or focus failure:
 
@@ -606,7 +682,9 @@ colour it never got. There is one bit per colour rather than one for the pair, b
 would freeze the theme's background into a cell as a literal, after which a change of accent leaves
 a rectangle of the old scheme behind.
 
-A caller's own literal reaches a frame only through `ktui_draw_put()`, which copies whole cells.
+A caller's own literal reaches a frame only through `ktui_draw_put()`, which copies whole cells,
+and `ktui_draw_swatch()`, one full block in a colour of another scheme (the installer's preview of
+an accent not chosen yet), which falls back to a slot where the terminal has only slots.
 `ktui_draw_blend()` and `ktui_draw_shadow()` compute their literals by mixing colours already in
 the frame rather than taking a colour of the caller's choosing. Every other draw call takes slots
 and clears the literals, because a frame that stopped following the scheme would be a second

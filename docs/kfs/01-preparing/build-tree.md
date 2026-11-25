@@ -164,7 +164,7 @@ a killed run.
 
 Two targets empty `build/`, and they differ in what they keep:
 
-<!-- kfs:include Makefile lines=272-296 pin=88231f703ea7 -->
+<!-- kfs:include Makefile lines=290-314 pin=88231f703ea7 -->
 
 `make cleanbuild` keeps the snapshots, the compiler cache and the package store, which stay valid
 for the next build. `make clean` removes those too. Both keep `build/keys` and

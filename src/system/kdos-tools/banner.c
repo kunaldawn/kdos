@@ -27,7 +27,15 @@
  * It gets out of the way when it should: no animation unless stdout is a tty,
  * and never when KDOS_NO_ANIM is set, TERM is dumb, or the terminal is too
  * short for the banner (scrolling mid-animation looks like a glitch, not a
- * feature). Any keypress skips the rest instantly.
+ * feature). A terminal whose height is known and too short for the logo, the
+ * fetch and a prompt row gets the fetch alone, and one still too short for the
+ * fetch and a prompt row gets the fetch's head: whole blank-line-separated
+ * sections are dropped from the end (the tagline, HARDWARE, SOFTWARE, ...)
+ * until the rest and a prompt row fit, or, if no section boundary fits, the
+ * fetch is cut at one row short of the screen. The user@host line, the rule,
+ * SYSTEM and the OS line come first, so an 80x25 console always keeps them;
+ * printed whole, the 30-line fetch scrolls them off its top. Any keypress
+ * skips the rest instantly.
  *
  * The frame delay is a nanosleep and the keypress check a zero-timeout poll
  * on stdin: nothing in the animation forks, on a path that runs at every
@@ -112,6 +120,8 @@ static int term_cols(void)
 	return 80;
 }
 
+/* 0 when no height is known (stdout redirected and $LINES unset): a banner
+ * written to a file or a pipe has no screen to fit and keeps its logo. */
 static int term_rows(void)
 {
 	const char *l = getenv("LINES");
@@ -120,7 +130,7 @@ static int term_rows(void)
 	struct winsize ws;
 	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row)
 		return ws.ws_row;
-	return 24;
+	return 0;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -184,6 +194,38 @@ static char *info_text(void)
 	return buf;
 }
 
+/* A fetch line with nothing visible on it: the break between two sections. */
+static int blank_line(const char *s)
+{
+	char *v = strip_ansi(s);
+	int blank = 1;
+	for (const char *p = v; *p; p++)
+		if (*p != ' ' && *p != '\t' && *p != '\r')
+			blank = 0;
+	free(v);
+	return blank;
+}
+
+/* The fetch, or as much of its head as leaves a row for the prompt on a
+ * screen `rows` high (0: no height known, all of it). The cut falls on the
+ * last section break that fits, so a section is shown whole or not at all;
+ * with no break that fits it falls one row short of the screen. */
+static void push_fetch(char **info, int ninfo, int rows)
+{
+	int keep = ninfo;
+	if (rows > 0 && ninfo + 1 > rows) {
+		keep = rows > 1 ? rows - 1 : 1;
+		for (int i = rows - 1; i > 0; i--) {
+			if (i < ninfo && blank_line(info[i])) {
+				keep = i;
+				break;
+			}
+		}
+	}
+	for (int i = 0; i < keep && i < ninfo; i++)
+		push(kb_strdup(info[i]));
+}
+
 /* Paste the logo column and the info column into one array of raster lines. */
 static void compose(void)
 {
@@ -200,9 +242,9 @@ static void compose(void)
 	int ninfo = 0;
 	char **info = raw[0] ? split_lines(raw, &ninfo) : NULL;
 
+	int rows = term_rows();
 	if (!nlogo) {
-		for (int i = 0; i < ninfo; i++)
-			push(kb_strdup(info[i]));
+		push_fetch(info, ninfo, rows);
 		return;
 	}
 
@@ -227,7 +269,19 @@ static void compose(void)
 	/* Side by side only if it fits. A 1280x800 TTY with the 16x32 console
 	 * font is 80 columns; the logo plus the info column is wider than that,
 	 * and a banner that wraps mid-line looks like a crash, not a boot. */
-	if (INDENT + w + GAP + iw > term_cols()) {
+	int stacked = INDENT + w + GAP + iw > term_cols();
+
+	/* The logo only with a row to spare for the prompt: stacked it costs
+	 * its own height and a blank line, side by side whatever it is taller
+	 * than the fetch. Without that room the fetch is the part kept, since
+	 * it carries the user@host and OS lines a scrolled screen would lose. */
+	int need = stacked ? nlogo + 1 + ninfo : (nlogo > ninfo ? nlogo : ninfo);
+	if (rows > 0 && ninfo && need + 1 > rows) {
+		push_fetch(info, ninfo, rows);
+		return;
+	}
+
+	if (stacked) {
 		for (int i = 0; i < nlogo; i++) {
 			KbBuf b = {0};
 			kb_buf_printf(&b, "%*s%s", INDENT, "", logo[i]);
@@ -323,27 +377,6 @@ static void animate(double delay)
 		tcsetattr(STDIN_FILENO, TCSANOW, &saved);
 }
 
-/*
- * One recorded lesson under the banner, in the secondary colour (SGR 33 — the
- * slot /etc/vtrgb and the accent's Konsole scheme both point at the scheme's
- * secondary; never bold, because on a 512-glyph VT the intensity bit selects
- * the second font page).
- *
- * NOT printed in --plain, and not when stdout is redirected. `kdos-banner
- * --plain` has to be byte-stable so it can be diffed at all, and a line that
- * varies by day and by boot makes every such diff a failure. The animated
- * login is the surface this is for.
- */
-static void oracle_line(void)
-{
-	char *line = kdt_oracle_line();
-	if (!line)
-		return;
-	if (cells(line) + INDENT <= term_cols())
-		printf("\n%*s\033[33m%s\033[0m\n", INDENT, "", line);
-	free(line);
-}
-
 int banner_main(int argc, char **argv)
 {
 	compose();
@@ -358,10 +391,11 @@ int banner_main(int argc, char **argv)
 	}
 
 	/* One row spare for the prompt: on a 33-row TTY the banner is close to
-	 * the full height, and animating something that scrolls looks broken.
-	 * The oracle costs two more rows, so it is height-guarded with them. */
-	int want = nlines + 2;
-	if (nlines >= term_rows()) {
+	 * the full height, and animating something that scrolls looks broken. */
+	int rows = term_rows();
+	if (rows <= 0)
+		rows = 24;
+	if (nlines >= rows) {
 		plain(0);
 		return 0;
 	}
@@ -369,7 +403,5 @@ int banner_main(int argc, char **argv)
 	const char *d = getenv("KDOS_BANNER_DELAY");
 	double delay = d && *d ? atof(d) : 0.012;
 	animate(delay);
-	if (want < term_rows())
-		oracle_line();
 	return 0;
 }

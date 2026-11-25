@@ -60,23 +60,57 @@ static constexpr int PreviewNames = 12;
 
 QString installPreviewText(const InstallPreview &p)
 {
-    const QString size = QLocale().formattedDataSize(qint64(p.bytes));
+    // Number and unit joined by a no-break space: the dialog wraps its
+    // text, and a break between them leaves the unit alone on a line. The
+    // dialog's label reads the text as Text.StyledText, which collapses a
+    // raw U+00A0 with the other white space, so the text goes out
+    // HTML-escaped and the no-break space as the entity &nbsp;.
+    const QString size = QLocale().formattedDataSize(qint64(p.bytes)).replace(u' ', QChar::Nbsp);
+    // `downloads` counts every prebuilt package and `bytes` only what is not
+    // in the binhost cache yet, so a total of no bytes is a reinstall from
+    // that cache: it is said to be downloaded already, never "0 bytes".
+    // `downloads` also counts the restores of development files, which are
+    // said apart from the prebuilt installs; the size stays the whole
+    // download, since a restore downloads its package too.
+    const int restores = qBound(0, p.restores, p.downloads);
+    const int prebuilt = p.downloads - restores;
     QString said;
     if (p.builds == 0 && p.downloads == 0) {
         said = i18n("Everything it needs is installed already.");
     } else if (p.builds == 0) {
-        said = i18np("Downloads %1 package (%2).", "Downloads %1 packages (%2).", p.downloads, size);
+        QString lead;
+        if (prebuilt == 0)
+            lead = i18np("Restores the development files of %1 installed package",
+                         "Restores the development files of %1 installed packages",
+                         restores);
+        else if (restores == 0)
+            lead = i18np("Installs %1 package", "Installs %1 packages", prebuilt);
+        else
+            lead = i18ncp("@info %2 says how many packages are installed",
+                          "%2 and restores the development files of %1 installed package",
+                          "%2 and restores the development files of %1 installed packages",
+                          restores,
+                          i18np("Installs %1 package", "Installs %1 packages", prebuilt));
+        said = p.bytes == 0 ? i18nc("@info %1 says what is installed", "%1, already downloaded.", lead)
+                            : i18nc("@info %1 says what is installed, %2 is a size", "%1; downloads %2.", lead, size);
     } else {
-        const QString builds = i18np("Builds %1 package here", "Builds %1 packages here", p.builds);
-        said = p.downloads == 0 ? i18nc("@info %1 says how many packages are built", "%1; building can take hours.", builds)
-                                : i18ncp("@info %2 says how many packages are built, %3 is a size",
-                                         "%2, downloads %1 (%3); building can take hours.",
-                                         "%2, downloads %1 (%3); building can take hours.",
-                                         p.downloads,
-                                         builds,
-                                         size);
+        QString lead = i18np("Builds %1 package here", "Builds %1 packages here", p.builds);
+        if (prebuilt > 0)
+            lead = i18ncp("@info %2 says how many packages are built", "%2 and installs %1 prebuilt", "%2 and installs %1 prebuilt", prebuilt, lead);
+        if (restores > 0)
+            lead = i18ncp("@info %2 says what is built and installed",
+                          "%2 and restores the development files of %1 installed package",
+                          "%2 and restores the development files of %1 installed packages",
+                          restores,
+                          lead);
+        if (p.downloads == 0)
+            said = i18nc("@info %1 says what is built", "%1; building can take hours.", lead);
+        else if (p.bytes == 0)
+            said = i18nc("@info %1 says what is built and installed", "%1, already downloaded; building can take hours.", lead);
+        else
+            said = i18nc("@info %1 says what is built and installed, %2 is a size", "%1, downloading %2; building can take hours.", lead, size);
     }
-    said = said.toHtmlEscaped();
+    said = said.toHtmlEscaped().replace(QChar::Nbsp, u"&nbsp;"_s);
     if (!p.built.isEmpty()) {
         QStringList names;
         for (const QString &n : p.built.mid(0, PreviewNames))
@@ -87,6 +121,29 @@ QString installPreviewText(const InstallPreview &p)
         said += u"<br/>"_s + i18nc("@info %1 is a list of package names", "Built here: %1", list);
     }
     return said;
+}
+
+// What `kdos-box remove <box> --purge` takes and leaves, in the words of its
+// own output: the container goes with the profile and every launcher
+// exported from it; a pack box's directory (its writable layer, snapshots and
+// private home) stays, and so does the home folder, which the box shares.
+static Step askRemoveBox(const QString &box, const QString &base)
+{
+    Step s;
+    s.kind = Step::Kind::Ask;
+    s.question = i18nc("@title:window", "Remove the box %1?", box);
+    const QString name = box.toHtmlEscaped();
+    if (base.startsWith("pack:"_L1))
+        s.questionText = i18n(
+            "The box %1 is deleted with its profile and every launcher exported from it. Its writable layer, snapshots and private home stay in "
+            "~/.local/share/kdos/boxes/%1, and so do the files in your home folder.",
+            name);
+    else
+        s.questionText = i18n(
+            "The box %1 is deleted with every package installed in it, its profile and every launcher exported from it. The files in your home folder "
+            "stay.",
+            name);
+    return s;
 }
 
 static Step packd(const QString &verb, const QString &id)
@@ -265,7 +322,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         const auto pack = ctx.packs.constFind(e.id);
         const bool stored = pack != ctx.packs.constEnd() && pack->origin == "store"_L1;
         if (box != ctx.boxes.constEnd() && box->base.startsWith("pack:"_L1)) {
-            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box->name}) << run(u"kdos-box"_s, {u"remove"_s, box->name});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box->name}) << run(u"kdos-box"_s, {u"remove"_s, box->name, u"--purge"_s});
             if (stored)
                 plan.steps << packd(u"remove"_s, e.id);
             plan.steps << launchers();
@@ -309,7 +366,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         if (e.packOrigin != "store"_L1)
             return refuse(i18n("%1 is on the medium; nothing of it is installed.", e.name));
         if (e.kind == "app"_L1 && ctx.boxes.contains(boxNameForPack(e.id)))
-            plan.steps << run(u"kdos-box"_s, {u"stop"_s, boxNameForPack(e.id)}) << run(u"kdos-box"_s, {u"remove"_s, boxNameForPack(e.id)});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, boxNameForPack(e.id)}) << run(u"kdos-box"_s, {u"remove"_s, boxNameForPack(e.id), u"--purge"_s});
         if (e.kind == "data"_L1)
             plan.steps << packd(u"ungraft"_s, e.id);
         plan.steps << packd(u"remove"_s, e.id);
@@ -321,12 +378,34 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
     case Lane::Box:
         if (!isSafeId(e.id))
             return refuse(i18n("“%1” is not a box name.", e.id));
-        plan.steps << run(u"kdos-box"_s, {u"stop"_s, e.id}) << run(u"kdos-box"_s, {u"remove"_s, e.id});
+        plan.steps << askRemoveBox(e.id, ctx.boxes.value(e.id).base.isEmpty() ? e.boxBase : ctx.boxes.value(e.id).base);
+        plan.steps << run(u"kdos-box"_s, {u"stop"_s, e.id}) << run(u"kdos-box"_s, {u"remove"_s, e.id, u"--purge"_s});
         return plan;
 
-    case Lane::Port:
     case Lane::PortSource:
-        return refuse(i18n("Host software arrives and leaves with the system version; it is not removed one program at a time."));
+        // An installed port is one package whichever twin's page asks: the
+        // same removal as the binhost's twin. Not installed, nothing of it
+        // is here to remove.
+        if (e.state == EntryState::None)
+            return refuse(i18n("Host software arrives and leaves with the system version; it is not removed one program at a time."));
+        [[fallthrough]];
+    case Lane::Port:
+        // Only a port installed on request that nothing installed needs. The
+        // dry run is a Preview step before pkexec, which needs no root: what
+        // it prints becomes the question Discover asks, and `kdos update
+        // remove` refuses there, with its reason and without the password,
+        // when the machine changed since the list was read.
+        if (!isSafeId(e.id))
+            return refuse(i18n("“%1” is not a port name.", e.id));
+        if (e.state == EntryState::None)
+            return refuse(i18n("%1 is not installed.", e.name));
+        if (!e.neededBy.isEmpty())
+            return refuse(i18n("%1 is needed by %2, which is installed.", e.name, e.neededBy));
+        if (!e.removable)
+            return refuse(i18n("%1 is part of the KDOS system; it arrives and leaves with the system version.", e.name));
+        plan.steps << preview({u"update"_s, u"remove"_s, u"--dry-run"_s, e.id});
+        plan.steps << run(u"pkexec"_s, {ctx.portsHelper, u"remove"_s, e.id});
+        return plan;
 
     case Lane::Archive:
     case Lane::PackFile:

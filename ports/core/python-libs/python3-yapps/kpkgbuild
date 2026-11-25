@@ -10,7 +10,7 @@
 
 name        = python3-yapps
 version     = 2.2.0
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/Y/Yapps/Yapps-$version.tar.gz
 sha256      = d6e16a8e22ab559ca52eab58cb0015bb088d6889fa06db795222cdccae2354af  python3-yapps-2.2.0.tar.gz
 description = Yet Another Python Parser System, the yapps2 LL(1) parser generator

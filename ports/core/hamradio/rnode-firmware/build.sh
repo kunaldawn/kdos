@@ -53,3 +53,4 @@ done
 exec rnodeconf --nocheck --fw-version "$ver" "$@"
 KDOS_SH
 chmod 755 "$PKG/usr/bin/rnodeconf-local"
+install -Dm644 "$PORT_SRC/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"

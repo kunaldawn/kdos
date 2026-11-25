@@ -11,7 +11,8 @@
 #   DIR/home     $HOME: favorites with codes, a user menu.conf, three box
 #                profiles, a kglobalshortcutsrc, a Zeal docset directory
 #   DIR/root     $KDOS_RUNNER_ROOT: /etc/kdos/menu.conf, applications,
-#                /usr/share/kglobalaccel, two installed KCMs, both books,
+#                /usr/share/kglobalaccel, two installed KCMs, both books
+#                (one heading in two chapters, one twice in a chapter),
 #                kdos manual pages, a kiwix library file
 #   DIR/bin      stubs first on $PATH: each records its argument vector, one
 #                element per line, in DIR/ran/<name>, and `kdos` fails for
@@ -27,7 +28,8 @@ H=$D/home R=$D/root
 mkdir -p "$H/.config/kdos/boxes" "$H/.local/share/applications" \
 	"$R/etc/kdos" "$R/usr/share/applications" "$R/usr/share/kglobalaccel" \
 	"$R/usr/lib/qt6/plugins/plasma/kcms/systemsettings" \
-	"$R/usr/share/doc/kdos/02-user-guide" "$R/usr/share/doc/kfs/41-system" \
+	"$R/usr/share/doc/kdos/02-user-guide" "$R/usr/share/doc/kdos/03-architecture" \
+	"$R/usr/share/doc/kfs/41-system" \
 	"$R/usr/share/man/man1" "$R/usr/share/man/man7" "$R/var/lib/kiwix" \
 	"$R/mnt/iso/packs" "$D/bin" "$D/ran"
 
@@ -114,6 +116,19 @@ cat > "$R/usr/share/doc/kdos/02-user-guide/updates.html" <<'EOF'
 <h3 id="photosynthesis-of-slots"><span class="n">3.1</span> Photosynthesis of slots &amp; trees</h3>
 <h4 id="deep">Too deep to index</h4>
 </body></html>
+EOF
+# One heading in two chapters, one only in the second, and one twice in the
+# first.
+cat > "$R/usr/share/doc/kdos/02-user-guide/administration.html" <<'EOF'
+<html><body><h1 id="administration">Administration</h1>
+<h2 id="the-lantern-gate">The lantern gate</h2>
+<h2 id="lamp-notes">Lamp notes</h2>
+<h3 id="lamp-notes-1">Lamp notes</h3></body></html>
+EOF
+cat > "$R/usr/share/doc/kdos/03-architecture/security-model.html" <<'EOF'
+<html><body><h1 id="the-security-model">The security model</h1>
+<h2 id="the-lantern-gate">The lantern gate</h2>
+<h2 id="lantern-keys">Lantern keys</h2></body></html>
 EOF
 cat > "$R/usr/share/doc/kfs/41-system/kdos-box.html" <<'EOF'
 <html><body><h1 id="kdos-box" data-number="41.3">kdos-box</h1>

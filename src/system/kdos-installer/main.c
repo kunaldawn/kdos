@@ -9,6 +9,8 @@
  * ---------------------------------
  */
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +22,7 @@
 int ki_page;
 int ki_quit;
 int ki_help;
+extern int ki_unattended;	/* pages.c: the Install page draws no buttons */
 
 static char nav_err[160];
 static double nav_err_at;
@@ -164,15 +167,30 @@ static void draw_nav(int y)
 
 	ktui_draw_hline(0, y - 1, ktui_w, KT_G_HL, KT_DIM, KT_BG);
 
-	if (nav_err[0] && kb_now_s() - nav_err_at < 8.0)
-		ktui_draw_textf(1, y, ktui_w - 40, KT_ERR, KT_BG, 0, "! %s", nav_err);
-	else if (p->subtitle)
-		ktui_draw_text(1, y, ktui_w - 40, p->subtitle, KT_MID, KT_BG, 0);
+	/* The status line runs to the column before Back, or to the edge on a
+	 * page with no buttons, and a message longer than that ends in an
+	 * ellipsis rather than under a button. The Install page's line says
+	 * whether the install is still writing, finished or stopped; during
+	 * Prepare, step 0, which checks the answers and unmounts the target,
+	 * nothing has been written, and the line does not claim it has. */
+	int bx = ktui_w - 34;
+	int sw = p->hide_nav ? ktui_w - 2 : bx - 2;
+	const char *sub = p->subtitle;
+
+	if (!strcmp(p->id, "install"))
+		sub = inst.done ? "finished" : inst.failed ? "stopped"
+		    : inst.cur <= 0 ? "preparing — nothing written yet" : sub;
+	if (nav_err[0] && kb_now_s() - nav_err_at < 8.0) {
+		char m[sizeof(nav_err) + 4];
+
+		snprintf(m, sizeof(m), "! %s", nav_err);
+		ktui_draw_text_fit(1, y, sw, m, KT_ERR, KT_BG, 0);
+	} else if (sub)
+		ktui_draw_text_fit(1, y, sw, sub, KT_MID, KT_BG, 0);
 
 	if (p->hide_nav)
 		return;
 
-	int bx = ktui_w - 34;
 	if (ktui_button(krect(bx, y, 14, 1), "Back", ki_page > 0, 0))
 		nav_back();
 	/* The page before the summary says "Review", not "Next" — the label is
@@ -188,48 +206,10 @@ static void draw_hints(int y)
 	if (ki_pages[ki_page]->hide_nav)
 		hint = " Tab move   Enter activate   L log   F1 help   ^Q quit ";
 	else
-		hint = " Tab move   Enter activate   Alt+</> page   F1 help   ^Q quit ";
+		hint = " Tab move   Enter activate   Alt+B/N page   F1 help   ^Q quit ";
 
 	ktui_draw_fill(krect(0, y, ktui_w, 1), KT_SURFACE);
 	ktui_draw_text(1, y, ktui_w - 2, hint, KT_MID, KT_SURFACE, 0);
-}
-
-static void draw_help(void)
-{
-	int w = 60, h = 20;
-	if (w > ktui_w - 4)
-		w = ktui_w - 4;
-	if (h > ktui_h - 4)
-		h = ktui_h - 4;
-	int x = (ktui_w - w) / 2, y = (ktui_h - h) / 2;
-
-	KRect r = krect(x, y, w, h);
-	ktui_draw_fill(r, KT_SURFACE);
-	ktui_draw_shadow(r);
-	ktui_draw_box(r, "KEYS", KT_ACCENT, KT_SURFACE, 1);
-
-	static const char *rows[][2] = {
-		{ "Tab / Shift-Tab", "move between controls" },
-		{ "Arrows", "move inside a list or a field" },
-		{ "Enter / Space", "activate, toggle, choose" },
-		{ "Alt + Left/Right", "previous / next page" },
-		{ "Esc", "back a page, or close this" },
-		{ "F1", "this help" },
-		{ "L", "full log, on the install and done pages" },
-		{ "Ctrl+U", "clear a text field" },
-		{ "Ctrl+Q", "quit the installer" },
-		{ "", "" },
-		{ "mouse", "click anything, wheel scrolls lists" },
-		{ "", "on a bare tty the pointer is read" },
-		{ "", "straight from /dev/input — no gpm" },
-		{ NULL, NULL },
-	};
-
-	int ry = y + 2;
-	for (int i = 0; rows[i][0] && ry < y + h - 1; i++, ry++) {
-		ktui_draw_text(x + 3, ry, 20, rows[i][0], KT_ACCENT, KT_SURFACE, 0);
-		ktui_draw_text(x + 22, ry, w - 25, rows[i][1], KT_TEXT, KT_SURFACE, 0);
-	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -270,10 +250,22 @@ static void global_keys(KtuiEvent *ev)
 	}
 	if (ki_pages[ki_page]->hide_nav)
 		return;
-	if ((ev->mods & KT_MOD_ALT) && ev->key == KT_K_RIGHT) {
+	/*
+	 * ALT+N AND ALT+B PAGE, BECAUSE THEY REACH THE PROGRAM ON A VT. The
+	 * Linux console's keymap binds Alt+Left and Alt+Right to
+	 * Decr_Console and Incr_Console, so on the installer's own tty they
+	 * switch virtual consoles and never arrive here; Alt+letter arrives
+	 * as an ESC prefix on every terminal. The arrows stay as aliases for
+	 * a terminal that passes them through, and the hint bar names the
+	 * letters, which work everywhere.
+	 */
+	int alt = (ev->mods & KT_MOD_ALT) != 0;
+
+	if (alt && (ev->key == 'n' || ev->key == 'N' || ev->key == KT_K_RIGHT)) {
 		nav_next();
 		ktui_consume();
-	} else if ((ev->mods & KT_MOD_ALT) && ev->key == KT_K_LEFT) {
+	} else if (alt && (ev->key == 'b' || ev->key == 'B' ||
+			   ev->key == KT_K_LEFT)) {
 		nav_back();
 		ktui_consume();
 	} else if (ev->key == KT_K_ESC) {
@@ -301,7 +293,7 @@ static void render(KtuiEvent *ev)
 	} else if (ki_help) {
 		global_keys(ev);
 		draw_header();
-		draw_help();
+		ki_draw_help();
 	} else {
 		global_keys(ev);
 
@@ -406,6 +398,9 @@ static void usage(void)
 	       "  --dump apps       the application groups, ticked as answered\n"
 	       "  --dump look       the accents and desks the answers may name\n"
 	       "  --json            render --dump as JSON instead of text\n"
+	       "  --payload-kb N    with --dump: take N KiB as the size of the\n"
+	       "                    tree an install copies, instead of measuring\n"
+	       "  --appbox-kb N     with --payload-kb: of which the box store\n"
 	       "  --theme NAME      phosphor | amber | ice | bone | norton | borland |\n"
 	       "                    perfect | paper\n"
 	       "  --no-mouse        keyboard only\n"
@@ -416,15 +411,37 @@ static void usage(void)
 	       KI_VERSION);
 }
 
+/* A whole number of KiB, digits only: strtoull alone takes a sign and
+ * leading space, and wraps a negative number to a huge one. */
+static int parse_kib(const char *s, unsigned long long *out)
+{
+	char *end;
+
+	if (!isdigit((unsigned char)s[0]))
+		return -1;
+	errno = 0;
+	*out = strtoull(s, &end, 10);
+	return errno || *end ? -1 : 0;
+}
+
 int main(int argc, char **argv)
 {
 	int want_mouse = 1, unattended = 0, json = 0, events = 0;
 	const char *save_to = NULL, *dump = NULL;
+	const char *payload_kb = NULL, *appbox_kb = NULL;
 
 	/* An allocation failure has to drop the terminal before it prints, or
 	 * the message lands in the alternate screen and dies with it. */
 	kb_set_progname("kinstall");
 	kb_set_oom_handler(ktui_term_shutdown);
+
+	/* ONE PATH, WHOEVER STARTED IT. pkexec hands the graphical installer a
+	 * PATH without /usr/local, where `kdos` lives, and sudo's secure_path
+	 * one with it. Every program the install runs is looked up by name, so
+	 * without this the groups and the firmware steps find no `kdos` under
+	 * pkexec and are recorded for later. */
+	setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+		       "/sbin:/bin", 1);
 
 	conf_defaults();
 
@@ -448,6 +465,10 @@ int main(int argc, char **argv)
 			dump = argv[++i];
 		} else if (!strcmp(a, "--json")) {
 			json = 1;
+		} else if (!strcmp(a, "--payload-kb") && i + 1 < argc) {
+			payload_kb = argv[++i];
+		} else if (!strcmp(a, "--appbox-kb") && i + 1 < argc) {
+			appbox_kb = argv[++i];
 		} else if (!strcmp(a, "--unattended")) {
 			unattended = 1;
 		} else if (!strcmp(a, "--events") && i + 1 < argc) {
@@ -474,6 +495,27 @@ int main(int argc, char **argv)
 
 	if (save_to)
 		return conf_save(save_to) == 0 ? 0 : 1;
+
+	/* A front end's own measurement, for a dump alone: an install that took
+	 * a size it did not measure would check the disk against a number
+	 * nobody vouches for. */
+	if (payload_kb || appbox_kb) {
+		unsigned long long pk, ak = 0;
+
+		if (!dump || !payload_kb) {
+			fprintf(stderr, "kinstall: --payload-kb and --appbox-kb "
+					"are for --dump, and --appbox-kb needs "
+					"--payload-kb\n");
+			return 1;
+		}
+		if (parse_kib(payload_kb, &pk) ||
+		    (appbox_kb && parse_kib(appbox_kb, &ak))) {
+			fprintf(stderr, "kinstall: --payload-kb and --appbox-kb "
+					"take a whole number of KiB\n");
+			return 1;
+		}
+		ki_dump_payload_set(pk, ak);
+	}
 
 	/* Before the terminal, before the probe's own progress line: a dump is
 	 * stdout and only stdout. */
@@ -506,6 +548,7 @@ int main(int argc, char **argv)
 	inst.fd = -1;
 	inst.logfd = 0;
 
+	ki_unattended = unattended;
 	if (unattended) {
 		/* The wizard reaches the Applications page on its way past;
 		 * an unattended install does not, and would carry no packs at
@@ -542,13 +585,19 @@ int main(int argc, char **argv)
 		 * leaves exactly the install that went wrong spinning on its
 		 * own error screen — which is the run somebody most needs the
 		 * exit status of.
+		 *
+		 * ONLY A FINISHED INSTALL REBOOTS. A failed one with reboot = 1
+		 * would restart the live system and take with it the reason
+		 * and the log, which live in its RAM; it exits 1 instead and
+		 * says why on standard error.
 		 */
 		if (unattended && !inst.running && (inst.done || inst.failed)) {
 			static double at;
 			if (!at)
 				at = kb_now_s();
 			else if (kb_now_s() - at > 5.0) {
-				if (cfg.reboot_after) {
+				if (cfg.reboot_after && inst.done &&
+				    !inst.failed) {
 					ktui_term_shutdown();
 					execlp("reboot", "reboot", NULL);
 					_exit(0);
@@ -563,6 +612,14 @@ int main(int argc, char **argv)
 
 	ktui_input_shutdown();
 	ktui_term_shutdown();
+	/* The screen that showed the reason is gone with the terminal, so a
+	 * script reading only standard error still learns it, and where the
+	 * whole account is. */
+	if (unattended && inst.failed) {
+		fprintf(stderr, "kinstall: %s\n",
+			inst.failmsg[0] ? inst.failmsg : "the install stopped");
+		fputs("kinstall: the log is /var/log/kinstall.log\n", stderr);
+	}
 	/* The exit status is the answer a script reads: an install that failed
 	 * and returned 0 is worse than one that never returned. */
 	return unattended && inst.failed ? 1 : 0;

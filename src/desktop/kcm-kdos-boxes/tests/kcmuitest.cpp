@@ -18,6 +18,8 @@
  * A control is anything a person can press, type into or choose from.
  */
 
+#include <KCModule>
+#include <KCModuleLoader>
 #include <KPluginMetaData>
 #include <KQuickConfigModule>
 #include <KQuickConfigModuleLoader>
@@ -124,6 +126,32 @@ QAccessibleInterface *named(QQuickItem *item, const QString &name)
     return nullptr;
 }
 
+/* The box page of `box`, laid out beside the list in `window`. */
+QQuickItem *openPage(KQuickConfigModule *kcm, QQuickWindow *window, const QString &box)
+{
+    QQuickItem *ui = kcm->mainUi();
+    if (!ui) {
+        return nullptr;
+    }
+    if (!QTest::qWaitFor([&] { return kcm->property("currentBox").toString() == box && kcm->depth() == 2; })) {
+        return nullptr;
+    }
+    window->resize(1600, 2000);
+    ui->setParentItem(window->contentItem());
+    ui->setSize(QSizeF(500, window->height()));
+    window->show();
+    if (!QTest::qWaitForWindowExposed(window)) {
+        return nullptr;
+    }
+    QQuickItem *page = kcm->subPage(0);
+    if (page) {
+        page->setParentItem(window->contentItem());
+        page->setPosition(QPointF(500, 0));
+        page->setSize(QSizeF(1100, window->height()));
+    }
+    return page;
+}
+
 void put(const QString &path, const QString &text)
 {
     QDir().mkpath(QFileInfo(path).path());
@@ -161,12 +189,73 @@ private Q_SLOTS:
         qputenv("KDOS_FAKE_DIR", (r + u"/fake"_s).toLocal8Bit());
         qputenv("PATH", QByteArray((r + u"/bin:"_s).toLocal8Bit() + qgetenv("PATH")));
 
-        put(r + u"/fake/podman.state"_s, u"container app.gimp running\ncontainer dev exited\n"_s);
+        put(r + u"/fake/podman.state"_s, u"container app.gimp running\ncontainer dev exited\ncontainer devrun running\n"_s);
         put(r + u"/home/.config/kdos/boxes/app.gimp.conf"_s, u"base=pack:app.gimp\naccent=amber\ngrant=window-list\nwayland=no\n"_s);
         put(r + u"/home/.config/kdos/boxes/dev.conf"_s, u"base=image:docker.io/library/debian:trixie\n"_s);
+        /* A development box `kdos-box remove` took the container of and
+         * kept the profile of, with the line it marks such a profile by. */
+        put(r + u"/home/.config/kdos/boxes/ubu.conf"_s, u"# kept by kdos-box remove; remove --purge deletes it\nbase=image:ubuntu:24.04\n"_s);
+        /* A store box whose application's uninstall released its image. */
+        put(r + u"/home/.config/kdos/boxes/app.zathura.conf"_s, u"# kept by kdos-box remove; remove --purge deletes it\nbase=image:kdos/app.zathura\n"_s);
+        /* A running development box nothing was launched in: no record. */
+        put(r + u"/home/.config/kdos/boxes/devrun.conf"_s, u"base=image:ubuntu:24.04\n"_s);
         put(r + u"/run/kdos/boxes/app.gimp.state"_s, u"confinement = tagged\nreason      = its bus is not filtered\n"_s);
-        /* A pending recreate, so the banner and its action are on the page. */
-        put(r + u"/state/kcm_kdos_boxesstaterc"_s, u"[app.gimp]\nPendingKeys=network\nSince=1\n"_s);
+        /* Pending recreates, so the banner and its action are on the page:
+         * two settings on app.gimp, one on dev. */
+        put(r + u"/state/kcm_kdos_boxesstaterc"_s, u"[app.gimp]\nPendingKeys=network,ipc\nSince=1\n\n[dev]\nPendingKeys=network\nSince=1\n"_s);
+    }
+
+    /* Opened without a box: the column beside the list has a title of its
+     * own, and Defaults is not offered, since there is nothing to reset. */
+    void opensWithNoBoxChosen()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        QVERIFY2(md.isValid(), KCM_PLUGIN_PATH);
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QTRY_COMPARE(kcm->depth(), 2);
+        QCOMPARE(kcm->property("currentBox").toString(), QString());
+        QVERIFY(kcm->representsDefaults());
+        QVERIFY(!kcm->needsSave());
+
+        QQuickItem *placeholder = kcm->subPage(0);
+        QVERIFY(placeholder);
+        QCOMPARE(placeholder->objectName(), u"boxPlaceholder"_s);
+        const QString mainTitle = ui->property("title").toString();
+        const QString sideTitle = placeholder->property("title").toString();
+        QCOMPARE(sideTitle, u"Box Settings"_s);
+        QVERIFY2(sideTitle != mainTitle, qPrintable(mainTitle));
+    }
+
+    /* The same, as System Settings opens it: KCModuleLoader wraps the page
+     * in a KCModuleQml, whose load() sets the wrapper's own
+     * representsDefaults to false before it loads the page, and copies the
+     * page's value only when the page reports a change. The wrapper's value
+     * is what enables the Defaults button. */
+    void wrapperOpensWithNoBoxChosen()
+    {
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        QVERIFY2(md.isValid(), KCM_PLUGIN_PATH);
+        auto engine = std::make_shared<QQmlEngine>();
+        std::unique_ptr<KCModule> module(KCModuleLoader::loadModule(md, nullptr, {}, engine));
+        QVERIFY(module);
+        QVERIFY2(module->inherits("KCModuleQml"), module->metaObject()->className());
+        module->load();
+        QVERIFY(module->representsDefaults());
+        QVERIFY(!module->needsSave());
+        QVERIFY(module->buttons() & KAbstractConfigModule::Default);
+
+        /* A second load, as Reset makes, leaves it disabled too. */
+        module->load();
+        QVERIFY(module->representsDefaults());
     }
 
     void pagesLoadAndNameEveryControl()
@@ -218,9 +307,18 @@ private Q_SLOTS:
         QTRY_VERIFY(profile->property("notesLoaded").toBool());
         QTest::qWait(300);
 
-        /* The honest indicator: the verdict and the launch's own reason. */
+        /* The banner lists the pending settings with "and" before the last. */
+        QVERIFY(shows(window.contentItem(),
+                      u"Changed since the box was created: network and shared memory. These settings apply when the box is created, so create it again to apply them now."_s));
+
+        /* A box with a container offers a terminal inside it. */
+        QVERIFY(named(window.contentItem(), u"Open Terminal"_s));
+        QVERIFY(!named(window.contentItem(), u"Create"_s));
+
+        /* The honest indicator: the verdict and the launch's own reason,
+         * set as a sentence of its own after the verdict's. */
         QVERIFY(shows(window.contentItem(), u"Tagged. KWin limits"_s));
-        QVERIFY(shows(window.contentItem(), u"its bus is not filtered"_s));
+        QVERIFY(shows(window.contentItem(), u"reach past that. Its bus is not filtered."_s));
 
         QStringList missing;
         int controls = 0;
@@ -279,6 +377,279 @@ private Q_SLOTS:
         const QPointF centre = hostItem->mapToScene(QPointF(hostItem->width() / 2, hostItem->height() / 2));
         QTest::mouseClick(&window, Qt::LeftButton, {}, centre.toPoint());
         QTRY_COMPARE(values->property("network").toString(), u"private"_s);
+    }
+
+    /* A kept profile with no container says it was removed, and offers
+     * Create, never a Start that `kdos-box start` would refuse. */
+    void keptBoxOffersCreate()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"ubu"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QTRY_COMPARE(kcm->property("currentBox").toString(), u"ubu"_s);
+
+        QQuickWindow window;
+        window.resize(1600, 2000);
+        ui->setParentItem(window.contentItem());
+        ui->setSize(QSizeF(500, window.height()));
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE(kcm->depth(), 2);
+        QQuickItem *page = kcm->subPage(0);
+        QVERIFY(page);
+        page->setParentItem(window.contentItem());
+        page->setPosition(QPointF(500, 0));
+        page->setSize(QSizeF(1100, window.height()));
+
+        QTRY_VERIFY(kcm->property("current").toMap().value(u"listed"_s).toBool());
+        QVERIFY(kcm->property("current").toMap().value(u"kept"_s).toBool());
+        QTRY_VERIFY(shows(page, u"Removed — settings kept"_s));
+        /* The list row too, under the box's own name. */
+        QVERIFY(shows(ui, u"Removed — settings kept"_s));
+        QTRY_VERIFY(named(page, u"Create"_s));
+        QVERIFY(!named(page, u"Start"_s));
+        QVERIFY(!named(page, u"Open Terminal"_s));
+        QVERIFY(named(page, u"Delete Settings…"_s));
+        QVERIFY(!shows(page, u"Its application is not installed"_s));
+    }
+
+    /* A store box whose application is uninstalled offers no Create, which
+     * could only fail asking a registry for an image built here; it says
+     * how the box comes back instead. */
+    void uninstalledAppBoxOffersNoCreate()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"app.zathura"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickWindow window;
+        QQuickItem *page = openPage(kcm.get(), &window, u"app.zathura"_s);
+        QVERIFY(page);
+        QTRY_VERIFY(kcm->property("current").toMap().value(u"listed"_s).toBool());
+        QVERIFY(kcm->property("current").toMap().value(u"appMissing"_s).toBool());
+        QTRY_VERIFY(shows(page, u"Removed — settings kept"_s));
+        QTRY_VERIFY(shows(page, u"Its application is not installed. Installing it again from Discover makes this box with these settings"_s));
+        QVERIFY(named(page, u"Delete Settings…"_s));
+        QVERIFY(!named(page, u"Create"_s));
+        QVERIFY(!named(page, u"Start"_s));
+        QVERIFY(!named(page, u"Export as Archive…"_s));
+    }
+
+    /* One pending setting is named in the singular. */
+    void recreateBannerForOneSetting()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"dev"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickWindow window;
+        QQuickItem *page = openPage(kcm.get(), &window, u"dev"_s);
+        QVERIFY(page);
+        QTRY_VERIFY(kcm->property("needsRecreate").toBool());
+        QCOMPARE(kcm->property("recreateKeys").toStringList(), QStringList{u"network"_s});
+        QTRY_VERIFY(shows(page,
+                          u"Changed since the box was created: network. This setting applies when the box is created, so create it again to apply it now."_s));
+        QVERIFY(!shows(page, u"These settings apply"_s));
+    }
+
+    /* A running box no launch has recorded says what would record it,
+     * not that it cannot say. */
+    void runningBoxWithNoRecordSaysWhy()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"devrun"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickWindow window;
+        QQuickItem *page = openPage(kcm.get(), &window, u"devrun"_s);
+        QVERIFY(page);
+        QTRY_VERIFY(kcm->property("current").toMap().value(u"running"_s).toBool());
+        QCOMPARE(kcm->property("current").toMap().value(u"confinement"_s).toString(), QString());
+        QTRY_VERIFY(shows(page, u"Nothing has been launched in this box through KDOS yet (an exported launcher or kdos-box run), so how its windows are confined is not recorded."_s));
+        QVERIFY(!shows(page, u"cannot say"_s));
+    }
+
+    /* A limit with a unit can be typed: the text stays as typed until
+     * Return, which takes it and shows its value's spelling. */
+    void limitTypedWithAUnitIsTaken()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"dev"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickWindow window;
+        QQuickItem *page = openPage(kcm.get(), &window, u"dev"_s);
+        QVERIFY(page);
+        QObject *profile = kcm->property("profile").value<QObject *>();
+        QVERIFY(profile);
+        QTRY_VERIFY(profile->property("notesLoaded").toBool());
+        QObject *values = profile->property("values").value<QObject *>();
+
+        QAccessibleInterface *field = named(window.contentItem(), u"Memory limit"_s);
+        QVERIFY(field);
+        auto *item = qobject_cast<QQuickItem *>(field->object());
+        QVERIFY(item);
+        QQuickItem *input = item->property("contentItem").value<QQuickItem *>();
+        if (!input) {
+            input = item;
+        }
+        const QString unset = input->property("text").toString();
+        const auto type512 = [&] {
+            input->forceActiveFocus();
+            QTRY_VERIFY(input->hasActiveFocus());
+            QMetaObject::invokeMethod(input, "selectAll");
+            for (const char c : {'5', '1', '2', 'm'}) {
+                QTest::keyClick(&window, c);
+            }
+            QCOMPARE(input->property("text").toString(), u"512m"_s);
+            QTest::keyClick(&window, Qt::Key_Return);
+            QTRY_COMPARE(values->property("memory").toInt(), 512);
+            QTRY_VERIFY(input->property("text").toString().contains(u"512"_s));
+            QTRY_VERIFY(kcm->needsSave());
+        };
+        type512();
+
+        /* A typed field follows Reset and Defaults like a stepped one. */
+        kcm->load();
+        QTRY_COMPARE(values->property("memory").toInt(), 0);
+        QTRY_COMPARE(item->property("value").toInt(), 0);
+        QTRY_COMPARE(input->property("text").toString(), unset);
+        type512();
+        kcm->defaults();
+        QTRY_COMPARE(item->property("value").toInt(), 0);
+        QTRY_COMPARE(input->property("text").toString(), unset);
+    }
+
+    /* Each limit, typed and applied, is written, and the page lives on
+     * through the reload of the profile kdos-box wrote, which redraws the
+     * notes of the key whose limits note changed. */
+    void limitAppliedKeepsThePage_data()
+    {
+        QTest::addColumn<QString>("field");
+        QTest::addColumn<QString>("typed");
+        QTest::addColumn<QString>("written");
+        QTest::newRow("memory") << u"Memory limit"_s << u"1g"_s << u"memory=1G"_s;
+        QTest::newRow("cpus") << u"Processor limit"_s << u"2"_s << u"cpus=2"_s;
+        QTest::newRow("pids") << u"Process limit"_s << u"1024"_s << u"pids=1024"_s;
+        QTest::newRow("autostop") << u"Stop the box when it has had no window for"_s << u"90m"_s << u"autostop=5400s"_s;
+    }
+
+    void limitAppliedKeepsThePage()
+    {
+        QFETCH(QString, field);
+        QFETCH(QString, typed);
+        QFETCH(QString, written);
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        const QString conf = m_root.path() + u"/home/.config/kdos/boxes/dev.conf"_s;
+        put(conf, u"base=image:docker.io/library/debian:trixie\nmemory=512M\n"_s);
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"dev"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickWindow window;
+        QQuickItem *page = openPage(kcm.get(), &window, u"dev"_s);
+        QVERIFY(page);
+        QObject *profile = kcm->property("profile").value<QObject *>();
+        QVERIFY(profile);
+        QTRY_VERIFY(profile->property("notesLoaded").toBool());
+
+        QAccessibleInterface *box = named(window.contentItem(), field);
+        QVERIFY(box);
+        auto *item = qobject_cast<QQuickItem *>(box->object());
+        QVERIFY(item);
+        QQuickItem *input = item->property("contentItem").value<QQuickItem *>();
+        if (!input) {
+            input = item;
+        }
+        input->forceActiveFocus();
+        QTRY_VERIFY(input->hasActiveFocus());
+        QMetaObject::invokeMethod(input, "selectAll");
+        for (const QChar c : typed) {
+            QTest::keyClick(&window, c.toLatin1());
+        }
+        QTest::keyClick(&window, Qt::Key_Return);
+        QTRY_VERIFY(kcm->needsSave());
+        kcm->save();
+        QTRY_VERIFY_WITH_TIMEOUT(kcm->property("message").toString().contains(u"were written"_s), 10000);
+        QTest::qWait(500);
+        QVERIFY(named(window.contentItem(), field));
+        QFile f(conf);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QVERIFY2(QString::fromUtf8(f.readAll()).contains(written), qPrintable(written));
+        put(conf, u"base=image:docker.io/library/debian:trixie\n"_s);
+    }
+
+    /* An accent no swatch names shows Neutral, the colour KWin paints, as
+     * the choice without making it an edit: the page opens unmodified, and
+     * only a click on Neutral writes `session`. */
+    void unknownAccentShowsNeutralUnmodified()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        const QString conf = m_root.path() + u"/home/.config/kdos/boxes/devrun.conf"_s;
+        put(conf, u"base=image:ubuntu:24.04\naccent=nonsense\n"_s);
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {QVariant(u"devrun"_s)}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+
+        QQuickWindow window;
+        QQuickItem *page = openPage(kcm.get(), &window, u"devrun"_s);
+        QVERIFY(page);
+        QObject *profile = kcm->property("profile").value<QObject *>();
+        QVERIFY(profile);
+        QTRY_VERIFY(profile->property("notesLoaded").toBool());
+        QObject *values = profile->property("values").value<QObject *>();
+        QTRY_COMPARE(values->property("accent").toString(), u"nonsense"_s);
+
+        QAccessibleInterface *neutral = named(window.contentItem(), u"Neutral"_s);
+        QVERIFY(neutral);
+        QTRY_VERIFY(neutral->state().checked);
+        QTest::qWait(300);
+        QVERIFY(!kcm->needsSave());
+        QCOMPARE(values->property("accent").toString(), u"nonsense"_s);
+
+        auto *item = qobject_cast<QQuickItem *>(neutral->object());
+        QVERIFY(item);
+        const QPointF centre = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+        QTest::mouseClick(&window, Qt::LeftButton, {}, centre.toPoint());
+        QTRY_COMPARE(values->property("accent").toString(), u"session"_s);
+        QTRY_VERIFY(kcm->needsSave());
+
+        put(conf, u"base=image:ubuntu:24.04\n"_s);
     }
 };
 

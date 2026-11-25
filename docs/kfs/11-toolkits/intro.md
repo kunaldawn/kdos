@@ -53,7 +53,7 @@ and Motif have only X11. Which one an application uses at run time is
 not decided by its recipe. The login profile sets the preference, in
 [`fs/etc/profile.d/10-wayland.sh`]{.idx term="/etc/profile.d/10-wayland.sh"}:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-89 pin=a3a54207979f -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=82-93 pin=a3a54207979f -->
 
 What each line means for each toolkit is in
 [Toolkits, Wayland and X11](../../kdos/02-user-guide/applications.md#toolkits-wayland-and-x11);

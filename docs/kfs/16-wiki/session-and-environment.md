@@ -43,21 +43,30 @@ unless the medium has a persistence store; see [Live persistence](live-persisten
 SDDM reads `/etc/sddm.conf.d/00-kdos.conf`. Its `[Wayland]` group names the greeter's compositor
 and the command a session is started with, and its `[X11]` group offers no X session at all:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=37-55 pin=4e0a28063e89 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=46-64 pin=4e0a28063e89 -->
 
 SDDM runs `kdos-session-wrapper` as the user, after PAM has opened the session, with the
 `Exec=` line of `plasma.desktop` as its one argument. The wrapper re-runs itself as a login shell
-so `/etc/profile`, `/etc/profile.d` and `~/.bash_profile` reach Plasma; checks that the session
-bus at `$XDG_RUNTIME_DIR/bus` answers and points `DBUS_SESSION_BUS_ADDRESS` at it, refusing to start
-the session when it does not, so the greeter comes back; and settles the environment before
-anything reads it, from `fs/usr/local/bin/kdos-session-wrapper`:
+that reads no startup file, then reads that shell's login files itself, so `/etc/profile`,
+`/etc/profile.d` and `~/.bash_profile` reach Plasma and a profile script that exits is logged with
+its status; logs each stage of the login to syslog under `kdos-session`; waits out a previous
+logout's `ksvc stop` if one is still running; checks that the session bus at
+`$XDG_RUNTIME_DIR/bus` answers and points `DBUS_SESSION_BUS_ADDRESS` at it, refusing to start the
+session when it does not, so the greeter comes back; settles the environment before anything
+reads it; and refuses an `Exec=` line whose first word names no program, from
+`fs/usr/local/bin/kdos-session-wrapper`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=124-137 pin=003f91a5c8f0 -->
+<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=266-284 pin=2bcd5ab2b77c -->
 
-`kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below), the
+`kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below);
+`kdos_session_live_data`, on the live medium alone, puts `/usr/share/kdos/data-live` in front of
+`XDG_DATA_DIRS`, whose Welcome Center entry starts the tour with `--live-environment`, so a tour
+reopened from the launcher keeps its live pages; the
 `QT_IM_MODULE` and `GTK_IM_MODULE` variables are cleared so Qt and GTK reach the input method
 through KWin, and `TERM`, `LINES` and `COLUMNS` are cleared because the session has no
-terminal. `kdos_session_boxes` warms up the boxes behind the pinned favourites in the background.
+terminal. `kdos_session_fcitx5_profile` gives a home with no `~/.config/fcitx5/profile` one
+that names the system keyboard layout, before KWin starts fcitx5 (see
+[Input methods](input-methods.md#configfcitx5profile)). `kdos_session_boxes` warms up the boxes behind the pinned favourites in the background.
 Then `startplasma-wayland` runs. KDOS has no systemd user instance, so the session is always
 Plasma's classic one, in which `plasma_session` starts `kded6`, `ksmserver`, `plasmashell` and the
 autostart entries itself; the KDOS default that says so, from
@@ -88,23 +97,24 @@ The order is set in two places, so a session started by SDDM and a shell started
 agree: `kdos_session_xdg_dirs` in `/usr/local/lib/kdos/session-common.sh`, which also adds the two
 overlays, and every login shell's profile, from `fs/etc/profile.d/10-wayland.sh`:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=60-63 pin=1a5ef55bd582 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=64-67 pin=1a5ef55bd582 -->
 
 ### The environment every program inherits
 
 `/etc/profile.d/10-wayland.sh` runs for every login shell, the session wrapper's included. It
 fills in `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` for a shell no PAM session started (an
-`su` without `-l`), names the desktop for a shell outside the session so files opened from a
-console open in the desktop's applications, and chooses the toolkits' back ends:
+`su` without `-l`), names the desktop and its Plasma release (`KDE_SESSION_VERSION=6`, which
+xdg-utils compares as a number) for a shell outside the session so files opened from a console
+open in the desktop's applications, and chooses the toolkits' back ends:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-106 pin=8c3778ce8934 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=82-110 pin=8c3778ce8934 -->
 
 `/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh` is the environment script Plasma itself
 reads. `startplasma` sources every `plasma-workspace/env/*.sh` along `XDG_CONFIG_DIRS`, the
 person's own `~/.config/plasma-workspace/env/` last, and takes every variable they leave set into
 the session:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=31-56 pin=8763d484354f -->
+<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=34-59 pin=8763d484354f -->
 
 `kdos-shortcuts.sh` beside it copies the KDOS global shortcuts into a person's
 `~/.config/kglobalshortcutsrc` once each; see
@@ -133,8 +143,11 @@ other system account gets none.
 The layout the login screen and every new session start with is the machine's, in
 [`/etc/kdos/xkb.conf`]{.idx}, which [kdos-settingsd](#port-kdos-settingsd) serves as
 `org.freedesktop.locale1`. The greeter's KWin reads it before anybody types, and `startplasma`
-copies it into each session; a person's layout on the Keyboard page of System Settings, saved in
-`~/.config/kxkbrc`, comes after it and wins. From `fs/etc/kdos/xkb.conf`:
+copies it into each session. Inside a session KWin and the lock screen read
+[`/etc/xdg/kxkbrc`]{.idx} before that copy: the installer writes it, and kdos-settingsd rewrites
+it with the same layout on every locale1 layout change (plasma-setup's on an OEM machine
+included) and removes it for an empty one. A person's layout on the Keyboard page of System
+Settings, saved in `~/.config/kxkbrc`, comes after both and wins. From `fs/etc/kdos/xkb.conf`:
 
 <!-- kfs:include fs/etc/kdos/xkb.conf -->
 
@@ -158,8 +171,10 @@ startplasma-wayland
 **Log Out**, **Restart** and **Shut Down** are in the Application Launcher's Leave buttons and on
 `Ctrl+Alt+Del`, which opens the logout screen. At the end of every session Plasma runs the scripts
 in `plasma-workspace/shutdown/` along `XDG_CONFIG_DIRS`. The KDOS ones run in name order:
-`kdos-boxes.sh` records the running boxes for the next login, then `kdos.sh` stops every box that
-has run past its profile's `autostop`. The user's services keep running until the user's last login ends.
+`kdos-boxes.sh` records the running boxes for the next login, `kdos-speech.sh` ends the speech
+server a screen reader started, unless another login of the user (a console or a second graphical
+login) is open, then `kdos.sh` stops
+every box that has run past its profile's `autostop`. The user's services keep running until the user's last login ends.
 
 From a terminal inside the session:
 

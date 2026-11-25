@@ -8,12 +8,24 @@
 #   Upgrade steps a new account must not take.
 #
 # kconf_update runs every step no ~/.config/kconf_updaterc records as done,
-# so a fresh account runs each one at its first login, while KWin is already
-# up. KWin's kwin-6.1-remove-gridview-expose-shortcuts removes the Present
+# so a fresh account runs each one at its first login, while KWin and
+# plasmashell are already up. Two of them undo what that login sets up:
+#
+# KWin's kwin-6.1-remove-gridview-expose-shortcuts removes the Present
 # Windows actions (Expose, ExposeAll, ExposeClass,
 # ExposeClassCurrentDesktop) from kglobalaccel to drop Plasma 5's keys, and
 # run then it removes the ones the Window View effect has just registered:
 # Meta+F9, Meta+F10 and Meta+F7 do nothing for that whole session.
+#
+# plasma-workspace's migrate-calendar-plugins rewrites the panels file,
+# plasma-org.kde.plasma.desktop-appletsrc, in place to shorten Plasma 5's
+# calendar plugin paths, emptying it before it writes it back. Run then it
+# lands in the same second as the desk's first layout, and plasmashell can
+# read the emptied file and save over it: the account keeps the panels but
+# loses the settings the desk wrote into them (Start's label, the pinned
+# apps, the meters' face, the desktop's folder view), and Plasma's defaults
+# stand in for them from then on. A new account has no Plasma 5 paths to
+# shorten.
 #
 # kconf_update reads its record along XDG_CONFIG_DIRS, so a step named done
 # here is skipped by every account that has not run it, and the list it
@@ -23,3 +35,6 @@
 
 [kwin.upd]
 done=kwin-6.1-remove-gridview-expose-shortcuts
+
+[migrate-calendar-to-plugin-id.upd]
+done=migrate-calendar-plugins

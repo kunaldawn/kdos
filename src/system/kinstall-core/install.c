@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <limits.h>
+#include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,7 +98,7 @@ static const struct {
 	{ "Accounts",    "users, passwords, sudo, the home" },
 	{ "Theme",       "the accent and the desk the first login takes" },
 	{ "Slot B",      "the second root, filled for A/B updates" },
-	{ "Bootloader",  "Limine on the ESP, the BIOS boot code, the UEFI boot entry" },
+	{ "Bootloader",  NULL },
 	{ "Finish",      "flush and unmount" },
 };
 
@@ -120,15 +121,124 @@ static int step_skipped(int i)
 	return 0;
 }
 
+/*
+ * THE STEPS' WEIGHTS, for a front end's bar over the whole install: each
+ * step's expected time in tenths of a second, so the bar moves with the
+ * clock. Measured from kinstall.log's timestamps on the live medium's GUI
+ * installs onto a virtual disk: Prepare, Partition, Format and Mount take
+ * about three seconds between them, the copy of the live tree's 4.8 GiB 50
+ * to 56 seconds, slot B's 21 to 28, and the steps after the copy about
+ * four. The two copies weigh their bytes at the rates measured,
+ * KI_COPY_MIB_S for ki_need_bytes() and KI_SLOTB_MIB_S for the payload less
+ * the box store, which slot B's -x copy never enters. Packs weighs its two
+ * seconds of recording and, only when a binhost is named and there is a
+ * network (ki_binhost_named, ki_sys.network), KI_PACKS_PORT_DS for each
+ * port of the chosen native groups, an allowance no install has measured;
+ * with no binhost or no network the groups go to groups-pending and
+ * nothing downloads. A short step given a share of
+ * the copy's time would hold back the bar through the copy and fill a third
+ * of it in the last seconds.
+ */
+#define KI_COPY_MIB_S 90.0
+#define KI_SLOTB_MIB_S 190.0
+#define KI_PACKS_PORT_DS 10
+
+static int step_weight(int i)
+{
+	static const int short_ds[S_COUNT] = {
+		[S_PREPARE] = 3,  [S_PARTITION] = 10, [S_FORMAT] = 15,
+		[S_MOUNT] = 2,	  [S_APPS] = 20,      [S_FIRMWARE] = 3,
+		[S_CONFIG] = 3,	  [S_ACCOUNTS] = 3,   [S_THEME] = 2,
+		[S_BOOT] = 8,	  [S_FINISH] = 3,
+	};
+	double mib = 0, rate = 1;
+	int w;
+
+	if (i == S_COPY) {
+		mib = (double)ki_need_bytes() / (1024.0 * 1024.0);
+		rate = KI_COPY_MIB_S;
+	} else if (i == S_SLOTB) {
+		mib = (double)(ki_sys.payload_kb > ki_sys.appbox_kb
+				       ? ki_sys.payload_kb - ki_sys.appbox_kb
+				       : 0) /
+		      1024.0;
+		rate = KI_SLOTB_MIB_S;
+	} else if (i == S_APPS) {
+		w = short_ds[i];
+		for (int k = 0; ki_binhost_named && ki_sys.network &&
+				k < ki_nnative; k++)
+			if (ki_native[k].chosen)
+				w += ki_native[k].nports * KI_PACKS_PORT_DS;
+		return w;
+	} else {
+		return short_ds[i];
+	}
+	w = (int)(mib / rate * 10 + 0.5);
+	return w < 1 ? 1 : w;
+}
+
+/* The Partition step's line names what its last partition is: the LVM
+ * volume, encrypted when asked, and what it holds, or the root itself; it
+ * replaces the table's line, which names the root. At most 80 characters,
+ * which the graphical Summary's value column wraps inside itself; a longer
+ * line only costs rows, since the column's width is capped. */
+static const char *partition_detail(void)
+{
+	static char d[160];
+	const char *swap = ki_wipe_part_swap() ? ", swap" : "";
+
+	if (cfg.plan == PLAN_WIPE && cfg.lvm)
+		snprintf(d, sizeof(d),
+			 "write the GPT layout: ESP, BIOS boot%s, %sLVM volume "
+			 "for %s",
+			 swap, cfg.luks ? "encrypted " : "",
+			 ki_ab() ? "both system slots" : "the root");
+	else
+		snprintf(d, sizeof(d),
+			 "write the GPT layout: ESP, BIOS boot%s, %sroot", swap,
+			 cfg.luks ? "encrypted " : "");
+	return d;
+}
+
+/* The Packs step's line says what becomes of the native groups chosen: on
+ * a medium that names a binary host, with a network, they are downloaded
+ * and installed, and otherwise they are recorded, as the Summary's rows
+ * above the steps say (ki_binhost_named, ki_sys.network). The boxed
+ * applications are recorded either way, and the first login's notice
+ * (kdos-notice) names what each record holds and how it is installed, so
+ * the line leaves the command to it. At most 80 characters, as
+ * partition_detail's. */
+static const char *packs_detail(void)
+{
+	return ki_binhost_named && ki_sys.network
+		? "native groups downloaded and installed, boxed apps recorded "
+		  "for the first login"
+		: "native groups and boxed apps recorded; the first login says "
+		  "how to install each";
+}
+
+/* The Bootloader step names only what this firmware gets: a BIOS machine has
+ * no NVRAM, so no boot entry is written and the step must not promise one. */
+static const char *boot_detail(void)
+{
+	return ki_sys.uefi
+		? "Limine on the ESP, the BIOS boot code, the UEFI boot entry"
+		: "Limine on the ESP and the BIOS boot code";
+}
+
 void install_plan(void)
 {
 	memset(inst.step, 0, sizeof(inst.step));
 	inst.nsteps = S_COUNT;
 	for (int i = 0; i < S_COUNT; i++) {
 		inst.step[i].title = steps[i].title;
-		inst.step[i].detail = steps[i].detail;
+		inst.step[i].detail = i == S_PARTITION ? partition_detail()
+				      : i == S_APPS ? packs_detail()
+				      : i == S_BOOT ? boot_detail()
+						    : steps[i].detail;
 		inst.step[i].state = step_skipped(i) ? ST_SKIP : ST_PENDING;
 		inst.step[i].frac = -1;
+		inst.step[i].weight = step_weight(i);
 	}
 	inst.cur = -1;
 	inst.failed = inst.done = inst.running = 0;
@@ -136,11 +246,41 @@ void install_plan(void)
 	inst.nwarn = 0;
 }
 
+/*
+ * A LINE KEPT FOR A SCREEN HOLDS NO CONTROL BYTE: a tab becomes the spaces to
+ * the next multiple of 8, as a terminal would set it, and every other C0 byte
+ * is dropped. A screen counts a tab as one cell and a VT moves it to the next
+ * tab stop, so mke2fs's and efibootmgr's tabbed columns would run past the
+ * pane and into the sidebar. The log file keeps the line as it came.
+ */
+static void screen_line(char *out, size_t n, const char *line)
+{
+	size_t o = 0, col = 0;
+
+	for (const unsigned char *c = (const unsigned char *)line;
+	     *c && o + 1 < n; c++) {
+		if (*c == '\t') {
+			do {
+				out[o++] = ' ';
+				col++;
+			} while (col % 8 && o + 1 < n);
+			continue;
+		}
+		if (*c < 0x20 || *c == 0x7f)
+			continue;
+		out[o++] = (char)*c;
+		/* A UTF-8 continuation byte is part of the cell before it. */
+		if ((*c & 0xc0) != 0x80)
+			col++;
+	}
+	out[o] = 0;
+}
+
 void install_log(const char *line)
 {
 	if (!inst.log)
 		inst.log = kb_calloc(LOG_LINES, LOG_COLS);
-	kb_strlcpy(inst.log[inst.nlog % LOG_LINES], line, LOG_COLS);
+	screen_line(inst.log[inst.nlog % LOG_LINES], LOG_COLS, line);
 	inst.nlog++;
 	if (inst.logfd >= 0) {
 		char stamp[32];
@@ -208,8 +348,12 @@ static int open_log(void)
 void install_start(int from_step)
 {
 	int fds[2];
-	if (pipe(fds) < 0) {
+	/* Close-on-exec: the child's end is the event pipe, and every program
+	 * the install runs would otherwise inherit it, which lvm names in a
+	 * warning on every call. */
+	if (pipe2(fds, O_CLOEXEC) < 0) {
 		inst.failed = 1;
+		inst.t0 = inst.t1 = kb_now_s();
 		kb_strlcpy(inst.failmsg, "pipe() failed", sizeof(inst.failmsg));
 		return;
 	}
@@ -229,7 +373,10 @@ void install_start(int from_step)
 	inst.failed = 0;
 	inst.done = 0;
 	inst.failmsg[0] = 0;
-	inst.t0 = kb_now_s();
+	/* A retry keeps the first start: the elapsed time and Done's figure
+	 * cover the steps that ran before the failure as well. */
+	if (from_step == 0 || inst.t0 == 0)
+		inst.t0 = kb_now_s();
 	if (!cfg.dry_run)
 		shield_from_oomd();
 
@@ -238,6 +385,7 @@ void install_start(int from_step)
 		close(fds[0]);
 		close(fds[1]);
 		inst.failed = 1;
+		inst.t1 = kb_now_s();
 		kb_strlcpy(inst.failmsg, "fork() failed", sizeof(inst.failmsg));
 		return;
 	}
@@ -332,6 +480,7 @@ static void handle_line(char *s)
 	}
 	case 'F':
 		inst.failed = 1;
+		inst.t1 = kb_now_s();
 		kb_strlcpy(inst.failmsg, arg, sizeof(inst.failmsg));
 		if (inst.cur >= 0) {
 			inst.step[inst.cur].state = ST_FAIL;
@@ -346,6 +495,7 @@ static void handle_line(char *s)
 				inst.step[i].t1 = kb_now_s();
 			}
 		inst.done = 1;
+		inst.t1 = kb_now_s();
 		break;
 	default:
 		break;
@@ -395,6 +545,7 @@ void install_pump(void)
 
 	if (!inst.done && !inst.failed) {
 		inst.failed = 1;
+		inst.t1 = kb_now_s();
 		snprintf(inst.failmsg, sizeof(inst.failmsg),
 			 "install process exited unexpectedly (status %d)",
 			 WIFEXITED(status) ? WEXITSTATUS(status) : -1);
@@ -412,6 +563,7 @@ void install_abort(void)
 	close(inst.fd);
 	inst.running = 0;
 	inst.failed = 1;
+	inst.t1 = kb_now_s();
 	kb_strlcpy(inst.failmsg, "aborted by user", sizeof(inst.failmsg));
 }
 
@@ -451,6 +603,19 @@ static void emit(char kind, const char *fmt, ...)
 	buf[n++] = '\n';
 	ssize_t r = write(wfd, buf, n);
 	(void)r;
+}
+
+/* One static buffer: one call per message. */
+const char *ki_root_cmd(const char *cmd)
+{
+	static char buf[256];
+
+	if (cfg.user_wheel)
+		snprintf(buf, sizeof(buf), "`sudo %s`", cmd);
+	else
+		snprintf(buf, sizeof(buf), "`su -c '%s'` (root's password)",
+			 cmd);
+	return buf;
 }
 
 static void logf_(const char *fmt, ...)
@@ -494,8 +659,12 @@ static void bios_problem(const char *fmt, ...)
 
 typedef void (*LineParse)(const char *line);
 
+/* `parse` reads each line the program prints (NULL: each goes to the log),
+ * and `tick`, when given, runs each time KI_COPY_TICK_S passes with no
+ * output. */
 static int run_full(char *const argv[], const char *stdin_data,
-		    LineParse parse, const int *ok_codes, int nok)
+		    LineParse parse, void (*tick)(void), const int *ok_codes,
+		    int nok)
 {
 	char cmd[512] = "";
 	for (int i = 0; argv[i]; i++) {
@@ -509,10 +678,12 @@ static int run_full(char *const argv[], const char *stdin_data,
 		return 0;
 	}
 
+	/* Close-on-exec, so only the ends dup2 places on 0, 1 and 2 reach the
+	 * program. */
 	int out[2], in[2];
-	if (pipe(out) < 0)
+	if (pipe2(out, O_CLOEXEC) < 0)
 		fail("pipe: %s", strerror(errno));
-	if (stdin_data && pipe(in) < 0)
+	if (stdin_data && pipe2(in, O_CLOEXEC) < 0)
 		fail("pipe: %s", strerror(errno));
 
 	pid_t pid = fork();
@@ -530,6 +701,10 @@ static int run_full(char *const argv[], const char *stdin_data,
 			close(in[1]);
 		}
 		execvp(argv[0], argv);
+		/* Onto the pipe, so the log says which program is missing
+		 * rather than an exit 127 its caller reads as the program's
+		 * own failure. */
+		dprintf(2, "cannot run %s: %s\n", argv[0], strerror(errno));
 		_exit(127);
 	}
 
@@ -551,7 +726,18 @@ static int run_full(char *const argv[], const char *stdin_data,
 	char buf[4096], line[1024];
 	size_t ll = 0;
 	ssize_t n;
-	while ((n = read(out[0], buf, sizeof(buf))) > 0) {
+	struct pollfd pfd = { .fd = out[0], .events = POLLIN };
+	for (;;) {
+		int r = poll(&pfd, 1, tick ? (int)(KI_COPY_TICK_S * 1000) : -1);
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r == 0) {
+			tick();
+			continue;
+		}
+		if ((n = read(out[0], buf, sizeof(buf))) <= 0)
+			break;
 		for (ssize_t i = 0; i < n; i++) {
 			char c = buf[i];
 			if (c == '\n' || c == '\r') {
@@ -590,7 +776,7 @@ static int run_full(char *const argv[], const char *stdin_data,
 static int run(char *const argv[])
 {
 	static const int ok[] = { 0 };
-	return run_full(argv, NULL, NULL, ok, 1);
+	return run_full(argv, NULL, NULL, NULL, ok, 1);
 }
 
 /* Same, with a secret on the child's stdin. cryptsetup's `--key-file=-` reads
@@ -599,7 +785,7 @@ static int run(char *const argv[])
 static int run_stdin(char *const argv[], const char *secret)
 {
 	static const int ok[] = { 0 };
-	return run_full(argv, secret, NULL, ok, 1);
+	return run_full(argv, secret, NULL, NULL, ok, 1);
 }
 
 static void must(char *const argv[])
@@ -879,9 +1065,19 @@ static void release_disk(const char *disk)
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static double rsync_total_pct;
-/* What the running copy will carry in all, for the note's "of"; 0 when it
- * was not measured. */
+/* What the running copy will carry in all, every name of a hard-linked file
+ * counted; 0 when it was not measured. */
 static unsigned long long rsync_total_bytes;
+/* Of rsync's total, the bytes of the names it makes links and never copies:
+ * see THE BYTES LEFT ARE THE BYTES RSYNC COPIES. */
+static unsigned long long rsync_link_bytes;
+/* Where the running copy's cost lies: see THE FILES ARE COUNTED BY WHAT
+ * THEY COST. */
+static const KiCopyProfile *rsync_prof;
+/* When the running copy started, on the monotonic clock. */
+static double rsync_t0;
+/* The running copy's last file counts, which every copy resets. */
+static KiCopyFiles rsync_files;
 
 /* rsync's progress2 byte count, which it prints with thousands separators
  * when run without -h: 10,544,196,181. */
@@ -899,29 +1095,666 @@ static unsigned long long rsync_bytes(const char *s)
 	return v;
 }
 
-static void rsync_parse(const char *line)
+/* A size in the binary units every page of the installer writes: KiB
+ * under a mebibyte, whole MiB under a gibibyte, GiB to one decimal. */
+static void iec_size(unsigned long long b, char *out, size_t n)
+{
+	if (b >= 1ULL << 30)
+		snprintf(out, n, "%.1f GiB", (double)b / (1ULL << 30));
+	else if (b >= 1ULL << 20)
+		snprintf(out, n, "%llu MiB", b >> 20);
+	else
+		snprintf(out, n, "%llu KiB", b >> 10);
+}
+
+void ki_copy_profile(KiCopyProfile *p, const unsigned char *kind, size_t n,
+		     int store)
+{
+	double units = 0, u = 0;
+	size_t m = 0, k = 0;
+	int b = 1;
+
+	memset(p, 0, sizeof(*p));
+	for (size_t i = 0; i < n; i++) {
+		if (!store && (kind[i] & KI_ENT_STORE))
+			continue;
+		m++;
+		units += kind[i] & KI_ENT_FILE ? 1 : KI_COPY_OTHER_W;
+	}
+	if (!m)
+		return;
+	for (size_t i = 0; i < n && b <= KI_COPY_PROF; i++) {
+		if (!store && (kind[i] & KI_ENT_STORE))
+			continue;
+		u += kind[i] & KI_ENT_FILE ? 1 : KI_COPY_OTHER_W;
+		k++;
+		while (b <= KI_COPY_PROF && k * KI_COPY_PROF >= (size_t)b * m)
+			p->at[b++] = (float)(u / units);
+	}
+	p->per_entry = units / (double)m;
+	p->ok = 1;
+}
+
+/* The fraction of a profile's cost done after fraction `x` of its
+ * entries. */
+static double copy_prof_at(const KiCopyProfile *p, double x)
+{
+	double k;
+	int i;
+
+	if (x <= 0)
+		return 0;
+	if (x >= 1)
+		return 1;
+	k = x * KI_COPY_PROF;
+	i = (int)k;
+	return p->at[i] + (p->at[i + 1] - p->at[i]) * (k - i);
+}
+
+/* Keep one sample of the copy's progress, at most one per `step` seconds;
+ * a full set drops every other sample and doubles the step, so the samples
+ * stay spread over the whole copy in fixed room. */
+static void copy_sample(KiCopyFiles *c, double el, double bytes, double files)
+{
+	if (c->step <= 0)
+		c->step = 0.25;
+	if (c->n && el - c->el[c->n - 1] < c->step)
+		return;
+	if (c->n == KI_COPY_SAMPLES) {
+		int k = 0;
+
+		for (int i = 0; i < c->n; i += 2, k++) {
+			c->el[k] = c->el[i];
+			c->bytes[k] = c->bytes[i];
+			c->files[k] = c->files[i];
+		}
+		c->n = k;
+		c->step *= 2;
+		if (el - c->el[c->n - 1] < c->step)
+			return;
+	}
+	c->el[c->n] = el;
+	c->bytes[c->n] = bytes;
+	c->files[c->n] = files;
+	c->n++;
+}
+
+/* A sample's weight in a fit, `age` seconds older than the newest: half
+ * for every `half` seconds, in straight lines between, and none once it
+ * is below a millionth. Past that the remainder of the age would be more
+ * than `half` and the straight line negative, and a negative weight turns
+ * the sums of squares negative and the fit's slopes to nothing. */
+static double copy_weight(double age, double half)
+{
+	double w = 1;
+
+	while (age >= half) {
+		w /= 2;
+		age -= half;
+		if (w < 1e-6)
+			return 0;
+	}
+	return w * (1 - 0.5 * age / half);
+}
+
+/* The slope of the seconds on one quantity, with an intercept; 0 when the
+ * quantity did not move or the slope comes out negative. */
+static double copy_slope(double sxx, double sxt)
+{
+	return sxx > 0 && sxt > 0 ? sxt / sxx : 0;
+}
+
+/* The weighted sums of squares and products about the weighted means of
+ * the bytes (b), files (f) and seconds (t) of the samples, each weighed by
+ * its age with half-life `half`. */
+typedef struct {
+	double bb, ff, bf, bt, ft;
+} CopySums;
+
+static void copy_sums(const KiCopyFiles *c, double half, CopySums *s)
+{
+	double mb = 0, mf = 0, mt = 0, sw = 0, w[KI_COPY_SAMPLES];
+
+	memset(s, 0, sizeof(*s));
+	for (int i = 0; i < c->n; i++) {
+		w[i] = copy_weight(c->el[c->n - 1] - c->el[i], half);
+		sw += w[i];
+		mb += w[i] * c->bytes[i];
+		mf += w[i] * c->files[i];
+		mt += w[i] * c->el[i];
+	}
+	mb /= sw;
+	mf /= sw;
+	mt /= sw;
+	for (int i = 0; i < c->n; i++) {
+		double db = c->bytes[i] - mb, df = c->files[i] - mf;
+		double dt = c->el[i] - mt;
+
+		s->bb += w[i] * db * db;
+		s->ff += w[i] * df * df;
+		s->bf += w[i] * db * df;
+		s->bt += w[i] * db * dt;
+		s->ft += w[i] * df * dt;
+	}
+}
+
+/* The time left with one cost fitted and the other held at `fc` seconds a
+ * file: the cost per byte, or with no file counts (`fleft` < 0) the bytes'
+ * alone. -1 when the bytes did not move in the samples' weight, so there
+ * is no cost per byte to fit ... */
+static double copy_by_bytes(const CopySums *s, double bleft, double fleft,
+			    double fc)
+{
+	double a;
+
+	if (fleft < 0)
+		fc = fleft = 0;
+	a = copy_slope(s->bb, s->bt - fc * s->bf);
+	return a > 0 ? a * bleft + fc * fleft : -1;
+}
+
+/* ... and the cost per file with each byte held at `bc` seconds. */
+static double copy_by_files(const CopySums *s, double bleft, double fleft,
+			    double bc)
+{
+	double b = copy_slope(s->ff, s->ft - bc * s->bf);
+
+	return b > 0 ? b * fleft + bc * bleft : -1;
+}
+
+/* The seconds the rest of the copy takes, from the samples: el = c +
+ * a·bytes + b·files fitted by least squares, each sample weighed by its
+ * age (copy_weight, half-life KI_COPY_HALF_S), and a·bytes_left +
+ * b·files_left, of `btot` bytes and `ftot` files in all. -1 when the
+ * samples span less than KI_COPY_SPAN_S seconds, or neither quantity has
+ * moved enough, to fit.
+ *
+ * Both costs are fitted only when the samples can tell them apart: each
+ * quantity has moved by a two-hundredth of its total, and the two have not
+ * moved in step (r² of one on the other at most 0.99). Otherwise one cost
+ * is fitted with the other held at its floor, KI_COPY_FILE_S a file or
+ * KI_COPY_BYTE_S a byte, and of the two ways round the lower estimate is
+ * taken. A cost fitted on a quantity that has barely moved, or on one that
+ * moves in step with the other, takes the whole time as its own: through a
+ * run of large files the time per file is the time per large file, which
+ * times the small files still to go reads as many minutes when the tail is
+ * one. The floor keeps the files left from counting for nothing; the
+ * estimate is low by the rest of their cost until the samples show it.
+ * The time shown starts from this estimate and counts down toward it
+ * (copy_hold). */
+static double copy_fit(const KiCopyFiles *c, double bleft, double btot,
+		       double fleft, double ftot)
+{
+	CopySums s;
+	double det, a, b, tb, tf, t;
+	int bmoved, fmoved;
+
+	if (c->n < 2 || c->el[c->n - 1] - c->el[0] < KI_COPY_SPAN_S)
+		return -1;
+	bmoved = c->bytes[c->n - 1] - c->bytes[0] >= btot / 200;
+	fmoved = fleft >= 0 && c->files[c->n - 1] - c->files[0] >= ftot / 200;
+	if (!bmoved && !fmoved)
+		return -1;
+	copy_sums(c, KI_COPY_HALF_S, &s);
+	if (fleft < 0) {
+		t = copy_by_bytes(&s, bleft, fleft, 0);
+		return t < 0 ? 0 : t;
+	}
+	tb = copy_by_bytes(&s, bleft, fleft, KI_COPY_FILE_S);
+	tf = copy_by_files(&s, bleft, fleft, KI_COPY_BYTE_S);
+	if (tb < 0)
+		tb = KI_COPY_FILE_S * fleft;
+	if (tf < 0)
+		tf = KI_COPY_BYTE_S * bleft;
+	if (!fmoved || s.ff <= 0) {
+		t = tb;
+	} else if (!bmoved || s.bb <= 0) {
+		t = tf;
+	} else if ((det = s.bb * s.ff - s.bf * s.bf) <= 0.01 * s.bb * s.ff) {
+		t = tb < tf ? tb : tf;
+	} else {
+		a = (s.ff * s.bt - s.bf * s.ft) / det;
+		b = (s.bb * s.ft - s.bf * s.bt) / det;
+		if (a < 0)
+			t = copy_slope(s.ff, s.ft) * fleft;
+		else if (b < 0)
+			t = copy_slope(s.bb, s.bt) * bleft;
+		else
+			t = a * bleft + b * fleft;
+	}
+	return t;
+}
+
+/* Estimate `t`, made `el` seconds in, into the copy's history: one slot
+ * each KI_COPY_HIST_S, holding the lowest and highest made in it. */
+static void copy_hist_add(KiCopyFiles *c, double t, double el)
+{
+	int k = (c->hn + KI_COPY_HIST - 1) % KI_COPY_HIST;
+
+	if (c->hn && el - c->h_el[k] < KI_COPY_HIST_S) {
+		if (t < c->h_lo[k])
+			c->h_lo[k] = t;
+		if (t > c->h_hi[k])
+			c->h_hi[k] = t;
+		return;
+	}
+	k = c->hn++ % KI_COPY_HIST;
+	c->h_el[k] = el;
+	c->h_lo[k] = c->h_hi[k] = t;
+}
+
+/* The lowest and highest of the estimates that stood over the `span`
+ * seconds before `el`: those made in them and the one standing as they
+ * began. 0 when the history does not reach back that far. */
+static int copy_hist(const KiCopyFiles *c, double el, double span,
+		     double *lo, double *hi)
+{
+	int n = c->hn < KI_COPY_HIST ? c->hn : KI_COPY_HIST;
+
+	*lo = *hi = c->est;
+	for (int i = 0; i < n; i++) {
+		int k = (c->hn - 1 - i) % KI_COPY_HIST;
+
+		if (c->h_lo[k] < *lo)
+			*lo = c->h_lo[k];
+		if (c->h_hi[k] > *hi)
+			*hi = c->h_hi[k];
+		if (el - c->h_el[k] >= span)
+			return 1;
+	}
+	return 0;
+}
+
+/* The time left to show for estimate `t`, `el` seconds in with `done`
+ * bytes and `fdone` files copied, `last` on the copy's last line, or -1
+ * while the estimate has not settled: see THE TIME SHOWN below. A line
+ * (`line` 1) adds its estimate to the history; a tick (ki_copy_tick)
+ * passes the last line's estimate and progress again. */
+static double copy_hold(KiCopyFiles *c, double t, double el, double done,
+			double fdone, int last, int line)
+{
+	double lo, hi, frac, below, rate, dt = el - c->shown_el;
+	int covered;
+
+	if (!c->shown_ok || done > c->shown_bytes || fdone > c->shown_files)
+		c->moved_el = el;
+	if (line)
+		copy_hist_add(c, t, el);
+	c->shown_ok = 1;
+	c->shown_bytes = done;
+	c->shown_files = fdone;
+	if (last) {
+		c->counting = 1;
+		t = 0;
+	} else if (!c->counting) {
+		covered = copy_hist(c, el, KI_COPY_SETTLE_S, &lo, &hi);
+		frac = el / (el + t);
+		if (frac < KI_COPY_SETTLED &&
+		    (frac < KI_COPY_START || !covered ||
+		     hi > lo * (1 + KI_COPY_SPREAD))) {
+			c->shown_el = el;
+			return -1;
+		}
+		/* The first figure is the settled estimate. */
+		c->counting = 1;
+	} else if (el - c->moved_el >= KI_COPY_QUIET_S) {
+		t = c->shown;
+	} else {
+		copy_hist(c, el, KI_COPY_EST_S, &lo, &hi);
+		if (c->shown > hi) {
+			t = c->shown - dt < hi ? c->shown - dt : hi;
+			if (t < c->shown - KI_COPY_FAST * dt)
+				t = c->shown - KI_COPY_FAST * dt;
+		} else {
+			below = hi > 0 ? 1 - c->shown / hi : 0;
+			rate = 1 - (1 - KI_COPY_SLOW) * (below - KI_COPY_NEAR) /
+					   (KI_COPY_FAR - KI_COPY_NEAR);
+			if (rate > 1)
+				rate = 1;
+			if (rate < KI_COPY_SLOW)
+				rate = KI_COPY_SLOW;
+			t = c->shown - rate * dt;
+		}
+	}
+	if (!last && t < 1)
+		t = c->shown > 0 && c->shown < 1 ? c->shown : 1;
+	c->shown = t;
+	c->shown_el = el;
+	return t;
+}
+
+/* The copy line's text for `done` bytes `el` seconds in, `t` seconds
+ * left (below 0: "estimating time left") and a payload of `total` less
+ * `links` bytes (none when 0). */
+static void copy_text(double done, double el, unsigned long long total,
+		      unsigned long long links, double t, char *note, size_t n)
+{
+	char had[24], all[24], rate[40] = "--", left[40] = "estimating time left";
+
+	if (el >= 1) {
+		char r[24];
+
+		iec_size((unsigned long long)(done / el), r, sizeof(r));
+		snprintf(rate, sizeof(rate), "%s/s", r);
+	}
+	if (t >= 0) {
+		unsigned long long r2 = (unsigned long long)(t + 0.5);
+		snprintf(left, sizeof(left), "about %llu:%02llu:%02llu left",
+			 r2 / 3600, r2 / 60 % 60, r2 % 60);
+	}
+	iec_size((unsigned long long)done, had, sizeof(had));
+	if (total) {
+		iec_size(total > links ? total - links : total, all,
+			 sizeof(all));
+		snprintf(note, n, "%s of %s, %s, %s", had, all, rate, left);
+	} else {
+		snprintf(note, n, "%s copied, %s, %s", had, rate, left);
+	}
+}
+
+/*
+ * THE RATE AND THE TIME LEFT ARE KINSTALL'S OWN. rsync's progress2 time
+ * field is the time left on its running lines and the time taken on the
+ * line it prints as each file ends, which is most of them, and its rate is
+ * in its own decimal units. Both are worked out here: the rate is the
+ * bytes copied over the seconds since rsync started.
+ *
+ * THE TIME LEFT IS TWO COSTS: the bytes still to go at a cost per byte, and
+ * the files still to go at a cost per file, the two fitted by least squares,
+ * with an intercept, on samples of the seconds, bytes and files done
+ * (copy_fit). A sample weighs half as much for every KI_COPY_HALF_S seconds
+ * it is older than the newest, so the costs are those of the part of the
+ * tree being copied now and not an average over the whole copy so far. A
+ * live tree copies its large files at the disk's speed and
+ * ends in tens of thousands of small ones, where the per-file cost is what
+ * takes the time: scaled from bytes alone that tail reads as seconds when
+ * it is a minute, and scaled from files alone, at a rate that counts the
+ * large files' time as the files', the copy reads two or three times as
+ * long as it is. The intercept takes up the seconds rsync spends listing
+ * the tree before its first progress line, which an average from the
+ * start would spread over every byte and file.
+ *
+ * A COST THE COPY HAS NOT SHOWN YET IS NOT KNOWN. While the samples cannot
+ * tell the two costs apart — a run of large files, or of small ones, so
+ * far — the unknown one is held at its floor (copy_fit), and the time left
+ * is low by the rest of it: through a tree whose large files all come
+ * before its small ones, the small ones' cost shows only when they start,
+ * and the estimate takes it in a few seconds later, but a figure once
+ * shown does not rise to it (THE TIME SHOWN): it slows, and reads low
+ * through the tail. The live tree mixes the two from its first seconds,
+ * and its time left is close from early on.
+ *
+ * Until the samples span KI_COPY_SPAN_S seconds there is nothing to fit,
+ * and the note reads "estimating time left". The first time shown is a
+ * fitted one: an estimate from the first lines alone, of bytes or of files
+ * with the other cost left out, is low, and it would take a rise to
+ * correct.
+ * With no `files` to fit on, the time left is that estimate from the first
+ * progress line on: the bytes', or the files' when that is lower, since
+ * the one of the two that has barely moved gives hours.
+ *
+ * The files left are read from `to-chk=<left>/<total>` only. `ir-chk=` is
+ * a list still growing, whose "left" is the part found so far; the copy
+ * runs --no-inc-recursive, so rsync prints `to-chk=` from its first line.
+ *
+ * THE FILES ARE COUNTED BY WHAT THEY COST. `to-chk` counts every entry of
+ * rsync's list, and a directory, a symbolic link or a later name of a file
+ * costs a fraction of a regular file (KiCopyProfile). The walk's profile
+ * turns the entries done into the cost done, read at the same fraction of
+ * the list, so the files done and left that the fit sees are in the
+ * profile's units: through the live tree's icon themes, where the links
+ * outnumber the files, the files left shrink by what they cost and not by
+ * their count, and the time left does not charge the links a file's cost.
+ *
+ * THE BYTES LEFT ARE THE BYTES RSYNC COPIES, which are not the bytes its
+ * percentage is of. With -H its total counts every name of a hard-linked
+ * file, and it copies the first and makes the others links, at no cost:
+ * on the live tree those names are about 15% of its total, so the
+ * percentage stops near 85% as the copy ends, and bytes left that cost
+ * nothing read as a third more time than there is. The total is rsync's,
+ * worked out from its percentage once that is ten or more, less `links`,
+ * the bytes of every name after a file's first (probe_payload); before
+ * that, `total` less `links`. It is never less than the bytes done, so the
+ * bytes shown reach the total as the copy ends. The
+ * note's "of" is `total` less `links`, the walk's own figure: one worked
+ * out from a whole-number percentage moves by a tenth of a GiB from line to
+ * line.
+ *
+ * rsync prints the file counts only on the line that ends a file; the
+ * lines it prints once a second while one large file copies carry none.
+ * The files done stand at the last reading through them, and a sample is
+ * taken only on a line with counts, where bytes and files are of one
+ * moment.
+ *
+ * THE FRACTION DONE IS OF THE TIME: the seconds so far over those and the
+ * time left shown, or the estimate while no figure is shown, once there is
+ * an estimate, and of the bytes before that, never less than the last one. A front end's bars follow it, and the live
+ * tree's bytes are not spread like its time: two thirds of them go in the
+ * first third of the copy, and a bar of bytes would stand near the end for
+ * the half minute of small files and links. The time shown reaches 0 as
+ * the copy ends, so the fraction reaches 1.
+ *
+ * THE TIME SHOWN COUNTS DOWN WHILE THE COPY MOVES, AND ONCE SHOWN IT NEVER
+ * RISES (copy_hold). Each refit moves the estimate, and a clock that
+ * climbs while bytes and files go by reads as a copy going backwards, one
+ * that stands still as a copy that has stopped.
+ *
+ * NO FIGURE IS SHOWN UNTIL THE ESTIMATE SETTLES, and the note reads
+ * "estimating time left". The first fits are low on a slower disk and on
+ * a tree whose small files have not started, and high behind a slow
+ * start, and a figure shown from them would have to rise, or stand, to
+ * meet the copy. The estimate has settled once the note's own fraction,
+ * the seconds so far over those and the estimate, is KI_COPY_START, and
+ * the estimates that stood over the last KI_COPY_SETTLE_S seconds lie
+ * within KI_COPY_SPREAD above the lowest of them; or once that fraction
+ * is KI_COPY_SETTLED whatever they do. That fraction is of the estimate:
+ * the forced settle comes before a fifth of the copy while the estimate
+ * is at most 1.31 times the real time left (0.16r/(0.84 + 0.16r) of the
+ * copy for an estimate r times it), and an estimate higher than that
+ * which still spreads by more than KI_COPY_SPREAD leaves no figure shown
+ * past a fifth. The first figure is the estimate then, and from it
+ * on only the countdown moves it. While no figure is shown the fraction
+ * done is of the estimate, so the bar moves with the copy.
+ *
+ * THE COUNTDOWN IS SET AGAINST THE ESTIMATE, the highest of those that
+ * stood over the last KI_COPY_EST_S seconds. Above it, the time shown
+ * falls to it, at least as fast as the clock and at most KI_COPY_FAST
+ * times as fast, so a high first figure, or one an estimate has fallen
+ * below, is corrected within a second or two wherever it came from.
+ * Below it, the time shown counts at the clock while it is within
+ * KI_COPY_NEAR of it, and slower the further below, down to KI_COPY_SLOW
+ * of the clock from KI_COPY_FAR below it on, which lets the copy catch up
+ * with a figure that is low. An estimate a little above the time shown is
+ * as often a slow stretch of the copy as a copy slower than shown, and
+ * the clock keeps the figure from following it up; one well above is the
+ * copy's own pace. The time shown never rises.
+ *
+ * NO WHOLE SECOND STANDS FOR TWO SECONDS WHILE THE COPY MOVES, which a
+ * front end framing once a second would show as three equal frames. rsync
+ * prints a line as each file ends and once a second through a large file,
+ * so the reader (run_full) ticks each KI_COPY_TICK_S without a line, and
+ * a tick (ki_copy_tick) counts the time shown down from the last line's
+ * estimate as a line would. A whole second then stands for at most
+ * 1/KI_COPY_SLOW + KI_COPY_TICK_S seconds, under two. A copy whose bytes
+ * and files have not advanced for KI_COPY_QUIET_S, longer than rsync's
+ * second between running lines, is not moving, and keeps its time shown.
+ *
+ * The time shown is never below one second until the copy's last line
+ * (`to-chk=0/N`, or no bytes and no files left), which shows 0:00:00: an
+ * estimate that reaches 0 before rsync has finished would show 0:00:00 on
+ * a copy still running, and the end of the copy would not be told apart
+ * from a stall.
+ */
+int ki_copy_note(const char *line, double el, unsigned long long total,
+		 unsigned long long links, const KiCopyProfile *prof,
+		 KiCopyFiles *files, double *frac, char *note, size_t n)
 {
 	/* 10,544,196,181  45%  45.67MB/s    0:00:12 (xfr#123, to-chk=456/789) */
-	char size[32], pct[16], speed[32], eta[32];
-	int n = sscanf(line, "%31s %15s %31s %31s", size, pct, speed, eta);
-	if (n >= 3 && strchr(pct, '%')) {
-		unsigned long long done = rsync_bytes(size);
-		int p = atoi(pct);
+	char size[32], pct[16];
+	const char *chk;
+	long fleft = -1, ftotal = 0;
+	unsigned long long done;
+	double t = -1, btot = 0, bleft = -1, fdone = -1, fl = -1, ft = 0;
+	int p;
 
-		rsync_total_pct = p / 100.0;
+	if (sscanf(line, "%31s %15s", size, pct) != 2 || !strchr(pct, '%') ||
+	    !isdigit((unsigned char)size[0]))
+		return 0;
+	done = rsync_bytes(size);
+	p = atoi(pct);
+	chk = strstr(line, "to-chk=");
+	if (chk && sscanf(chk + 7, "%ld/%ld", &fleft, &ftotal) != 2)
+		fleft = -1;
+	if (fleft >= 0 && ftotal >= fleft) {
+		if (files) {
+			files->left = fleft;
+			files->total = ftotal;
+		}
+	} else if (files && files->total > 0) {
+		fleft = files->left;
+		ftotal = files->total;
+	} else {
+		fleft = -1;
+	}
+	if (fleft >= 0 && prof && prof->ok && ftotal > 0) {
+		ft = (double)ftotal * prof->per_entry;
+		fdone = ft * copy_prof_at(prof, (double)(ftotal - fleft) /
+							(double)ftotal);
+		fl = ft - fdone;
+	} else if (fleft >= 0) {
+		ft = (double)ftotal;
+		fdone = (double)(ftotal - fleft);
+		fl = (double)fleft;
+	}
+
+	if (p >= 10 && p < 100)
+		btot = done * 100.0 / (p + 0.5) - (double)links;
+	else if (total)
+		btot = total > links ? (double)(total - links) : (double)total;
+	else if (p > 0)
+		btot = done * 100.0 / (p + 0.5) - (double)links;
+	if (btot > 0 && btot < done)
+		btot = (double)done;
+	if (btot > 0)
+		bleft = btot - done;
+	*frac = btot > 0 ? done / btot : p / 100.0;
+	if (*frac > 1)
+		*frac = 1;
+	if (files && el >= 0 && (chk || fleft < 0))
+		copy_sample(files, el, (double)done, fdone >= 0 ? fdone : 0);
+
+	if (el >= 1) {
+		/* The first sample is the first progress line. */
+		int first = files && files->n;
+		double run = first ? el - files->el[0] : el;
+		double b0 = first ? files->bytes[0] : 0;
+		double f0 = first ? files->files[0] : 0;
+
+		if (files && bleft >= 0)
+			t = copy_fit(files, bleft, btot, fl, ft);
+		if (!files && run >= 1 && bleft >= 0 && done > b0) {
+			t = run * bleft / (done - b0);
+			if (fl >= 0 && fdone > f0 && run * fl / (fdone - f0) < t)
+				t = run * fl / (fdone - f0);
+		}
+		if (files && t >= 0) {
+			double e = t;
+
+			files->est = e;
+			t = copy_hold(files, e, el, (double)done, fdone,
+				      fleft == 0 || (bleft <= 0 && fl <= 0), 1);
+			*frac = el / (el + (t >= 0 ? t : e));
+		}
+	}
+	if (files) {
+		if (*frac < files->frac)
+			*frac = files->frac;
+		files->frac = *frac;
+	}
+	copy_text((double)done, el, total, links, t, note, n);
+	return 1;
+}
+
+int ki_copy_tick(double el, unsigned long long total,
+		 unsigned long long links, KiCopyFiles *files, double *frac,
+		 char *note, size_t n)
+{
+	double t;
+
+	if (!files->shown_ok || !files->counting || files->shown <= 0 ||
+	    el - files->moved_el >= KI_COPY_QUIET_S)
+		return 0;
+	t = copy_hold(files, files->est, el, files->shown_bytes,
+		      files->shown_files, 0, 0);
+	*frac = el / (el + t);
+	if (*frac < files->frac)
+		*frac = files->frac;
+	files->frac = *frac;
+	copy_text(files->shown_bytes, el, total, links, t, note, n);
+	return 1;
+}
+
+/* KINSTALL_COPY_TRACE=<file>: every line a copy's rsync prints is appended
+ * to the file as `<seconds since the copy started> <line>`, after a
+ * `# <copy> total=<bytes> links=<bytes>` line naming the copy and the
+ * figures its time left is given, and a `# prof <per_entry> <at[0]>…`
+ * line holding the walk's profile. That is the stream `harness copy`
+ * reads, so a copy on real hardware replays in the selftest as it ran. */
+static FILE *rsync_trace;
+
+static void copy_trace_start(const char *what)
+{
+	const char *path = getenv("KINSTALL_COPY_TRACE");
+
+	if (rsync_trace)
+		fclose(rsync_trace);
+	rsync_trace = path && *path ? fopen(path, "ae") : NULL;
+	if (!rsync_trace)
+		return;
+	fprintf(rsync_trace, "# %s total=%llu links=%llu\n", what,
+		rsync_total_bytes, rsync_link_bytes);
+	if (rsync_prof && rsync_prof->ok) {
+		fprintf(rsync_trace, "# prof %.6f", rsync_prof->per_entry);
+		for (int i = 0; i <= KI_COPY_PROF; i++)
+			fprintf(rsync_trace, " %.6f", (double)rsync_prof->at[i]);
+		fputc('\n', rsync_trace);
+	}
+}
+
+static void copy_trace_end(void)
+{
+	if (rsync_trace)
+		fclose(rsync_trace);
+	rsync_trace = NULL;
+}
+
+static void rsync_parse(const char *line)
+{
+	char note[128];
+
+	if (rsync_trace)
+		fprintf(rsync_trace, "%.3f %s\n", kb_now_s() - rsync_t0, line);
+	if (ki_copy_note(line, kb_now_s() - rsync_t0, rsync_total_bytes,
+			 rsync_link_bytes, rsync_prof, &rsync_files,
+			 &rsync_total_pct, note, sizeof(note))) {
 		emit('P', "%.4f", rsync_total_pct);
-		if (rsync_total_bytes)
-			emit('N', "%s of %s, %s, about %s left",
-			     kb_human_size(done), kb_human_size(rsync_total_bytes),
-			     speed, n >= 4 ? eta : "--:--:--");
-		else
-			emit('N', "%s copied, %s, about %s left",
-			     kb_human_size(done), speed,
-			     n >= 4 ? eta : "--:--:--");
+		emit('N', "%s", note);
 		return;
 	}
 	if (line[0] && line[0] != ' ')
 		logf_("%s", line);
+}
+
+static void rsync_tick(void)
+{
+	char note[128];
+
+	if (ki_copy_tick(kb_now_s() - rsync_t0, rsync_total_bytes,
+			 rsync_link_bytes, &rsync_files, &rsync_total_pct, note,
+			 sizeof(note))) {
+		emit('P', "%.4f", rsync_total_pct);
+		emit('N', "%s", note);
+	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -1226,6 +2059,16 @@ static void do_prepare(void)
 			fail("required tool missing: %s", *p);
 	if (!kb_have_prog(ki_fs(cfg.fstype)->mkfs))
 		fail("required tool missing: %s", ki_fs(cfg.fstype)->mkfs);
+	/* The copy's source is this root, so the Bootloader step finds the
+	 * payload here or nowhere; asked after the erase, a missing one leaves
+	 * a wiped disk that does not start. The two files, not the directory:
+	 * an empty /usr/share/limine starts nothing either. A rehearsal places
+	 * nothing. */
+	if (!cfg.dry_run &&
+	    (!kb_path_exists("/usr/share/limine/BOOTX64.EFI") ||
+	     !kb_path_exists("/usr/share/limine/limine-bios.sys")))
+		fail("no Limine payload (BOOTX64.EFI, limine-bios.sys) in "
+		     "/usr/share/limine — the disk would not start");
 	/* The Layout page refuses this too; an unattended install never
 	 * shows it, and this is before anything is written. */
 	if (!ki_sys.uefi && ki_bios_boot_part() < 0)
@@ -1289,7 +2132,7 @@ static void do_partition(void)
 	emit('N', "writing the partition table");
 	char *sf[] = { "sfdisk", "--wipe", "always", cfg.disk, NULL };
 	static const int ok0[] = { 0 };
-	int rc = run_full(sf, layout, NULL, ok0, 1);
+	int rc = run_full(sf, layout, NULL, NULL, ok0, 1);
 	if (rc)
 		fail("sfdisk failed (exit %d)", rc);
 
@@ -1709,12 +2552,20 @@ static void do_copy(void)
 	emit('N', "copying the live tree");
 	emit('P', "0");
 	rsync_total_pct = 0;
+	memset(&rsync_files, 0, sizeof(rsync_files));
 	rsync_total_bytes = ki_need_bytes();
+	rsync_link_bytes = cfg.with_appbox ? ki_sys.link_extra_bytes
+					   : ki_sys.link_extra_bytes -
+						     ki_sys.link_extra_appbox_bytes;
+	rsync_prof = cfg.with_appbox ? &ki_sys.copy_prof : &ki_sys.copy_prof_sys;
+	rsync_t0 = kb_now_s();
+	copy_trace_start("root");
 
 	/* 24 is "some files vanished before transfer" — on a live system with
 	 * a running session that is the normal case, not a failure. */
 	static const int ok[] = { 0, 24 };
-	int rc = run_full(argv, NULL, rsync_parse, ok, 2);
+	int rc = run_full(argv, NULL, rsync_parse, rsync_tick, ok, 2);
+	copy_trace_end();
 	if (rc)
 		fail("rsync failed (exit %d)", rc);
 
@@ -1732,6 +2583,35 @@ static void do_copy(void)
 /* Whether the release's binhost index is in the target's cache: fetched once,
  * by the first step that needs it, and read by the next. -1 is not yet asked. */
 static int index_state = -1;
+/* Set when the fetch found no binhost named at all — an image built from a
+ * tree that names no release, with no `binhost =` in update.conf — which is
+ * no network failure, and the warnings must not read as one. */
+static int index_unnamed;
+/* Set when `kdos update fetch` found no network at all (its "the network
+ * could not be reached" line): the warning then says so, rather than sending
+ * the account to the log for the one fact it needs. */
+static int index_offline;
+
+static void index_parse(const char *line)
+{
+	logf_("%s", line);
+	if (strstr(line, "no binhost is named"))
+		index_unnamed = 1;
+	if (strstr(line, "the network could not be reached"))
+		index_offline = 1;
+}
+
+/* Why there is no index, as the head of a warning. */
+static const char *index_why(void)
+{
+	if (index_unnamed)
+		return "this image names no binary host";
+	if (index_offline)
+		return "no network was found, so the release's binary host "
+		       "index could not be fetched";
+	return "the release's binary host index could not be fetched "
+	       "(/var/log/kinstall.log says why)";
+}
 
 /* THE CACHE IS THE TARGET'S OWN: the live system's is in RAM, and a group of a
  * few gigabytes downloaded there would fill it. The installed machine then
@@ -1747,8 +2627,10 @@ static int fetch_index(void)
 		char *fetch[] = { "kdos", "update", "fetch", "--binhost-only",
 				  NULL };
 
+		static const int ok[] = { 0 };
+
 		mkpath("%s", cache);
-		index_state = run(fetch) == 0;
+		index_state = run_full(fetch, NULL, index_parse, NULL, ok, 1) == 0;
 	}
 	return index_state;
 }
@@ -1776,8 +2658,9 @@ static int fetch_index(void)
  * and origin file under the target, so the installed machine updates them
  * like anything else installed on purpose. A group that does not go in, and
  * every group when the index cannot be had, is written to the target's
- * /var/lib/kdos/groups-pending for `kdos update install --pending`: a warning,
- * never a failure, since the system is installed and boots without it.
+ * /var/lib/kdos/groups-pending for `kdos update install --pending` (as
+ * ki_root_cmd names it to the account): a warning, never a failure, since
+ * the system is installed and boots without it.
  */
 static void do_native(void)
 {
@@ -1791,12 +2674,12 @@ static void do_native(void)
 	}
 	online = fetch_index();
 	if (!online)
-		emit('W', "the release's binary host could not be reached; the "
-			  "chosen groups are recorded and install later with "
-			  "`kdos update install --pending`");
+		emit('W', "%s; the chosen groups are recorded and install "
+			  "later with %s", index_why(),
+		     ki_root_cmd("kdos update install --pending"));
 	kb_buf_printf(&b, "# Native groups chosen during the install and not "
-			  "yet installed.\n# `kdos update install --pending` "
-			  "installs them.\n");
+			  "yet installed.\n# %s installs them.\n",
+		      ki_root_cmd("kdos update install --pending"));
 	for (int i = 0; i < ki_nnative; i++) {
 		if (!ki_native[i].chosen)
 			continue;
@@ -1810,8 +2693,8 @@ static void do_native(void)
 			if (run(inst) == 0)
 				continue;
 			emit('W', "group %s did not install; it is recorded for "
-				  "`kdos update install --pending`",
-			     ki_native[i].id);
+				  "%s", ki_native[i].id,
+			     ki_root_cmd("kdos update install --pending"));
 		}
 		kb_buf_printf(&b, "%s\n", ki_native[i].id);
 		pend++;
@@ -1878,26 +2761,89 @@ static void do_apps(void)
  * prebuilt, from the index the Packs step fetched or this step fetches now.
  * Each line it prints is logged, so the log says what went in. Offline, a
  * failure, or a `kdos` without the command is a warning and never a failure:
- * the system boots on the medium's firmware, and `sudo kdos firmware sync`
- * after the first boot does the rest.
+ * the system boots on the medium's firmware, and `kdos firmware sync` as
+ * root after the first boot does the rest (ki_root_cmd names it).
  */
 static void do_firmware(void)
 {
 	char *sync[] = { "kdos", "firmware", "sync", "--root", TARGET, NULL };
 
 	if (!fetch_index()) {
-		emit('W', "the release's binary host could not be reached, so "
-			  "no firmware beyond the medium's was installed; run "
-			  "`sudo kdos firmware sync` after the first boot");
+		emit('W', "%s, so no firmware beyond the medium's was "
+			  "installed; run %s after the first boot",
+		     index_why(), ki_root_cmd("kdos firmware sync"));
 	} else if (run(sync) != 0) {
-		emit('W', "`kdos firmware sync` did not finish; run `sudo kdos "
-			  "firmware sync` after the first boot");
+		emit('W', "`kdos firmware sync` did not finish; run %s after "
+			  "the first boot", ki_root_cmd("kdos firmware sync"));
 	} else {
 		emit('L', "%s the firmware this machine's devices name",
 		     cfg.dry_run ? "would install" : "installed");
 	}
 	unsetenv("KDOS_UPDATE_CACHE");
 	emit('P', "1");
+}
+
+/*
+ * THE SWAP FILE, made before fstab names it, and named only once it is whole.
+ * How a swapfile is made depends on the filesystem under it, and getting it
+ * wrong does not fail here — it fails at the next boot's `swapon -a`, with
+ * the machine simply having no swap and nothing saying why.
+ *
+ * fallocate leaves unwritten extents, so xfs and f2fs get a file written out
+ * in full, which no kernel's swapon can refuse for them. btrfs needs the file
+ * NOCOW and uncompressed, which is the whole reason `btrfs filesystem
+ * mkswapfile` exists.
+ *
+ * A FILE THAT COULD NOT BE MADE WHOLE IS DELETED, never given to mkswap: a
+ * root that ran out of room part way leaves a short file, and a short swap
+ * file is a machine with less swap than it was promised and a full root.
+ * The machine is installed without swap and a warning says so. 1 when the
+ * file is made.
+ */
+static int make_swapfile(void)
+{
+	char sz[32];
+	int rc;
+	int mode = ki_fs(cfg.fstype)->swapfile;
+
+	emit('N', "swapfile (%ld MiB)", cfg.swap_mb);
+	snprintf(sz, sizeof(sz), "%ldM", cfg.swap_mb);
+	if (mode == KI_SWAPFILE_FALLOCATE && !kb_have_prog("fallocate"))
+		mode = KI_SWAPFILE_DD;
+	if (mode == KI_SWAPFILE_BTRFS && !kb_have_prog("btrfs"))
+		mode = KI_SWAPFILE_DD;
+
+	if (mode == KI_SWAPFILE_BTRFS) {
+		char *bs[] = { "btrfs", "filesystem", "mkswapfile", "-s", sz,
+			       TARGET "/swapfile", NULL };
+		rc = run(bs);
+	} else {
+		if (mode == KI_SWAPFILE_FALLOCATE) {
+			char *fa[] = { "fallocate", "-l", sz,
+				       TARGET "/swapfile", NULL };
+			rc = run(fa);
+		} else {
+			char cnt[32];
+			snprintf(cnt, sizeof(cnt), "count=%ld", cfg.swap_mb);
+			char *dd[] = { "dd", "if=/dev/zero",
+				       "of=" TARGET "/swapfile", "bs=1M", cnt,
+				       NULL };
+			rc = run(dd);
+		}
+		if (!rc) {
+			char *mks[] = { "mkswap", TARGET "/swapfile", NULL };
+			if (!cfg.dry_run)
+				chmod(TARGET "/swapfile", 0600);
+			rc = run(mks);
+		}
+	}
+	if (!rc)
+		return 1;
+	if (!cfg.dry_run)
+		unlink(TARGET "/swapfile");
+	emit('W', "the %ld MiB swap file could not be made (exit %d), so this "
+		  "machine has no swap; the log says why", cfg.swap_mb, rc);
+	return 0;
 }
 
 static void do_config(void)
@@ -1970,7 +2916,8 @@ static void do_config(void)
 			 swap_uuid);
 		cat(fst, sizeof(fst), l);
 	}
-	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0 && !ki_ab())
+	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0 && !ki_ab() &&
+	    make_swapfile())
 		cat(fst, sizeof(fst), "/swapfile\tnone\tswap\tdefaults\t0 0\n");
 	cat(fst, sizeof(fst), "\n");
 
@@ -2179,52 +3126,6 @@ static void do_config(void)
 		}
 	}
 
-	if (cfg.swap == SWAP_FILE && cfg.swap_mb > 0 && !ki_ab()) {
-		emit('N', "swapfile (%ld MiB)", cfg.swap_mb);
-		char sz[32];
-		snprintf(sz, sizeof(sz), "%ldM", cfg.swap_mb);
-
-		/*
-		 * How a swapfile is made depends on the filesystem under it,
-		 * and getting it wrong does not fail here — it fails at the
-		 * next boot's `swapon -a`, with the machine simply having no
-		 * swap and nothing saying why.
-		 *
-		 * fallocate leaves unwritten extents, so xfs and f2fs get a
-		 * file written out in full, which no kernel's swapon can refuse
-		 * for them. btrfs needs the file NOCOW and uncompressed, which
-		 * is the whole reason `btrfs filesystem mkswapfile` exists.
-		 */
-		int mode = ki_fs(cfg.fstype)->swapfile;
-		if (mode == KI_SWAPFILE_FALLOCATE && !kb_have_prog("fallocate"))
-			mode = KI_SWAPFILE_DD;
-		if (mode == KI_SWAPFILE_BTRFS && !kb_have_prog("btrfs"))
-			mode = KI_SWAPFILE_DD;
-
-		if (mode == KI_SWAPFILE_BTRFS) {
-			char *bs[] = { "btrfs", "filesystem", "mkswapfile",
-				       "-s", sz, TARGET "/swapfile", NULL };
-			try_(bs);
-		} else {
-			if (mode == KI_SWAPFILE_FALLOCATE) {
-				char *fa[] = { "fallocate", "-l", sz,
-					       TARGET "/swapfile", NULL };
-				try_(fa);
-			} else {
-				char cnt[32];
-				snprintf(cnt, sizeof(cnt), "count=%ld",
-					 cfg.swap_mb);
-				char *dd[] = { "dd", "if=/dev/zero",
-					       "of=" TARGET "/swapfile",
-					       "bs=1M", cnt, NULL };
-				try_(dd);
-			}
-			if (!cfg.dry_run)
-				chmod(TARGET "/swapfile", 0600);
-			char *mks[] = { "mkswap", TARGET "/swapfile", NULL };
-			try_(mks);
-		}
-	}
 	emit('P', "1");
 }
 
@@ -2241,29 +3142,11 @@ static void do_config(void)
 static void fill_home(const char *user)
 {
 	char home[256], chown_arg[64], dirs[4096];
-	uid_t uid = 1000;
-	gid_t gid = 1000;
+	uid_t uid;
+	gid_t gid;
 
 	snprintf(home, sizeof(home), "%s/home/%s", TARGET, user);
-	{
-		char pw[65536];
-		char *save = NULL;
-		size_t ul = strlen(user);
-
-		if (slurp(TARGET "/etc/passwd", pw, sizeof(pw)) > 0)
-			for (char *l = strtok_r(pw, "\n", &save); l;
-			     l = strtok_r(NULL, "\n", &save)) {
-				unsigned u, g;
-
-				if (strncmp(l, user, ul) || l[ul] != ':')
-					continue;
-				if (sscanf(l + ul, ":%*[^:]:%u:%u", &u, &g) == 2) {
-					uid = (uid_t)u;
-					gid = (gid_t)g;
-				}
-				break;
-			}
-	}
+	ki_account_ids(TARGET, user, &uid, &gid);
 	mkpath("%s", home);
 	snprintf(chown_arg, sizeof(chown_arg), "--chown=%u:%u", (unsigned)uid,
 		 (unsigned)gid);
@@ -2349,12 +3232,23 @@ static void do_accounts(void)
 	emit('P', "1");
 }
 
+static int run_seed(const KbArgv *a)
+{
+	return run((char *const *)a->v);
+}
+
 /*
- * THE ACCENT AND THE DESK, as files the first login reads: the global theme
- * and the desk in /etc/xdg, the splash's and the console's accent, and the
- * login screen's. Nothing is run: startplasma applies the global theme in
+ * THE ACCENT AND THE DESK. The machine's half is files the first login reads:
+ * the global theme and the desk in /etc/xdg, the splash's and the console's
+ * accent, and the login screen's; startplasma applies the global theme in
  * Defaults mode at the first login, and the theme's layout script lays out the
- * desk, so the account starts exactly as a new account on this machine would.
+ * desk. The account's half is ki_seed_accent's two runs of `kdos theme
+ * --account`: into /etc/skel, so every account made later starts in the
+ * accent, and into the new account's home, which fill_home filled before the
+ * accent was written and which a text console or an SSH login reads long
+ * before any Plasma login would rewrite it. An OEM install has no account
+ * yet: skel alone. A run that fails is a warning, not a failed install — the
+ * first Plasma login brings the account into step on its own.
  */
 static void do_theme(void)
 {
@@ -2363,6 +3257,10 @@ static void do_theme(void)
 	emit('N', "%s, %s desk", cfg.theme, cfg.desk);
 	if (ki_write_look(TARGET, why, sizeof(why)))
 		fail("%s", why);
+	emit('P', "0.4");
+	if (ki_seed_accent(TARGET, "kdos", run_seed))
+		emit('W', "a home did not get all of the %s accent; the first "
+			  "Plasma login brings it into step", cfg.theme);
 	emit('P', "1");
 }
 
@@ -2402,11 +3300,18 @@ static void do_slotb(void)
 	emit('N', "copying slot A into slot B");
 	emit('P', "0");
 	rsync_total_pct = 0;
+	memset(&rsync_files, 0, sizeof(rsync_files));
+	rsync_t0 = kb_now_s();
 	rsync_total_bytes = (ki_sys.payload_kb > ki_sys.appbox_kb
 				     ? ki_sys.payload_kb - ki_sys.appbox_kb
 				     : 0) * 1024;
-	if (run_full(argv, NULL, rsync_parse, ok, 1))
+	rsync_link_bytes = ki_sys.link_extra_bytes -
+			   ki_sys.link_extra_appbox_bytes;
+	rsync_prof = &ki_sys.copy_prof_sys;
+	copy_trace_start("slot-b");
+	if (run_full(argv, NULL, rsync_parse, rsync_tick, ok, 1))
 		fail("rsync into slot B failed");
+	copy_trace_end();
 
 	snprintf(from, sizeof(from), "UUID=%s\t/\t", a_uuid);
 	snprintf(to, sizeof(to), "UUID=%s\t/\t", b_uuid);
@@ -2440,37 +3345,88 @@ static void do_slotb(void)
 	emit('P', "1");
 }
 
-static void copy_file(const char *src, const char *dst)
+/* close() is counted, not dropped: vfat allocates clusters at close, so a
+ * full ESP reports ENOSPC there after every write has returned whole. */
+int ki_copy_file(const char *src, const char *dst)
 {
 	if (cfg.dry_run) {
 		logf_("copy %s -> %s", src, dst);
-		return;
+		return 0;
 	}
 	int in = open(src, O_RDONLY | O_CLOEXEC);
 	if (in < 0) {
 		logf_("  missing %s", src);
-		return;
+		return -1;
 	}
 	int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 	if (out < 0) {
-		close(in);
 		logf_("  cannot create %s: %s", dst, strerror(errno));
-		return;
+		close(in);
+		return -1;
 	}
 	char b[65536];
 	ssize_t n;
-	while ((n = read(in, b, sizeof(b))) > 0) {
+	int bad = 0;
+	while (!bad && (n = read(in, b, sizeof(b))) != 0) {
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			logf_("  cannot read %s: %s", src, strerror(errno));
+			bad = 1;
+			break;
+		}
 		ssize_t off = 0;
 		while (off < n) {
 			ssize_t w = write(out, b + off, (size_t)(n - off));
-			if (w <= 0)
+			if (w < 0 && errno == EINTR)
+				continue;
+			if (w <= 0) {
+				logf_("  cannot write %s: %s", dst,
+				      w < 0 ? strerror(errno) : "short write");
+				bad = 1;
 				break;
+			}
 			off += w;
 		}
 	}
 	close(in);
-	close(out);
+	if (close(out) < 0 && !bad) {
+		logf_("  cannot write %s: %s", dst, strerror(errno));
+		bad = 1;
+	}
+	if (bad)
+		return -1;
 	logf_("copy %s -> %s", src, dst);
+	return 0;
+}
+
+/* A file the disk cannot start without: a failed copy fails the step, so an
+ * install never reaches its Done page with no bootloader or kernel placed. */
+static void must_copy(const char *src, const char *dst)
+{
+	if (ki_copy_file(src, dst) < 0)
+		fail("could not copy %s to %s — the disk would not start",
+		     src, dst);
+}
+
+/* A piece the disk starts without: a failed copy is a warning naming it and
+ * what the machine loses, and the result says whether to point the menu at
+ * it. */
+static int may_copy(const char *src, const char *dst, const char *loss)
+{
+	if (ki_copy_file(src, dst) == 0)
+		return 0;
+	emit('W', "could not copy %s to %s — %s", src, dst, loss);
+	return -1;
+}
+
+/* <dir>/<name>, in one static buffer: one call per expression. */
+static const char *lim_file(const char *dir, const char *name)
+{
+	static char buf[320];
+
+	snprintf(buf, sizeof(buf), "%s/%s", dir, name);
+	return buf;
 }
 
 /*
@@ -2500,6 +3456,209 @@ static void esp_room_for_b(void)
 		emit('W', "the ESP has %llu MiB free and a second root slot's "
 			  "kernel needs %llu MiB — A/B updates will be refused",
 		     avail >> 20, need >> 20);
+}
+
+/* One KEY="value" of an os-release-shaped file, the quotes taken off, and
+ * only printable ASCII other than a quote or a backslash kept: the value is
+ * written back between quotes, and kdos-bootctl reads it into JSON. */
+static void release_value(const char *data, const char *key, char *out,
+			  size_t n)
+{
+	size_t kl = strlen(key), o = 0;
+
+	out[0] = 0;
+	for (const char *l = data; l && *l;) {
+		const char *nl = strchr(l, '\n');
+		const char *end = nl ? nl : l + strlen(l);
+
+		if ((size_t)(end - l) > kl && !strncmp(l, key, kl) &&
+		    l[kl] == '=') {
+			for (const char *v = l + kl + 1; v < end && o + 1 < n; v++) {
+				unsigned char ch = (unsigned char)*v;
+				if (ch < 0x20 || ch > 0x7e || ch == '"' ||
+				    ch == '\'' || ch == '\\')
+					continue;
+				out[o++] = *v;
+			}
+			out[o] = 0;
+			return;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+}
+
+/*
+ * WHAT A SLOT HOLDS, beside its kernel: EFI/kdos/<slot>/release, in the shape
+ * `kdos-bootctl deploy` writes for every later kernel, from the root's
+ * /etc/kdos-release. A slot that is not running is named only by this file
+ * (`kdos-bootctl status`, System Versions, the rollback dialog), because its
+ * root is not mounted; slot B holds a copy of slot A's root, so both get
+ * slot A's record. An image built without a commit carries no
+ * /etc/kdos-release and gets no record, and the running slot is then named
+ * from its own root.
+ */
+static void write_slot_release(const char *slot)
+{
+	static const char *const keys[] = { "VERSION", "BUILD_ID", "BUILD_DATE",
+					    "TREE", "TREE_TIME" };
+	char path[256], v[128];
+	char *rel;
+	KbBuf b = {0};
+
+	snprintf(path, sizeof(path), TARGET "/boot/efi/EFI/kdos/%s/release",
+		 slot);
+	if (cfg.dry_run) {
+		logf_("write %s from %s/etc/kdos-release", path, TARGET);
+		return;
+	}
+	if (!(rel = kb_read_all(TARGET "/etc/kdos-release", NULL))) {
+		logf_("no %s/etc/kdos-release: slot %s's version is not "
+		      "recorded on the ESP", TARGET, slot);
+		return;
+	}
+	kb_buf_printf(&b, "# What slot %s holds. Written by the installer, and "
+			  "by kdos-bootctl deploy\n# from that root's "
+			  "/etc/kdos-release.\n", slot);
+	for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+		release_value(rel, keys[i], v, sizeof(v));
+		if (!strcmp(keys[i], "TREE_TIME") && !v[0])
+			kb_strlcpy(v, "0", sizeof(v));
+		kb_buf_printf(&b, "%s=\"%s\"\n", keys[i], v);
+	}
+	free(rel);
+	if (kb_write_file(path, b.p) < 0)
+		emit('W', "cannot write %s: %s — slot %s shows no version until "
+			  "an update deploys it", path, strerror(errno), slot);
+	else
+		logf_("write %s", path);
+	kb_buf_free(&b);
+}
+
+/* The release the target's /etc/kdos-release names, without its `+<build>`:
+ * "0.2.1", or "" when the root has no record. The first menu names it in the
+ * shape kdos-bootctl's menu carries every later boot. */
+static void target_release(char *out, size_t n)
+{
+	char *rel = kb_read_all(TARGET "/etc/kdos-release", NULL);
+
+	out[0] = 0;
+	if (!rel)
+		return;
+	release_value(rel, "VERSION", out, n);
+	out[strcspn(out, "+")] = 0;
+	free(rel);
+}
+
+/*
+ * A KDOS NVRAM ENTRY WHOSE PARTITION IS GONE IS A DEAD FIRMWARE MENU ITEM
+ * under the same label as the one about to be written, and one naming the
+ * ESP about to be written would be its duplicate. Only those two are
+ * removed: the entry must be labelled exactly `KDOS` (so kdos-bootctl's
+ * `KDOS update trial` and every other label never match) and name a GPT
+ * partition by GUID; it is stale when <byuuid>/<guid> does not exist, or
+ * resolves to the same node as <esp>. An entry naming a live ESP on another
+ * disk, a second KDOS install, is kept, and so is a line with no HD(…GPT…)
+ * device path, which shows nothing to compare.
+ *
+ * `line` is one line of efibootmgr's plain listing,
+ * `BootXXXX* KDOS<TAB>HD(n,GPT,<guid>,…)…`, or `BootXXXX  KDOS…` for an
+ * inactive entry. Returns 1 with the four hex
+ * digits in num when the entry is stale, 0 otherwise.
+ */
+int ki_nvram_stale(const char *line, const char *byuuid, const char *esp,
+		   char num[5])
+{
+	if (strncmp(line, "Boot", 4))
+		return 0;
+	const char *p = line + 4;
+	for (int i = 0; i < 4; i++)
+		if (!isxdigit((unsigned char)p[i]))
+			return 0;
+	char n[5];
+	memcpy(n, p, 4);
+	n[4] = 0;
+	p += 4;
+	/* efibootmgr prints `*` after an active entry's number and a space
+	 * after an inactive one's; a disabled KDOS entry is as stale. */
+	if (*p != '*' && *p != ' ')
+		return 0;
+	p++;
+	if (strncmp(p, " KDOS\t", 6))
+		return 0;
+	p += 6;
+
+	const char *hd = strstr(p, "HD(");
+	if (!hd)
+		return 0;
+	hd += 3;
+	/* the partition index, then `,GPT,` */
+	while (isdigit((unsigned char)*hd))
+		hd++;
+	if (strncmp(hd, ",GPT,", 5))
+		return 0;
+	hd += 5;
+	char guid[37];
+	for (int i = 0; i < 36; i++) {
+		unsigned char c = (unsigned char)hd[i];
+		if (!isxdigit(c) && c != '-')
+			return 0;
+		guid[i] = (char)tolower(c);
+	}
+	guid[36] = 0;
+	if (hd[36] != ',' && hd[36] != ')')
+		return 0;
+
+	char path[PATH_MAX], a[PATH_MAX], b[PATH_MAX];
+	int w = snprintf(path, sizeof(path), "%s/%s", byuuid, guid);
+	if (w < 0 || (size_t)w >= sizeof(path))
+		return 0;
+	int stale = !kb_path_exists(path) ||
+		    (realpath(path, a) && realpath(esp, b) && !strcmp(a, b));
+	if (stale)
+		memcpy(num, n, 5);
+	return stale;
+}
+
+#define KI_NVRAM_BYUUID "/dev/disk/by-partuuid"
+#define KI_NVRAM_MAX 32
+
+static char nvram_stale[KI_NVRAM_MAX][5];
+static int nvram_nstale;
+
+static void nvram_parse(const char *line)
+{
+	char num[5];
+
+	logf_("%s", line);
+	if (nvram_nstale < KI_NVRAM_MAX &&
+	    ki_nvram_stale(line, KI_NVRAM_BYUUID, part_esp, num))
+		memcpy(nvram_stale[nvram_nstale++], num, 5);
+}
+
+/* Each stale KDOS entry is deleted before the new one is created, so a
+ * reinstall replaces the firmware's KDOS entry rather than adding a second.
+ * With no by-partuuid directory no GUID can be shown to be gone, and nothing
+ * is deleted. A dry run logs the listing and never parses it. */
+static void nvram_drop_stale(void)
+{
+	static const int ok[] = { 0 };
+
+	if (!cfg.dry_run && !kb_path_exists(KI_NVRAM_BYUUID)) {
+		logf_("no %s — existing KDOS boot entries are kept",
+		      KI_NVRAM_BYUUID);
+		return;
+	}
+	nvram_nstale = 0;
+	char *ls[] = { "efibootmgr", NULL };
+	if (run_full(ls, NULL, nvram_parse, NULL, ok, 1)) {
+		logf_("  (efibootmgr listing failed: existing entries kept)");
+		nvram_nstale = 0;
+	}
+	for (int i = 0; i < nvram_nstale; i++) {
+		char *del[] = { "efibootmgr", "--bootnum", nvram_stale[i],
+				"--delete-bootnum", NULL };
+		try_(del);
+	}
 }
 
 static void do_boot(void)
@@ -2554,11 +3713,19 @@ static void do_boot(void)
 		logf_("LUKS UUID %s", lp.uuid);
 	}
 
+	/* The directory that HOLDS the first stage, not the first that
+	 * exists: an empty /usr/share/limine is a disk that does not start.
+	 * A rehearsal places nothing and needs none. */
 	const char *lim = "/usr/share/limine";
-	if (!kb_path_exists(lim))
+	if (!kb_path_exists(lim_file(lim, "BOOTX64.EFI")))
 		lim = TARGET "/usr/share/limine";
-	if (!kb_path_exists(lim))
-		fail("Limine is not installed — no bootloader to place");
+	if (!kb_path_exists(lim_file(lim, "BOOTX64.EFI"))) {
+		if (!cfg.dry_run)
+			fail("Limine's BOOTX64.EFI is in neither "
+			     "/usr/share/limine nor the target — no bootloader "
+			     "to place");
+		lim = "/usr/share/limine";
+	}
 
 	emit('N', "placing Limine on the ESP");
 	mkpath(TARGET "/boot/efi/EFI/BOOT");
@@ -2575,7 +3742,7 @@ static void do_boot(void)
 	 * that no bootloader reads before the kernel exists.
 	 */
 	snprintf(src, sizeof(src), "%s/BOOTX64.EFI", lim);
-	copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTX64.EFI");
+	must_copy(src, TARGET "/boot/efi/EFI/BOOT/BOOTX64.EFI");
 
 	/*
 	 * AND THE 32-BIT FIRMWARE'S FIRST STAGE BESIDE IT, so a disk written on
@@ -2591,7 +3758,8 @@ static void do_boot(void)
 	 */
 	snprintf(src, sizeof(src), "%s/BOOTIA32.EFI", lim);
 	if (kb_path_exists(src))
-		copy_file(src, TARGET "/boot/efi/EFI/BOOT/BOOTIA32.EFI");
+		may_copy(src, TARGET "/boot/efi/EFI/BOOT/BOOTIA32.EFI",
+			 "this disk will not start on 32-bit UEFI firmware");
 	else
 		emit('W', "Limine has no BOOTIA32.EFI — this disk will not "
 			  "start on 32-bit UEFI firmware");
@@ -2605,7 +3773,7 @@ static void do_boot(void)
 	 * BIOS boot has room to give.
 	 */
 	snprintf(src, sizeof(src), "%s/limine-bios.sys", lim);
-	copy_file(src, TARGET "/boot/efi/limine-bios.sys");
+	must_copy(src, TARGET "/boot/efi/limine-bios.sys");
 	emit('P', "0.4");
 
 	/*
@@ -2617,34 +3785,47 @@ static void do_boot(void)
 	 * later kernel — the `linux` postinstall's, where it wrote one, else
 	 * the image's own.
 	 */
+	/* The release in every entry's title and in the first entry's
+	 * comment, the words kdos-bootctl's menu_sync writes from the slot's
+	 * release record: "KDOS 0.2.1", "KDOS 0.2.1 (slot B)", or "KDOS" and
+	 * "KDOS (slot B)" with none. */
+	char ver[64], a_note[96] = "", name[80] = "KDOS";
+	target_release(ver, sizeof(ver));
+	if (ver[0]) {
+		snprintf(a_note, sizeof(a_note), ", KDOS %s", ver);
+		snprintf(name, sizeof(name), "KDOS %s", ver);
+	}
+
 	emit('N', "kernel and initramfs onto the ESP");
 	mkpath(TARGET "/boot/efi/EFI/kdos/a");
-	copy_file(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
+	must_copy(kb_path_exists(TARGET "/boot/initramfs-kdos.cpio.gz")
 			  ? TARGET "/boot/initramfs-kdos.cpio.gz"
 			  : TARGET "/boot/initramfs.cpio.gz",
 		  TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz");
-	copy_file(TARGET "/boot/vmlinuz-kdos",
+	must_copy(TARGET "/boot/vmlinuz-kdos",
 		  TARGET "/boot/efi/EFI/kdos/a/vmlinuz");
+	write_slot_release("a");
 	/* Slot B boots the kernel of the root it was filled from, which is the
 	 * same kernel; it gets its own copy because every later update replaces
 	 * one slot's pair and never the other's. */
 	if (part_b[0]) {
 		mkpath(TARGET "/boot/efi/EFI/kdos/b");
-		copy_file(TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz",
+		must_copy(TARGET "/boot/efi/EFI/kdos/a/initramfs.cpio.gz",
 			  TARGET "/boot/efi/EFI/kdos/b/initramfs.cpio.gz");
-		copy_file(TARGET "/boot/efi/EFI/kdos/a/vmlinuz",
+		must_copy(TARGET "/boot/efi/EFI/kdos/a/vmlinuz",
 			  TARGET "/boot/efi/EFI/kdos/b/vmlinuz");
+		write_slot_release("b");
 		snprintf(b_entry, sizeof(b_entry),
 			 "\n"
-			 "/KDOS (slot b)\n"
-			 "    comment: The other root, for one boot: nothing is "
-			 "confirmed\n"
+			 "/%s (slot B)\n"
+			 "    comment: The other version, for one boot; nothing "
+			 "changes\n"
 			 "    protocol: linux\n"
 			 "    path: boot():/EFI/kdos/b/vmlinuz\n"
 			 "    module_path: boot():/EFI/kdos/b/initramfs.cpio.gz\n"
 			 "    cmdline: kdos_slot=b %s%sroot=UUID=%s rw "
 			 "console=tty0 " KI_QUIET "\n",
-			 slot_opt, crypt_opt, b_uuid);
+			 name, slot_opt, crypt_opt, b_uuid);
 	} else {
 		esp_room_for_b();
 	}
@@ -2675,9 +3856,10 @@ static void do_boot(void)
 	};
 	for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
 		if (kb_path_exists(fonts[i])) {
-			copy_file(fonts[i], TARGET "/boot/efi/EFI/kdos/font.bin");
-			fontline = "term_font: boot():/EFI/kdos/font.bin\n"
-				   "term_font_size: 8x16\n";
+			if (may_copy(fonts[i], TARGET "/boot/efi/EFI/kdos/font.bin",
+				     "the boot menu uses Limine's own typeface") == 0)
+				fontline = "term_font: boot():/EFI/kdos/font.bin\n"
+					   "term_font_size: 8x16\n";
 			break;
 		}
 	/*
@@ -2697,9 +3879,10 @@ static void do_boot(void)
 	};
 	for (size_t i = 0; i < sizeof(papers) / sizeof(papers[0]); i++)
 		if (kb_path_exists(papers[i])) {
-			copy_file(papers[i],
-				  TARGET "/boot/efi/EFI/kdos/wallpaper.png");
-			paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
+			if (may_copy(papers[i],
+				     TARGET "/boot/efi/EFI/kdos/wallpaper.png",
+				     "the boot menu has a plain backdrop") == 0)
+				paper = "wallpaper: boot():/EFI/kdos/wallpaper.png\n";
 			break;
 		}
 
@@ -2723,11 +3906,12 @@ static void do_boot(void)
 	 * binary, so `if_fw_type` keeps it off a BIOS menu that could not start
 	 * it. */
 	const char *memtest = "";
-	if (kb_path_exists("/usr/share/kdos/memtest86plus/memtest.efi")) {
-		copy_file("/usr/share/kdos/memtest86plus/memtest.efi",
-			  TARGET "/boot/efi/EFI/kdos/memtest.efi");
+	if (kb_path_exists("/usr/share/kdos/memtest86plus/memtest.efi") &&
+	    may_copy("/usr/share/kdos/memtest86plus/memtest.efi",
+		     TARGET "/boot/efi/EFI/kdos/memtest.efi",
+		     "the boot menu has no Memory Test entry") == 0) {
 		memtest = "\n/Memory Test (memtest86+)\n"
-			  "    comment: Test this machine's RAM — UEFI only\n"
+			  "    comment: Test this machine's RAM (UEFI only)\n"
 			  "    protocol: efi\n"
 			  "    if_fw_type: UEFI\n"
 			  "    path: boot():/EFI/kdos/memtest.efi\n";
@@ -2760,30 +3944,30 @@ static void do_boot(void)
 	   "%s"
 	   "%s%s"
 	   "\n"
-	   "/KDOS\n"
-	   "    comment: Start this machine (slot a)\n"
+	   "/%s\n"
+	   "    comment: Start this computer (slot A%s)\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 " KI_QUIET "\n"
 	   "\n"
-	   "/KDOS (verbose)\n"
+	   "/%s (verbose)\n"
 	   "    comment: Every kernel message on the console\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
-	   "/KDOS (single user)\n"
+	   "/%s (single user)\n"
 	   "    comment: A root shell for root's password, no desktop\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7 single\n"
 	   "%s%s",
-	   theme, paper, fontline,
-	   slot_opt, crypt_opt, root_uuid,
-	   slot_opt, crypt_opt, root_uuid,
+	   theme, paper, fontline, name, a_note,
+	   slot_opt, crypt_opt, root_uuid, name,
+	   slot_opt, crypt_opt, root_uuid, name,
 	   slot_opt, crypt_opt, root_uuid, b_entry, memtest);
 
 	/*
@@ -2823,6 +4007,23 @@ static void do_boot(void)
 		   "attempts = 0\n",
 		   root_uuid, b_uuid, luks_uuid, b_uuid[0] ? luks_uuid : "");
 	}
+
+	/*
+	 * THE CONSOLE MAP FOR THE DISK PASSPHRASE, beside the boot state: the
+	 * initramfs reads EFI/kdos/keymap while it has the ESP mounted for
+	 * `select` and loads that map on tty1 before it asks. It is one image
+	 * for every machine and runs before the root holding /etc/keymap is
+	 * open, so without this file the prompt types with the kernel's US map
+	 * and a passphrase set on any other layout cannot be entered. The
+	 * name is the one the keyboard step resolved into /etc/keymap, which
+	 * runs before this one; kdos-settingsd keeps the two in step after.
+	 */
+	if (ki_keymap_name_ok(cfg.keymap))
+		wr("/boot/efi/EFI/kdos/keymap", "%s\n", cfg.keymap);
+	else
+		emit('W', "the console keymap '%s' is not a kbd map name — the "
+			  "disk passphrase prompt types with the US map",
+		     cfg.keymap);
 
 	/*
 	 * THE BIOS BOOT CODE IS WRITTEN WHATEVER THIS MACHINE BOOTED AS, so a
@@ -2904,6 +4105,7 @@ static void do_boot(void)
 			     part_esp);
 		} else {
 			kb_strlcpy(disk, cfg.disk, sizeof(disk));
+			nvram_drop_stale();
 			char *eb[] = { "efibootmgr", "--create", "--disk", disk,
 				       "--part", pn, "--loader", (char *)loader,
 				       "--label", "KDOS", NULL };
@@ -2922,6 +4124,14 @@ static void do_finish(void)
 	unmount_below(TARGET "/");
 	char *u[] = { "umount", TARGET, NULL };
 	try_(u);
+	/* THE ERASED DISK IS LET GO: its volume group deactivated and its
+	 * container closed, as Prepare does before it writes. Left active, the
+	 * group's name stands on this disk, and an install onto another disk
+	 * from the same live session refuses it as a clash. Only the erase
+	 * plan's disk is wholly the install's; a reused disk may hold volumes
+	 * this session still uses. */
+	if (cfg.plan == PLAN_WIPE)
+		release_disk(cfg.disk);
 	emit('P', "1");
 }
 

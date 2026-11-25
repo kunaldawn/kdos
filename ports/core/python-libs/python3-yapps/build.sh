@@ -9,3 +9,5 @@
 # ---------------------------------
 
 pip3 install --ignore-installed --no-deps --no-index --no-build-isolation --root=$PKG --prefix=/usr .
+install -d "$PKG/usr/share/licenses/$name"
+head -n 10 yapps/runtime.py > "$PKG/usr/share/licenses/$name/COPYRIGHT"

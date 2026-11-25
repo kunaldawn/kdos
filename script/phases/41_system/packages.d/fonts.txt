@@ -34,6 +34,13 @@ woff2
 # as a box — in Konsole, in an alien app, and in any filename that carries one.
 noto-cjk
 
+# One per CJK language group: a fontconfig default that puts that language's
+# Noto Sans CJK variant first for text that names no language, which is all of
+# it in an en_US session. Without one, Han text takes the Korean glyph forms.
+noto-cjk-prefer-ja
+noto-cjk-prefer-zh
+noto-cjk-prefer-ko
+
 # Noto Sans and Noto Sans Mono, and the preference file that puts them at the
 # head of `sans-serif` and `monospace`. Anything that asks fontconfig for a
 # generic family gets Noto: every GTK or Qt app, native or boxed, and every

@@ -7,15 +7,27 @@
 # by its path.
 #
 # ONLY THE MEDIUM THIS BOOT IS USING. The match is the mount at /mnt/iso, not
-# the KDOS_LIVE label, so a KDOS stick plugged into an installed machine, or
-# a second one beside the live medium, is listed like any other stick. The
-# initramfs mounts the medium as the whole disk, where ISO 9660 starts, so
-# the partitions of the disk mounted there (the EFI partition, and a
-# persistence store on the stick) are matched through their parent.
+# the medium's label (KDOS_0_2_1 for 0.2.1), so a KDOS stick plugged into an
+# installed machine, or a second one beside the live medium, is listed like
+# any other stick. The first two rules compare device numbers: mountpoint -x
+# reads the number of the node udev holds for the device, and findmnt -S
+# MAJ:MIN matches it against the mount's own. A path would not do: a Ventoy
+# stick's medium is mounted as /dev/mapper/ventoy, and Ventoy's hook also
+# leaves the node of the stick's second partition pointing at that mapping,
+# so udev reads the ISO through it and labels it with its KDOS_<release>
+# label; only the number names both. The initramfs mounts a written stick as
+# the whole disk, where ISO 9660 starts, so the third rule matches the
+# partitions of that disk (the EFI partition, and a persistence store on the
+# stick) through their parent.
 #
-# findmnt is util-linux's, at /usr/bin; the rules run after
-# 60-persistent-storage.rules, which sets ID_FS_LABEL. At coldplug the mount
-# the initramfs moved to /mnt/iso is already in place.
+# A VENTOY STICK HOLDS THE ISO AS A FILE. Ventoy's exFAT data partition,
+# VentoyPart and its disk, is left listed on purpose: it holds the user's own
+# files, which the live session opens and saves like any other stick's.
+#
+# findmnt and mountpoint are util-linux's, at /usr/bin; the rules run after
+# 60-persistent-storage.rules. At coldplug the mount the initramfs moved to
+# /mnt/iso is already in place.
 
-SUBSYSTEM=="block", ACTION!="remove", ENV{ID_FS_LABEL}=="KDOS_LIVE", PROGRAM="/usr/bin/findmnt -rn -S $devnode -M /mnt/iso", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ACTION!="remove", TEST=="/mnt/iso", PROGRAM="/usr/bin/mountpoint -x $devnode", ENV{KDOS_NODE_DEVNO}="$result"
+SUBSYSTEM=="block", ACTION!="remove", ENV{KDOS_NODE_DEVNO}=="?*", PROGRAM="/usr/bin/findmnt -rn -S $env{KDOS_NODE_DEVNO} -M /mnt/iso", ENV{UDISKS_IGNORE}="1"
 SUBSYSTEM=="block", ACTION!="remove", ENV{DEVTYPE}=="partition", PROGRAM="/usr/bin/findmnt -rn -S /dev/$parent -M /mnt/iso", ENV{UDISKS_IGNORE}="1"

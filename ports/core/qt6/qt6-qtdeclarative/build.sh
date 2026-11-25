@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/quickwidget-focus-accessible.patch"
 mkdir -p build && cd build
 cmake .. -G Ninja -Wno-dev \
 	-DCMAKE_BUILD_TYPE=Release \

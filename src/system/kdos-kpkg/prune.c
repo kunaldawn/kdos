@@ -16,8 +16,9 @@
  *                          inside a vendored Rust crate
  *   kp_pkg_licences        the source root's top-level licence files into
  *                          usr/share/licenses/<name>/
- *   kp_pkg_prune           HTML and PDF manuals, and every non-English
- *                          message catalog, handbook and man page
+ *   kp_pkg_prune           HTML and PDF manuals, every non-English
+ *                          message catalog, handbook and man page, and
+ *                          the section-8 pages of systemd units
  *   kp_pkg_symtab          .symtab/.strtab out of ELF executables and
  *                          shared objects over 32 MiB
  *
@@ -190,6 +191,25 @@ static int doc_tree(const char *rel)
 	return 1;
 }
 
+/* 1 when `base` is `<name>.<unit type>.8`, compressed or not. */
+static int unit_page(const char *base)
+{
+	static const char *const UNIT[] = {
+		"service", "socket", "timer", "target", "path", "mount",
+		"automount", "slice", "scope", NULL
+	};
+	char pat[64];
+	for (int i = 0; UNIT[i]; i++) {
+		snprintf(pat, sizeof(pat), "?*.%s.8", UNIT[i]);
+		if (!fnmatch(pat, base, 0))
+			return 1;
+		snprintf(pat, sizeof(pat), "?*.%s.8.*", UNIT[i]);
+		if (!fnmatch(pat, base, 0))
+			return 1;
+	}
+	return 0;
+}
+
 /* 1 when the path goes. A directory that goes takes its whole subtree. */
 static int prune_this(const char *rel, int isdir)
 {
@@ -224,6 +244,14 @@ static int prune_this(const char *rel, int isdir)
 
 	if (isdir)
 		return 0;
+
+	/* A section-8 page for a systemd unit (`NetworkManager-wait-online.
+	 * service.8`): kpkg never installs a unit (lint.c refuses
+	 * usr/lib/systemd), so the page sends its reader to a mechanism that
+	 * does not exist. Section 5 stays: `avahi.service.5` documents avahi's
+	 * own service-file format, not a unit. */
+	if (!strcmp(parent, "usr/share/man/man8") && unit_page(base))
+		return 1;
 
 	int mo = has_suffix_ci(base, ".mo") || has_suffix_ci(base, ".gmo");
 	int qm = has_suffix_ci(base, ".qm");

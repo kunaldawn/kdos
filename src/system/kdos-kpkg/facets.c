@@ -38,6 +38,7 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -576,8 +577,7 @@ int kp_cmd_facets(KpConf *c, int argc, char **argv)
 	}
 
 	const char *root = c->root[0] ? c->root : "/";
-	if (access(root, W_OK) != 0) {
-		kp_err("cannot write to %s — run as root", root);
+	if (kp_root_unwritable(root)) {
 		free(names);
 		return 1;
 	}
@@ -599,7 +599,11 @@ int kp_cmd_facets(KpConf *c, int argc, char **argv)
 
 	int lock = kp_db_lock(c);
 	if (lock < 0) {
-		kp_err("cannot lock the package database");
+		int e = errno;
+		char shown[1100];
+		kp_db_shown(c, shown, sizeof(shown));
+		kp_err("cannot lock the package database %s: %s", shown,
+		       strerror(e));
 		free(names);
 		kb_strv_free(all);
 		return 1;

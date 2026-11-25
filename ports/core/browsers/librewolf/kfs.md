@@ -54,5 +54,19 @@ and points `--with-l10n-base` at its bundled translations.
 The policies file adds to firefox-esr's: no default bookmarks, HTTPS-only mode, no Encrypted Media
 Extensions, content analysis off at every interception point, local network access protection on,
 with trackers blocked and a prompt, an update URL of `https://localhost`, no default-browser agent,
-language packs refused as extensions, and the new-tab top sites and highlights off. `kdos.js` keeps only the spelling dictionary path and the
-portal file chooser, and no `distribution.ini` is written.
+language packs refused as extensions, and the new-tab top sites and highlights off. Like
+firefox-esr's, it blocks and locks every AI feature, translation among them, through `AIControls`
+alone and leaves out the older `TranslateEnabled` and `GenerativeAI` policies, which the browser
+ignores beside `AIControls` with an "Ignoring … policy in favor of AIControls" line at every
+start. `kdos.js` keeps only the spelling dictionary path and the portal file chooser, and no
+`distribution.ini` is written.
+
+The source tarball ships no AppStream metainfo of LibreWolf's own, only Firefox's flatpak
+templates under `browser/installer/linux/app/flatpak`, so `build.sh` writes
+`/usr/share/metainfo/librewolf.metainfo.xml` beside the desktop entry. Discover's author line and
+the description on the program's page come only from a metainfo file the package installs; with
+the desktop entry alone the catalogue component has no `<developer>` and Discover says "Unknown
+author". The component id is `librewolf.desktop`, the id the catalogue gives the bare desktop
+entry, so the Discover entry keeps its identity. `appstreamcli validate` reports one warning for
+it, `cid-desktopapp-is-not-rdns`, and one pedantic hint, and exits non-zero on the warning; it
+reports no error, and a reverse-domain id would change the Discover entry's id.

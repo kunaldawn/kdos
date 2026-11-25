@@ -12,7 +12,7 @@ runs in the `build.sh` of the ports that install what it writes, never in a sess
 | `qt5ct-colors <outdir>` | `KDOS-<Title>.conf`, the Qt 5 palette per accent | `/usr/share/qt5ct/colors`, installed by kdos-plasma-look |
 | `wallpaper <outdir> --src MARK.png` | `KDOS-<Title>/`, a Plasma wallpaper package per accent | `/usr/share/wallpapers`, installed by [kdos-wallpapers](#port-kdos-wallpapers) |
 | `greeter-globals <file> [accent]` | the colour groups, merged into an existing kdeglobals | the kdeglobals a process outside a Plasma session reads |
-| `greeter-globals --sddm <outdir>` | `<accent>/{kdeglobals,plasmarc,kcminputrc}` per accent, and `background.png`, a link to the dark picture of the accent the greeter shows | the three files the sddm user's `~/.config` takes for the system accent, and the greeter's background |
+| `greeter-globals --sddm <outdir>` | `<accent>/{kdeglobals,plasmarc,kcminputrc}` per accent, and `background.png`, the dark picture of the accent the greeter shows, dimmed until the greeter's text reads on it | the three files the sddm user's `~/.config` takes for the system accent, and the greeter's background |
 | `contrast FILE…` | a table, and exit status 1 when any role is below its floor | the gate in `testing/selftest.sh`, and any `build.sh` that installs a scheme |
 | `accents [--long \| --default]` | the accent names; `--long` adds the title, `light` or `dark`, and the scheme the greeter shows | a `build.sh` that makes one file per accent |
 
@@ -55,6 +55,22 @@ default of 7 when the file carries none, which is what KColorScheme does. `greet
 The shade model in `shade.c` is KColorScheme's `shade()` over KGuiAddons' KHCY colour space,
 step for step, to the 8-bit colour Qt paints. It has to move with KColorScheme: a release that
 changes the derivation leaves the gate measuring colours no program draws.
+
+The greeter draws the user's name, "Login Failed" and its clock in the Complementary set's text
+straight over its picture, and the dark wallpaper's penguin has a nearly white belly behind the
+name. `greeter-globals --sddm` therefore reads the dark picture at the largest size a wallpaper
+package carries, from `/usr/share/wallpapers` (or the root `$KDOS_WALLPAPERS` names, which the
+selftest points at wallpapers it generates), takes every channel above the scheme's ground
+toward that ground by one factor in linear light, and writes the result as a PNG. The picture's
+ground therefore comes out as the scheme's ground with its tint, as the lock screen's wallpaper
+shows it, and the penguin's black body stays black; scaling every channel toward black instead
+takes phosphor's (0,10,3) ground to a neutral near-black that the greeter shows as grey. The
+factor is solved so the brightest pixel holds 4.5:1 against that text, then measured on the
+written pixels and stepped down until it does; the selftest checks that phosphor's picture keeps
+its wallpaper's corner pixel. Holding the
+brightest pixel bounds every crop a screen's aspect takes and the blur Breeze lays under the login,
+because a blur never brightens past the brightest pixel it averages. A missing or unreadable
+picture fails the run.
 
 `build.sh` runs the binary it has just linked to write the editor themes, so this port, unlike the
 other generators' consumers, installs files of its own beside `/usr/bin/kdos-theme`.

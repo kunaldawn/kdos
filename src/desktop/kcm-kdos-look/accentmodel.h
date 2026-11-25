@@ -61,7 +61,9 @@ public:
     int count() const;
 
     /* `kdos theme list`'s output: one accent per line, the first word its
-     * name, a leading `*` on the one in force. Returns that one, or "". */
+     * name, a leading `*` on the one in force. Returns that one, or "".
+     * The same accents in the same order change their rows in place; any
+     * other list resets the model. */
     QString setFromList(const QString &listOutput);
 
     bool contains(const QString &accent) const;

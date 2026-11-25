@@ -35,6 +35,26 @@ var placeholderTolerance = 64;
 // real size. Past it, a resize is the program's or the person's own.
 var settleInterval = 2000;
 
+// A first window narrower or shorter than this share of the work area
+// opened at its widgets' minimum: a KXmlGui program with no saved size
+// cuts its own labels off. It is grown to at least the share below.
+var firstSmallShare = 0.5;
+var firstWidthShare = 0.6;
+var firstHeightShare = 0.7;
+
+// Programs whose small first window is their design, not their minimum:
+// grown to most of the screen, a calculator is a field of empty buttons and
+// a colour picker or a tea timer a field of empty space.
+var keepOwnSize = [
+    "org.kde.kcalc",
+    "org.kde.kalk",
+    "io.github.Qalculate.qalculate-qt",
+    "org.kde.kcolorchooser",
+    "org.kde.kcharselect",
+    "org.kde.kteatime",
+    "org.kde.ktimer",
+];
+
 // Programs left alone however they are configured: each places its own
 // window, or is a prompt whose place is where it asks from.
 var defaultExclude = [
@@ -209,9 +229,10 @@ function withLead(record) {
 // rectangle is stretched across it; or "settle" a window with no record.
 // `alone` is no other window of the program being open, `successor` a
 // window that prelude() says follows one that just closed. Only "restore"
-// moves the window; "lead" and "settle" are both centred again by
-// recentre() if KWin placed them at a placeholder size, or fitted into the
-// work area by fit() if they open larger than it.
+// moves the window to a record; "lead" and "settle" are both centred again
+// by recentre() if KWin placed them at a placeholder size, or fitted into
+// the work area by fit() if they open larger than it, and a "settle"
+// window is also grown by firstSize() if it opens at its widgets' minimum.
 function openAction(record, floating, alone, successor) {
     if (record && record.lead && alone && !successor) {
         return "lead";
@@ -305,6 +326,11 @@ function keepWanted(current, restored) {
     return { rect: current, restored: null };
 }
 
+// Whether `size` is still a placeholder, not yet the program's own size.
+function isPlaceholder(size) {
+    return size.width <= 2 * placeholderTolerance && size.height <= 2 * placeholderTolerance;
+}
+
 // A new window placed while its size was a placeholder — a 1x1 X11 window,
 // a Wayland surface whose first commit was tiny — keeps that top-left as it
 // grows, so it runs off the bottom right. The rectangle centred again in
@@ -315,7 +341,7 @@ function recentre(r, area) {
     if (Math.abs(r.x - cx) > placeholderTolerance || Math.abs(r.y - cy) > placeholderTolerance) {
         return null;
     }
-    if (r.width <= 2 * placeholderTolerance && r.height <= 2 * placeholderTolerance) {
+    if (isPlaceholder(r)) {
         return null;
     }
     return clamp(rect(cx - r.width / 2, cy - r.height / 2, r.width, r.height), area);
@@ -331,6 +357,36 @@ function fit(r, area) {
         return null;
     }
     return clamp(r, area);
+}
+
+// Whether a window with no record may be grown by firstSize(). Not one
+// with no server-side border: a splash, a frameless first-run notice or a
+// program drawing its own title bar, which picks its own first size, and
+// on a first launch nothing else tells a splash from the window after it.
+// Nor one of keepOwnSize. The border is read when the size is, not at
+// windowAdded, so it is the decoration the program settled on.
+function growable(window) {
+    return !window.noBorder && keepOwnSize.indexOf(appKey(window)) < 0;
+}
+
+// The rectangle a program's first window is given when it has no record:
+// at least firstWidthShare by firstHeightShare of `area`, never smaller
+// than `size`, inside `area` and centred in it. Null when `size` is no
+// smaller than half the area in either direction, or is still a
+// placeholder (recentre() waits for its real size, and this is asked again
+// then). Only eligible(), growable(), floating windows with no record are
+// asked; the rectangle is recorded when the window closes, like any other,
+// so the person's own size wins from then on.
+function firstSize(size, area) {
+    if (isPlaceholder(size)) {
+        return null;
+    }
+    if (size.width >= area.width * firstSmallShare && size.height >= area.height * firstSmallShare) {
+        return null;
+    }
+    var width = Math.min(Math.max(size.width, area.width * firstWidthShare), area.width);
+    var height = Math.min(Math.max(size.height, area.height * firstHeightShare), area.height);
+    return clamp(rect(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height), area);
 }
 
 function originTaken(r, others) {

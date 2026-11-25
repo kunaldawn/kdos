@@ -131,7 +131,6 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     "DNSOverHTTPS": { "Enabled": false, "Locked": true },
     "NetworkPrediction": false,
     "SearchSuggestEnabled": false,
-    "TranslateEnabled": false,
     "IPProtectionAvailable": false,
     "SkipTermsOfUse": true,
     "NoDefaultBookmarks": true,
@@ -155,7 +154,6 @@ cat > "$PKG$_app/distribution/policies.json" <<'EOF'
     },
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
-    "GenerativeAI": { "Enabled": false, "Locked": true },
     "AIControls": { "Default": { "Value": "blocked", "Locked": true } },
     "ExtensionSettings": {
       "*": {
@@ -231,3 +229,36 @@ Name=New Private Window
 Exec=librewolf --private-window %u
 EOF
 chmod 644 "$PKG/usr/share/applications/librewolf.desktop"
+
+install -d "$PKG/usr/share/metainfo"
+cat > "$PKG/usr/share/metainfo/librewolf.metainfo.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>librewolf.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <name>LibreWolf</name>
+  <summary>Browse the World Wide Web with privacy protections on</summary>
+  <developer id="net.librewolf">
+    <name>LibreWolf Community</name>
+  </developer>
+  <description>
+    <p>
+      LibreWolf is a web browser built from Firefox, with telemetry removed and its
+      privacy and security settings on from the first start.
+    </p>
+    <p>
+      It blocks trackers, opens sites over HTTPS only, and sends no usage data,
+      studies or crash reports.
+    </p>
+  </description>
+  <launchable type="desktop-id">librewolf.desktop</launchable>
+  <url type="homepage">https://librewolf.net/</url>
+  <categories>
+    <category>Network</category>
+    <category>WebBrowser</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>
+EOF
+chmod 644 "$PKG/usr/share/metainfo/librewolf.metainfo.xml"

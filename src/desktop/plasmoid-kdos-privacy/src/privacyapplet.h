@@ -13,6 +13,7 @@
 #include <Plasma/Applet>
 
 #include <QVariantList>
+#include <qqmlregistration.h>
 
 #include "privacywatch.h"
 
@@ -22,6 +23,12 @@ namespace Kdos
 class PrivacyApplet : public Plasma::Applet
 {
     Q_OBJECT
+    /* A type of the applet's own QML module, plasma.applet.org.kdos.privacy,
+     * so its files read these members through `Plasmoid as
+     * Privacy.PrivacyApplet`: the attached Plasmoid is typed Plasma::Applet,
+     * and qmllint knows no member of a subclass through it. */
+    QML_ELEMENT
+    QML_UNCREATABLE("the applet is made by Plasma")
     /* Every capture, as kdosCaptureMap() describes one. */
     Q_PROPERTY(QVariantList captures READ captures NOTIFY stateChanged)
     Q_PROPERTY(bool microphoneActive READ microphoneActive NOTIFY stateChanged)

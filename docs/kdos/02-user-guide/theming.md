@@ -14,7 +14,9 @@ explains the colour model underneath it.
 To change the accent, open System Settings → Colors & Themes → KDOS Look and click a swatch, or type
 `accent amber` in KRunner. Plasma, every KDE application, the open terminals, the wallpaper, the
 lock and login screens, the boot menu and the text consoles all take the new accent, with no
-logout. The rest of this chapter explains what that one click changes, when each change reaches
+logout. Yakuake's terminal takes it too, while the frame around it is drawn from its skin's
+pictures, Breeze's light skin under every accent; Yakuake's own settings choose another skin. The
+rest of this chapter explains what that one click changes, when each change reaches
 each program, and the settings around it.
 
 ## The eight accents
@@ -48,7 +50,8 @@ in `libkcolor` (`KCOL_SCHEMES` in `src/libs/libkcolor/kcolor.h`):
 | `backdrop` | The background behind windows |
 
 Every colour KDOS hands to Plasma comes from this table, through one generator, `kdos-theme`, when
-the image is built: the eight Plasma colour schemes, `KDOS<Title>.colors`; the eight global themes,
+the image is built: the eight Plasma colour schemes, `KDOS<Title>.colors`, and a ninth, `KDOSBox.colors` (*KDOS Box* on
+the Colors page), the grey title bars of a box given no accent; the eight global themes,
 `org.kdos.<accent>.desktop`; the editor themes; the Konsole schemes and profiles; the Qt 5
 palettes; the wallpapers; and the login screen's colours. The boot menu and the consoles take theirs from the same table. So
 an accent is the same accent everywhere, from the firmware's menu to a terminal tab.
@@ -93,8 +96,13 @@ There are four places to switch, and they all end in the same command:
 Choosing a KDOS global theme on the Global Theme page, or a KDOS colour scheme on the Colors page,
 works too. Those change only Plasma's colours, so a small KDOS module in the session, `kded-kdos`,
 notices the new scheme and runs `kdos theme --from-plasma <accent>`, which carries it to the
-terminals, the wallpaper, the lock and login screens, the boot menu and the consoles. A scheme that
-is not KDOS's changes nothing below the desktop.
+terminals, the wallpaper, the lock and login screens, the boot menu and the consoles. An account's
+first login brings only that account into step: its scheme is the default it was created with,
+not anybody's pick, so the boot menu, splash and login screen keep the machine's accent. Every
+pick after that, in the first session or any later one, carries to the whole machine. The Colors
+page also lists **KDOS Box** among the KDOS schemes: it is the title-bar colour of a box with no
+accent, not an accent, so choosing it, like choosing any scheme that is not one of the eight
+accents, changes Plasma's colours and nothing below the desktop.
 
 From a prompt, `kdos theme`:
 
@@ -247,7 +255,7 @@ Two programs cannot take an exact colour:
 
 Three files are merged rather than replaced: `~/.config/starship.toml` (only the block between its
 markers), `~/.config/mc/ini` (only the `skin` key) and `~/.config/qt5ct/qt5ct.conf` (only the
-palette, style, icon theme and font keys, and only while the palette is a KDOS one; the rest is
+palette, style, dialog, icon theme and font keys, and only while the palette is a KDOS one; the rest is
 what qt5ct saved for you).
 
 ## Konsole and the terminal programs
@@ -279,11 +287,17 @@ accepts the request from root and from members of the `wheel` group, and asks po
 else; it accepts only one of the eight accent names, so there is no path or free text for a caller
 to supply. It writes `/etc/kdos/accent` itself, copies the accent's login-screen files into the
 `sddm` account's home, and runs `kdos-bootctl theme <accent>` for the boot menu and the consoles.
+The boot menu's text takes the accent, while its background stays the neutral near-black of the
+KDOS artwork behind it under every accent; Paper, whose dark text would not show on it, gets Bone's
+menu.
 
 The console palette is the accent's sixteen colours. `kdos-getty` loads `/etc/vtrgb` onto each
 virtual terminal before it clears the screen, so the login prompt, `/etc/issue` and the login
 banner are drawn in the accent: plain text uses slots 0–7 and bold text slots 8–15, and both halves
-come from the accent. Blue, magenta and cyan are the exception. No accent defines them, so they are
+come from the accent. Bright black, slot 8, is the accent's muted text colour rather than its fill,
+at least 4.5:1 against the console background, and the same colour Konsole uses for bright black,
+so the dimmed figures of `htop`, `ls` and `vim` stay readable. The login banner draws the
+penguin's body in it, a muted mid-tone as in Konsole. Blue, magenta and cyan are the exception. No accent defines them, so they are
 fixed hues, the same in every accent and chosen to read on a dark or a light background; a console
 whose eight colours all collapsed onto one accent would have nothing left for `ls --color`, a diff
 or syntax highlighting. To see the table for an accent without writing it:
@@ -304,7 +318,9 @@ there.
 The splash, the login screen, KSplash (the splash between the login and the desktop) and the lock
 screen are one look: the KDOS mark in the same place on the same ground, with the clock in the
 monospace face (on the lock screen in the band above the mark, on the login screen where Breeze
-puts it), so the start reads as one continuous picture from the firmware to the desktop.
+puts it), so the start reads as one continuous picture from the firmware to the desktop. The login
+screen's picture is the accent's wallpaper dimmed until the login screen's text holds 4.5:1 on its
+brightest part.
 
 `kdos-bootctl` rewrites only the lines of `limine.conf` that describe the menu's look and the
 splash's motion, never the timeout or the boot entries, and writes the file through a temporary
@@ -459,9 +475,12 @@ System Settings' System Sounds page, and turn event sounds off on the Notificati
 | Text | Face |
 |---|---|
 | Everything you read in Plasma and KDE applications: menus, labels, window titles | Noto Sans, 10 points |
-| Everything fixed-width: Konsole, Kate's editor, code, the panel clock, the splash's text, the login and lock screens' clocks, System Monitor's figures | JetBrains Mono, 10 points (11 in Konsole) |
+| Everything fixed-width: Konsole, Kate's editor, code, the splash's text, the login and lock screens' clocks, System Monitor's figures | JetBrains Mono, 10 points (11 in Konsole) |
 | The text console | `ter-kdos32n`, a 16×32-pixel bitmap font built from Terminus |
 | Phosphor mode with `--terminus` | Terminus (TTF) as the fixed-width face, 12 points |
+
+The panel clock is drawn in the Digital Clock applet's own font, fitted to the panel's height, so
+it grows with the display scale and the font size.
 
 JetBrains Mono is named in `kdeglobals` as the fixed face and first for `monospace` in fontconfig,
 so every program that asks for "monospace" gets it. It is chosen for a tall x-height and for
@@ -488,8 +507,8 @@ Applications on the host take the accent by one of three routes:
 | Toolkit | Route |
 |---|---|
 | Qt 6, KDE Frameworks | KDE's platform theme (`QT_QPA_PLATFORMTHEME=kde`, set for every login) reads the colours, fonts and icons of the global theme from `kdeglobals`, and repaints a running application on a switch |
-| GTK 3, GTK 4 and libadwaita | Plasma's GTK bridge sets the Breeze GTK theme, the icons, fonts and window buttons, and writes the scheme's colours under `~/.config/gtk-3.0` and `~/.config/gtk-4.0` from the first login; a running GTK 3 application repaints on a switch, a GTK 4 one at its next start. GTK 4 opens the KDE file dialog through the portal; a GTK 3 application does when it uses GTK's native file chooser, which `GTK_USE_PORTAL=1` sends to the portal, and keeps GTK's own dialog when it builds that itself, as AbiWord does |
-| Qt 5 | qt5ct, under the same `kde` platform-theme name, reads `~/.config/qt5ct/qt5ct.conf`, which `kdos theme` points at the accent's palette, with the Fusion style and the KDOS icons |
+| GTK 3, GTK 4 and libadwaita | Plasma's GTK bridge sets the Breeze GTK theme, the icons, fonts and window buttons, and writes the scheme's colours under `~/.config/gtk-3.0` and `~/.config/gtk-4.0` from the first login; a running GTK 3 application repaints on a switch, a GTK 4 one at its next start. GTK 4 opens the KDE file dialog through the portal; a GTK 3 application does when it uses GTK's native file chooser, which `GTK_USE_PORTAL=1` sends to the portal, and keeps GTK's own dialog when it builds that itself, as GIMP, Inkscape and AbiWord do |
+| Qt 5 | qt5ct, under the same `kde` platform-theme name, reads `~/.config/qt5ct/qt5ct.conf`, which `kdos theme` points at the accent's palette, with the Fusion style and the KDOS icons; its Open and Save dialogs are KDE's, through the file-chooser portal |
 
 KDE's platform theme is built for Qt 6 only, and there are no KDE Frameworks for Qt 5, so qt5ct is
 the only way the accent reaches VLC, KeePassXC, LMMS and the other Qt 5 programs. qt5ct's own
@@ -601,7 +620,8 @@ itself from the same table, because no package can ship a file into a home.
 ### Auditing what is installed
 
 ```sh
-kdos theme --audit          # does this machine match what the palette makes for the accent in force?
+# does the machine match what the palette makes for the accent in force?
+kdos theme --audit
 kdos theme --audit amber    # the same, for amber
 ```
 

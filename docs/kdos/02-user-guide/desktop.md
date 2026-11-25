@@ -31,8 +31,8 @@ the desk and groups of programs to install.
 | Beside it | The pager: the four desktops, `main`, `www`, `hack` and `misc` |
 | Middle | The task manager: pinned applications, and a button for each open window |
 | Right of the tasks | The meters: processor, memory and network, drawn by the KDOS Meters face |
-| Right | The system tray: volume, network, Bluetooth, battery, notifications, devices, the clipboard, the update tray and, while something is capturing, the privacy lamps |
-| Far right | The clock with the date, in the monospace face; then Show Desktop |
+| Right | The system tray: volume, network, Bluetooth, battery, notifications, devices, the update tray and, while something is capturing, the privacy lamps (see [The system tray](#the-system-tray)) |
+| Far right | The clock with the date, in the clock's own font, which grows with the display scale and the font size; then Show Desktop |
 | The desktop | The wallpaper. Right-click it for **Enter Edit Mode** and **Desktop and Wallpaper** (`Ctrl+Shift+D`), beside Create New, Icons and Display Configuration; widgets are added from Edit Mode's **Add or Manage Widgets…** |
 
 Every panel, applet and widget is Plasma's and is changed the Plasma way: right-click an empty part
@@ -53,7 +53,7 @@ three:
 |---|---|---|
 | **KDOS**, the default | One opaque panel along the bottom of each screen: Start, the desktops, pinned applications, the meters, the tray, the clock and Show Desktop | Float, and snap to the edges and corners |
 | **Dock** | A thin bar across the top with the Start mark, the focused window's application menu, the tray and the clock; and a floating dock at the bottom, as long as its contents, holding the pinned applications, that moves out of a window's way | Float, and snap |
-| **Tiling** | One thin bar across the top: the Start mark, the desktops by name, the window list, the processor and memory as text, the tray and the clock. No launchers | Every new window is tiled edge to edge: laying out this desk turns auto-tiling on |
+| **Tiling** | One thin bar across the top: the Start mark, the desktops by name (the names alone, with no window outlines drawn over them), the window list, the processor and memory as text, the tray and the clock. No launchers | Every new window is tiled edge to edge: laying out this desk turns auto-tiling on |
 
 Choose one on the **Desk** page of the Welcome tour, by typing `desk dock` (or `desk kdos`, `desk
 tiling`) in KRunner, or from a prompt:
@@ -71,20 +71,27 @@ panels were changed since they were last laid out, the tour asks before replacin
 also sets auto-tiling: the Tiling desk turns it on and the other two turn it off, so a desk is the
 whole arrangement and never half of one.
 
-The KDOS desk's panel needs about 1,400 logical pixels, the screen's width divided by its scale
-(78 grid units at the default font), to hold everything. On a narrower screen it is laid out with less: under 1,400 logical pixels (1920
-wide at 150%, 1366×768 at 100%) Start shows the mark alone and the network meter is left out, and
-under 1,150 (1920 wide at 175% or 200%, 1024 wide at 100%) the pager is left out too. Under 900
-logical pixels the panel does not fit at all; use the Dock or Tiling desk there. The width is the
-one the screen has when the desk is laid out. When the screen later becomes narrower, through its
-scale, its resolution or a larger font, the panel keeps everything by shrinking the pinned
-applications' icons and the meters' charts, the figures staying whole; run `kdos desk kdos` to lay
-it out again for the new width.
+The KDOS desk's panel needs about 1,400 logical pixels, the screen's width divided by its scale (78
+grid units at the default font), to hold everything. On a narrower screen it is laid out with less:
+under 1,400 logical pixels (1920 wide at 150%, 1366×768 at 100%) Start shows the mark alone and the
+network meter is left out, and under 1,150 (1920 wide at 175% or 200%, 1024 wide at 100%) the pager
+is left out too. Under 900 logical pixels the panel does not fit at all; use the Dock or Tiling desk
+there. The width is the one the screen has when the desk is laid out, with one exception: a network
+meter the desk was laid out with follows the panel's width as it is: while the panel is narrower than
+about 1,480 logical pixels (82 grid units, room for six applications in the task manager) the meter
+steps aside and leaves its room to the pinned and running applications, and it returns when the panel
+is wide enough again. When the screen later becomes narrower, through its scale, its resolution or a larger font,
+the panel first takes the meters' charts, then shrinks the pinned applications' icons, the figures
+staying whole; what still does not fit is cut off at the right edge, the clock and Show Desktop
+first, so a 1920-pixel screen switched to 200% loses both. Run `kdos desk kdos` to lay the panel out
+again for the new width.
 
-The pinned applications on the KDOS and Dock desks are Konsole, Dolphin, Firefox ESR and Kate, the
-first entries of `~/.config/kdos/favorites`. That file is also the list of boxes started in the
-background at login, so a pinned boxed application opens without waiting for its box (see
-[Launching](applications.md#launching)).
+The pinned applications on the KDOS and Dock desks are Konsole, Dolphin, Firefox ESR and Kate.
+They are Plasma's own launchers: right-click a task for **Pin to Task Manager**, or drag a pinned
+one off. `~/.config/kdos/favorites` is a separate list, the boxes started in the background at
+login, so a boxed application named there opens without waiting for its box (see
+[Launching](applications.md#launching)). A new account's list names the same four applications,
+and editing it changes no pin.
 
 The first login of every account lays out the desk named in `/etc/xdg/kdosrc`, which the installer
 writes; an account's own choice is kept in `~/.config/kdosrc`. Each desk is also a Plasma layout,
@@ -113,8 +120,10 @@ On the Tiling desk the processor and memory are plain text.
 
 ### The system tray
 
-The tray holds Plasma's own items (volume, network, Bluetooth, battery and brightness, notifications,
-the Device Notifier, the clipboard, Night Light, KDE Connect when paired) and three of KDOS's:
+The tray holds Plasma's own items (volume, network, Bluetooth, battery and brightness,
+notifications, the Device Notifier, Night Light, Plasma Vaults, the weather, display
+configuration, the input method, and KDE Connect when paired; the clipboard and the printers
+appear when they have something to show) and three of KDOS's:
 
 | Item | Shows | Acts |
 |---|---|---|
@@ -142,7 +151,7 @@ A boxed application has a row like any other, with its own icon; its first launc
 slower, because its container has to start (see [Applications](applications.md#launching)). Typing
 in Kickoff searches through KRunner, so everything in the next section is found from Start as well.
 
-Terminal programs such as `btop` or `mc` open in Konsole. Right-click any row for **Add to
+Terminal programs such as `htop` open in Konsole. Right-click any row for **Add to
 Favourites**, **Pin to Task Manager**, **Add to Desktop** and **Edit Application**; **Edit
 Applications…** opens the menu editor.
 
@@ -167,20 +176,25 @@ two runs them. Its rows come first, above Applications and System Settings, so `
 | `why /etc/fstab` | What provides a file and why it is that way |
 | `keys tile` | The global shortcuts whose names match, with their current keys |
 | a favourite's two-letter code | The favourite: the `code=` field of its line in `~/.config/kdos/favorites` |
-| `install gimp` | Also the packs and sets on the boot medium, opened in Discover |
+| `install gimp` | Also the packs and sets on the boot medium, opened in Discover. On the live medium `install kdos` offers nothing, so the **Install KDOS** entry is first and `Enter` starts the installer |
 | `setup network` | A route of `/etc/kdos/menu.conf` by the words of its name, shown as *Set up network* over its name `route:setup.network` |
 | `lib photosynthesis` | KRunner again, with the offline library alone |
 | `ask what is a box?` | The answer of the language model on this machine, when a model pack is installed; Enter copies it ([Ask](../04-programs/plasma-shell.md#ask)) |
 
-KDOS's own System Settings pages are found by System Settings' own runner, by the keywords in
-their metadata as well as their names: `previous version` finds System Versions.
+A KDOS System Settings page's whole title, such as `KDOS Look`, gives the palette row *Open KDOS
+Look* over *System Settings*, and `Enter` opens the page. Anything shorter is left to System
+Settings' own runner, which finds KDOS's pages by their names and by the keywords in their
+metadata: `previous version` finds System Versions. The offline library never shows a row under
+a page's bare name, whole title or part of it: a book heading named *KDOS Look* reads *KDOS Look in
+KDOS book*, beside System Settings' own *KDOS Look*.
 
 **Files** are found from the file index, which an installed system keeps of file names. The live
 medium keeps no index, so there KRunner offers recent documents and typed paths, and Dolphin's
 search, which walks the folder, finds a file by name.
 
-**The offline library** finds headings in the KDOS and *KDOS from Scratch* books, `kdos*` manual
-pages, entries of every Zeal docset, a typed coordinate as a map location, title suggestions from
+**The offline library** finds headings in the KDOS book (and in *KDOS from Scratch* once it is
+installed with `sudo kdos update install kdos-kfs`), each row subtitled with the chapter it is
+in, `kdos*` manual pages, entries of every Zeal docset, a typed coordinate as a map location, title suggestions from
 the ZIM archives `kiwix-serve` serves, and Kolibri's resources. Its results rank below everything
 else; `lib <words>` opens KRunner again on those words with the library alone.
 
@@ -227,15 +241,17 @@ desktop has a fixed id, so a restored session puts each window back on its own d
 
 Every global shortcut is KDE's, with a thin KDOS layer on top: two KDE chords given to something
 else, and a few additions on chords KDE leaves free. No KDOS chord takes one from KDE without
-saying so here, and `testing/chordcheck.py`, run by the tree's checks, holds every KDOS chord
-against KDE's own defaults, every installed application's and fcitx5's. The live list is the key
-card:
+saying so here. The live list is the key card:
 
 | Key | Opens |
 |---|---|
 | `Meta+F1`, `Meta+/` | The key card: every global shortcut the session holds, grouped into Windows, Desktops, Launch, KDOS, Accessibility and System, with a search box; `Tab` and the arrow keys move from the search box through the rows. It asks KWin's shortcut daemon for the current keys each time it opens, so a chord you rebound is shown as it now is. The same keys, or `Esc`, close it |
 
-`kdos help --keys` prints the same list in a terminal. The tables below are the shortcuts KDOS adds
+`kdos help --keys` prints the same list in a terminal. The Welcome tour's **Powerful When Needed**
+page has a Keyboard Shortcuts card that reads its Meta chords from the same daemon, so it lists the
+screen reader as `Meta+Alt+S`, the task manager's entries as `Meta+1 to Meta+9`, and leaves out an
+action with no Meta chord; the page has no Activities
+card. The tables below are the shortcuts KDOS adds
 or moves, and the KDE ones a newcomer reaches for first.
 
 ### Applications and the command palette
@@ -266,7 +282,21 @@ window is closed the key raises it rather than starting the program again.
 | `Meta+Shift+G` | `iamb`, chat |
 | `Meta+Shift+W` | `micro`, the editor |
 
-They are KWin actions, listed under KWin on the Shortcuts page, where each can be changed.
+Only `lynx` is on every machine. The other six are installed with one command, `khal` bringing
+`ikhal`:
+
+```sh
+sudo kdos update install mc aerc rmpc khal iamb micro
+```
+
+Until a program is installed, its key opens a Konsole window titled after it, holding a shell:
+Konsole's line saying it could not find the program is printed above the shell's greeting, which
+scrolls it out of view.
+
+They are KWin actions, listed under KWin on the Shortcuts page as **Raise or Open mc (files)**,
+**Raise or Open aerc (mail)** and so on, where each can be changed. The Shortcuts page also lists a
+*program* **in a New Window** entry for each, such as **mc in a New Window**, which opens a second
+window rather than raising the one already open.
 
 ### Windows
 
@@ -306,7 +336,7 @@ kdos toggle reduced-motion   # every animation off
 ```
 
 Run from a key binding, with no terminal to print to, `kdos toggle` says the new state in a
-notification.
+notification titled with the switch's name, such as *Night Light on*.
 
 ### Session, screen and media
 
@@ -357,13 +387,18 @@ Plasma draws every notification, keeps their history in the tray's bell and hono
 Disturb. A program in a box notifies through the same service as a host program, and the
 notification names the program.
 
+KDOS's own notifications, from `kdos notify` and `kdos remind`, the toggles, the notices below, a
+failed KRunner verb, `kdos-shot`, `kdos share` and `kdos speech`, carry the KDOS mark, stay in the
+history after their popup closes, and are listed as **KDOS Tools** on System Settings →
+Notifications, where they are configured like any application's.
+
 KDOS posts a few notices of its own, through `kdos-notice`, a small program the session starts:
 
 | Notice | Stays until dismissed |
 |---|---|
-| Programs or the desktop were updated and are still running the old version, with Log Out for the desktop | yes |
+| Programs or the desktop were updated and are still running the old version of a library or program, with Log Out for the desktop. Installing an application raises none | yes |
 | Known vulnerabilities in installed packages | yes |
-| Applications chosen during the install that are not installed yet, with Install in Discover | yes |
+| Applications chosen during the install that are not installed yet, with Open Discover, which lists them under *Selected during install* | yes |
 | This version is running on trial after an update | no |
 | The last update did not start, so the previous version is running | no |
 | A program, boxed or not, was closed to free memory | no |
@@ -379,7 +414,8 @@ and `kdos remind in 10m "tea"` one later.
 
 Dolphin is the file manager, on `Meta+E` and pinned to the panel. Its **Places** hold your home
 and its folders, the trash, network locations and removable devices as they appear, and the KDOS
-**Library**, `library:/`: Books (ZIM archives and the two KDOS books), Maps, Models (language
+**Library**, `library:/`: Books (ZIM archives, the KDOS book, and *KDOS from Scratch* once
+`kdos-kfs` is installed), Maps, Models (language
 models, speech models and voices), Docsets and Courses, each with its size. Opening an item opens
 it with its program; a map opens Organic Maps. `kdos places` lists the Places and
 `kdos places add DIR` adds one from a prompt.
@@ -388,15 +424,16 @@ Dolphin keeps its own defaults, which KDOS does not change: folders sort before 
 folder shows previews (pictures, documents and, through ffmpegthumbs, video frames), and `F4` opens
 a Konsole panel in the folder.
 
-Dolphin's right-click menu gains five KDOS actions:
+Dolphin's right-click menu gains up to five KDOS actions. **Send with a Code Word** and **Verify**
+are always there; each of the other three appears once what it runs is installed:
 
 | Action | Does |
 |---|---|
-| **Open in a throwaway box** | Opens the file with the boxed application for its type, in a box made for that one file: no network, an empty home, no camera, nothing of the session's processes, and only the file itself, read-only. Whatever the application writes is destroyed with the box when it exits. For a document from somewhere you do not trust |
+| **Open in a throwaway box** | Offered on the file types a boxed application opens, once one is installed. Opens the file with the boxed application for its type, in a box made for that one file: no network, an empty home, no camera, nothing of the session's processes, and only the file itself, read-only. Whatever the application writes is destroyed with the box when it exits. For a document from somewhere you do not trust |
 | **Send with a Code Word** | Sends the selected files or folders to another machine over one code word, with [`kdos share`](../04-programs/kdos-command.md#kdos-share), in a Konsole window that shows the code and its QR code |
-| **Git Status Here** | On a folder: opens lazygit in Konsole there |
+| **Git Status Here** | On a folder: opens lazygit in Konsole there. Offered once `lazygit` is installed (`sudo kdos update install lazygit`) |
 | **Verify** | On any file: checks it against a `.sha256`, `.sha512`, `SHA256SUMS` or `SHA512SUMS` beside it, and a `.kpack`'s or a package's KDOS signature, with [`kdos verify`](../04-programs/kdos-command.md#kdos-verify), and says in a notification whether it matched |
-| **Transcribe** | On a local audio or video file: writes its speech as text beside it, with the local Whisper model. Offered only while `whisper-cli` and a model are installed |
+| **Transcribe** | On a local audio or video file: writes its speech as text beside it, with the local Whisper model. Offered only while `whisper-cli` and a model are installed, which the image carries neither of: `sudo kdos update install whisper.cpp whisper-model-base-en` brings both |
 
 Double-clicking a `.ktar` application set or a `.kpack` pack opens it in Discover, which installs it
 offline (see [Carrying a set to another machine](applications.md#carrying-a-set-to-another-machine)).
@@ -413,9 +450,14 @@ desktop and file manager shares. `kdos trash <file>` does the same from a prompt
 ### Opening a file
 
 Double-clicking a file opens it with its type's default application. The defaults are KDE's
-applications unless an application on the image is clearly better at the job: folders open in
-Dolphin, PDF in Okular, e-books in Calibre's viewer, text in Kate, pictures in Gwenview, video in
-Haruna, music in Elisa, web links in Firefox ESR and mail links in Thunderbird. The full table is in
+applications unless a ported application is clearly better at the job: folders open in Dolphin,
+PDF in Okular, text in Kate, pictures in Gwenview, music in Elisa, video in Haruna and web links
+in Firefox ESR; the installation medium carries all of them, and VLC, which Elisa plays through,
+takes video when Haruna is removed. E-books open in Calibre's viewer once it is
+installed. Office documents open in LibreOffice and mail links in Thunderbird once those are
+installed; nothing on the medium handles either, so until then opening one shows a note naming the
+group to install. The
+full table is in
 [Default applications](applications.md#default-applications). Right-click a file for **Open With**
 and *Other Application…*, where *Set as default app to open … files* makes the choice the default
 for that type; System Settings' Default Applications page sets the default for each role, and its
@@ -455,7 +497,9 @@ off either, and the machine does not go to sleep when idle or when a lid closes.
 a presentation or a long job; the battery item lists it as what is blocking sleep.
 
 Log out, restart, shut down and sleep are on Kickoff's power buttons, `Ctrl+Alt+Del` and the
-lock screen. From a prompt, `kdos-power suspend`, `poweroff` and `reboot` ask the session manager,
+lock screen, and sleep, restart and shut down on the login screen. KDOS does not hibernate, so no
+Hibernate button is shown (see
+[Known gaps](../06-reference/known-gaps.md#no-hibernation)). From a prompt, `kdos-power suspend`, `poweroff` and `reboot` ask the session manager,
 elogind, as the buttons do.
 
 ## Displays
@@ -514,6 +558,11 @@ The microphone and the screen are seen through PipeWire's streams, the screen as
 screencast streams whether Spectacle or a program sharing the screen asked for them, and the
 camera through PipeWire's camera nodes and the holders of `/dev/video*`, so a program that opens a
 camera device directly is seen too.
+
+The screen lamp does not light for the task manager's window thumbnails. KWin streams them to the
+Plasma shell, and a KWin stream read by the shell itself is not a screen capture. A screen
+recording, a Spectacle capture or a portal screen share still lights it, and so does any program
+that only names itself `plasmashell`.
 
 ## When the desktop misbehaves
 

@@ -1,0 +1,211 @@
+Subject: http-addrlist: resolve a .local host name through Avahi when getaddrinfo cannot
+
+--- a/cups/http-addrlist.c
++++ b/cups/http-addrlist.c
+@@ -24,6 +24,180 @@
+ #ifndef _WIN32
+ #  include <fcntl.h>
+ #endif /* _WIN32 */
++#ifdef HAVE_AVAHI
++#  include <avahi-client/client.h>
++#  include <avahi-client/lookup.h>
++#  include <avahi-common/simple-watch.h>
++#  include <avahi-common/error.h>
++#  include <net/if.h>
++#endif /* HAVE_AVAHI */
++
++
++#ifdef HAVE_AVAHI
++/*
++ * A host name in the mDNS ".local" domain is answered by multicast DNS,
++ * which getaddrinfo() reaches only through an NSS module such as nss-mdns.
++ * A C library without NSS never resolves one, and every printer that
++ * DNS-SD discovers is named by such a host, so a failed lookup of a
++ * ".local" name is asked of the Avahi daemon instead.
++ */
++
++#  define HTTP_LOCAL_TIMEOUT	2000	/* Milliseconds to wait for Avahi */
++
++typedef struct http_local_s		/**** Avahi host name lookup ****/
++{
++  AvahiSimplePoll	*poll;		/* Poll loop of the lookup */
++  int			done;		/* Resolver answered */
++  char			*numeric;	/* Numeric address found */
++  size_t		numsize;	/* Size of numeric buffer */
++} http_local_t;
++
++
++/*
++ * 'http_local_name()' - Return whether a host name is in ".local".
++ */
++
++static int				/* O - 1 if ".local", 0 otherwise */
++http_local_name(const char *hostname)	/* I - Host name */
++{
++  size_t	len = strlen(hostname);	/* Length of host name */
++
++  if (len > 0 && hostname[len - 1] == '.')
++    len --;
++
++  return (len > 6 && !_cups_strncasecmp(hostname + len - 6, ".local", 6));
++}
++
++
++/*
++ * 'http_local_cb()' - Take the answer of an Avahi host name resolver.
++ */
++
++static void
++http_local_cb(
++    AvahiHostNameResolver  *resolver,	/* I - Resolver */
++    AvahiIfIndex           interface,	/* I - Interface the answer came on */
++    AvahiProtocol          protocol,	/* I - Network protocol */
++    AvahiResolverEvent     event,	/* I - Found or failed */
++    const char             *name,	/* I - Host name */
++    const AvahiAddress     *a,		/* I - Address */
++    AvahiLookupResultFlags flags,	/* I - Result flags */
++    void                   *userdata)	/* I - Lookup state */
++{
++  http_local_t	*local = (http_local_t *)userdata;
++					/* Lookup state */
++  char		addrstr[AVAHI_ADDRESS_STR_MAX];
++					/* Address as a string */
++
++  (void)resolver;
++  (void)protocol;
++  (void)name;
++  (void)flags;
++
++  if (event == AVAHI_RESOLVER_FOUND && a &&
++      avahi_address_snprint(addrstr, sizeof(addrstr), a))
++  {
++   /*
++    * An IPv6 link-local address is reachable only through the interface
++    * it was found on, so it carries that interface as its scope.
++    */
++
++    if (a->proto == AVAHI_PROTO_INET6 && interface >= 0 &&
++        a->data.ipv6.address[0] == 0xfe &&
++	(a->data.ipv6.address[1] & 0xc0) == 0x80)
++      snprintf(local->numeric, local->numsize, "%s%%%d", addrstr,
++               (int)interface);
++    else
++      strlcpy(local->numeric, addrstr, local->numsize);
++  }
++
++  local->done = 1;
++  avahi_simple_poll_quit(local->poll);
++}
++
++
++/*
++ * 'http_local_resolve()' - Resolve a ".local" host name through Avahi.
++ */
++
++static int				/* O - 0 on success, -1 on failure */
++http_local_resolve(
++    const char *hostname,		/* I - Host name */
++    int        family,			/* I - Address family or AF_UNSPEC */
++    char       *numeric,		/* O - Numeric address */
++    size_t     numsize)			/* I - Size of numeric buffer */
++{
++  http_local_t		local;		/* Lookup state */
++  AvahiClient		*client;	/* Avahi client */
++  AvahiHostNameResolver	*resolver;	/* Host name resolver */
++  AvahiProtocol		proto;		/* Network protocol asked for */
++  char			name[256];	/* Host name without a final dot */
++  size_t		len;		/* Length of host name */
++  int			error;		/* Avahi error code */
++  struct timeval	start,		/* Start of lookup */
++			now;		/* Current time */
++  long			elapsed;	/* Milliseconds spent */
++
++
++  strlcpy(name, hostname, sizeof(name));
++  if ((len = strlen(name)) > 0 && name[len - 1] == '.')
++    name[len - 1] = '\0';
++
++  if (family == AF_INET)
++    proto = AVAHI_PROTO_INET;
++#  ifdef AF_INET6
++  else if (family == AF_INET6)
++    proto = AVAHI_PROTO_INET6;
++#  endif /* AF_INET6 */
++  else
++    proto = AVAHI_PROTO_UNSPEC;
++
++  memset(&local, 0, sizeof(local));
++  numeric[0]     = '\0';
++  local.numeric  = numeric;
++  local.numsize  = numsize;
++
++  if ((local.poll = avahi_simple_poll_new()) == NULL)
++    return (-1);
++
++  if ((client = avahi_client_new(avahi_simple_poll_get(local.poll), 0, NULL,
++                                 NULL, &error)) == NULL)
++  {
++    DEBUG_printf(("4http_local_resolve: avahi_client_new: %s",
++                  avahi_strerror(error)));
++    avahi_simple_poll_free(local.poll);
++    return (-1);
++  }
++
++  if ((resolver = avahi_host_name_resolver_new(client, AVAHI_IF_UNSPEC, proto,
++                                               name, AVAHI_PROTO_UNSPEC, 0,
++					       http_local_cb, &local)) != NULL)
++  {
++    gettimeofday(&start, NULL);
++
++    while (!local.done)
++    {
++      gettimeofday(&now, NULL);
++      elapsed = (now.tv_sec - start.tv_sec) * 1000 +
++                (now.tv_usec - start.tv_usec) / 1000;
++
++      if (elapsed >= HTTP_LOCAL_TIMEOUT ||
++          avahi_simple_poll_iterate(local.poll,
++	                            (int)(HTTP_LOCAL_TIMEOUT - elapsed)) != 0)
++        break;
++    }
++
++    avahi_host_name_resolver_free(resolver);
++  }
++
++  avahi_client_free(client);
++  avahi_simple_poll_free(local.poll);
++
++  DEBUG_printf(("4http_local_resolve: \"%s\" -> \"%s\"", hostname, numeric));
++
++  return (numeric[0] ? 0 : -1);
++}
++#endif /* HAVE_AVAHI */
+ 
+ 
+ /*
+@@ -648,7 +822,24 @@
+       }
+     }
+ 
+-    if ((error = getaddrinfo(hostname, service, &hints, &results)) == 0)
++    error = getaddrinfo(hostname, service, &hints, &results);
++
++#  ifdef HAVE_AVAHI
++    if (error && hostname && http_local_name(hostname))
++    {
++      char		numeric[AVAHI_ADDRESS_STR_MAX + IF_NAMESIZE + 2];
++					/* Address Avahi resolved */
++      struct addrinfo	nhints = hints;	/* Hints for the numeric address */
++
++      nhints.ai_flags |= AI_NUMERICHOST;
++
++      if (!http_local_resolve(hostname, family, numeric, sizeof(numeric)) &&
++          !getaddrinfo(numeric, service, &nhints, &results))
++        error = 0;
++    }
++#  endif /* HAVE_AVAHI */
++
++    if (error == 0)
+     {
+      /*
+       * Copy the results to our own address list structure...

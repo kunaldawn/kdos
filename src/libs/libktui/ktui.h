@@ -185,6 +185,7 @@ int ktui_term_hungup(void);
 void ktui_term_mark_hungup(void);
 void ktui_term_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ktui_term_repalette(void);	/* after a live accent switch              */
+int ktui_term_vt_fd(void);	/* library-internal: the held VT, -1 when none */
 /* OSC 52 clipboard write, base64 encoded by hand (this library links nothing
  * but libc). Returns whether anything was actually emitted: the Linux VT
  * (KT_CAP_LINUXVT) has no OSC 52 handler at all — not "some terminals don't",
@@ -756,6 +757,13 @@ void ktui_draw_cell(int x, int y, uint32_t ch, int fg, int bg, int attr);
  * palette nobody can change. It clips like any other draw.
  */
 void ktui_draw_put(int x, int y, const KtuiCell *c);
+/*
+ * ONE CELL OF A COLOUR THAT IS NOT IN THE PALETTE IN FORCE: a full block in
+ * `c`, falling back to `slot` where the terminal has only slots. A preview of
+ * another scheme (an accent not chosen yet) is the one use; chrome never
+ * takes it.
+ */
+void ktui_draw_swatch(int x, int y, int slot, KRgb c);
 /* XOR the reverse attribute over a rectangle of the frame being composed —
  * a selection, which leaves the content and changes only how it reads. Not
  * expressible through ktui_cells(), which hands out the flushed frame. */
@@ -765,6 +773,22 @@ int ktui_draw_text(int x, int y, int maxw, const char *s, int fg, int bg,
 		   int attr);
 int ktui_draw_textf(int x, int y, int maxw, int fg, int bg, int attr,
 		    const char *fmt, ...) __attribute__((format(printf, 7, 8)));
+/*
+ * HOW MANY TEXT DRAWS LOST THE END OF THEIR STRING: every ktui_draw_text or
+ * ktui_draw_textf call since the last reset whose string was wider than the
+ * width it was given, or that reached past the right edge of the clip (the
+ * screen's with none set). A layout check reads it after a frame drawn offscreen,
+ * because a cut row in a dump looks exactly like a row that ends there.
+ * ktui_draw_text_fit() hands over only the part it shows and is not counted,
+ * and nor is a text field, which draws only the part of its value it shows.
+ */
+int ktui_draw_cut_count(void);
+void ktui_draw_cut_reset(void);
+/* `s` in `w` cells: whole when it fits, otherwise cut a cell short and ending
+ * in the tier's ellipsis, so a reader sees that it goes on. Returns the cells
+ * drawn. */
+int ktui_draw_text_fit(int x, int y, int w, const char *s, int fg, int bg,
+		       int attr);
 /* Draws `s` so that it ENDS at x + w - 1. Every duration, size and count
  * column in the KDOS TUIs was hand-padded with a %8s-style guess, which drifts
  * out of line with its own header the moment a value overflows the field. */
@@ -1592,6 +1616,9 @@ int ktui_input(KRect r, char *buf, size_t cap, int secret,
  * position it knows is in its own cells, which only the server can place.
  */
 void ktui_term_caret(int x, int y);
+/* Queue the hide-cursor escape again when no caret is placed, on a Linux VT
+ * only; the draw layer calls it before each frame's flush. */
+void ktui_term_caret_hold(void);
 
 /* Queue pasted text; the focused field inserts it at the caret on its next
  * ktui_field_key() or ktui_input(). Control characters are stripped and
@@ -1647,6 +1674,9 @@ void ktui_section(int x, int y, int w, const char *title);
 void ktui_kv(int x, int y, int w, const char *k, const char *v, int fg);
 void ktui_note(int x, int y, int w, const char *s);
 int ktui_para(int x, int y, int w, const char *s, int fg);	/* wraps  */
+/* A password's strength by its length in characters: 0 under 8 (short),
+ * 1 from 8 to 15 (fair), 2 at 16 and over (long, good). The meter is a
+ * 12-cell bar lit in three steps and that word after it. */
 void ktui_pw_meter(int x, int y, int w, const char *p);
 int ktui_pw_score(const char *p);
 
@@ -2114,12 +2144,20 @@ const char *ktui_esc_verb(const KtuiKeys *k);
 
 /* Drop out of the TUI, run a program on the real terminal, come back. */
 int ktui_run_console(char *const argv[]);
+/* The same, printing `note` on the restored terminal first and starting the
+ * program with SHLVL=2, so a shell takes itself for a nested one and draws
+ * no once-per-terminal banner over the note. Returns the wait status. */
+int ktui_run_console_note(const char *note, char *const argv[]);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Modals
  *
  * A modal owns the focus ring completely and hands it back on close, so
  * dismissing a dialog does not silently move the caret on the page beneath.
+ *
+ * A confirm opens with `no` selected, so Enter on arrival is the safe answer;
+ * Left, Tab or Shift+Tab selects `yes`, and Enter or Space then runs on_yes.
+ * Esc always answers `no`.
  * ──────────────────────────────────────────────────────────────────────── */
 
 void ktui_modal_alert(const char *title, const char *msg);

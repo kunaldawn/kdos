@@ -25,3 +25,7 @@ A program that uses it carries its own copy of the code, so nothing on the insta
 
 Upstream's `Makefile.am` declares `libargp.a` and `argp.h` as `noinst_`: built, never installed.
 `make install` installs nothing, so `build.sh` copies the two files into `$PKG` itself.
+
+The source carries no licence text: its `README.md` only names the LGPL-2.1-or-later. The last
+line of `build.sh` installs that text from gcc's `/usr/share/licenses/gcc/COPYING.LIB`, which is
+in every tree that can build this port.

@@ -123,7 +123,7 @@ initramfs init ─── splash, A/B slot selection, LUKS unlock, LVM, find and 
    ▼
 init (sysvinit, PID 1), reading /etc/inittab
    ├─ /etc/init.d/rcS ── fsck and mount, the numbered service scripts, then the
-   │                     splash fades to black and lets go of the screen
+   │                     splash stops drawing, its last frame held on screen
    ├─ kdos-dm tty1 → sddm ─────────────── the display manager
    │     ├─ the login screen: sddm-greeter-qt6 on a kwin_wayland of its own
    │     └─ after a login, through PAM (elogind, turnstile, the wallet):
@@ -156,8 +156,9 @@ From the initramfs until `rcS` finishes, `kdos-splash` draws the boot progress o
 framebuffer, and `rcS` reports one step to it per enabled service script. The passphrase prompt
 for an encrypted root is drawn through the splash. At its end `rcS` leaves the first of the two
 marks that confirm a tried A/B slot, then tells the splash to hand the screen over: the splash
-fades to black and lets go of the framebuffer before `rcS` returns, so the login screen's
-compositor, which `init` starts only after that, never competes with it for the display. The
+draws its settled frame once more and stops drawing before `rcS` returns, so the login screen's
+compositor, which `init` starts only after that, never competes with it for the display, and
+that frame stays on screen until the compositor's first frame replaces it. The
 second mark is written once a desktop session has answered for a minute, and `kdos-sysupdated`
 confirms the slot only when both exist. Where kernel messages go, how the splash survives the
 change of root, and how a slot is confirmed are in [The splash](boot-and-init.md#the-splash),
@@ -299,8 +300,9 @@ init (PID 1, sysvinit)
  │   │    75 mumble-server   76 postgresql   77 radicale   78 maddy
  │   │    79 ngircd   83 samba   84 minidlna   85 gnuhealth
  │   │    86 kiwix-serve   87 kolibri   88 llama-server   89 step-ca
- │   └─ the KDOS root daemons:
+ │   └─ the KDOS daemons, all root but kdos-mdnsd:
  │        43 kdos-settingsd    hostname1, timedate1, locale1 on the system bus
+ │        45 kdos-mdnsd       UDP 127.0.0.1:5380       .local names, as nobody
  │        46 kdos-sysupdated  sysupdate1 and io.kdos.Slots1: updates and slots
  │        55 kdos-powerd      /run/kdos-powerd.sock and io.kdos.Power1
  │        56 kdos-energyd     /run/kdos-energyd.sock   per-application energy
@@ -337,7 +339,7 @@ shutdown, stops the same set in reverse, except the firewall ruleset, which stay
 shutdown. Forty-nine of the scripts ship in the image's `fs/` tree, and twenty-two ports install
 twenty-four more, such as `43_boltd` by `bolt` and `83_samba` by `samba`. The image ships `sshd`
 with its marker in place; the installer offers NetworkManager, Bluetooth, the mixer state, CUPS
-and `sshd` as choices, and leaves CUPS and `sshd` off unless they are switched on
+and `sshd` as choices, and leaves `sshd` off unless it is switched on
 ([Answer files](../04-programs/kinstall.md#answer-files) lists them). A script that starts a
 long-running daemon runs it under `ksvc`, KDOS's service supervisor, which keeps the daemon in the
 foreground and restarts it when it exits; the one-shot scripts (modules, sysctl, zram, the
@@ -453,7 +455,7 @@ See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 | `/var/lib/kdos/packs/mnt` | Mount points for packs | `kdos-packd` |
 | `/var/lib/kdos/packs/pack-manifest` | Every graft made (a pack's files placed where a consumer looks for them), so removal is exact; in the store, so both slots read one record | `kdos-packd` |
 | `/var/lib/kdos/fs-manifest` | Every path the build's `fs/` tree provided | The build |
-| `/var/lib/kdos/apps-pending` | Applications chosen at install time and not yet built | `kinstall`; read by `kdos app install --pending` |
+| `/var/lib/kdos/apps-pending` | Software (applications or groups) chosen at install time and not yet built | `kinstall`; read by `kdos app install --pending` |
 | `/var/lib/kdos/update.json` | The result of the last update check: what is offered, by which lane | The `update-check` timer and `kdos-sysupdated`, through `kdos update check` |
 | `/var/lib/kdos/update.state` | The outcome of the last update fetch and apply | `kdos update` |
 | `/var/lib/kdos/binhost`, `/var/lib/kdos/image` | The verified binary-host index and the packages downloaded for an update; the slot-image manifest on offer, and the record of the image this root was written from | `kdos update` |

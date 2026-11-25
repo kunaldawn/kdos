@@ -62,6 +62,16 @@ done
 ln -s FreeCAD "$PKG/usr/bin/freecad"
 ln -s FreeCADCmd "$PKG/usr/bin/freecadcmd"
 
+install -Dm644 "$SRC/unpacked/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"
+_tp="$SRC/unpacked/src/3rdParty"
+install -Dm644 "$_tp/libkdtree/COPYING" "$PKG/usr/share/licenses/$name/libkdtree-COPYING"
+install -Dm644 "$_tp/lru-cache/LICENSE" "$PKG/usr/share/licenses/$name/lru-cache-LICENSE"
+install -Dm644 "$_tp/GSL/LICENSE" "$PKG/usr/share/licenses/$name/GSL-LICENSE"
+install -Dm644 "$_tp/OndselSolver/LICENSE" "$PKG/usr/share/licenses/$name/OndselSolver-LICENSE"
+install -Dm644 "$_tp/libE57Format/LICENSE.md" "$PKG/usr/share/licenses/$name/libE57Format-LICENSE.md"
+install -Dm644 "$_tp/libE57Format/extern/CRCpp/LICENSE" "$PKG/usr/share/licenses/$name/CRCpp-LICENSE"
+install -Dm644 "$_tp/salomesmesh/LICENCE.lgpl.txt" "$PKG/usr/share/licenses/$name/salomesmesh-LICENCE.lgpl.txt"
+
 cat > "$PKG/usr/share/applications/org.freecad.FreeCAD.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application

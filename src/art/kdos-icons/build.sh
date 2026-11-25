@@ -42,3 +42,6 @@ for pair in KDOS:breeze-dark KDOS-Light:breeze; do
 done
 
 install -Dm644 "$PORT_SRC/themes/default/index.theme" "$ICONS/default/index.theme"
+
+install -Dm644 "$PORT_SRC/licenses/LGPL-3.0.txt" "$PKG/usr/share/licenses/$name/LGPL-3.0.txt"
+install -Dm644 "$PORT_SRC/licenses/GPL-3.0.txt" "$PKG/usr/share/licenses/$name/GPL-3.0.txt"

@@ -9,9 +9,15 @@
  *
  * THE SYSTEM LOCALE AND THE TWO KEYBOARDS. The locale is /etc/locale.conf,
  * which SDDM hands to the greeter and to every session it starts. The
- * console keymap is /etc/keymap, which kdos-getty loads on every console;
- * the graphical layout is /etc/kdos/xkb.conf, which reaches the login screen
- * through `kwin_wayland --locale1` and the session through startplasma.
+ * console keymap is /etc/keymap, which kdos-getty loads on every console,
+ * with a copy on the ESP for the initramfs's passphrase prompt.
+ * The graphical layout is two files. /etc/kdos/xkb.conf reaches the login
+ * screen through `kwin_wayland --locale1` and the session through
+ * startplasma's XKB_DEFAULT_* environment; /etc/xdg/kxkbrc is the same
+ * layout in the kxkbrc cascade, which KWin and the lock screen read before
+ * that environment. Every layout change rewrites both, so the layout an
+ * OEM machine's first-boot wizard picks replaces the one the installer
+ * wrote, and a stale system kxkbrc never outranks the stored layout.
  *
  * THE LOGIN SCREEN FOLLOWS A CHANGE AT ONCE. Its compositor listens for
  * PropertiesChanged on this object and reloads the layout when it hears one,
@@ -147,7 +153,10 @@ static int apply_locale(KsAuth *a, sd_bus_error *err)
 /*
  * THE NEW LIST REPLACES THE OLD ONE WHOLE, as systemd-localed's does: a
  * variable the call leaves out is no longer set, and `NAME=` with nothing
- * after it says the same thing out loud.
+ * after it says the same thing out loud. Every value is a well-formed name
+ * of a language this system knows (ks_locale_known), checked here and not
+ * in the reader, so a hand-written name in the file is kept and a typed one
+ * is refused.
  */
 static int m_set_locale(sd_bus_message *m, void *u, sd_bus_error *err)
 {
@@ -170,6 +179,9 @@ static int m_set_locale(sd_bus_message *m, void *u, sd_bus_error *err)
 					  "interface carries");
 		else if (seen[k])
 			r = bad_args(err, "a variable is assigned twice");
+		else if (!empty && !ks_locale_known(k, strchr(*s, '=') + 1))
+			r = bad_args(err, "not a locale name this system "
+					  "knows");
 		else if (!empty)
 			kb_strlcpy(want[k], strchr(*s, '=') + 1, KS_NAME_MAX);
 		if (r >= 0)
@@ -206,12 +218,19 @@ static int apply_vconsole(KsAuth *a, sd_bus_error *err)
 	if (a->b[0] && *km) {
 		ks_xkb_stored(&x);
 		if (ks_vt_to_xkb(km, x.layout, sizeof(x.layout), x.variant,
-				 sizeof(x.variant)) &&
-		    ks_set_xkb(&x) != 0) {
-			emit_keyboard();
-			return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
-						 "cannot write /etc/kdos/xkb.conf: %s",
-						 strerror(errno));
+				 sizeof(x.variant))) {
+			if (ks_set_xkb(&x) != 0) {
+				emit_keyboard();
+				return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
+							 "cannot write /etc/kdos/xkb.conf: %s",
+							 strerror(errno));
+			}
+			if (ks_set_kxkbrc(&x) != 0) {
+				emit_keyboard();
+				return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
+							 "cannot write /etc/xdg/kxkbrc: %s",
+							 strerror(errno));
+			}
 		}
 	}
 	emit_keyboard();
@@ -268,6 +287,12 @@ static int apply_x11(KsAuth *a, sd_bus_error *err)
 		return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
 					 "cannot write /etc/kdos/xkb.conf: %s",
 					 strerror(errno));
+	if (ks_set_kxkbrc(&x) != 0) {
+		emit_keyboard();
+		return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
+					 "cannot write /etc/xdg/kxkbrc: %s",
+					 strerror(errno));
+	}
 	if (a->b[0] && ks_xkb_to_vt(x.layout, x.variant, km, sizeof(km))) {
 		ks_keymap(cur, sizeof(cur));
 		if (strcmp(cur, km)) {
@@ -341,8 +366,12 @@ static const sd_bus_vtable locale_vtable[] = {
 	SD_BUS_VTABLE_END
 };
 
+/* At start, the ESP's keymap is brought into line with /etc/keymap, which
+ * is what a machine updated from a system that never wrote it needs before
+ * its next encrypted boot. */
 int ks_locale_add(sd_bus *bus)
 {
+	ks_esp_keymap_sync();
 	return sd_bus_add_object_vtable(bus, NULL, KS_LOCALE_PATH,
 					KS_LOCALE_IF, locale_vtable, NULL);
 }

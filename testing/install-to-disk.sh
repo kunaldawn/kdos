@@ -22,9 +22,10 @@
 # THE TARGET MUST HOLD THE PAYLOAD. The copy writes about as much as the
 # `payload` line of `kinstall --dump probe` into the disk, so a qcow2 grows
 # on the host by that much. kinstall's Prepare step refuses a disk smaller
-# than the payload and 768 MiB. This script's gate runs before the installer
-# starts, sets a higher bar (the payload, the 512 MB ESP and 2 GiB), and prints
-# both numbers, so a refused run says how far short the disk is. vnc-shot.py
+# than the payload, 768 MiB and the 2 GiB the root keeps free. This script's
+# gate runs before the installer starts, reads that same figure from the
+# `install needs` line of `kinstall --dump probe`, and prints both numbers,
+# so a refused run says how far short the disk is. vnc-shot.py
 # refuses an install run whose qcow2 could outgrow the host's free space.
 #
 # THE ANSWER FILE IS WRITTEN HERE RATHER THAN CARRIED, because kinstall's own
@@ -104,23 +105,26 @@ cat "$ANSWERS"
 say "the plan"
 kinstall --config "$ANSWERS" --dump plan 2>&1 | head -40
 
-# THE SIZE GATE, in MB as both numbers print. A payload or a disk size that
-# cannot be read refuses too, since the gate cannot then say the disk is big
-# enough.
+# THE SIZE GATE, in MB as both numbers print. A payload, an installer's
+# figure or a disk size that cannot be read refuses too, since the gate cannot
+# then say the disk is big enough.
 say "the room"
 payload=$(kinstall --config "$ANSWERS" --dump probe 2>/dev/null |
 	awk '$1 == "payload" { print $2; exit }')
+need=$(kinstall --config "$ANSWERS" --dump probe 2>/dev/null |
+	awk '$1 == "install" && $2 == "needs" { print $3; exit }')
 bytes=$(blockdev --getsize64 "$DISK" 2>/dev/null)
-case "$payload$bytes" in
-''|*[!0-9]*)
-	echo "cannot size the run: payload '${payload}' MB, $DISK '${bytes}' bytes"
-	exit 2 ;;
-esac
+for n in "$payload" "$bytes" "$need"; do
+	case "$n" in
+	''|*[!0-9]*)
+		echo "cannot size the run: payload '${payload}' MB, needs '${need}' MB, $DISK '${bytes}' bytes"
+		exit 2 ;;
+	esac
+done
 disk=$((bytes / 1048576))
-need=$((payload + 512 + 2048))
 echo "payload ${payload} MB, $DISK ${disk} MB, needs ${need} MB"
 [ "$disk" -ge "$need" ] || {
-	echo "refusing: $DISK is ${disk} MB, the payload needs ${need} MB with the ESP and 2 GiB"
+	echo "refusing: $DISK is ${disk} MB, the installer needs ${need} MB (the payload, 768 MiB and 2 GiB)"
 	exit 2
 }
 

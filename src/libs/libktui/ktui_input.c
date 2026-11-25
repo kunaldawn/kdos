@@ -25,6 +25,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <linux/input.h>
+#include <linux/kd.h>
+#include <linux/tiocl.h>
 #include <sys/ioctl.h>
 
 #include "kbase.h"
@@ -453,6 +455,33 @@ static int csi_mods(int p)
 	return m;
 }
 
+/*
+ * THE LINUX CONSOLE KEYMAP SENDS TAB FOR SHIFT+TAB. Its keycode 15 has no
+ * shifted string, so ESC [ Z never arrives on a VT and Shift+Tab would move
+ * the focus forward. The kernel reports the modifiers held right now
+ * (TIOCLINUX, TIOCL_GETSHIFTSTATE), and a Tab read while Shift is down is the
+ * back-tab. The question goes to the VT ktui_term found, not to standard
+ * input: under `sudo` standard input is a pts and every console ioctl fails
+ * there. On a VT that is not the caller's controlling terminal TIOCLINUX
+ * needs CAP_SYS_ADMIN, so `sudo kinstall` gets the back-tab and an unprivileged
+ * program on such a VT gets a plain Tab. <linux/keyboard.h>, which names the
+ * bit, is not included: its KT_ key-type names collide with libktui's.
+ * KDGKBTYPE answers only on a VT, so a terminal emulator or an ssh session —
+ * which send ESC [ Z themselves and get no VT descriptor — never ask.
+ */
+static int vt_shift_held(void)
+{
+	int fd = ktui_term_vt_fd();
+	char type;
+	char sub = TIOCL_GETSHIFTSTATE;
+
+	if (fd < 0 || ioctl(fd, KDGKBTYPE, &type) < 0)
+		return 0;
+	if (ioctl(fd, TIOCLINUX, &sub) < 0)
+		return 0;
+	return (sub & 1) != 0;	/* bit KG_SHIFT, either Shift key */
+}
+
 /* Returns 1 if a complete sequence was decoded, 0 if more bytes are needed,
  * -1 if the buffer holds a lone ESC that is not (yet) a sequence. */
 static int decode(KtuiEvent *ev)
@@ -491,6 +520,11 @@ static int decode(KtuiEvent *ev)
 		}
 		if (c == 10)
 			c = KT_K_ENTER;
+		if (c == KT_K_TAB && vt_shift_held()) {
+			ev->key = KT_K_BTAB;
+			ibuf_drop(1);
+			return 1;
+		}
 		if (c == 8)
 			c = KT_K_BACKSPACE;
 		if (c < 0x80) {
@@ -551,6 +585,26 @@ static int decode(KtuiEvent *ev)
 		ev->key = ibuf[1];
 		ev->mods = KT_MOD_ALT;
 		ibuf_drop(2);
+		return 1;
+	}
+
+	/* The Linux console sends F1-F5 as ESC [ [ A..E. Read as a CSI, the
+	 * second '[' would be its final byte and the letter would be typed;
+	 * any other byte after ESC [ [ is dropped with the sequence. */
+	if (ilen >= 3 && ibuf[2] == '[') {
+		if (ilen < 4)
+			return 0;
+		ev->type = KT_EVT_KEY;
+		ev->mods = 0;
+		switch (ibuf[3]) {
+		case 'A': ev->key = KT_K_F1; break;
+		case 'B': ev->key = KT_K_F2; break;
+		case 'C': ev->key = KT_K_F3; break;
+		case 'D': ev->key = KT_K_F4; break;
+		case 'E': ev->key = KT_K_F5; break;
+		default: ibuf_drop(4); return 0;
+		}
+		ibuf_drop(4);
 		return 1;
 	}
 

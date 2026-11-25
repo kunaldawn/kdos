@@ -14,9 +14,11 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
+import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.plasmoid
@@ -52,13 +54,30 @@ PlasmoidItem {
             }
         }
 
+        /* A Representation with collapseMarginsHint false pads its content
+         * by nothing, and the tray's popup sets the applet against its
+         * frame, so the list keeps a large-spacing inset on every side or
+         * its text runs flush to the frame; it narrows by the scroll bar's
+         * width while the bar shows, or its rows would run under the bar. */
         contentItem: Flickable {
-            contentHeight: list.implicitHeight
+            id: flick
+
+            readonly property int inset: Kirigami.Units.largeSpacing
+
+            contentWidth: width
+            contentHeight: list.implicitHeight + inset * 2
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            QQC2.ScrollBar.vertical: PlasmaComponents3.ScrollBar {
+                id: bar
+            }
 
             ChecklistView {
                 id: list
-                width: parent.width
+                x: flick.inset
+                y: flick.inset
+                width: flick.width - flick.inset * 2 - (bar.visible ? bar.width : 0)
                 checklist: probe
             }
         }

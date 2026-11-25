@@ -347,7 +347,7 @@ int pack_box_create(const Profile *p, const char *merged,
 	KbArgv a = {0};
 	struct passwd *pw = getpwuid(getuid());
 	char hostname[128] = "kdos";
-	char pdir[MAX_LINE], cgparent[1024];
+	char pdir[MAX_LINE], cgparent[1024], digest[PROFILE_DIGEST_MAX];
 	const char *home = kb_home_dir();
 	int pack = merged != NULL;
 
@@ -386,6 +386,9 @@ int pack_box_create(const Profile *p, const char *merged,
 	kb_argv_addf(&a, "--hostname=%s.%s", p->name, hostname);
 	kb_argv_add(&a, "--label");
 	kb_argv_add(&a, "manager=kdos-box");
+	/* What the container is made from, for profile_print to compare. */
+	profile_create_digest(p, digest, sizeof(digest));
+	kb_argv_addf(&a, "--label=" BOX_PROFILE_LABEL "=%s", digest);
 	kb_argv_add(&a, "--security-opt");
 	kb_argv_add(&a, "label=disable");
 	kb_argv_add(&a, "--security-opt");
@@ -620,15 +623,19 @@ int pack_box_create(const Profile *p, const char *merged,
  * keeps nothing in its container — the writes are kdos-packd's upper — so one
  * created over the session's runtime directory, or under a cgroup scope whose
  * login session has ended (which podman can never start again), is removed
- * here and made again by the caller. A store box keeps its writes inside its
- * container and is never removed by a launch.
+ * here and made again by the caller. Only a box whose profile's base is
+ * `pack:<id>` is a pack box here, the rule box_unstick keeps: a box with no
+ * profile — a distrobox somebody made with `distrobox create`, kdos-fetch-app's
+ * among them — shares the session's runtime directory by design and keeps
+ * everything installed in it inside its container, and a store box keeps its
+ * writes there too, so neither is ever removed by a start or a launch.
  */
 static int pack_box_outdated(const char *box, const Profile *p)
 {
 	KbArgv r = {0};
 	int layout;
 
-	if (box_lane(p) != BOX_LANE_PACK)
+	if (strncmp(p->base, "pack:", 5))
 		return 0;
 	layout = box_layout_private(box);
 	if (layout != 0 && !box_cgroup_stale(box))
@@ -644,6 +651,20 @@ static int pack_box_outdated(const char *box, const Profile *p)
 	kb_argv_add(&r, box);
 	kb_argv_end(&r);
 	return kb_run(&r) == 0;
+}
+
+/*
+ * A KEPT BOX THE LAUNCH PATH MADE AGAIN is a box again: its profile loses
+ * BOX_KEPT_MARK, and the window rules, which skip a kept profile with no
+ * container, are written with it, so its first windows already wear its
+ * accent.
+ */
+static void pack_box_unkeep(const Profile *p)
+{
+	if (!profile_is_kept(p->name))
+		return;
+	profile_save(p);
+	box_rules_refresh();
 }
 
 /*
@@ -702,6 +723,8 @@ int pack_box_ensure(const char *box, const char *id)
 			? pack_box_create(&p, NULL, NULL, 0, 0) : box_create(&p);
 		if (fd >= 0)
 			close(fd);
+		if (rc == 0)
+			pack_box_unkeep(&p);
 		return rc;
 	}
 
@@ -720,17 +743,25 @@ int pack_box_ensure(const char *box, const char *id)
 	tracef("composed %s", merged);
 
 	fprintf(stderr, "==> First launch: composing '%s' from packs...\n", box);
-	rc = pack_box_create(&p, merged, NULL, 0, 0);
-	if (rc == 0 && !p.base[0]) {
-		/* RECORD WHAT THE BOX IS MADE OF. A box the launch path
-		 * composed has no profile, so every reader that asks what its
-		 * base is — `kdos-box list`, the Boxes settings page —
-		 * falls back to podman's image and reports
-		 * `localhost/kdos-appbox:latest` for a box with no image in
-		 * it at all. The profile is the answer to that question and
-		 * this is the only place that knows it. */
-		snprintf(p.base, sizeof(p.base), "pack:%s", id);
-		profile_save(&p);
+	/* RECORD WHAT THE BOX IS MADE OF. A box the launch path composed has
+	 * no profile, so every reader that asks what its base is — `kdos-box
+	 * list`, the Boxes settings page — falls back to podman's image and
+	 * reports `localhost/kdos-appbox:latest` for a box with no image in it
+	 * at all. The profile is the answer to that question and this is the
+	 * only place that knows it. The base is set before the create, so the
+	 * container's profile label carries it, and the profile is written
+	 * only once the create has made a container: a launch that fails
+	 * leaves no profile behind. */
+	{
+		int had = p.base[0] != 0;
+
+		if (!had)
+			snprintf(p.base, sizeof(p.base), "pack:%s", id);
+		rc = pack_box_create(&p, merged, NULL, 0, 0);
+		if (rc == 0 && !had)
+			profile_save(&p);
+		else if (rc == 0)
+			pack_box_unkeep(&p);
 	}
 	if (rc != 0)
 		pack_decompose(box);
@@ -744,6 +775,9 @@ int pack_box_ensure(const char *box, const char *id)
  * Start the box if it is not running, then wait for kdos-boxinit's marker.
  * The wait is the same contract the image lane keeps — `container_setup_done`
  * in podman's logs — so `box_wait_ready()` is shared rather than reimplemented.
+ * Session restore starts every box the last session left running through
+ * here, so a box with no profile — a distrobox — reaches it too: that one is
+ * given a plain `podman start` and nothing else, never a remove or a compose.
  */
 int pack_box_start(const char *box)
 {
@@ -760,7 +794,7 @@ int pack_box_start(const char *box)
 		return 0;
 
 	/* A BOX LEFT `stopping` IS NOT STARTABLE. A `podman stop` from outside
-	 * this program signals nothing in a box that shares the host's PID
+	 * this program that timed out on a box sharing the host's PID
 	 * namespace (box.c), and podman then refuses a start with `container
 	 * state improper`, which names nothing a reader can act on.
 	 * `box_unstick` is the recovery, shared with the app-launch path in
@@ -801,10 +835,11 @@ int pack_box_start(const char *box)
 	}
 	/* Stopped, so a pack box whose container is out of date — over the
 	 * session's runtime directory, or under a dead session's cgroup — is
-	 * made again before podman is asked to start it. */
-	if (box_lane(&p) == BOX_LANE_PACK && box_exists(box) &&
-	    pack_box_outdated(box, &p) &&
-	    pack_box_ensure(box, p.base[0] ? p.base + 5 : box) != 0)
+	 * made again over its profile's packs before podman is asked to start
+	 * it. A box with no profile is never removed or composed: it is
+	 * started below with a plain `podman start`, as it is. */
+	if (box_exists(box) && pack_box_outdated(box, &p) &&
+	    pack_box_ensure(box, p.base + 5) != 0)
 		return 1;
 
 	/*

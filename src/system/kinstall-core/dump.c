@@ -33,8 +33,71 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "kinstall-core.h"
+
+/*
+ * THE PAYLOAD A FRONT END ALREADY HAS. The walk measures what this user can
+ * enter, and on the live medium directories only root may enter (/root among
+ * them) are closed to the live account: its payload comes out smaller than
+ * root's, and a page that asks as the user offers a swap a mebibyte larger
+ * than the root plan accepts. A front end that has root's
+ * figures from its first probe hands them on with --payload-kb and
+ * --appbox-kb, and every dump then decides on root's numbers. The install
+ * never takes them; it measures its own.
+ */
+static int payload_given;
+static unsigned long long given_payload_kb, given_appbox_kb;
+
+void ki_dump_payload_set(unsigned long long payload_kb,
+			 unsigned long long appbox_kb)
+{
+	payload_given = 1;
+	given_payload_kb = payload_kb;
+	given_appbox_kb = appbox_kb < payload_kb ? appbox_kb : payload_kb;
+}
+
+/* probe_payload(), or the figures handed on; after probe_system(), which
+ * clears them. */
+static void dump_payload(void)
+{
+	if (!payload_given) {
+		probe_payload();
+		return;
+	}
+	ki_sys.payload_kb = given_payload_kb;
+	ki_sys.appbox_kb = given_appbox_kb;
+}
+
+/* Only a walk knows the links, so a dump given the payload has no figure
+ * and a front end keeps root's. */
+long long ki_copy_bytes(int store)
+{
+	unsigned long long kb, links;
+
+	if (payload_given)
+		return -1;
+	kb = store ? ki_sys.appbox_kb : ki_sys.payload_kb - ki_sys.appbox_kb;
+	links = store ? ki_sys.link_extra_appbox_bytes
+		      : ki_sys.link_extra_bytes - ki_sys.link_extra_appbox_bytes;
+	return kb * 1024 > links ? (long long)(kb * 1024 - links) : 0;
+}
+
+/*
+ * WHAT AN UNPRIVILEGED PLAN CANNOT SEE. A volume group named KI_VG on another
+ * disk stops the install's vgcreate after this disk is erased. As root `pvs`
+ * reads every label; as anybody else only the group's active volumes show,
+ * in sysfs, so a group that is not active passes the check here and is
+ * refused by the install. The plan says so where it would make the group.
+ */
+static const char *unchecked_note(void)
+{
+	if (geteuid() == 0 || cfg.plan != PLAN_WIPE || !cfg.lvm)
+		return NULL;
+	return "as this user: volume groups on other disks that are not "
+	       "active; the install checks them as root";
+}
 
 /* Sectors are what /sys reports and 512 is what it reports them IN, whatever
  * the drive's physical sector size is — the same conversion the pages use. */
@@ -73,20 +136,26 @@ static unsigned long long ab_need_bytes(void)
 	return (ki_ab_need_mb() + KI_ESP_MB + KI_BIOS_BOOT_MB) << 20;
 }
 
-static void probe_text(void)
+void ki_dump_probe_text(void)
 {
 	printf("firmware      %s%s%s\n", ki_sys.uefi ? "UEFI" : "BIOS",
 	       ki_sys.fw_bits == 32 ? " (32-bit)" : "",
 	       ki_sys.secure_boot ? " (secure boot on)" : "");
-	printf("cpu           %s (%d cores)\n", ki_sys.cpu, ki_sys.cores);
+	printf("network       %s\n", ki_sys.network ? "default route up"
+						 : "none");
+	printf("cpu           %s (%d threads)\n", ki_sys.cpu, ki_sys.cores);
 	printf("memory        %llu MB\n", ki_sys.mem_kb / 1024);
 	printf("session       %s\n", ki_sys.live ? "live" : "installed");
 	printf("payload       %llu MB (appbox %llu MB)\n",
 	       ki_sys.payload_kb / 1024, ki_sys.appbox_kb / 1024);
+	if (ki_copy_bytes(0) >= 0)
+		printf("copies        %lld MiB system, %lld MiB box store\n",
+		       ki_copy_bytes(0) >> 20, ki_copy_bytes(1) >> 20);
 	printf("disks         %d\n", ki_ndisk);
 
 	printf("install needs %llu MB on a disk, %llu MB for two slots\n",
-	       (ki_need_bytes() + KI_DISK_MARGIN) >> 20, ab_need_bytes() >> 20);
+	       ki_disk_need_bytes() >> 20,
+	       ab_need_bytes() >> 20);
 
 	for (int i = 0; i < ki_ndisk; i++) {
 		const Disk *d = &ki_disk[i];
@@ -97,19 +166,26 @@ static void probe_text(void)
 		       d->model[0] ? d->model : "-",
 		       d->removable ? "  removable" : "",
 		       d->readonly ? "  read-only" : "",
-		       d->is_boot_media ? "  BOOT MEDIA" : "");
+		       d->is_boot_media ? "  BOOT MEDIA" :
+		       d->is_boot_copy ? "  BOOT MEDIA (copy)" : "");
+		if (d->fstype[0])
+			printf("    whole disk: %s%s%s%s%s\n", d->fstype,
+			       d->label[0] ? " " : "", d->label,
+			       d->vg[0] ? ", volume group " : "", d->vg);
 		if (ki_disk_check(d, why, sizeof(why)))
 			printf("    refused: %s\n", why);
 		else if (!disk_ab_fits(d))
 			printf("    one slot: too small for two\n");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
-			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s\n", p->path,
-			       p->sectors / 2048,
+			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s%s%s%s%s\n",
+			       p->path, p->sectors / 2048,
 			       p->fstype[0] ? p->fstype : "-",
 			       p->label[0] ? p->label : "",
+			       p->remap[0] ? "  remap " : "", p->remap,
 			       p->is_esp ? "  ESP" : "",
 			       p->is_bios_boot ? "  BIOS boot" : "",
+			       p->vg[0] ? "  volume group " : "", p->vg,
 			       p->mounted ? "  mounted" : "");
 		}
 	}
@@ -124,7 +200,7 @@ static void probe_text(void)
 	}
 }
 
-static void probe_json(void)
+void ki_dump_probe_json(void)
 {
 	KbBuf b = {0};
 
@@ -134,19 +210,32 @@ static void probe_json(void)
 		      ki_sys.secure_boot ? "true" : "false");
 	kb_buf_str(&b, "  \"cpu\": ");
 	kb_json_str(&b, ki_sys.cpu);
+	/* `cores` counts logical CPUs, which every face calls threads; the
+	 * key keeps the name the graphical installer reads. */
 	kb_buf_printf(&b, ", \"cores\": %d, \"memory_kb\": %llu,\n",
 		      ki_sys.cores, ki_sys.mem_kb);
 	kb_buf_printf(&b, "  \"live\": %s, \"payload_kb\": %llu, "
 		      "\"appbox_kb\": %llu,\n",
 		      ki_sys.live ? "true" : "false", ki_sys.payload_kb,
 		      ki_sys.appbox_kb);
-	/* What the copy takes (a reused root's least size), what a disk must
-	 * hold by ki_disk_check()'s rule, and what two slots need: a front end
-	 * shows the backend's figures and keeps none of its own. */
-	kb_buf_printf(&b, "  \"install_bytes\": %llu, \"need_bytes\": %llu, "
-		      "\"ab_need_bytes\": %llu,\n",
-		      ki_need_bytes(), ki_need_bytes() + KI_DISK_MARGIN,
+	/* What the copy takes, a reused root's least size (the copy and
+	 * KI_ROOT_FREE_MB left free), what a disk must hold by
+	 * ki_disk_check()'s rule, and what two slots need: a front end shows
+	 * the backend's figures and keeps none of its own. */
+	kb_buf_printf(&b, "  \"install_bytes\": %llu, \"root_need_bytes\": "
+		      "%llu, \"need_bytes\": %llu, \"ab_need_bytes\": %llu,\n",
+		      ki_need_bytes(), ki_root_need_bytes(), ki_disk_need_bytes(),
 		      ab_need_bytes());
+	/* What the copy writes, the system's and the box store's, the totals
+	 * its progress line counts to: the install size a front end shows.
+	 * null when the payload was given rather than walked. */
+	if (ki_copy_bytes(0) >= 0)
+		kb_buf_printf(&b, "  \"copy_system_bytes\": %lld, "
+			      "\"copy_store_bytes\": %lld,\n",
+			      ki_copy_bytes(0), ki_copy_bytes(1));
+	else
+		kb_buf_str(&b, "  \"copy_system_bytes\": null, "
+			       "\"copy_store_bytes\": null,\n");
 	kb_buf_str(&b, "  \"disks\": [");
 
 	for (int i = 0; i < ki_ndisk; i++) {
@@ -165,12 +254,13 @@ static void probe_json(void)
 		kb_buf_printf(&b, ",\n     \"sectors\": %llu, "
 			      "\"sector_size\": %d, \"rotational\": %s, "
 			      "\"removable\": %s, \"readonly\": %s, "
-			      "\"boot_media\": %s,\n",
+			      "\"boot_media\": %s, \"boot_copy\": %s,\n",
 			      d->sectors, d->sector_size,
 			      d->rotational ? "true" : "false",
 			      d->removable ? "true" : "false",
 			      d->readonly ? "true" : "false",
-			      d->is_boot_media ? "true" : "false");
+			      d->is_boot_media ? "true" : "false",
+			      d->is_boot_copy ? "true" : "false");
 		/* `fits`: the install can go on this disk; `problem` says why
 		 * not. `ab_fits`: erased on LVM, it holds two slots. */
 		kb_buf_printf(&b, "     \"bytes\": %llu, \"fits\": %s, "
@@ -181,6 +271,19 @@ static void probe_json(void)
 			kb_json_str(&b, why);
 		else
 			kb_buf_str(&b, "null");
+		/* `fstype`, `label`, `vg` and `fs_bytes`: the whole-device
+		 * signature of a disk, with or without partitions ("" and 0
+		 * for none); `fs_bytes` is an ISO 9660 image's size, 0 when
+		 * unknown, and `iso_image` says the partitions are all that
+		 * image's hybrid windows, so the image is what the disk holds. */
+		kb_buf_str(&b, ",\n     \"fstype\": ");
+		kb_json_str(&b, d->fstype);
+		kb_buf_str(&b, ", \"label\": ");
+		kb_json_str(&b, d->label);
+		kb_buf_printf(&b, ", \"fs_bytes\": %llu, \"iso_image\": %s",
+			      d->fs_bytes, d->iso_image ? "true" : "false");
+		kb_buf_str(&b, ", \"vg\": ");
+		kb_json_str(&b, d->vg);
 		kb_buf_str(&b, ",\n     \"partitions\": [");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
@@ -195,6 +298,15 @@ static void probe_json(void)
 			kb_json_str(&b, p->label);
 			kb_buf_str(&b, ", \"uuid\": ");
 			kb_json_str(&b, p->uuid);
+			/* An LVM2_member partition's volume group, "" when
+			 * none can be read. */
+			kb_buf_str(&b, ", \"vg\": ");
+			kb_json_str(&b, p->vg);
+			/* What the partition's node points at when it is not
+			 * the partition ("ventoy" for Ventoy's mapping), ""
+			 * otherwise; Part.remap. */
+			kb_buf_str(&b, ", \"remap\": ");
+			kb_json_str(&b, p->remap);
 			kb_buf_printf(&b, ", \"esp\": %s, \"bios_boot\": %s, "
 				      "\"mounted\": %s",
 				      p->is_esp ? "true" : "false",
@@ -303,8 +415,9 @@ static void plan_dump(int json)
 	probe_system();
 	probe_disks();
 	if (disk_by_path(cfg.disk))
-		probe_payload();
-	char problem[256] = "";
+		dump_payload();
+	char problem[256] = "", swp[256] = "";
+	const char *unchecked = unchecked_note();
 	int bad = ki_answers_check(problem, sizeof(problem)) ||
 		  ki_target_check(problem, sizeof(problem));
 
@@ -382,10 +495,23 @@ static void plan_dump(int json)
 		else
 			printf("root          %s%s\n", root,
 			       cfg.luks ? ", inside LUKS2" : "");
-		printf("swap          %s", swap_name());
-		if (swap_kind() != SWAP_NONE)
-			printf(" %ld MB", cfg.swap_mb);
-		printf("\n");
+		/* The A/B layout makes its swap a volume whatever kind was
+		 * asked for, and the line above already names it. */
+		if (!(cfg.plan == PLAN_WIPE && cfg.lvm && ki_ab() &&
+		      ki_swap_lv_mb())) {
+			printf("swap          %s", swap_name());
+			if (swap_kind() != SWAP_NONE)
+				printf(" %ld MiB", cfg.swap_mb);
+			printf("\n");
+		}
+		if (ki_root_free_bytes() >= 0)
+			printf("root free     %llu MiB after the install%s\n",
+			       (unsigned long long)ki_root_free_bytes() >> 20,
+			       (unsigned long long)ki_root_free_bytes() <
+					       KI_ROOT_LOW_BYTES
+				       ? ": too little for application groups "
+					 "or boxed apps"
+				       : "");
 		printf("hostname      %s\n", cfg.hostname);
 		if (cfg.oem)
 			printf("user          none: the first boot sets one up "
@@ -426,13 +552,15 @@ static void plan_dump(int json)
 			printf("apps cost     %s (an estimate)\n",
 			       kb_human_size(ki_apps_bytes()));
 		}
-		/* Native groups are downloaded during the install, or recorded
-		 * when the network does not answer. */
+		/* Native groups are downloaded during the install when a
+		 * binhost is named and answers, and recorded otherwise. */
 		printf("groups        %s\n",
 		       ki_groups_chosen() ? cfg.groups : "(none chosen)");
 		printf("dry run       %s\n", cfg.dry_run ? "yes" : "no");
 		if (bad)
 			printf("refused       %s\n", problem);
+		if (unchecked)
+			printf("not checked   %s\n", unchecked);
 		printf("\nsteps\n");
 		for (int i = 0; i < inst.nsteps; i++)
 			printf("  %-2d %-24s %-8s %s\n", i + 1,
@@ -490,6 +618,15 @@ static void plan_dump(int json)
 	kb_buf_printf(&b, ", \"ab\": %s", ki_ab() ? "true" : "false");
 	kb_buf_printf(&b, ",\n  \"swap\": \"%s\", \"swap_mb\": %ld",
 		      swap_name(), swap_kind() != SWAP_NONE ? cfg.swap_mb : 0);
+	/* What the one root keeps free after the copy and a swap file in it,
+	 * or null on the A/B layout; under KI_ROOT_LOW_BYTES a front end warns
+	 * before the install that groups and boxed apps will not fit. */
+	if (ki_root_free_bytes() >= 0)
+		kb_buf_printf(&b, ", \"root_free_bytes\": %lld",
+			      ki_root_free_bytes());
+	else
+		kb_buf_str(&b, ", \"root_free_bytes\": null");
+	kb_buf_printf(&b, ", \"root_low_bytes\": %llu", KI_ROOT_LOW_BYTES);
 	kb_buf_str(&b, ",\n  \"hostname\": ");
 	kb_json_str(&b, cfg.hostname);
 	kb_buf_printf(&b, ", \"oem\": %s", cfg.oem ? "true" : "false");
@@ -551,7 +688,12 @@ static void plan_dump(int json)
 			kb_json_str(&b, ki_native[i].id);
 		}
 	}
-	kb_buf_str(&b, "]");
+	/* Whether `kdos update` has a binhost to fetch them from, and
+	 * whether there is a network to fetch over (probe.c): with either
+	 * missing they are recorded, and a front end says which. */
+	kb_buf_printf(&b, "], \"binhost\": %s, \"network\": %s",
+		      ki_binhost_named ? "true" : "false",
+		      ki_sys.network ? "true" : "false");
 	kb_buf_str(&b, ",\n  \"services_off\": [");
 	if (svc.n)
 		kb_buf_str(&b, svc.p);
@@ -560,6 +702,18 @@ static void plan_dump(int json)
 	kb_buf_str(&b, "],\n  \"refused\": ");
 	if (bad)
 		kb_json_str(&b, problem);
+	else
+		kb_buf_str(&b, "null");
+	/* The swap's own refusal, whatever else is refused first: the Disk
+	 * page, where the swap is chosen, shows it there. */
+	kb_buf_str(&b, ", \"swap_problem\": ");
+	if (ki_swap_check(swp, sizeof(swp)))
+		kb_json_str(&b, swp);
+	else
+		kb_buf_str(&b, "null");
+	kb_buf_str(&b, ", \"not_checked\": ");
+	if (unchecked)
+		kb_json_str(&b, unchecked);
 	else
 		kb_buf_str(&b, "null");
 	kb_buf_str(&b, ",\n  \"steps\": [");
@@ -712,12 +866,12 @@ int ki_dump(const char *what, int json)
 {
 	if (!strcmp(what, "probe")) {
 		probe_system();
-		probe_payload();
+		dump_payload();
 		probe_disks();
 		if (json)
-			probe_json();
+			ki_dump_probe_json();
 		else
-			probe_text();
+			ki_dump_probe_text();
 		return 0;
 	}
 	if (!strcmp(what, "plan")) {

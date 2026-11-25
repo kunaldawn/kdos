@@ -19,11 +19,15 @@
 #
 #   a file under fs/etc/xdg the rulings do not put there. Allowed: kdeglobals
 #     (the global theme alone, for a process that reads /etc/xdg alone),
-#     konsolerc, fcitx5/config (fcitx5 reads one file, not a cascade),
-#     mimeapps.list (the handlers that are not a desktop application's), and
-#     the two directories the XDG specifications fix there, autostart/ and
-#     menus/;
+#     konsolerc, fcitx5/config and fcitx5/conf/wayland.conf (fcitx5 reads one
+#     file of each, not a cascade, and KWin starts it with whatever
+#     environment it has), mimeapps.list (the handlers that are not a
+#     desktop application's), and the two directories the XDG
+#     specifications fix there, autostart/ and menus/;
 #   /etc/xdg/kdeglobals holding any key but [KDE] LookAndFeelPackage;
+#   /etc/xdg/fcitx5/conf/wayland.conf missing, or not turning off fcitx5's
+#     XKB override: fcitx5 would write its group layout into every account's
+#     kxkbrc and replace the layout KWin was given;
 #   a file shipped under both fs/etc/xdg and fs/usr/share/kdos/xdg other than
 #     kdeglobals: two copies of one default, the /etc one shadowing every key
 #     it repeats;
@@ -49,7 +53,7 @@ esac
 fail=0
 bad() { echo "  FAIL  $*"; fail=1; }
 
-ALLOWED="kdeglobals konsolerc fcitx5/config mimeapps.list"
+ALLOWED="kdeglobals konsolerc fcitx5/config fcitx5/conf/wayland.conf mimeapps.list"
 n=0
 while IFS= read -r f; do
 	rel=${f#fs/etc/xdg/}
@@ -73,6 +77,9 @@ if [ -f fs/etc/xdg/kdeglobals ]; then
 	[ "$keys" = "[KDE] LookAndFeelPackage" ] ||
 		bad "fs/etc/xdg/kdeglobals holds $(printf '%s' "$keys" | tr '\n' ';'); it carries [KDE] LookAndFeelPackage alone"
 fi
+
+grep -qx 'Allow Overriding System XKB Settings=False' fs/etc/xdg/fcitx5/conf/wayland.conf 2>/dev/null ||
+	bad "fs/etc/xdg/fcitx5/conf/wayland.conf does not hold 'Allow Overriding System XKB Settings=False'; fcitx5 rewrites kxkbrc"
 
 for start in "" "/etc/xdg"; do
 	got=$(env -i HOME=/nonexistent PATH=/usr/bin:/bin ${start:+XDG_CONFIG_DIRS=$start} \

@@ -7,11 +7,13 @@ program is missing, a link into a package that was swept, a QML module the base 
 `script/phases/70_image/087_gates.sh` runs four checks over the tree that is about to become the
 image, and stops the phase on their findings, before the initramfs and the ISO are written; the
 first check stops it only for what it finds under the four directories that hold manuals,
-documentation and translations.
+documentation and translations. A build with `KDOS_MAKE_BINHOST=1` adds a fifth, over the
+binhost [010_binhost.sh](010-binhost.md) wrote. A last report, which never stops the phase, lists
+the packages that install no licence text.
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/087_gates.sh lines=50-79 pin=bf626b89516f -->
+<!-- kfs:include script/phases/70_image/087_gates.sh lines=58-148 pin=c35f262b453f -->
 
 The first three checks are Python programs in `testing/`, which `script/chroot/exec.sh` binds
 read-only at `/kdos/testing` in the chroot; the fourth is `script/lib/imageset.py`, the script
@@ -28,8 +30,8 @@ failed build prints every problem the tree has, not just the first.
   file is removed by no package removal and replaced by no update: it was written outside a
   package's staging tree, by a tool run against the live root, or lost from a manifest. Mount
   points, scratch, homes, kpkg's state, kpkg and kinstall themselves, and what is generated over
-  every package (the shared indexes, the launcher table, the source offer, the initramfs and its
-  module list) are subtracted. The report covers the whole tree, and a finding stops the phase
+  every package (the shared indexes, the launcher table, the source offer, KDOS's licence text
+  and the `LICENSE` links to it, the initramfs and its module list) are subtracted. The report covers the whole tree, and a finding stops the phase
   only under `usr/share/locale`, `usr/share/man`, `usr/share/doc` or `usr/share/info`, the four
   `--fail-under` directories, where it prints a `FAIL unowned` line for each path.
   [020_cleanup.sh](020-cleanup.md) has already removed every unowned file there that kpkg's
@@ -65,6 +67,27 @@ failed build prints every problem the tree has, not just the first.
   either tree provides is counted; neither fails. Under `KDOS_IMAGE=full` nothing is dropped and
   the step says so.
 
+The binhost's `N:` lines
+: Runs under `KDOS_MAKE_BINHOST=1` only, when `/kdos/build/binhost/PACKAGES` exists. A current
+  package stanza, one with an `E:` and no `O:`, must carry an `N:` line, the build-only ports the
+  package needs at run time (see [010_binhost.sh](010-binhost.md#the-index)). One without it has
+  no run-time needs record in the build tree, so `kdos update install` would keep every
+  build-only dependency of it; the check prints `FAIL <n> binhost package(s) carry no N: line (no
+  run-time needs record): <names>`, and rebuilding each named port records its needs.
+
+The licence texts
+: A report, never a failure. Every installed package that owns a file and has no
+  `/usr/share/licenses/<name>` is listed, less the packages of our own whose licence is `MIT`
+  alone, which [105_ports.sh](105-ports.md#kdoss-licence-text) links to KDOS's text after this
+  step; one of ours under `MIT AND` another licence is listed until its `build.sh` installs the
+  other text. The ports in `LICENCE_TEXTLESS` (`sqlite`, `snooze`, `iana-etc`, `debian-dep11`,
+  `fwupd-snapshot` and `librfnm`, whose sources hold no text: public-domain and CC0 code and data,
+  data published under terms no file carries, and code published with no licence) are
+  printed apart, on a line `no text in the source, as expected:`. Any other name, on the line
+  `<n> package(s) install no /usr/share/licenses/<name>:`, is a port whose source keeps its text
+  where kpkg does not look, and its `build.sh` should install it (see
+  [What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+
 Under `KDOS_IMAGE=base` the tree is the [image stage](017-stage.md), trimmed to the base, so the
 last three checks are also the proof that the base's closure is whole: a library, an interpreter,
 a program, a QML module or a Python package a base package needs that went with the packages
@@ -82,7 +105,8 @@ The exact rules of each, their exemptions and how to run them by hand are in
 `unowned.py` prints a `FAIL unowned` line for each path it stops on, `linkcheck.py` a `FAIL` line
 for each finding, and `entrycheck.py` a line naming the kind of finding (`link`, `exec`, `icon` or
 `udev`) and a count of each at the end, and `imageset.py` a `FAIL` line for each edge met only
-outside the base and an `imageset: verify:` count line. All four are in the step's log,
+outside the base and an `imageset: verify:` count line, and the binhost check one `FAIL` line
+naming its packages. All of them are in the step's log,
 `build/logs/70_image/<NNNN>_gates.sh.log` (see
 [Step logs](../../kdos/05-developer/build-system.md#step-logs)). The fix is usually in a recipe: a missing `depends`, a package that
 installs a link to a file it does not ship, a desktop entry naming the wrong program, a build
@@ -108,8 +132,9 @@ as root; see
 
 After the trim, the orphan sweep and every index, so it checks exactly what the image carries, and before
 `090_initramfs.sh` and `110_iso.sh`, so a tree that fails is never written into an image. The files
-those later steps write into the root, the initramfs and its module list and the source offer
-from `105_ports.sh`, are generated, and `unowned.py` subtracts them.
+those later steps write into the root, the initramfs and its module list, and the source offer
+and KDOS's licence text and its links from `105_ports.sh`, are generated, and `unowned.py`
+subtracts them.
 
 ## What it leaves
 

@@ -23,3 +23,7 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 texlive
+
+# The manuals and examples of the TeX Live packages texlive ships, for
+# texdoc; the binhost carries it and the image does not.
+texlive-doc

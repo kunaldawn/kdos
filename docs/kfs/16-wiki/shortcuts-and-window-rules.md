@@ -54,9 +54,11 @@ A new account runs every `kconf_update` step at its first login, with KWin alrea
 `kwin-6.1-remove-gridview-expose-shortcuts` would then delete the Present Windows keys (`Meta+F9`,
 `Meta+F10`, `Meta+F7`) the Window View effect has just registered.
 `fs/usr/share/kdos/xdg/kconf_updaterc` records that step as done, and `kconf_update` reads its
-record along the configuration directories:
+record along the configuration directories. The same file records plasma-workspace's
+`migrate-calendar-plugins` as done, which would otherwise rewrite the panels file under the desk's
+first layout; see [How a desk is laid out](../../kdos/04-programs/plasma-shell.md#how-a-desk-is-laid-out):
 
-<!-- kfs:include fs/usr/share/kdos/xdg/kconf_updaterc lines=24-25 pin=bc3cd6a55ee8 -->
+<!-- kfs:include fs/usr/share/kdos/xdg/kconf_updaterc lines=36-40 pin=1232d6a274df -->
 
 
 

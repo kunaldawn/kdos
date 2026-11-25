@@ -104,6 +104,14 @@ void kp_xz_env_restore(char *saved[2]);
 int depends_main(int argc, char **argv);
 int add_main(int argc, char **argv);
 int del_main(int argc, char **argv);
+/* 1, with an ERROR line naming why (missing, read-only, not permitted),
+ * when this process cannot write to root (add.c). */
+int kp_root_unwritable(const char *root);
+/* The database path as a message names it: the root and the database
+ * directory joined by one slash, so `--root /mnt/` reads /mnt/var/lib/kpkg/db
+ * and the default root reads /var/lib/kpkg/db, not //var/lib/kpkg/db
+ * (add.c). */
+void kp_db_shown(const KpConf *c, char *buf, size_t cap);
 int build_main(int argc, char **argv);
 /*
  * Build the port in `portdir` and, on success, copy the path of the package
@@ -217,6 +225,10 @@ void kp_source_file(const char *name, const char *version, const char *src,
 int kp_fetch_port(const KpConf *c, const char *portdir);
 /* KPKG_FETCH=1: the build fetches before it verifies. */
 int kp_fetch_wanted(void);
+/* `kpkg fetch <pkg>...`, and `kpkg fetch --size <pkg>...`: the bytes each
+ * file a fetch would download measures at those same URLs, one `<file>
+ * <bytes>` or `<file> ?` line each, nothing downloaded. 0, 1 or 3 as
+ * kp_fetch_port. */
 int kp_cmd_fetch(const KpConf *c, int argc, char **argv);
 
 /* ────────────────────────────────────────────────────────────────────────

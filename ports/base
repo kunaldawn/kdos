@@ -41,12 +41,13 @@ src daemons
 # The Plasma session: kde-plasma's list without the KDE wallpaper and
 # Oxygen collections, the Chinese, Japanese and Korean input engines and
 # fcitx5-gtk (GTK on Wayland types through KWin's text-input), which are
-# groups (ports/groups).
+# groups (ports/groups). xdg-desktop-portal-gtk is added: it answers the
+# org.gnome.* Settings keys GTK 4 on Wayland reads.
 breeze-gtk breeze-icons ocean-sound-theme oxygen-sounds sddm kwallet-pam
 ksystemstats plasma-systemmonitor kinfocenter plasma-thunderbolt fcitx5
 fcitx5-qt fcitx5-configtool plasma-keyboard plasma-disks plasma-vault
-ksshaskpass kup xdg-desktop-portal-kde kwin kglobalacceld
-kscreenlocker aurorae knighttime kscreen milou plasma-workspace
+ksshaskpass kup xdg-desktop-portal-kde xdg-desktop-portal-gtk kwin
+kglobalacceld kscreenlocker aurorae knighttime kscreen milou plasma-workspace
 plasma-desktop systemsettings kde-cli-tools kmenuedit kactivitymanagerd
 kwrited polkit-kde-agent-1 powerdevil plasma-nm plasma-pa bluedevil
 kde-gtk-config kdeplasma-addons plasma-browser-integration discover
@@ -54,13 +55,25 @@ sddm-kcm plasma-setup plasma-welcome krohnkite print-manager krdp
 iio-sensor-proxy fwupd-snapshot
 
 # The applications every desk pins, the KIO workers, Dolphin's plugins and
-# the thumbnailers they use, and the browser the desks' launchers and
-# `preferred://browser` open. The rest of Gear is in the kde-* groups.
+# the thumbnailers they use, ISO Image Writer, which an `.iso` file and the
+# menu's burn route open, and the browser the desks' launchers and
+# `preferred://browser` open. Gear's other applications are in the kde-*
+# groups.
 konsole dolphin kate okular gwenview ark spectacle kcalc elisa kdeconnect
 partitionmanager yakuake kdialog kio-admin kio-zeroconf dolphin-plugins
 kde-inotify-survey kdesdk-thumbnailers ffmpegthumbs kdegraphics-thumbnailers
-kdegraphics-mobipocket markdownpart svgpart
+kdegraphics-mobipocket markdownpart svgpart isoimagewriter
 firefox-esr
+
+# The everyday desktop programs beside them: a video player, a paint
+# program, the scanner, the disk-usage map, file search, the character map,
+# the clock and the wallet manager.
+haruna kolourpaint skanpage filelight kfind kcharselect kclock kwalletmanager
+
+# Accessibility: the screen reader Meta+Alt+S and the Welcome tour start,
+# and BRLTTY with the braille tables it and Orca read. BRLTTY's service
+# starts only once /etc/brltty.conf names a display.
+orca brltty liblouis
 
 # Boot, firmware and the kernel. The firmware is the common hardware's: Intel
 # and AMD graphics, Wi-Fi and Bluetooth, MediaTek's (most AMD laptops' Wi-Fi),
@@ -70,12 +83,13 @@ linux firmware-intel firmware-amd firmware-realtek firmware-mediatek firmware-ma
 sof-firmware intel-ucode wireless-regdb limine
 efibootmgr efivar fwupd memtest86plus
 
-# The system's own services and commands.
+# The system's own services and commands; plocate is the `locate` index
+# kdos-updatedb rebuilds at every login and nightly.
 bash bc ca-certificates coreutils cronie dbus diffutils eudev execline file
 findutils gawk grep gzip iana-etc kbd kmod less lsof musl-utils patch
 procps-ng psmisc s6 sed snooze sysklogd sysvinit tar tzdata util-linux
 util-linux-login which mandoc man-pages nano htop fastfetch git gnupg
-pinentry
+pinentry plocate
 
 # Accounts and the login.
 accountsservice elogind pam polkit sddm shadow sudo turnstile utmps fprintd
@@ -95,10 +109,13 @@ squashfs-tools xfsprogs mtools cifs-utils nfs-utils sshfs
 podman buildah skopeo crun conmon catatonit netavark aardvark-dns passt
 slirp4netns fuse-overlayfs containers-common bubblewrap xdg-dbus-proxy
 
-# Hardware, sound and the desktop's plumbing.
+# Hardware, sound and the desktop's plumbing. Adwaita is in both KDOS icon
+# themes' Inherits, for the symbolic names only it draws; kdos-icons builds
+# in 41_system, ahead of the phase adwaita-icon-theme's gtk3 puts it in, so
+# this line, not a `depends =`, is what carries it.
 bluez bolt hwdata iio-sensor-proxy lm-sensors pciutils usbutils upower
 switcheroo-control dmidecode pipewire wireplumber xdg-utils xdg-user-dirs
-shared-mime-info desktop-file-utils hicolor-icon-theme
+shared-mime-info desktop-file-utils hicolor-icon-theme adwaita-icon-theme
 
 # Printing and scanning.
 cups cups-filters cups-browsed ipp-usb ghostscript sane-backends sane-airscan
@@ -111,6 +128,7 @@ cups cups-filters cups-browsed ipp-usb ghostscript sane-backends sane-airscan
 # `wish` runs libisoburn's xorriso-tcltk.
 squashfs-tools erofs-utils libisoburn tk
 
-# Fonts the look, Konsole and Phosphor mode name.
-fontconfig noto-fonts noto-emoji ttf-dejavu terminus-font terminus-ttf
+# Fonts: the faces the look, Konsole and Phosphor mode name, and the
+# non-Latin scripts the base renders.
+fontconfig noto-fonts noto-fonts-extra noto-emoji ttf-dejavu terminus-font terminus-ttf
 nerd-fonts-symbols ttf-jetbrains-mono font-liberation

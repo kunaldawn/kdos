@@ -68,10 +68,18 @@ person uses it, and where the capsule goes on the ESP, is in
   platform's firmware protections. meson allows it only on Linux on x86.
 - `-Dbash_completion=true`, `-Dfish_completion=false` — Install the bash completion, which
   [bash-completion](#port-bash-completion) loads, and not the fish one.
-- `-Dsupported_build=disabled` — Build as a package without upstream's validation. The client
-  then prints "This package has not been validated, it may not work properly." unless
-  `FWUPD_SUPPORTED` is set in the environment, and reports sent to the LVFS carry
-  `FwupdSupported=false`.
+- `-Dsupported_build=enabled` — Build as a supported distribution package, which meson's `auto`
+  chooses only in a git checkout at a release tag; from a release tarball it builds unsupported.
+  The client then prints no "This package has not been validated, it may not work properly."
+  warning, which Info Center's Firmware Security page would otherwise show in red above every
+  report, and reports sent to the LVFS carry `FwupdSupported=true`. The install rules are
+  stricter: a release for a device matched by a generic GUID is refused unless it carries a CHID,
+  child, parent or sibling requirement, and `--ignore-requirements` does not override that; a
+  release with no version is refused on every device but an emulated one. The `ci.quirk` files of
+  the `mtd` and `fastboot` plugins, quirks for upstream's test hardware (the `mtdram` test device
+  and a Pixel 3a), are not installed. Most developer warnings, an HSI attribute with an unknown
+  result among them, become debug messages; an invalid device version is a warning instead of a
+  critical; and a plugin or command that fails without setting an error is reported as one.
 - `-Dlvfs=disabled` — Install the LVFS remote, `/etc/fwupd/remotes.d/lvfs.conf`, switched off.
   Discover's firmware backend refreshes every enabled download remote each time Discover starts
   and after every transaction, so an enabled LVFS remote is a download at every start of the

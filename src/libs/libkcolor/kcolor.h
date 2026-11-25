@@ -163,6 +163,13 @@ const KcolScheme *kcol_default(void);
  * retuned; it is the difference between a menu that can be read and one that
  * cannot.
  *
+ * THE PLATE IS BONE'S `deep` UNDER EVERY ACCENT, and so is the `backdrop` key
+ * bone's `backdrop`. The one kdos-backdrop.png is drawn on that floor and
+ * Limine cannot retint it, so a plate in the accent's own ground would sit on
+ * it as a visible box. The accent supplies the text, palettes and help
+ * colours; a light-ground scheme (`paper`) is given bone's whole menu, since
+ * its dark text cannot be read on the dark floor.
+ *
  * Returns the number of bytes that would have been written, snprintf-style, so
  * a truncated buffer is detectable rather than silent.
  * ──────────────────────────────────────────────────────────────────────── */
@@ -186,6 +193,10 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap);
  * scheme-derived: `\e[1;32m` — what the logo and `/etc/issue` are written in
  * — lands on slot 10 and never on slot 2. A bright ramp left generic is an
  * accent that only applies to the text nobody emphasised.
+ *
+ * SLOT 8, BRIGHT BLACK, IS TEXT: kcol_muted, the same as kcol_ansi's, at
+ * 4.5:1 or more on slot 0. Programs write de-emphasised figures and labels
+ * in it, so the fill colour `dim` there is text a shade off the ground.
  *
  * BLUE, MAGENTA AND CYAN ARE NOT THE SCHEME'S AND ARE NOT DERIVED FROM IT.
  * No scheme names them, and a console whose eight colours collapse onto one

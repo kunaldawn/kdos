@@ -1,0 +1,66 @@
+Subject: System Settings: the window's and KPageView's page stacks are reported as plain containers, not unnamed layered panes
+
+Two stacked widgets hold System Settings' content one page at a time,
+and neither has a name: the window's page stack, the QStackedWidget
+SettingsBase sets as its central widget, and KPageView's page stack,
+the KPageStackedWidget that holds the open settings page. Both take
+Qt's default role for a stacked widget, a layered pane. Orca speaks the
+window's stack as "layered pane 0 items" after the window title every
+time a System Settings window opens, and KPageView's stack the same way
+before the first control on every Tab or Shift+Tab into a settings page.
+As plain containers (QAccessible::Client, AT-SPI filler) both are passed
+over, like the scroll area System Settings names "Scrollable area"
+inside them.
+
+An accessibility factory installed before the main window is built
+answers for KPageStackedWidget, and for a QStackedWidget only when its
+parent is SettingsBase, which the stack's constructor sets before any
+accessible query. Installed factories are asked before Qt's plugins at
+each level of the class chain, so every other stacked widget, in any
+module, keeps its role, and each stack's children are still its pages.
+
+--- a/app/main.cpp
++++ b/app/main.cpp
+@@ -17,11 +17,33 @@
+ #include <KLocalizedString>
+ #include <KPluginMetaData>
+ #include <KWindowSystem>
++#include <QAccessible>
++#include <QAccessibleWidget>
+ #include <iostream>
+ 
+ #include "SettingsBase.h"
+ #include "kcmmetadatahelpers.h"
+ 
++// Two stacks hold the window's content one page at a time and have no name
++// of their own: the window's page stack, the QStackedWidget SettingsBase sets
++// as its central widget, and KPageView's page stack inside it. Reported as a
++// layered pane, a screen reader speaks either as an unnamed ancestor, after
++// the window title when the window opens and on every move into a settings
++// page; reported as a plain container it is passed over, like the
++// "Scrollable area" each page sits in. The window's stack is told apart by
++// its parent, so every other QStackedWidget in a module keeps its role.
++static QAccessibleInterface *pageStackAccessibleFactory(const QString &classname, QObject *object)
++{
++    if (!object || !object->isWidgetType()) {
++        return nullptr;
++    }
++    if (classname == QLatin1String("KPageStackedWidget")
++        || (classname == QLatin1String("QStackedWidget") && object->parent() && object->parent()->inherits("SettingsBase"))) {
++        return new QAccessibleWidget(static_cast<QWidget *>(object), QAccessible::Client);
++    }
++    return nullptr;
++}
++
+ int main(int argc, char *argv[])
+ {
+     auto format = QSurfaceFormat::defaultFormat();
+@@ -151,6 +173,8 @@
+ 
+     KCrash::initialize();
+ 
++    QAccessible::installFactory(pageStackAccessibleFactory);
++
+     auto mainWindow = new SettingsBase(mode, startupModule, args);
+ 
+     QObject::connect(&service, &KDBusService::activateRequested, mainWindow, [mainWindow](const QStringList &arguments) {

@@ -10,7 +10,7 @@
 
 name        = kdos-sddm-theme
 version     = 1.0.0
-release     = 1
+release     = 2
 description = KDOS login screen for SDDM — the Breeze greeter in the accent, with the KDOS mark
 homepage    = https://github.com/kunaldawn/kdos
 license     = LGPL-2.0-or-later

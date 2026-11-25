@@ -32,6 +32,10 @@ for t in sdl-release sv-release; do
 done
 install -Dm755 source/darkplaces/darkplaces-sdl "$PKG/usr/bin/xonotic"
 install -Dm755 source/darkplaces/darkplaces-dedicated "$PKG/usr/bin/xonotic-dedicated"
+install -Dm644 COPYING "$PKG/usr/share/licenses/$name/COPYING"
+install -Dm644 GPL-2 "$PKG/usr/share/licenses/$name/GPL-2"
+install -Dm644 source/darkplaces/COPYING "$PKG/usr/share/licenses/$name/darkplaces-COPYING"
+install -Dm644 source/d0_blind_id/COPYING "$PKG/usr/share/licenses/$name/d0_blind_id-COPYING"
 
 for s in 16 22 24 32 48 64 128 256 512; do
 	install -Dm644 misc/logos/icons_png/xonotic_$s.png \

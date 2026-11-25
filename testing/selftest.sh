@@ -23,6 +23,11 @@ WARN="-Wall -Wextra -Werror"
 STD="-O2 -std=gnu11 -D_GNU_SOURCE"
 INC="-Isrc/libs/libkbase -Isrc/libs/libkcolor -Isrc/libs/libktui -Isrc/libs/libkxdg -Isrc/libs/libkpkg -Isrc/libs/libkbuild -Isrc/devtools/kdos-portup -Isrc/libs/libkproc -Isrc/libs/libksig -Isrc/libs/libkpack"
 OUT=$(mktemp -d)
+# A SOCKET'S PATH HOLDS 107 BYTES, WHATEVER TMPDIR IS. A box's runtime
+# directory is refused when its sockets would not fit, so a fixture that makes
+# one keeps its tree under $SOCKD, a directory of its own under /tmp, and a
+# long TMPDIR cannot use those bytes up.
+SOCKD=$(mktemp -d /tmp/kst.XXXXXX)
 
 #
 # THE SUITE KEEPS ITS OWN STATE DIRECTORY, and every program under test that
@@ -78,7 +83,7 @@ pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
 # -Wformat-truncation fires on it. Everything else in $WARN stays on, so an
 # unused variable or table in a driver still fails this suite.
 SHWARN="$WARN -Wno-format-truncation"
-trap 'rm -rf "$OUT"' EXIT
+trap 'rm -rf "$OUT" "$SOCKD"' EXIT
 
 # Worth running this whole script as
 #
@@ -103,7 +108,7 @@ $CC $STD $WARN $INC -o "$OUT/selftest" src/libs/selftest.c \
     src/libs/libkbuild/*.c src/libs/libktui/*.c src/libs/libkproc/*.c \
     src/libs/libkxdg/*.c src/libs/libksig/*.c src/libs/libksig/monocypher/*.c \
     src/libs/libkpack/*.c src/devtools/kdos-portup/extract.c
-ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
+KDOS_SELFTEST_OUT="$OUT" ASAN_OPTIONS=detect_leaks=1 "$OUT/selftest"
 
 echo
 echo "==> every consumer still compiles against the libraries"
@@ -123,13 +128,16 @@ echo "  kinstall"
 # The plan resolves over the SHIPPED catalogue, and the two renderings agree.
 # A disagreement between the text dump and the JSON is what makes a dump
 # untrustworthy, and it is the one thing an installer's dumps must not be.
+# A default plan turns off sshd alone: with cups off System Settings >
+# Printers finds no scheduler and offers no way to start one.
 KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --dump plan >/dev/null
 KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
 assert d["apps"], "the plan chose no applications"
 assert d["apps_bytes"] > 0, "the chosen set costs nothing"
-assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]'
+assert d["apps_route"] in ("none","import","network","pending"), d["apps_route"]
+assert d["services_off"] == ["sshd"], d["services_off"]'
 echo "  kinstall plan"
 # An answer file's unknown key is named, and a file `--save` wrote names none:
 # a key the parser drops in silence installs its default with no sign.
@@ -154,10 +162,61 @@ KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/k
 n=d["native"]; assert n, "no native groups";
 assert not any(g["chosen"] for g in n), "a native group is chosen by default";
 assert all(g["ports"] > 0 and g["title"] for g in n), n'
+# A member that is a meta port counts as the ports it depends on: the KDE
+# games group is one line, kde-gear-games, and installs every game it names.
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --dump apps --json | python3 -c 'import json,sys,glob; d=json.load(sys.stdin);
+n={g["id"]: g["ports"] for g in d["native"]};
+r=open(glob.glob("ports/core/*/kde-gear-games/kpkgbuild")[0]).read();
+want=len([l for l in r.splitlines() if l.startswith("depends")][0].split("=",1)[1].split());
+assert n["kde-games"] == want > 1, (n["kde-games"], want)' \
+    || { echo "kinstall counts a meta-port group as one port" >&2; exit 1; }
 printf 'groups = office games nosuch\n' > "$OUT/answers-groups"
 KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     --config "$OUT/answers-groups" --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
 assert d["groups"] == ["office", "games"], d["groups"]'
+# The plan says whether a binhost is named, so the graphical Summary says
+# the groups are recorded rather than downloaded when none is. A groups file
+# with no TREE stamp beside it names none; $KDOS_UPDATE_BINHOST names one.
+# $KDOS_NET_ROOT stands in a machine with a network for this case.
+KINET="$PWD/testing/fixtures/kinstall/net"
+if ! grep -qs '^binhost' /etc/kdos/update.conf; then
+    mkdir -p "$OUT/bhtree" && cp ports/groups "$OUT/bhtree/groups"
+    for bh in "" /srv/binhost; do
+        KDOS_NET_ROOT=$KINET/up KDOS_UPDATE_BINHOST="$bh" KDOS_GROUPS="$OUT/bhtree/groups" \
+            KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+            --config "$OUT/answers-groups" --dump plan --json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin);
+assert d["binhost"] is (sys.argv[1] != ""), (d.get("binhost"), sys.argv[1])
+p = [s["detail"] for s in d["steps"] if s["title"] == "Packs"][0]
+assert ("boxed apps recorded; the first login says how to install each" in p) is (sys.argv[1] == ""), p
+assert len(p) <= 80, p
+assert ("downloaded and installed" in p) is (sys.argv[1] != ""), p' "$bh" \
+            || { echo "kinstall's plan does not say whether a binhost is named, or its Packs step does not say so" >&2; exit 1; }
+    done
+fi
+# The plan says whether there is a network: a default route, IPv4 or IPv6,
+# on an interface that is up with a carrier. With a binhost named and none,
+# the Packs step says the groups are recorded, not downloaded.
+for net in up:true down:false v6:true; do
+    KDOS_NET_ROOT=$KINET/${net%%:*} KDOS_UPDATE_BINHOST=/srv/binhost KDOS_GROUPS=ports/groups \
+        KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+        --config "$OUT/answers-groups" --dump plan --json \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin); want=sys.argv[1] == "true"
+assert d["network"] is want, (d.get("network"), sys.argv[1])
+p = [s["detail"] for s in d["steps"] if s["title"] == "Packs"][0]
+assert ("downloaded and installed" in p) is want, p' "${net#*:}" \
+        || { echo "kinstall's plan reads the network on $net wrongly, or its Packs step promises a download offline" >&2; exit 1; }
+done
+# The Bootloader step names the UEFI boot entry only on UEFI firmware, which
+# a BIOS machine has none of.
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --dump plan --json | python3 -c 'import json,os,sys; d=json.load(sys.stdin)
+b = [s["detail"] for s in d["steps"] if s["title"] == "Bootloader"][0]
+assert ("UEFI boot entry" in b) is os.path.exists("/sys/firmware/efi"), b
+assert b.startswith("Limine on the ESP"), b' \
+    || { echo "kinstall's Bootloader step names a boot entry this firmware does not get" >&2; exit 1; }
+echo "  kinstall's plan reads the network and the firmware"
 # A Chinese, Japanese or Korean keyboard or time zone ticks that language's
 # group, and says why; an answer file that names `groups =` ticks only what
 # it names, so `groups = none` keeps it off.
@@ -178,6 +237,695 @@ KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/k
     --config "$OUT/answers-lang" --dump apps | grep -qx '  \[x\] lang-ko .*(for the time zone Asia/Seoul)' \
     || { echo "kinstall did not tick lang-ko for a Korean time zone" >&2; exit 1; }
 echo "  kinstall native groups, and the language group the keyboard ticks"
+# Each CJK language group carries the default that makes its language's
+# Noto Sans CJK variant the first CJK face. A session names no CJK language,
+# so without it Han text takes the first CJK face fontconfig's own
+# 65-nonlatin.conf lists, the Korean one. The file must sort after
+# 60-latin.conf and before 65-nonlatin.conf: a <prefer> lands behind every
+# face an earlier file preferred.
+python3 - <<'PY' || { echo "a CJK language group has no glyph-form default, or it sorts where it changes nothing" >&2; exit 1; }
+import re
+groups, cur = {}, None
+for line in open("ports/groups"):
+    line = line.split("#", 1)[0].split()
+    if line[:1] == ["group"]:
+        cur = line[1]; groups[cur] = []
+    elif cur:
+        groups[cur] += line
+for lang, face in (("ja", "JP"), ("zh", "SC"), ("ko", "KR")):
+    port = f"noto-cjk-prefer-{lang}"
+    assert port in groups[f"lang-{lang}"], (lang, groups[f"lang-{lang}"])
+    sh = open(f"ports/core/fonts/{port}/build.sh").read()
+    m = re.search(r"/etc/fonts/conf\.d/(\d\d)-noto-cjk-prefer-" + lang + r"\.conf", sh)
+    assert m and "60" < m.group(1) < "65", (port, m and m.group(1))
+    for fam, want in (("sans-serif", f"Noto Sans CJK {face}"), ("serif", f"Noto Sans CJK {face}"),
+                      ("monospace", f"Noto Sans Mono CJK {face}")):
+        assert re.search(r"<family>" + fam + r"</family>\s*<prefer><family>" + want + "</family>", sh), (port, fam)
+PY
+echo "  each CJK language group's Han glyph-form default"
+# Firefox ESR's default preferences leave Normandy's recipe client nothing to
+# fetch and stop the connectivity service's probes; its policies leave remote
+# settings on, which carry certificate revocations and blocklists; and the
+# Welcome tour's Privacy page names everything Firefox still fetches.
+python3 -I - <<'PY' || { echo "Firefox ESR runs Normandy or its connectivity probes, turns off remote settings, or the Privacy page omits what it fetches" >&2; exit 1; }
+import re
+sh = open("ports/core/browsers/firefox-esr/build.sh").read()
+js = re.search(r"kdos\.js\" <<'EOF'\n(.*?)\nEOF", sh, re.S).group(1)
+for pref in ('pref("app.normandy.enabled", false);', 'pref("app.normandy.api_url", "");',
+             'pref("app.shield.optoutstudies.enabled", false);',
+             'pref("network.connectivity-service.enabled", false);'):
+    assert pref in js, pref
+pol = re.search(r"policies\.json\" <<'EOF'\n(.*?)\nEOF", sh, re.S).group(1)
+assert "DisableRemoteSettings" not in pol, "policies turn off remote settings and their security data"
+qml = open("src/desktop/kdos-welcome/extra-pages/70-Privacy.qml").read()
+desc = re.search(r'description: i18ndc\("kdos-welcome", "@info:usagetip", "([^"]*)"\)', qml).group(1)
+for words in ("Safe Browsing", "tracking-protection", "certificate revocations", "blocklists",
+              "updates for its add-ons", "site notifications"):
+    assert words in desc, "Privacy page does not name " + words
+PY
+echo "  Firefox ESR's Normandy and connectivity probes are off, and the Privacy page names what it fetches"
+# The Applications page, drawn offscreen at the live console's 80x33 by
+# testing/fixtures/kinstall/pagedraw.c. With no binary host named, the
+# command stands alone on its row (inside a wrapped paragraph a wrap at a
+# space splits what a reader types), in sudo's form for an administrator
+# and su -c's for an account outside wheel, the list keeps at least 3 rows, and the
+# route line agrees in number with the boxed groups chosen, on this page
+# and on the Summary, wrapped under its column rather than cut at the edge.
+$CC $STD $WARN $INC -Isrc/system/kinstall-core -Isrc/system/kdos-installer \
+    -Isrc/system/kdos-appbox -o "$OUT/pagedraw" \
+    testing/fixtures/kinstall/pagedraw.c src/system/kdos-installer/pages.c \
+    src/system/kinstall-core/*.c src/system/kdos-appbox/catalogue.c \
+    src/libs/libkbase/*.c src/libs/libktui/*.c src/libs/libkcolor/*.c -lcrypt
+mkdir -p "$OUT/pgd" && cp ports/groups "$OUT/pgd/groups"
+cat > "$OUT/pgd/catalogue" <<'CAT'
+snapshot = 20260824T000000Z
+base    base    -      bash curl
+runtime rt-gtk  base   libgtk-3-0t64
+app     app.gimp   rt-gtk  gimp
+app     app.meld   rt-gtk  meld
+group dev        Programming
+group dev        app.meld
+group creative   Images
+group creative   app.gimp app.meld
+meta app.gimp   GIMP|Graphics|96468992|Create images and edit photographs
+meta app.meld   Meld|Development|24000000|Compare and merge files
+CAT
+for n in 1 2; do
+    [ "$n" = 1 ] && printf 'apps = dev\ngroups = office\nadmin = yes\n' > "$OUT/pgd/answers" \
+                 || printf 'apps = dev creative\ngroups = office\nadmin = no\n' > "$OUT/pgd/answers"
+    for page in apps summary; do
+        KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" \
+            KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+            "$OUT/pagedraw" "$page" 80 33 "$OUT/pgd/answers" > "$OUT/pgd/$page.$n" \
+            || { echo "  pagedraw could not draw the $page page" >&2; exit 1; }
+    done
+done
+grep -qs '^binhost' /etc/kdos/update.conf || python3 -I - "$OUT/pgd" <<'PYEOF' || exit 1
+import os, sys
+d = sys.argv[1]
+def body(name):
+    lines = open(os.path.join(d, name)).read().split("\n")
+    x, y, w, h = map(int, lines[0].split()[2:])
+    return [l[x:x + w].rstrip() for l in lines[1 + y:1 + y + h]]
+def kv(rows, key):
+    for i, r in enumerate(rows):
+        if r.startswith(key + " "):
+            v = [r[17:].strip()]
+            for c in rows[i + 1:]:
+                if c[:17].strip() or not c.strip():
+                    break
+                v.append(c.strip())
+            return " ".join(v)
+    sys.exit("  kinstall's %s row is not drawn" % key)
+for n, word, cmd in (("1", "its", "sudo kdos update install --pending"),
+                     ("2", "their", "su -c 'kdos update install --pending'")):
+    a = body("apps." + n)
+    if cmd not in [r.strip() for r in a]:
+        sys.exit("  kinstall's Applications page does not draw its command on "
+                 "a row of its own at 80x33:\n" + "\n".join(a))
+    top = next(i for i, r in enumerate(a) if "Space toggles" in r)
+    end = next(i for i, r in enumerate(a) if r.startswith("boxed "))
+    if end - top - 2 < 3:
+        sys.exit("  kinstall's Applications list keeps under 3 rows at 80x33")
+    want = "recorded; the first login offers to build %s applications" % word
+    if kv(a, "how") != want:
+        sys.exit("  kinstall's route line reads %r with %s boxed group(s)"
+                 % (kv(a, "how"), n))
+    if not kv(a, "native").endswith("recorded for later (no binary host)"):
+        sys.exit("  kinstall's native line is cut: %r" % kv(a, "native"))
+    s = kv(body("summary." + n), "applications")
+    if not (s.startswith(n + " group" + ("s" if n == "2" else "") + ", ")
+            and s.endswith("at first login")
+            and (", 1 app," in s) == (n == "1")):
+        sys.exit("  kinstall's Summary applications row reads %r" % s)
+PYEOF
+echo "  kinstall's Applications page keeps its command on a line of its own"
+# A binary host named and no network: the page says the groups are recorded
+# and installed after the first boot, and why, rather than promising a
+# download during the install.
+printf 'groups = office\n' > "$OUT/pgd/answers-off"
+KDOS_NET_ROOT="$KINET/down" KDOS_UPDATE_BINHOST=/srv/binhost KDOS_GROUPS="$OUT/pgd/groups" \
+    KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+    "$OUT/pagedraw" apps 80 33 "$OUT/pgd/answers-off" > "$OUT/pgd/apps.off" \
+    || { echo "  pagedraw could not draw the offline apps page" >&2; exit 1; }
+python3 -I - "$OUT/pgd/apps.off" <<'PYEOF' || exit 1
+import sys
+lines = open(sys.argv[1]).read().split("\n")
+x, y, w, h = map(int, lines[0].split()[2:])
+rows = [l[x:x + w].rstrip() for l in lines[1 + y:1 + y + h]]
+text = " ".join(r.strip() for r in rows)
+if "No network was found" not in text or "downloaded during the install" in text:
+    sys.exit("  kinstall's Applications page promises a download with no network:\n" + "\n".join(rows))
+if "1 group, recorded; installed after the first boot once there is a network" not in text:
+    sys.exit("  kinstall's offline native line reads:\n" + "\n".join(rows))
+PYEOF
+echo "  kinstall's Applications page says the groups wait for a network"
+# A failing preflight line says what fails, and the Summary repeats it above a
+# BEGIN INSTALL it refuses (no focus, no shadow) with the status naming the way
+# out; an unattended run's failed install draws no buttons nobody can press.
+pf="$OUT/pgd/pf"
+printf 'disk = /dev/vda\nplan = wipe\nusername = kdos\nfullname = Ada\nadmin = 1\nroot_locked = 1\napps = none\ntimezone_label = UTC\n' > "$pf.ans"
+for args in "welcome 4 0" "summary 4 0" "summary 99 0" "install 99 0" "install 99 1"; do
+    read -r pf_page pf_fail pf_un <<<"$args"
+    pf_msg=; [ "$pf_page" = install ] && pf_msg='set a password for kdos'
+    KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+        PAGEDRAW_DISK_GB=30 PAGEDRAW_PREFLIGHT=$pf_fail PAGEDRAW_UNATTENDED=$pf_un \
+        PAGEDRAW_FAIL="$pf_msg" \
+        "$OUT/pagedraw" "$pf_page" 80 45 "$pf.ans" > "$pf.$pf_page.$pf_fail.$pf_un" \
+        || { echo "  pagedraw could not draw the $pf_page page" >&2; exit 1; }
+done
+python3 -I - "$pf" <<'PYEOF' || exit 1
+import sys
+p = sys.argv[1]
+def frame(name):
+    t = open(p + "." + name).read()
+    return " ".join(" ".join(t.split()).split("# body")[1:]), t
+w, _ = frame("welcome.4.0")
+if "! no Limine payload (BOOTX64.EFI, limine-bios.sys) in /usr/share/limine" not in w or "would not start" not in w \
+        or "Limine payload present" in w:
+    sys.exit("  kinstall's failing Limine line keeps its passing words")
+s, raw = frame("summary.4.0")
+if "! no Limine payload (BOOTX64.EFI, limine-bios.sys) in /usr/share/limine" not in s \
+        or "# status fix the marked Welcome line first" not in raw \
+        or "> BEGIN INSTALL" in s.replace(">      BEGIN", "> BEGIN") \
+        or "> Save answer file <" not in s:
+    sys.exit("  kinstall's Summary does not refuse BEGIN INSTALL past a failing preflight line")
+s, raw = frame("summary.99.0")
+if "! no " in s or ">      BEGIN INSTALL       <" not in raw \
+        or "# status the point of no return" not in raw:
+    sys.exit("  kinstall's Summary refuses BEGIN INSTALL with every preflight line passing")
+if "Retry step" not in frame("install.99.0")[0]:
+    sys.exit("  kinstall's failed install draws no Retry step")
+u = frame("install.99.1")[0]
+if "Retry step" in u or "Shell" in u or "unattended: exiting" not in u:
+    sys.exit("  kinstall's unattended failed install draws buttons nobody can press")
+PYEOF
+# A preflight verdict that flips while the Summary is up (p in PAGEDRAW_KEYS)
+# leaves the focus on Save answer file, both ways: BEGIN INSTALL claims a focus
+# id only while it is enabled, and the caret must not land on it unasked.
+for keys in pp tp; do
+    KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+        PAGEDRAW_DISK_GB=30 PAGEDRAW_PREFLIGHT=99 PAGEDRAW_KEYS=$keys \
+        "$OUT/pagedraw" summary 80 45 "$pf.ans" > "$pf.flip.$keys" \
+        || { echo "  pagedraw could not draw the summary page" >&2; exit 1; }
+    grep -q '> Save answer file <' "$pf.flip.$keys" \
+        && ! grep -q '>      BEGIN INSTALL       <' "$pf.flip.$keys" \
+        || { echo "  kinstall's Summary moves the focus when the preflight flips ($keys)"; exit 1; }
+done
+echo "  kinstall's preflight words a failure as one, and the Summary refuses past it"
+# The same pages at 80x33 with a disk in the machine: every label, note and
+# value reads whole once its wrapped lines are joined, no list title touches
+# its count, the Summary names a native group by its title and keeps BEGIN
+# INSTALL inside the body, a complaint moves no Accounts row, and Tab into the
+# zone list leaves the chosen zone (UTC, in no zone table) chosen while a
+# moved cursor chooses its row, in a list sorted by name. A filter matching
+# nothing says so, and no page names the TZ mechanism or a marker file.
+pg="$OUT/pgd/fit"
+printf 'disk = /dev/vda\nplan = wipe\nlvm = 1\nswap = file\nswap_mb = 2048\nusername = kdos\nfullname = Ada Lovelace Byron\nadmin = 1\nroot_locked = 1\ngroups = kde-games\napps = none\ntimezone_label = UTC\n' > "$pg.plain"
+printf 'luks = 1\nautologin = 1\n' | cat "$pg.plain" - > "$pg.luks"
+printf 'hostname = kdos-box\n' | cat "$pg.plain" - > "$pg.good"
+sed 's/^username = kdos$/username = 9x/' "$pg.good" > "$pg.bad"
+pgdraw() {
+    KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" \
+        KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+        KDOS_ZONEINFO=testing/fixtures/kinstall/zoneinfo \
+        PAGEDRAW_DISK_GB=$1 PAGEDRAW_KEYS=$2 "$OUT/pagedraw" "$3" 80 33 "$pg.$4" \
+        > "$pg.$3.$1$2.$4" \
+        || { echo "  pagedraw could not draw the $3 page" >&2; exit 1; }
+}
+pgdraw 30 '' layout plain; pgdraw 12 '' layout plain
+pgdraw 30 '' accounts plain; pgdraw 30 '' accounts luks
+pgdraw 30 '' accounts good; pgdraw 30 '' accounts bad
+pgdraw 30 '' apps plain; pgdraw 30 '' summary plain; pgdraw 30 '' summary luks
+pgdraw 30 t time plain; pgdraw 30 td time plain
+pgdraw 30 ZZZ time plain; pgdraw 30 ZZZ keyboard plain
+KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+    PAGEDRAW_DISK_GB=30 "$OUT/pagedraw" system 80 80 "$pg.plain" > "$pg.system.30.plain" \
+    || { echo "  pagedraw could not draw the system page" >&2; exit 1; }
+python3 -I - "$pg" <<'PYEOF' || exit 1
+import re, sys
+pg = sys.argv[1]
+def body(name):
+    lines = open("%s.%s" % (pg, name)).read().split("\n")
+    x, y, w, h = map(int, lines[0].split()[2:])
+    return [l[x:x + w].rstrip() for l in lines[1 + y:1 + y + h]]
+def joined(name):
+    return " ".join(" ".join(r.split()) for r in body(name) if r.strip())
+def tz(name):
+    return open("%s.%s" % (pg, name)).read().split("\n# tz ")[1].strip()
+for name, want in (("layout.30.plain", "GPT: 512M EFI system"),
+                   ("layout.12.plain", "Swap file on the root filesystem"),
+                   ("layout.12.plain", "have no second root"),
+                   ("accounts.30.plain", "automatic login is offered on an encrypted root only"),
+                   ("accounts.30.plain", "Lock the root account"),
+                   ("accounts.30.luks", "unlock it with this password"),
+                   ("summary.30.plain", "administrator"),
+                   ("summary.30.plain", "/home shared")):
+    if want not in joined(name):
+        sys.exit("  kinstall's %s at 80x33 does not read %r whole:\n%s"
+                 % (name.split(".")[0], want, "\n".join(body(name))))
+rows = [r for r in body("apps.30.plain") if r.rstrip().endswith("native")
+        or re.search(r"native +\S$", r)]
+bad = [r for r in rows if not re.search(r"\S +\d+ +native", r)]
+if not rows or bad:
+    sys.exit("  kinstall's Applications titles touch their counts:\n"
+             + "\n".join(bad or ["(no native rows)"]))
+ng = [r for r in body("summary.30.plain") if r.startswith("native groups ")]
+if not ng or ng[0][17:].strip() != "KDE games":
+    sys.exit("  kinstall's Summary native groups row reads %r" % ng)
+def at(name, word):
+    return [i for i, r in enumerate(body(name)) if word in r]
+if at("accounts.30.good", "Administrator") != at("accounts.30.bad", "Administrator"):
+    sys.exit("  kinstall's Accounts rows move when a field complains:\n"
+             + "\n".join(body("accounts.30.bad")))
+for name in ("summary.30.plain", "summary.30.luks"):
+    if not at(name, "BEGIN INSTALL"):
+        sys.exit("  kinstall's Summary draws BEGIN INSTALL off the 80x33 body:\n"
+                 + "\n".join(body(name)))
+if tz("time.30t.plain") != "UTC":
+    sys.exit("  Tab into the zone list chose %s" % tz("time.30t.plain"))
+if tz("time.30td.plain") != "Asia/Dubai":
+    sys.exit("  a moved zone cursor chose %s, not the second zone by name"
+             % tz("time.30td.plain"))
+for name, want in (("time.30ZZZ.plain", "(no zone matches the filter)"),
+                   ("keyboard.30ZZZ.plain", "(no keymap matches the filter)")):
+    # The list column alone (half the body, as the page draws it): SELECTED
+    # shares its rows.
+    lw = int(open("%s.%s" % (pg, name)).readline().split()[4]) // 2
+    col = " ".join(" ".join(r[:lw].split()) for r in body(name) if r[:lw].strip())
+    if want not in col:
+        sys.exit("  kinstall's %s draws no %r:\n%s"
+                 % (name.split(".")[0], want, "\n".join(body(name))))
+if "sudo service disable <name>" not in joined("system.30.plain"):
+    sys.exit("  kinstall's System page does not say how to change a service later")
+for sid in ("(networkmanager)", "(bluetooth)", "(alsa)", "(cups)", "(sshd)"):
+    if sid not in joined("system.30.plain"):
+        sys.exit("  kinstall's System page does not name the service %s" % sid)
+for name in ("time.30td.plain", "summary.30.plain", "system.30.plain"):
+    for bad in ("TZ string", "musl", ":/etc/localtime", "service.disabled"):
+        if bad in joined(name):
+            sys.exit("  kinstall's %s page shows %r" % (name.split(".")[0], bad))
+PYEOF
+echo "  kinstall's pages fit 80 columns, and focus alone chooses no zone"
+# The Disk page's CURRENT LAYOUT bar over a KDOS install's table (512M ESP,
+# 1M BIOS boot, LVM over the rest) numbers every partition 1, 2, 3 in order,
+# the 1-cell ESP and BIOS boot segments too, each digit KT_BG ink on its
+# segment's fill (KT_WARN for the ESP, then KT_MID and KT_TEXT alternating),
+# never the fill's colour on the backdrop, and the cells either side of
+# every boundary differ in fill. The Layout page's WHAT WILL BE WRITTEN bar
+# numbers the partitions the wipe plan writes the same way, in their on-disk
+# order: the ESP on KT_WARN, the 1M BIOS boot partition as a 1-cell
+# segment of its own, swap as a partition when there is one, and the root.
+cat > "$pg.bar.py" <<'PYEOF'
+import re, sys
+f, row, what, want = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+text = open(f).read().split("\n")
+x0, _, w, _ = map(int, text[0].split()[2:])
+line = text[1 + row]
+cell = {}
+for l in text:
+    if l.startswith("# cell "):
+        x, fg, bg = map(int, l.split()[2:])
+        cell[x] = (fg, bg)
+slots = re.search(r"enum \{\s*KT_BG = 0,(.*?)KT_NCOLOR", open("src/libs/libktui/ktui.h").read(), re.S).group(1)
+slots = ["KT_BG"] + re.findall(r"\b(KT_[A-Z]+),", slots)
+KT_BG, KT_WARN, KT_MID, KT_TEXT = (slots.index(n) for n in ("KT_BG", "KT_WARN", "KT_MID", "KT_TEXT"))
+def fill(x):
+    # A digit is KT_BG ink on the fill; a block or shade cell is the fill on KT_BG.
+    return cell[x][1] if line[x].isdigit() else cell[x][0]
+digits = [(x, line[x]) for x in range(x0, x0 + w) if line[x].isdigit()]
+if "".join(d for _, d in digits) != want:
+    sys.exit("  kinstall's %s numbers %r, not %s: %r" % (what, digits, " ".join(want), line[x0:x0 + w]))
+for x, d in digits:
+    if cell[x][0] != KT_BG:
+        sys.exit("  kinstall's %s draws %s in ink %d, not KT_BG" % (what, d, cell[x][0]))
+if fill(digits[0][0]) != KT_WARN:
+    sys.exit("  kinstall's %s draws the ESP's 1 on %d, not KT_WARN" % (what, fill(digits[0][0])))
+for i in range(1, len(digits)):
+    x = digits[i][0]
+    start = x - 1 if x - 1 > digits[i - 1][0] and fill(x - 1) == fill(x) else x
+    if fill(start - 1) == fill(start):
+        sys.exit("  kinstall's %s gives %s and %s one fill (%d), so the boundary does not show: %r"
+                 % (what, digits[i - 1][1], digits[i][1], fill(start), line[x0:x0 + w]))
+x2 = digits[1][0]
+if fill(x2 - 1) == fill(x2) or fill(x2 + 1) == fill(x2):
+    sys.exit("  kinstall's %s draws partition 2 as no 1-cell segment of its own: %r"
+             % (what, line[x0:x0 + w]))
+if what.startswith("Disk"):
+    for x, d in digits:
+        exp = {"1": KT_WARN, "2": KT_MID, "3": KT_TEXT}[d]
+        if fill(x) != exp:
+            sys.exit("  kinstall's %s draws %s on bg %d, not %d" % (what, d, fill(x), exp))
+PYEOF
+printf 'lvm = 0\nswap = partition\n' | cat "$pg.plain" - > "$pg.swp"
+for sz in 80x33 200x50; do
+    pgk() {
+        KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" \
+            KDOS_CATALOGUE="$OUT/pgd/catalogue" PAGEDRAW_DISK_GB=30 \
+            PAGEDRAW_KDOSLAYOUT=1 env "${@:3}" "$OUT/pagedraw" "$1" "${sz%x*}" "${sz#*x}" \
+            "$pg.$2" || { echo "  pagedraw could not draw the $1 page at $sz" >&2; exit 1; }
+    }
+    for t in "disk plain CURRENT.LAYOUT 123 Disk" "layout plain WHAT.WILL.BE.WRITTEN 123 Layout" \
+             "layout swp WHAT.WILL.BE.WRITTEN 1234 Layout(swap)"; do
+        read -r bp ba bh bn bw <<< "$t"
+        pgk "$bp" "$ba" > "$pg.$bp.kl.$ba.$sz"
+        row=$(awk -v h="$bh" 'NR > 1 && $0 ~ h { print NR - 1; exit }' "$pg.$bp.kl.$ba.$sz")
+        [ -n "$row" ] || { echo "  kinstall's $bp page at $sz has no ${bh//./ }" >&2; exit 1; }
+        pgk "$bp" "$ba" PAGEDRAW_CELLROW=$row > "$pg.$bp.klc.$ba.$sz"
+        python3 -I "$pg.bar.py" "$pg.$bp.klc.$ba.$sz" "$row" "$bw page's bar at $sz" "$bn" || exit 1
+    done
+done
+# The list under the Layout page's bar is its key: each partition and volume
+# row is inked in the fill of its own run of the bar, ESP, BIOS boot, then
+# slot A, slot B, the swap volume and home inside the LVM partition.
+cat > "$pg.key.py" <<'PYEOF'
+import re, sys
+def cells(f, row):
+    text = open(f).read().split("\n")
+    c = {}
+    for l in text:
+        if l.startswith("# cell "):
+            x, fg, bg = map(int, l.split()[2:])
+            c[x] = (fg, bg)
+    return text, text[1 + row], c
+barf, barrow = sys.argv[1], int(sys.argv[2])
+text, line, cell = cells(barf, barrow)
+x0, _, w, _ = map(int, text[0].split()[2:])
+runs = []
+for x in range(x0, x0 + w):
+    ch = line[x]
+    k = (cell[x][1] if ch.isdigit() else cell[x][0], ch == ".")
+    if not runs or runs[-1] != k:
+        runs.append(k)
+for arg in sys.argv[3:]:
+    name, run, f, row = arg.split(":")
+    _, l, c = cells(f, int(row))
+    fg = c[l.index(name)][0]
+    if int(run) >= len(runs) or fg != runs[int(run)][0]:
+        sys.exit("  kinstall's Layout list draws %s in ink %d, not its bar run's fill %r: %r"
+                 % (name, fg, runs[int(run)] if int(run) < len(runs) else None, line[x0:x0 + w]))
+PYEOF
+pgk() {
+    KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+        PAGEDRAW_DISK_GB=30 PAGEDRAW_KDOSLAYOUT=1 env "$@" "$OUT/pagedraw" layout 200 50 "$pg.plain" \
+        || { echo "  pagedraw could not draw the layout page at 200x50" >&2; exit 1; }
+}
+pgk > "$pg.key"
+row=$(awk 'NR > 1 && /WHAT.WILL.BE.WRITTEN/ { print NR - 1; exit }' "$pg.key")
+pgk PAGEDRAW_CELLROW=$row > "$pg.key.bar"
+keys=""
+run=0
+for n in /dev/vda1 /dev/vda2 kdos/root_a kdos/root_b kdos/swap kdos/home; do
+    r=$(awk -v n="$n" 'NR > 1 && index($0, " " n " ") { print NR - 2; exit }' "$pg.key")
+    [ -n "$r" ] || { echo "  kinstall's Layout list at 200x50 has no $n row" >&2; exit 1; }
+    pgk PAGEDRAW_CELLROW=$r > "$pg.key.$run"
+    keys="$keys $n:$run:$pg.key.$run:$r"
+    run=$((run + 1))
+done
+python3 -I "$pg.key.py" "$pg.key.bar" "$row" $keys || exit 1
+echo "  kinstall's layout bar numbers each partition in its own segment's colour, and its list is the key"
+# In every scheme the Layout bar's root, in the accent, is told from the
+# runs either side of it: each neighbour's fill clears 2:1 against the
+# accent as drawn (pagedraw's `# slot` lines), with a swap partition and A/B
+# off and with the default A/B answers, and the list still inks each row in
+# its run's fill. The Disk bar reaches its end when the last partition ends
+# within half a cell of the disk's (sfdisk's 2048-sector tail, the KDOS
+# table) and leaves shade where a quarter of the disk is free.
+cat > "$pg.acc.py" <<'PYEOF'
+import re, sys
+f, row, what = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+text = open(f).read().split("\n")
+x0, _, w, _ = map(int, text[0].split()[2:])
+line = text[1 + row]
+cell, rgb = {}, {}
+for l in text:
+    if l.startswith("# cell "):
+        x, fg, bg = map(int, l.split()[2:])
+        cell[x] = (fg, bg)
+    elif l.startswith("# slot "):
+        n, hx = l.split()[2:]
+        rgb[int(n)] = tuple(int(hx[i:i + 2], 16) for i in (0, 2, 4))
+slots = re.search(r"enum \{\s*KT_BG = 0,(.*?)KT_NCOLOR", open("src/libs/libktui/ktui.h").read(), re.S).group(1)
+slots = ["KT_BG"] + re.findall(r"\b(KT_[A-Z]+),", slots)
+KT_ACCENT = slots.index("KT_ACCENT")
+def lum(c):
+    v = [x / 255 for x in c]
+    v = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in v]
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]
+def contrast(a, b):
+    la, lb = sorted((lum(a), lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+def fill(x):
+    return cell[x][1] if line[x].isdigit() else cell[x][0]
+acc = [x for x in range(x0, x0 + w) if fill(x) == KT_ACCENT]
+if not acc:
+    sys.exit("  kinstall's %s draws no accent run: %r" % (what, line[x0:x0 + w]))
+for x in (acc[0] - 1, acc[-1] + 1):
+    if x < x0 or x >= x0 + w:
+        continue
+    c = contrast(rgb[fill(x)], rgb[KT_ACCENT])
+    if c < 2:
+        sys.exit("  kinstall's %s draws %s beside the accent at %.2f:1, under 2:1: %r"
+                 % (what, slots[fill(x)], c, line[x0:x0 + w]))
+PYEOF
+cat > "$pg.end.py" <<'PYEOF'
+import re, sys
+f, row, what, want = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+text = open(f).read().split("\n")
+x0, _, w, _ = map(int, text[0].split()[2:])
+line = text[1 + row]
+cell = {}
+for l in text:
+    if l.startswith("# cell "):
+        x, fg, bg = map(int, l.split()[2:])
+        cell[x] = (fg, bg)
+slots = re.search(r"enum \{\s*KT_BG = 0,(.*?)KT_NCOLOR", open("src/libs/libktui/ktui.h").read(), re.S).group(1)
+slots = ["KT_BG"] + re.findall(r"\b(KT_[A-Z]+),", slots)
+x = x0 + w - 1
+shade = line[x] == "." and cell[x][0] == slots.index("KT_DIM")
+if shade != (want == "shade"):
+    sys.exit("  kinstall's %s ends in %r on %s, not %s: %r"
+             % (what, line[x], slots[cell[x][0]], want, line[x0:x0 + w]))
+PYEOF
+pgt() {
+    KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+        PAGEDRAW_DISK_GB=30 env "${@:4}" "$OUT/pagedraw" "$1" "${2%x*}" "${2#*x}" "$pg.$3" \
+        || { echo "  pagedraw could not draw the $1 page at $2" >&2; exit 1; }
+}
+schemes=$(sed -n 's/^\tX(\([a-z]*\), ".*/\1/p' src/libs/libkcolor/kcolor.h)
+[ "$(echo "$schemes" | wc -w)" -ge 8 ] || { echo "  no scheme names read from kcolor.h" >&2; exit 1; }
+for th in $schemes; do
+    for t in "swp 80x33" "plain 80x33" "swp 200x50 /dev/vda1 /dev/vda2 /dev/vda3 /dev/vda4" \
+             "plain 200x50 /dev/vda1 /dev/vda2 kdos/root_a kdos/root_b kdos/swap kdos/home"; do
+        read -r ba sz names <<< "$t"
+        o="$pg.acc.$th.$ba.$sz"
+        pgt layout "$sz" "$ba" PAGEDRAW_KDOSLAYOUT=1 PAGEDRAW_THEME="$th" > "$o"
+        row=$(awk 'NR > 1 && /WHAT.WILL.BE.WRITTEN/ { print NR - 1; exit }' "$o")
+        [ -n "$row" ] || { echo "  kinstall's layout page in $th has no bar" >&2; exit 1; }
+        pgt layout "$sz" "$ba" PAGEDRAW_KDOSLAYOUT=1 PAGEDRAW_THEME="$th" PAGEDRAW_CELLROW=$row > "$o.bar"
+        python3 -I "$pg.acc.py" "$o.bar" "$row" "Layout bar ($ba, $th, $sz)" || exit 1
+        [ -n "$names" ] || continue
+        keys="" run=0
+        for n in $names; do
+            r=$(awk -v n="$n" 'NR > 1 && index($0, " " n " ") { print NR - 2; exit }' "$o")
+            [ -n "$r" ] || { echo "  kinstall's Layout list ($ba, $th) has no $n row" >&2; exit 1; }
+            pgt layout "$sz" "$ba" PAGEDRAW_KDOSLAYOUT=1 PAGEDRAW_THEME="$th" PAGEDRAW_CELLROW=$r > "$o.$run"
+            keys="$keys $n:$run:$o.$run:$r"
+            run=$((run + 1))
+        done
+        python3 -I "$pg.key.py" "$o.bar" "$row" $keys || exit 1
+    done
+done
+for sz in 80x33 200x50; do
+    for t in "PAGEDRAW_ESPLAYOUT=1 fill" "PAGEDRAW_KDOSLAYOUT=1 fill" "PAGEDRAW_PARTS=3 shade"; do
+        read -r lay want <<< "$t"
+        o="$pg.end.${lay%=*}.$sz"
+        pgt disk "$sz" plain "$lay" > "$o"
+        row=$(awk 'NR > 1 && /CURRENT.LAYOUT/ { print NR - 1; exit }' "$o")
+        [ -n "$row" ] || { echo "  kinstall's disk page at $sz has no CURRENT LAYOUT" >&2; exit 1; }
+        pgt disk "$sz" plain "$lay" PAGEDRAW_CELLROW=$row > "$o.bar"
+        python3 -I "$pg.end.py" "$o.bar" "$row" "Disk bar ($lay, $sz)" "$want" || exit 1
+    done
+done
+echo "  kinstall's bars set the accent apart in every scheme, and a disk's tail under half a cell is no free cell"
+# The zone list splits zone1970.tab on its tabs: Puerto Rico's 59-character
+# codes column leaves its name the name, so no row is a coordinate and the
+# filter finds it. At the live console's 80x25 the F1 card reads every row
+# whole, and a confirm's button shade stays above its bottom border.
+pgdraw 30 PUERTO time plain
+for args in "time ''" "welcome HELP" "welcome MODAL"; do
+    eval "set -- $args"
+    KDOS_ZONEINFO=testing/fixtures/kinstall/zoneinfo PAGEDRAW_CAPS=8 \
+        PAGEDRAW_HELP=$([ "$2" = HELP ] && echo 1) \
+        PAGEDRAW_MODAL=$([ "$2" = MODAL ] && echo 'Quit the installer?|Nothing has been written.|Quit|Stay') \
+        "$OUT/pagedraw" "$1" 80 25 "$pg.plain" > "$pg.$1.25$2" \
+        || { echo "  pagedraw could not draw the $1 page at 80x25" >&2; exit 1; }
+done
+python3 -I - "$pg" <<'PYEOF' || exit 1
+import re, sys
+pg = sys.argv[1]
+def read(name):
+    return open("%s.%s" % (pg, name)).read()
+t = read("time.30PUERTO.plain")
+if "America/Puerto_Rico" not in t or "\n# tz America/Puerto_Rico" not in t:
+    sys.exit("  kinstall's zone filter 'puerto' does not find America/Puerto_Rico:\n" + t)
+lines = read("time.25").split("\n")
+x, y, w, h = map(int, lines[0].split()[2:])
+col = [l[x:x + w // 2].strip() for l in lines[1 + y:1 + y + h]]
+zrows = [r.lstrip("*> ").strip() for r in col
+         if "/" in r or r.startswith(("+", "-"))]
+if not zrows or zrows[0] != "America/Puerto_Rico" \
+        or any(r.startswith(("+", "-")) for r in zrows):
+    sys.exit("  kinstall's zone list holds a row that is no zone name:\n"
+             + "\n".join(col))
+help_ = read("welcome.25HELP")
+if "# cuts 0\n" not in help_ or "full log (Install and Done pages)" not in help_:
+    sys.exit("  kinstall's F1 card cuts a row at 80x25:\n" + help_)
+rows = read("welcome.25MODAL").split("\n")[1:26]
+bottom = [r for r in rows if "\u255a" in r]
+if len(bottom) != 1 or not re.search("\u255a\u2550+\u255d", bottom[0]):
+    sys.exit("  a kinstall confirm's bottom border is broken at 80x25:\n"
+             + "\n".join(rows))
+PYEOF
+echo "  kinstall reads every zone1970.tab row, and its F1 card and confirms fit 80x25"
+# Every page at 80x33 with the longest values a machine hands it: a long
+# processor name on 32-bit UEFI with Secure Boot, zone names wider than the
+# zone list, a partition mounted at /run/initramfs/live, a running copy's
+# note, a failure's message and an output line wider than the body. No text
+# draw loses the end of its string (pagedraw's `# cuts`, which is
+# ktui_draw_cut_count), and the A/B Summary names the swap as Layout does.
+pc="$OUT/pgd/cut"
+printf 'disk = /dev/vda\nplan = wipe\nlvm = 1\nswap = file\nswap_mb = 2048\nusername = kdos\nfullname = Ada Lovelace Byron\nadmin = 1\nroot_locked = 1\ngroups = kde-games\napps = none\ntimezone = :/etc/localtime\ntimezone_label = America/Argentina/Buenos_Aires\n' > "$pc.plain"
+printf 'luks = 1\nautologin = 1\n' | cat "$pc.plain" - > "$pc.luks"
+pccut() {
+    local gb=$1 page=$2 ans=$3 tag=$4
+    shift 4
+    env KDOS_UPDATE_BINHOST= KDOS_GROUPS="$OUT/pgd/groups" \
+        KDOS_CATALOGUE="$OUT/pgd/catalogue" \
+        KDOS_ZONEINFO=testing/fixtures/kinstall/zoneinfo-long \
+        PAGEDRAW_DISK_GB="$gb" PAGEDRAW_MOUNT=/run/initramfs/live \
+        PAGEDRAW_CPU='AMD Ryzen 7 5700G with Radeon Graphics' \
+        PAGEDRAW_COPY='364 MiB of 4.1 GiB, 25 MiB/s, about 0:03:15 left' \
+        PAGEDRAW_LOG='sending incremental file list for /usr/share/icons/breeze-dark/actions/symbolic' \
+        "$@" "$OUT/pagedraw" "$page" 80 33 "$pc.$ans" > "$pc.$page.$gb.$ans$tag" \
+        || { echo "  pagedraw could not draw the $page page" >&2; exit 1; }
+    grep -qx '# cuts 0' "$pc.$page.$gb.$ans$tag" || {
+        echo "  kinstall's $page page ($gb GB, $ans$tag) cuts text at 80x33:" \
+             "$(grep '^# cuts' "$pc.$page.$gb.$ans$tag")" >&2
+        sed -n '2,34p' "$pc.$page.$gb.$ans$tag" >&2
+        exit 1
+    }
+}
+for page in welcome keyboard time disk system apps install done; do
+    pccut 30 "$page" plain ''
+done
+pccut 30 layout plain ''; pccut 12 layout plain ''
+pccut 30 accounts plain ''; pccut 30 accounts luks ''
+pccut 30 summary plain ''; pccut 30 summary luks ''
+# A disk of 30 labelled partitions erased: under a short review the destroy
+# line names three and counts the rest, and under a long one it names fewer,
+# so BEGIN INSTALL stays inside the body either way. The reuse plan with its
+# ESP formatted names both partitions it formats.
+pccut 30 summary plain .parts PAGEDRAW_PARTS=30
+printf 'disk = /dev/vda\nplan = wipe\nlvm = 0\nswap = none\nusername = kdos\nadmin = 1\nroot_locked = 1\napps = none\n' > "$pc.short"
+pccut 30 summary short .parts PAGEDRAW_PARTS=30
+printf 'disk = /dev/vda\nplan = reuse\nesp = /dev/vda1\nroot = /dev/vda2\nformat_esp = 1\nusername = kdos\ngroups = kde-games\napps = none\n' > "$pc.reuse"
+pccut 30 summary reuse '' PAGEDRAW_PARTS=3
+pccut 30 summary short .dry PAGEDRAW_PARTS=30 PAGEDRAW_DRYRUN=1
+python3 -I - "$pc.summary.30.plain.parts" "$pc.summary.30.short.parts" "$pc.summary.30.reuse" "$pc.summary.30.short.dry" <<'PYEOF' || exit 1
+import sys
+def body(path):
+    lines = open(path).read().split("\n")
+    x, y, w, h = map(int, lines[0].split()[2:])
+    return [l[x:x + w] for l in lines[1 + y:1 + y + h]]
+for path in sys.argv[1:3]:
+    b = body(path)
+    if not any("BEGIN INSTALL" in r for r in b):
+        sys.exit("  kinstall's Summary of a 30-partition erase draws BEGIN "
+                 "INSTALL off the 80x33 body:\n" + "\n".join(b))
+b = body(sys.argv[2])
+text = " ".join(" ".join(r.split()) for r in b)
+if "991M, and 27 more partitions. BEGIN INSTALL asks once more, naming the disk; after that there is no undo." not in text:
+    sys.exit("  kinstall's Summary does not name three partitions and count "
+             "the rest:\n" + "\n".join(b))
+t = " ".join(" ".join(r.split()) for r in body(sys.argv[3]))
+if "reformats the root partition /dev/vda2 and the EFI system partition /dev/vda1" not in t:
+    sys.exit("  kinstall's reuse Summary does not name the ESP it formats:\n"
+             + "\n".join(body(sys.argv[2])))
+d = " ".join(" ".join(r.split()) for r in body(sys.argv[4]))
+if ("REHEARSE INSTALL writes nothing." not in d or "asks once more" in d
+        or not any("REHEARSE INSTALL" in r for r in body(sys.argv[4]))):
+    sys.exit("  kinstall's dry-run Summary promises a confirm it does not "
+             "ask, or draws REHEARSE INSTALL off the body:\n"
+             + "\n".join(body(sys.argv[4])))
+PYEOF
+pccut 30 install plain .fail \
+    PAGEDRAW_FAIL='mkfs.ext4 refused /dev/vda3: the device is held by another block device'
+python3 -I - "$pc.summary.30.plain" <<'PYEOF' || exit 1
+import sys
+lines = open(sys.argv[1]).read().split("\n")
+x, y, w, h = map(int, lines[0].split()[2:])
+text = " ".join(" ".join(l[x:x + w].split()) for l in lines[1 + y:1 + y + h])
+if "swap volume shared by both slots, 2048 MiB" not in text:
+    sys.exit("  kinstall's A/B Summary does not call the swap the Layout "
+             "page's swap volume:\n" + "\n".join(lines[1 + y:1 + y + h]))
+PYEOF
+echo "  kinstall's every page whole at 80 columns, and the A/B swap named as Layout names it"
+# A finished install, 71 seconds long and finished long ago: the Install
+# page's elapsed time stopped at 01:11 and Done's figure agrees in words and
+# number, and its text says to restart before the medium comes out (the live
+# root is read from it); each warning a capitalised bullet without backticks, a repeated
+# one once; a tab in an output line set as spaces to the next multiple of 8.
+# With 24-bit colour the System page's swatches carry each accent's own
+# colours, and with the offscreen terminal's slots alone it draws none.
+pf="$OUT/pgd/fin"
+printf 'disk = /dev/vda\n' > "$pf.ans"
+PAGEDRAW_DONE=71 \
+    PAGEDRAW_WARN='this image names no binary host; install later with `sudo kdos update install --pending`|no firmware was fetched|no firmware was fetched' \
+    "$OUT/pagedraw" install 80 33 "$pf.ans" > "$pf.install" \
+    && PAGEDRAW_DONE=71 PAGEDRAW_WARN='no firmware was fetched' \
+    "$OUT/pagedraw" done 80 33 "$pf.ans" > "$pf.done" \
+    && PAGEDRAW_DONE=71 PAGEDRAW_LOG="$(printf 'a\tb')" \
+    "$OUT/pagedraw" install 80 33 "$pf.ans" > "$pf.log" \
+    && PAGEDRAW_CAPS=1 "$OUT/pagedraw" system 80 33 "$pf.ans" > "$pf.sys24" \
+    && "$OUT/pagedraw" system 80 33 "$pf.ans" > "$pf.sys" \
+    || { echo "  pagedraw could not draw a finished install" >&2; exit 1; }
+python3 -I - "$pf" <<'PYEOF' || exit 1
+import sys
+pf = sys.argv[1]
+def rows(name):
+    lines = open("%s.%s" % (pf, name)).read().split("\n")
+    x, y, w, h = map(int, lines[0].split()[2:])
+    return [l[x:x + w].strip() for l in lines[1 + y:1 + y + h]]
+ins, done = rows("install"), rows("done")
+if "elapsed 01:11" not in ins:
+    sys.exit("  kinstall's elapsed time does not stop when the install finishes")
+if "Choose Reboot now, and take the boot medium out when the screen goes dark," not in " ".join(done):
+    sys.exit("  kinstall's Done page does not say to restart first and take the "
+             "medium out at the dark screen:\n" + "\n".join(done))
+if not any(r.startswith("took") and r.endswith(" 1 minute 11 seconds") for r in done):
+    sys.exit("  kinstall's Done page does not read 'took 1 minute 11 seconds':\n"
+             + "\n".join(done))
+bul = [r for r in ins if r[:2] in ("* ", "• ")]
+if len(bul) != 2 or not bul[0][2:].startswith("This image") or any("`" in r for r in ins):
+    sys.exit("  kinstall's warnings are not one capitalised bullet each:\n"
+             + "\n".join(ins))
+if "a       b" not in rows("log"):
+    sys.exit("  kinstall keeps a tab in an output line:\n"
+             + "\n".join(rows("log")))
+rgb = {}
+for l in open(pf + ".sys24"):
+    if l.startswith("# rgb "):
+        x, y, c = l.split()[2:]
+        rgb.setdefault(y, []).append((int(x), c))
+first = sorted(next(iter(rgb.values()), []))
+if len(first) < 12 or first[0][1] == first[6][1]:
+    sys.exit("  kinstall's accent swatches do not carry each accent's colours")
+if "# rgb " in open(pf + ".sys").read():
+    sys.exit("  kinstall draws accent swatches a terminal without 24-bit or "
+             "256-colour SGR cannot show")
+PYEOF
+echo "  kinstall's finished install: one frozen duration, bulleted warnings, accent swatches"
 $CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-appbox" \
     src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
@@ -201,6 +949,102 @@ KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kdos-appbox" \
     catalogue --selftest >/dev/null 2>&1 || rc=$?
 if [ "$rc" != 1 ]; then
     echo "catalogue --selftest over the shipped file exits $rc, not 1" >&2
+    exit 1
+fi
+# Every meta row's category is a main category, the set Discover has an icon
+# for; an additional one draws the application with a placeholder.
+bad=$(awk -F'|' '/^meta /{print $2}' src/system/kdos-appbox/catalogue \
+    | grep -vxE 'AudioVideo|Development|Education|Game|Graphics|Network|Office|Science|Settings|System|Utility' \
+    | sort -u | tr '\n' ' ')
+if [ -n "$bad" ]; then
+    echo "catalogue meta rows name categories that are not main ones: $bad" >&2
+    exit 1
+fi
+# An application's or data row's tagline says what it does without its name:
+# Discover draws the tagline under the name on the card and as the page's
+# heading, so one holding the name anywhere, or opening with the name's first
+# word, reads it twice and is cut off on the card. Both match whole words
+# only, so "Go" does not match "Good". A runtime's tagline lists what it
+# holds, which is the toolkit its name is. The scan is proved on fixture rows
+# before it is trusted, so an empty scan cannot pass and a word that merely
+# begins with the name cannot fail.
+tagline_repeats() {
+    awk '
+    function word(c) { return c ~ /[[:alnum:]]/ }
+    function holds(tag, p, from_start,    at, rest, off) {
+        off = 0; rest = tag
+        while ((at = index(rest, p)) > 0) {
+            if ((off + at == 1 || !word(substr(tag, off + at - 1, 1))) \
+                && !word(substr(tag, off + at + length(p), 1)))
+                return 1
+            if (from_start) return 0
+            off += at; rest = substr(tag, off + 1)
+        }
+        return 0
+    }
+    $1 == "meta" && $2 ~ /^(app|data)\./ {
+        id = $2
+        row = $0
+        sub(/^meta[ \t]+[^ \t]+[ \t]+/, "", row)
+        n = split(row, f, "|")
+        if (n < 4) next
+        name = tolower(f[1]); tag = tolower(f[4])
+        split(name, w, " ")
+        if (holds(tag, name, 0) || (index(tag, w[1]) == 1 && holds(tag, w[1], 1)))
+            print id
+    }' "$1"
+}
+printf 'meta app.x Foo Bar|Utility|1|A thing\n' > "$OUT/tagline-clean"
+printf 'meta app.x Go|Utility|1|Good board game\n' >> "$OUT/tagline-clean"
+printf 'meta app.x Foo Bar|Utility|1|Foo is a thing\n' > "$OUT/tagline-repeat"
+printf 'meta app.y Chess|Game|1|Play the board game of chess\n' >> "$OUT/tagline-repeat"
+if [ -n "$(tagline_repeats "$OUT/tagline-clean")" ] \
+    || [ "$(tagline_repeats "$OUT/tagline-repeat" | tr '\n' ' ')" != "app.x app.y " ]; then
+    echo "the catalogue tagline scan cannot tell a clean row from a repeating one" >&2
+    exit 1
+fi
+bad=$(tagline_repeats src/system/kdos-appbox/catalogue | tr '\n' ' ')
+if [ -n "$bad" ]; then
+    echo "catalogue taglines repeat their application's name: $bad" >&2
+    exit 1
+fi
+# A tagline names a thing once: a parenthesised aside whose letters are the
+# words before it ("VS Code (vscode)") reads as the name in two spellings on
+# the page's heading. Letters and digits only, case folded, over the one to
+# three words before the bracket. Proved on fixture rows like the scan above.
+tagline_aliases() {
+    awk '
+    function norm(s) { s = tolower(s); gsub(/[^[:alnum:]]/, "", s); return s }
+    $1 == "meta" && $2 ~ /^(app|data)\./ {
+        id = $2
+        row = $0
+        sub(/^meta[ \t]+[^ \t]+[ \t]+/, "", row)
+        if (split(row, f, "|") < 4) next
+        tag = f[4]
+        while (match(tag, /\([^)]*\)/)) {
+            alias = norm(substr(tag, RSTART + 1, RLENGTH - 2))
+            nw = split(substr(tag, 1, RSTART - 1), w, " ")
+            joined = ""
+            for (k = nw; k >= 1 && k > nw - 3; k--) {
+                joined = norm(w[k]) joined
+                if (alias != "" && joined == alias) { print id; next }
+            }
+            tag = substr(tag, RSTART + RLENGTH)
+        }
+    }' "$1"
+}
+printf 'meta app.x Foo|Utility|1|A terminal (console) multiplexer\n' > "$OUT/tagline-alias-clean"
+printf 'meta app.x Foo|Development|1|Code editor: VS Code (vscode) built\n' > "$OUT/tagline-alias"
+printf 'meta app.y Bar|Utility|1|Reads Portable Document Format (PDF)\n' >> "$OUT/tagline-alias"
+printf 'meta app.z Baz|Utility|1|Plays MP3 (mp3) files\n' >> "$OUT/tagline-alias"
+if [ -n "$(tagline_aliases "$OUT/tagline-alias-clean")" ] \
+    || [ "$(tagline_aliases "$OUT/tagline-alias" | tr '\n' ' ')" != "app.x app.z " ]; then
+    echo "the catalogue tagline alias scan cannot tell a clean row from a doubled name" >&2
+    exit 1
+fi
+bad=$(tagline_aliases src/system/kdos-appbox/catalogue | tr '\n' ' ')
+if [ -n "$bad" ]; then
+    echo "catalogue taglines name a thing twice in two spellings: $bad" >&2
     exit 1
 fi
 echo "  catalogue"
@@ -364,15 +1208,44 @@ if [ -n "$THEME_PNG" ]; then
         echo "  the greeter kdeglobals does not carry the scheme's contrast"; exit 1; }
     "$OUT/kdos-theme" contrast -q "$TK/kdeglobals" || {
         echo "  the merged greeter kdeglobals is below a floor"; exit 1; }
-    "$OUT/kdos-theme" greeter-globals --sddm "$TK/sddm"
-    [ "$(find "$TK/sddm" -type f | wc -l)" = $((_n * 3)) ] || {
-        echo "  greeter-globals --sddm did not write three files per accent"; exit 1; }
+    # The greeter's picture is the dark wallpaper dimmed; small wallpapers
+    # under the largest size's name stand in for kdos-wallpapers'.
+    "$OUT/kdos-theme" wallpaper "$TK/wpg" --src src/art/kdos-wallpapers/mark.png --size 64x40
+    for _d in "$TK"/wpg/*/contents/images_dark; do mv "$_d/64x40.png" "$_d/3840x2160.png"; done
+    KDOS_WALLPAPERS="$TK/wpg" "$OUT/kdos-theme" greeter-globals --sddm "$TK/sddm"
+    [ "$(find "$TK/sddm" -type f | wc -l)" = $((_n * 4)) ] || {
+        echo "  greeter-globals --sddm did not write four files per accent"; exit 1; }
     grep -qx 'LookAndFeelPackage=org.kdos.bone.desktop' "$TK/sddm/paper/kdeglobals" || {
         echo "  the sddm files for paper do not name bone's global theme"; exit 1; }
-    case "$(readlink "$TK/sddm/paper/background.png")" in
-    /usr/share/wallpapers/KDOS-Bone/contents/images_dark/*.png) ;;
-    *) echo "  the greeter background for paper is not bone's dark picture"; exit 1 ;;
-    esac
+    cmp -s "$TK/sddm/paper/background.png" "$TK/sddm/bone/background.png" &&
+        [ "$(head -c 4 "$TK/sddm/paper/background.png" | tail -c 3)" = PNG ] || {
+        echo "  the greeter background for paper is not bone's picture"; exit 1; }
+    # The floor itself: the source's brightest pixel is under it, so the
+    # picture had to be dimmed, and every accent's picture holds its
+    # Complementary text at 4.5:1 on its brightest pixel.
+    if command -v python3 >/dev/null 2>&1; then
+        _fl=testing/fixtures/sddm/pngfloor.py
+        _r=$(python3 -I "$_fl" "$(ini_get "$TK/sddm/bone/kdeglobals" Colors:Complementary ForegroundNormal)" \
+            "$TK/wpg/KDOS-Bone/contents/images_dark/3840x2160.png")
+        awk -v r="$_r" 'BEGIN { exit !(r < 4.5) }' || {
+            echo "  the test wallpaper needs no dimming ($_r:1), so the floor is not under test"; exit 1; }
+        for _d in "$TK"/sddm/*/; do
+            _r=$(python3 -I "$_fl" "$(ini_get "$_d/kdeglobals" Colors:Complementary ForegroundNormal)" \
+                "$_d/background.png")
+            awk -v r="$_r" 'BEGIN { exit !(r >= 4.5) }' || {
+                echo "  $(basename "$_d")'s greeter picture holds its text at $_r:1, under 4.5"; exit 1; }
+        done
+        echo "  every greeter picture holds its Complementary text at 4.5:1"
+        # The dimming takes the picture toward the scheme's ground, so the
+        # greeter's edge is the wallpaper's tinted ground, not a grey.
+        _c=$(python3 -I "$_fl" --corner "$TK/sddm/phosphor/background.png")
+        [ "$_c" = "$(python3 -I "$_fl" --corner "$TK/wpg/KDOS-Phosphor/contents/images_dark/3840x2160.png")" ] &&
+            awk -v c="$_c" 'BEGIN { split(c, p, ","); exit !(p[2] > p[1]) }' || {
+            echo "  phosphor's greeter picture lost its ground's tint (corner $_c)"; exit 1; }
+        echo "  the greeter picture keeps its wallpaper's ground"
+    else
+        echo "  no python3: the greeter picture's contrast floor is not measured"
+    fi
     echo "  the greeter's kdeglobals merges, keeps foreign keys and is byte-stable"
     "$OUT/kdos-theme" konsole "$TK/konsole"
     grep -qx 'Name=KDOS Bone' "$TK/konsole/KDOS-Bone.profile" &&
@@ -414,6 +1287,350 @@ $CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/libs/libkpack \
     src/libs/libksig/*.c src/libs/libksig/monocypher/*.c src/libs/libkpack/*.c \
     src/libs/libkbuild/kb_json.c -ldl
 echo "  kdos-tools"
+
+#
+# kdos-fetch-app EXPORTS WHAT THE PACKAGE INSTALLED, NOT ITS NAME. A fake
+# distrobox runs each in-box script under /bin/sh with a PATH holding only the
+# image's fake package tools, and its distrobox-export resolves --app as the
+# real one does: a path that exists in the box as it is, anything else as a
+# substring of every desktop file's Exec= and Name=. Arch's neovim lists
+# nvim.desktop and /usr/bin/nvim beside another package's nvim-qt.desktop,
+# whose launcher a neovim remove must leave; kate's desktop file is
+# org.kde.kate.desktop (Exec=kate) and its launcher's StartupWMClass is the
+# stem. Debian has apt-get beside an apt that warns, and Alpine has apk alone.
+# The box an apk-only install was refused in is removed again, and distrobox
+# create's "To enter, run:" tail never reaches the user, nor the install
+# enter's "Container Setup Complete!", while its steps do; the package
+# manager's stdout stays off the terminal, and the install names the manager
+# on stderr after distrobox's steps and before the launcher's export. A box over a
+# "nosudo" image is one whose first setup failed offline: Debian's tools
+# without sudo. Made by this run it is removed with the network sentence;
+# found as kdos-debian it is recreated once over debian:stable, and when
+# the recreated one has no sudo either it is removed with the same sentence;
+# a kdos-debian the remove cannot take names `distrobox rm`, and so does one
+# found under another name, which stays. An "rmfail" file makes rm fail.
+#
+echo "==> kdos-fetch-app exports the package's files and refuses an image it cannot drive"
+FA="$OUT/fetchapp"
+mkdir -p "$FA/bin" "$FA/boxes" "$FA/home" "$FA/arch" "$FA/debian" "$FA/alpine" "$FA/nosudo"
+ln -sf "$OUT/kdos-tools" "$FA/bin/kdos-fetch-app"
+cat > "$FA/bin/distrobox" <<'EOF'
+#!/bin/bash
+D="$FAKEDBX"
+printf '%s\n' "$*" >> "$D/log"
+case "$1" in
+create)
+    shift
+    while [ $# -gt 0 ]; do
+        case "$1" in --name) n=$2; shift ;; --image) i=$2; shift ;; esac
+        shift
+    done
+    echo "$i" > "$D/boxes/$n"
+    printf "Creating '%s' using image %s\t" "$n" "$i" >&2
+    printf "\033[32m [ OK ]\n\033[0mDistrobox '%s' successfully created.\n" "$n" >&2
+    printf 'To enter, run:\n\n' >&2
+    printf 'distrobox enter %s\n\n' "$n"
+    ;;
+rm) [ ! -e "$D/rmfail" ] || exit 1; rm -f "$D/boxes/${!#}" ;;
+enter)
+    b=$2; shift 3
+    case "$(cat "$D/boxes/$b")" in
+        *nosudo*) k=nosudo ;; *arch*) k=arch ;; *alpine*) k=alpine ;; *) k=debian ;;
+    esac
+    if [ "$1" = distrobox-export ]; then
+        # distrobox's own rule: a path that exists in the box is taken as
+        # it is, anything else is a substring of Exec= or Name=.
+        what=$3; R="$D/$k.root"
+        case "$2" in
+        --app)
+            if [ -e "$R$what" ]; then fs=$R$what
+            else fs=$(grep -l -e "Exec=.*$what.*" -e "Name=.*$what.*" "$R"/usr/share/applications/* 2>/dev/null)
+            fi
+            [ -n "$fs" ] || exit 127
+            for f in $fs; do
+                h="$HOME/.local/share/applications/$b-${f##*/}"
+                # --delete removes the original name as well, as the real one does.
+                if [ "$4" = --delete ]; then rm -f "$h" "${h%/*}/${f##*/}"; continue; fi
+                mkdir -p "${h%/*}"; cp "$f" "$h"
+                grep -q StartupWMClass "$h" || echo "StartupWMClass=$what" >> "$h"
+            done ;;
+        --bin) [ -e "$R$what" ] ;;
+        esac
+        exit
+    fi
+    shift
+    # The install script's enter prints distrobox's first-start steps.
+    if [ "${2#command -v sudo}" != "$2" ]; then
+        printf '%-40s\t' 'Starting container...' >&2
+        printf '\033[32m [ OK ]\n\033[0m%-40s\t' 'Ensuring user'"'"'s access...' >&2
+        printf '\033[32m [ OK ]\n\033[0m' >&2
+        printf '\nContainer Setup Complete!\n' >&2
+    fi
+    PATH="$D/$k" exec /bin/sh "$@"
+    ;;
+esac
+EOF
+cat > "$FA/bin/podman" <<'EOF'
+#!/bin/sh
+for f in "$FAKEDBX"/boxes/*; do [ -e "$f" ] && echo "${f##*/}"; done
+exit 0
+EOF
+for k in arch debian alpine; do
+    printf '#!/bin/sh\nexec "$@"\n' > "$FA/$k/sudo"
+done
+cat > "$FA/arch/pacman" <<'EOF'
+#!/bin/sh
+echo "pacman $*" >> "$FAKEDBX/log"
+case "$1" in
+-Qlq) for p; do :; done
+      while IFS= read -r l; do printf '%s\n' "$l"; done < "$FAKEDBX/arch.$p.files" ;;
+esac
+exit 0
+EOF
+printf '%s\n' /usr/ /usr/bin/ /usr/bin/nvim /usr/share/ /usr/share/applications/ \
+    /usr/share/applications/nvim.desktop /usr/share/nvim/runtime/syntax/c.vim > "$FA/arch.neovim.files"
+printf '%s\n' /usr/bin/kate /usr/share/applications/org.kde.kate.desktop > "$FA/arch.kate.files"
+mkdir -p "$FA/arch.root/usr/bin" "$FA/arch.root/usr/share/applications" \
+    "$FA/debian.root/usr/bin" "$FA/debian.root/usr/share/applications"
+touch "$FA/arch.root/usr/bin/nvim" "$FA/arch.root/usr/bin/nvim-qt" "$FA/arch.root/usr/bin/kate" \
+    "$FA/debian.root/usr/bin/firefox-esr"
+printf '[Desktop Entry]\nName=Neovim\nExec=nvim %%F\n' > "$FA/arch.root/usr/share/applications/nvim.desktop"
+printf '[Desktop Entry]\nName=Neovim Qt\nExec=nvim-qt %%F\n' > "$FA/arch.root/usr/share/applications/nvim-qt.desktop"
+printf '[Desktop Entry]\nName=Kate\nExec=kate -b %%U\n' > "$FA/arch.root/usr/share/applications/org.kde.kate.desktop"
+printf '[Desktop Entry]\nName=Firefox ESR\nExec=firefox-esr %%u\nStartupWMClass=firefox-esr\n' \
+    > "$FA/debian.root/usr/share/applications/firefox-esr.desktop"
+mkdir -p "$FA/home/.local/share/applications"
+printf '[Desktop Entry]\nName=Neovim Qt\n' > "$FA/home/.local/share/applications/arch-nvim-qt.desktop"
+cat > "$FA/debian/apt" <<'EOF'
+#!/bin/sh
+echo 'WARNING: apt does not have a stable CLI interface. Use with caution in scripts.' >&2
+exit 0
+EOF
+cat > "$FA/debian/apt-get" <<'EOF'
+#!/bin/sh
+echo "apt-get $*" >> "$FAKEDBX/log"
+echo "apt-get frontend=$DEBIAN_FRONTEND" >> "$FAKEDBX/log"
+echo "Reading package lists... ($1)"
+exit 0
+EOF
+cat > "$FA/debian/dpkg-query" <<'EOF'
+#!/bin/sh
+case "$1" in
+-W) printf 'install ok installed' ;;
+-L) while IFS= read -r l; do printf '%s\n' "$l"; done < "$FAKEDBX/debian.files" ;;
+esac
+EOF
+printf '%s\n' /. /usr /usr/bin /usr/bin/firefox-esr /usr/lib/firefox-esr/firefox-esr \
+    /usr/share/applications /usr/share/applications/firefox-esr.desktop > "$FA/debian.files"
+printf '#!/bin/sh\nexit 0\n' > "$FA/alpine/apk"
+chmod +x "$FA"/bin/distrobox "$FA"/bin/podman "$FA"/arch/* "$FA"/debian/* "$FA"/alpine/*
+ln -sf "$(command -v env)" "$FA/debian/env"
+ln -sf "$FA/debian/apt-get" "$FA/nosudo/apt-get"
+# The host's data dirs are $FA/xdg alone, where kate has an entry of its own.
+mkdir -p "$FA/xdg/applications"
+printf '[Desktop Entry]\nName=Kate\nExec=kate\n' > "$FA/xdg/applications/org.kde.kate.desktop"
+# No session bus: a --remove would otherwise unpin from this host's own panels.
+fa() { env FAKEDBX="$FA" HOME="$FA/home" XDG_DATA_HOME= XDG_DATA_DIRS="$FA/xdg" PATH="$FA/bin:$PATH" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$FA/nobus" kdos-fetch-app "$@"; }
+rc=0; fa --box arch --image archlinux:latest neovim > "$FA/arch.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] || { echo "  the Arch neovim install failed (rc $rc):"; cat "$FA/arch.out"; exit 1; }
+grep -qx 'enter arch -- distrobox-export --app /usr/share/applications/nvim.desktop' "$FA/log" \
+    && grep -qx "enter arch -- distrobox-export --bin /usr/bin/nvim --export-path $FA/home/.local/bin" "$FA/log" \
+    && grep -qx 'StartupWMClass=nvim' "$FA/home/.local/share/applications/arch-nvim.desktop" \
+    || { echo "  neovim was not exported as nvim:"; cat "$FA/log"; exit 1; }
+# THE APP ID'S OWN FILE NAME, which is what KWin finds a title-bar icon by:
+# a copy of the export, since the host has no nvim.desktop. The copy is the
+# one the menu shows and the export is hidden, so a pin and its window are one
+# task-manager entry.
+_fa_al="$FA/home/.local/share/applications/nvim.desktop"
+! grep -q '^NoDisplay=' "$_fa_al" && grep -qx 'Exec=nvim %F' "$_fa_al" \
+    && grep -qx 'X-KDOS-Fetch-Box=arch' "$_fa_al" \
+    && grep -qx 'NoDisplay=true' "$FA/home/.local/share/applications/arch-nvim.desktop" \
+    || { echo "  nvim.desktop is not the visible entry beside a hidden export:"; cat "$_fa_al" 2>&1; exit 1; }
+grep -q '^NoDisplay=' "$FA/home/.local/share/applications/arch-org.kde.kate.desktop" 2>/dev/null \
+    && { echo "  kate's export was hidden although the host's own entry is not the box's"; exit 1; }
+rc=0; fa --box arch kate > "$FA/kate.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && grep -qx 'StartupWMClass=org.kde.kate' "$FA/home/.local/share/applications/arch-org.kde.kate.desktop" \
+    && ! grep -q 'could not export' "$FA/kate.out" \
+    || { echo "  kate's reverse-DNS launcher was not exported (rc $rc):"; cat "$FA/kate.out"; exit 1; }
+[ -e "$FA/home/.local/share/applications/org.kde.kate.desktop" ] \
+    && { echo "  a copy shadows the host's own org.kde.kate.desktop"; exit 1; }
+grep -q 'distrobox-export --app neovim\|syntax' "$FA/log" \
+    && { echo "  an export named the package or a file outside the two directories:"; cat "$FA/log"; exit 1; }
+# fa_order FILE MANAGER: distrobox's last setup step, then the manager's
+# line, then the export, each found once and in that order.
+fa_order() {
+    local s r e
+    s=$(grep -n "Ensuring user's access" "$1" | head -n 1 | cut -d: -f1)
+    r=$(grep -nF "==> Running $2 inside the box (a few minutes the first time)" "$1" | head -n 1 | cut -d: -f1)
+    e=$(grep -n '^==> Exporting launcher' "$1" | head -n 1 | cut -d: -f1)
+    [ -n "$s" ] && [ -n "$r" ] && [ -n "$e" ] && [ "$s" -lt "$r" ] && [ "$r" -lt "$e" ]
+}
+fa_order "$FA/arch.out" pacman \
+    || { echo "  the Arch install did not name pacman between distrobox's steps and the export:"; cat "$FA/arch.out"; exit 1; }
+grep -q 'To enter, run:\|successfully created' "$FA/arch.out" \
+    && { echo "  distrobox create's tail reached the user:"; cat "$FA/arch.out"; exit 1; }
+rc=0; fa --box arch --remove neovim > "$FA/archrm.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && grep -qx 'enter arch -- distrobox-export --app /usr/share/applications/nvim.desktop --delete' "$FA/log" \
+    && grep -qx 'enter arch -- distrobox-export --bin /usr/bin/nvim --delete' "$FA/log" \
+    && [ ! -e "$FA/home/.local/share/applications/arch-nvim.desktop" ] \
+    || { echo "  --remove did not unexport nvim (rc $rc):"; cat "$FA/archrm.out" "$FA/log"; exit 1; }
+[ -e "$_fa_al" ] && { echo "  --remove left the hidden nvim.desktop"; exit 1; }
+[ -e "$FA/home/.local/share/applications/arch-nvim-qt.desktop" ] \
+    || { echo "  removing neovim deleted nvim-qt's launcher too"; exit 1; }
+# A <stem>.desktop that is not the box's alias outlives the export's delete,
+# which removes that name too: the user's own kate entry, bytes and mode.
+_fa_uk="$FA/home/.local/share/applications/org.kde.kate.desktop"
+printf '[Desktop Entry]\nName=My Kate\nExec=kate\n' > "$_fa_uk"; chmod 0700 "$_fa_uk"
+rc=0; fa --box arch --remove kate > "$FA/katerm.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && grep -qx 'Name=My Kate' "$_fa_uk" && [ "$(stat -c %a "$_fa_uk")" = 700 ] \
+    && [ ! -e "$FA/home/.local/share/applications/arch-org.kde.kate.desktop" ] \
+    || { echo "  removing kate lost the user's own org.kde.kate.desktop (rc $rc):"; cat "$FA/katerm.out"; exit 1; }
+rm -f "$_fa_uk"
+# A symbolic link of that name comes back as the same link.
+ln -s "$FA/xdg/applications/org.kde.kate.desktop" "$_fa_uk"
+rc=0; fa --box arch --remove kate > "$FA/katerm.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && [ -L "$_fa_uk" ] && [ "$(readlink "$_fa_uk")" = "$FA/xdg/applications/org.kde.kate.desktop" ] \
+    || { echo "  removing kate did not keep the user's org.kde.kate.desktop link (rc $rc):"; cat "$FA/katerm.out"; ls -l "$_fa_uk"; exit 1; }
+rm -f "$_fa_uk"
+rc=0; DEBIAN_FRONTEND= fa firefox-esr > "$FA/deb.out" 2>&1 \
+    && DEBIAN_FRONTEND=readline fa --remove firefox-esr >> "$FA/deb.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && grep -q '^apt-get install -y -- firefox-esr$' "$FA/log" \
+    && grep -q '^apt-get -y remove -- firefox-esr$' "$FA/log" \
+    || { echo "  the Debian install or remove did not go through apt-get (rc $rc):"; cat "$FA/deb.out"; exit 1; }
+grep -q '^apt-get frontend=' "$FA/log" \
+    && ! grep '^apt-get frontend=' "$FA/log" | grep -vqx 'apt-get frontend=noninteractive' \
+    || { echo "  apt-get ran without debconf's noninteractive frontend:"; cat "$FA/log"; exit 1; }
+fa_order "$FA/deb.out" apt-get \
+    || { echo "  the Debian install did not name apt-get between distrobox's steps and the export:"; cat "$FA/deb.out"; exit 1; }
+grep -q 'apt does not have' "$FA/deb.out" \
+    && { echo "  apt's CLI warning reached the user:"; cat "$FA/deb.out"; exit 1; }
+[ -e "$FA/home/.local/share/applications/kdos-debian-firefox-esr.desktop" ] \
+    && { echo "  firefox-esr's launcher outlived its --remove"; exit 1; }
+# --remove unpins what it deleted: plasmashell (faked on a private bus) is
+# sent one script naming both launchers as JSON strings, and that script,
+# run against task managers that hold them, drops exactly those pins.
+if command -v dbus-run-session >/dev/null 2>&1 && python3 -c 'import dbus, gi' 2>/dev/null &&
+   { [ -e /usr/lib/libbasu.so.0 ] || ldconfig -p 2>/dev/null | grep -q 'libsystemd.so.0\|libbasu.so.0'; }; then
+    fa --box arch neovim > "$FA/pin.out" 2>&1 || { echo "  neovim did not install again:"; cat "$FA/pin.out"; exit 1; }
+    env FAKEDBX="$FA" HOME="$FA/home" XDG_DATA_HOME= XDG_DATA_DIRS="$FA/xdg" PATH="$FA/bin:$PATH" \
+        KDOS_FAKE_LOG="$FA/bus.log" KDOS_FAKE_READY="$FA/ready" FIX="$PWD/testing/fixtures/kdos-command" \
+        dbus-run-session -- bash -c '
+python3 "$FIX/fakesession.py" & FP=$!
+for _i in $(seq 50); do [ -e "$KDOS_FAKE_READY" ] && break; sleep 0.1; done
+kdos-fetch-app --box arch --remove neovim; rc=$?
+kill "$FP"; exit "$rc"' > "$FA/unpin.out" 2>&1 \
+        || { echo "  --remove in a session failed:"; cat "$FA/unpin.out"; exit 1; }
+    sed -n 's/^evaluateScript //p' "$FA/bus.log" | grep '^let drop = ' > "$FA/unpin.js"
+    grep -qF '"applications:arch-nvim.desktop","file://'"$FA"'/home/.local/share/applications/arch-nvim.desktop","applications:nvim.desktop"' "$FA/unpin.js" \
+        || { echo "  --remove did not ask plasmashell to unpin both launchers:"; cat "$FA/bus.log"; exit 1; }
+    if command -v node >/dev/null 2>&1; then
+        node -e '
+const js = require("fs").readFileSync(process.argv[1], "utf8");
+const W = (type, v) => ({ type, readConfig: () => v,
+  writeConfig(k, x) { this.k = k; this.w = x; }, reloadConfig() { this.r = 1; } });
+const a = W("org.kde.plasma.icontasks", ["applications:systemsettings.desktop", "[act1,act2]\napplications:nvim.desktop",
+  "[act1]\napplications:org.kde.kate.desktop", "applications:nvim.desktop"]);
+const b = W("org.kde.plasma.taskmanager", "applications:arch-nvim.desktop,applications:org.kde.dolphin.desktop");
+const c = W("org.kde.plasma.icontasks", ["applications:org.kde.konsole.desktop"]);
+const d = W("org.kde.plasma.kickoff", ["applications:nvim.desktop"]);
+let out = "";
+const panels = () => [{ widgets: () => [a, d] }], desktops = () => [{ widgets: () => [b, c] }];
+const print = s => { out += s; };
+eval(js);
+const ok = out == "2" && a.k == "launchers" && a.r && String(a.w) == "applications:systemsettings.desktop,[act1]\napplications:org.kde.kate.desktop" &&
+  b.r && String(b.w) == "applications:org.kde.dolphin.desktop" && !c.w && !c.r && !d.w;
+process.exit(ok ? 0 : 1);' "$FA/unpin.js" \
+            || { echo "  the unpin script did not drop exactly the removed launchers:"; cat "$FA/unpin.js"; exit 1; }
+    fi
+    rm -f "$FA/ready"
+else
+    echo "  (the unpin half is skipped: no dbus-run-session, python3-dbus or sd-bus library on this host)"
+fi
+rc=0; fa --box ab --image docker.io/library/alpine:latest figlet > "$FA/ab.out" 2>&1 || rc=$?
+[ "$rc" = 1 ] && grep -qx 'rm --force ab' "$FA/log" && [ ! -e "$FA/boxes/ab" ] \
+    && grep -qF 'docker.io/library/alpine:latest has none of apt-get, dnf or pacman' "$FA/ab.out" \
+    || { echo "  an apk-only box was kept or not named (rc $rc):"; cat "$FA/ab.out" "$FA/log"; exit 1; }
+echo alpine > "$FA/boxes/mine"
+rc=0; fa --box mine figlet > "$FA/mine.out" 2>&1 || rc=$?
+[ "$rc" = 1 ] && [ -e "$FA/boxes/mine" ] && ! grep -qx 'rm --force mine' "$FA/log" \
+    || { echo "  a box that existed before the run was removed (rc $rc):"; cat "$FA/mine.out"; exit 1; }
+rc=0; fa --box off --image debian:nosudo galculator > "$FA/off.out" 2>&1 || rc=$?
+[ "$rc" = 1 ] && grep -qx 'rm --force off' "$FA/log" && [ ! -e "$FA/boxes/off" ] \
+    && grep -qF "kdos-fetch-app: the box off did not finish its first setup — the network is needed the first time; run again when online" "$FA/off.out" \
+    && ! grep -q 'sudo: not found\|install failed' "$FA/off.out" \
+    && grep -qF "Ensuring user's access..." "$FA/off.out" && ! grep -q 'Setup Complete' "$FA/off.out" \
+    && [ "$(tail -n 1 "$FA/off.out")" = "kdos-fetch-app: the box off did not finish its first setup — the network is needed the first time; run again when online" ] \
+    || { echo "  a new box whose first setup failed was kept or not named (rc $rc):"; cat "$FA/off.out"; exit 1; }
+echo debian:nosudo > "$FA/boxes/kdos-debian"; : > "$FA/log"
+rc=0; fa firefox-esr > "$FA/redo.out" 2>&1 || rc=$?
+[ "$rc" = 0 ] && grep -qx 'rm --force kdos-debian' "$FA/log" \
+    && grep -qx 'create --name kdos-debian --image debian:stable --yes --no-entry' "$FA/log" \
+    && [ "$(cat "$FA/boxes/kdos-debian")" = debian:stable ] \
+    && grep -q '^apt-get install -y -- firefox-esr$' "$FA/log" \
+    && ! grep -q 'Reading package lists' "$FA/redo.out" && ! grep -q 'Setup Complete' "$FA/redo.out" \
+    || { echo "  an unfinished kdos-debian was not recreated once (rc $rc):"; cat "$FA/redo.out" "$FA/log"; exit 1; }
+echo debian:nosudo > "$FA/boxes/kdos-debian"; : > "$FA/log"
+rc=0; fa --image debian:nosudo galculator > "$FA/still.out" 2>&1 || rc=$?
+[ "$rc" = 1 ] && [ "$(grep -cx 'rm --force kdos-debian' "$FA/log")" = 2 ] \
+    && grep -qx 'create --name kdos-debian --image debian:nosudo --yes --no-entry' "$FA/log" \
+    && [ ! -e "$FA/boxes/kdos-debian" ] \
+    && grep -qF "kdos-fetch-app: the box kdos-debian did not finish its first setup — the network is needed the first time; run again when online" "$FA/still.out" \
+    || { echo "  a recreated kdos-debian still without sudo was kept or not named (rc $rc):"; cat "$FA/still.out" "$FA/log"; exit 1; }
+echo debian:nosudo > "$FA/boxes/kdos-debian"; : > "$FA/log"; : > "$FA/rmfail"
+rc=0; fa galculator > "$FA/stuck.out" 2>&1 || rc=$?
+rm -f "$FA/rmfail"
+[ "$rc" = 1 ] && ! grep -q '^create' "$FA/log" \
+    && grep -qF '`distrobox rm kdos-debian`' "$FA/stuck.out" \
+    || { echo "  a kdos-debian the remove could not take did not name its repair (rc $rc):"; cat "$FA/stuck.out" "$FA/log"; exit 1; }
+rm -f "$FA/boxes/kdos-debian"
+echo debian:nosudo > "$FA/boxes/mine2"
+rc=0; fa --box mine2 galculator > "$FA/mine2.out" 2>&1 || rc=$?
+[ "$rc" = 1 ] && [ -e "$FA/boxes/mine2" ] && ! grep -qx 'rm --force mine2' "$FA/log" \
+    && grep -qF '`distrobox rm mine2`' "$FA/mine2.out" \
+    || { echo "  an unfinished named box was removed or its repair not named (rc $rc):"; cat "$FA/mine2.out"; exit 1; }
+echo "  nvim and org.kde.kate exported by their desktop files' paths, apt-get not apt, an apk-only new box removed, a user's box kept"
+echo "  a box with no sudo: removed when new, kdos-debian recreated once and removed when still unset, distrobox rm named when it cannot go or is the user's"
+
+#
+# `kdos restarts` COUNTS ONLY REPLACED CODE. Every install's index triggers
+# rewrite icon-theme.cache and the MIME and font caches under every running
+# program, so a deleted mapping read without `x` must not count, or the whole
+# desktop is told to log out after any install. The classifier is fed maps
+# lines directly: an unprivileged test cannot delete a file under /usr.
+#
+echo "==> kdos restarts counts an executable deleted mapping, not a data file"
+cat > "$OUT/restarts-maps.c" <<'EOF'
+#include "restarts.c"
+static int code(const char *l, const char *want)
+{
+	char f[1024];
+	int r = restarts_maps_code(l, f, sizeof(f));
+	return want ? r && !strcmp(f, want) : !r;
+}
+int main(void)
+{
+	int bad = 0;
+	bad |= !code("7f00-7f10 r-xp 00001000 08:01 42 /usr/lib/libfoo.so.1 (deleted)",
+		     "/usr/lib/libfoo.so.1");
+	bad |= !code("7f00-7f10 r-xp 00001000 08:01 42 /opt/a b/lib.so (deleted)",
+		     "/opt/a b/lib.so") << 1;
+	bad |= !code("7f00-7f10 r--p 00000000 08:01 43 /usr/share/icons/hicolor/icon-theme.cache (deleted)",
+		     NULL) << 2;
+	bad |= !code("7f00-7f10 r--p 00000000 08:01 44 /usr/lib/libfoo.so.1 (deleted)", NULL) << 3;
+	bad |= !code("7f00-7f10 r-xp 00000000 00:01 45 /memfd:jit (deleted)", NULL) << 4;
+	bad |= !code("7f00-7f10 r-xp 00001000 08:01 46 /usr/lib/libbar.so.2", NULL) << 5;
+	return bad;
+}
+EOF
+if $CC $STD $WARN $INC -Isrc/libs/libkbuild -Isrc/system/kdos-tools \
+    -o "$OUT/restarts-maps" "$OUT/restarts-maps.c" src/libs/libkbase/*.c \
+    src/libs/libkpkg/*.c src/libs/libkbuild/kb_json.c 2> "$OUT/restarts-maps.err" \
+    && "$OUT/restarts-maps"; then
+    echo "  r-xp deleted under /usr and /opt counts; r--p, memfd and a live file do not"
+else
+    echo "  the maps classifier is wrong (bitmask $?)"; cat "$OUT/restarts-maps.err"; exit 1
+fi
 $CC $STD $WARN $INC -Isrc/libs/libksig -Isrc/system/kdos-kpkg \
     -o "$OUT/kdos-kpkg" \
     src/system/kdos-kpkg/*.c src/libs/libkbase/*.c src/libs/libkpkg/*.c \
@@ -493,8 +1710,13 @@ HOME="$BH" "$OUT/kdos-box" profile devbox > "$BP" 2>&1 || true
 grep -q "unknown key 'nonsense'" "$BP" \
     || { echo "  FAIL  an unknown profile key is reported by name"; cat "$BP"; exit 1; }
 echo "  ok    an unknown key is reported by name, not ignored"
-grep -q "network     = private     --unshare-netns" "$BP" \
+# devbox is a pack box: its private namespaces are podman's defaults, and the
+# profile names no distrobox flag for a command distrobox never ran.
+grep -q "network     = private     a network namespace of its own (podman's rootless default)" "$BP" \
+    && grep -q "processes   = private     a PID namespace of its own (podman's default)" "$BP" \
     || { echo "  FAIL  the profile prints the flag it enforced with"; cat "$BP"; exit 1; }
+grep -q -- "--unshare-" "$BP" \
+    && { echo "  FAIL  a pack box's profile names distrobox's flags"; cat "$BP"; exit 1; }
 echo "  ok    every key names the podman flag behind it"
 grep -q "audio=no gpu=yes cannot take a device away" "$BP" \
     || { echo "  FAIL  a key that cannot be enforced must say so"; cat "$BP"; exit 1; }
@@ -519,11 +1741,57 @@ HOME="$BH" "$OUT/kdos-box" profile foreign > "$OUT/box2f.txt" 2>&1 || true
 grep -q "! wayland=no cannot be enforced" "$OUT/box2f.txt" \
     && grep -q "! ephemeral is not enforced" "$OUT/box2f.txt" \
     || { echo "  FAIL  a distrobox box's unenforceable keys say so"; cat "$OUT/box2f.txt"; exit 1; }
+grep -q "network     = host        --network host" "$OUT/box2f.txt" \
+    && grep -q "home        = shared      the user's own \$HOME$" "$OUT/box2f.txt" \
+    || { echo "  FAIL  a distrobox box's profile names distrobox's mechanism"; cat "$OUT/box2f.txt"; exit 1; }
+printf 'base=image:docker.io/library/debian:trixie\nnetwork=private\nprocesses=private\n' \
+    > "$BH/.config/kdos/boxes/foreign.conf"
+HOME="$BH" "$OUT/kdos-box" profile foreign > "$OUT/box2g.txt" 2>&1 || true
+grep -q "network     = private     --unshare-netns$" "$OUT/box2g.txt" \
+    && grep -q "processes   = private     --unshare-process$" "$OUT/box2g.txt" \
+    || { echo "  FAIL  a distrobox box's private namespaces are distrobox's --unshare-* flags"; cat "$OUT/box2g.txt"; exit 1; }
+# An accent is a KWin rule, not a create flag, and x11 is read at launch:
+# neither asks for the box to be made again.
+HOME="$BH" "$OUT/kdos-box" profile foreign accent=amber > "$OUT/box2h.txt" 2>&1 || true
+grep -q '^accent=amber$' "$BH/.config/kdos/boxes/foreign.conf" \
+    && grep -q '^foreign: written — the title-bar colour changes now\.$' "$OUT/box2h.txt" \
+    || { echo "  FAIL  an accent-only write says the colour changes now"; cat "$OUT/box2h.txt"; exit 1; }
+HOME="$BH" "$OUT/kdos-box" profile foreign x11=no > "$OUT/box2h.txt" 2>&1 || true
+grep -q "^foreign: written — it applies at the box's next launch\.$" "$OUT/box2h.txt" \
+    || { echo "  FAIL  a launch-time key's write applies at the next launch"; cat "$OUT/box2h.txt"; exit 1; }
+# A write of the values the profile already holds is not made and says so;
+# `none` is the stored `session`, so it is unchanged after `accent=none`,
+# and likewise `memory=unlimited` and `cpus=all` over no limit.
+for _w in x11=no accent=amber; do
+    HOME="$BH" "$OUT/kdos-box" profile foreign "$_w" > "$OUT/box2u.txt" 2>&1 || true
+    grep -q "^foreign: unchanged — it already holds those values\.$" "$OUT/box2u.txt" \
+        || { echo "  FAIL  a rewrite of $_w says unchanged"; cat "$OUT/box2u.txt"; exit 1; }
+done
+HOME="$BH" "$OUT/kdos-box" profile foreign accent=none > /dev/null 2>&1 || true
+HOME="$BH" "$OUT/kdos-box" profile foreign accent=none > "$OUT/box2u.txt" 2>&1 || true
+grep -q '^accent=session$' "$BH/.config/kdos/boxes/foreign.conf" \
+    && grep -q "^foreign: unchanged — it already holds those values\.$" "$OUT/box2u.txt" \
+    || { echo "  FAIL  accent=none over a stored session says unchanged"; cat "$OUT/box2u.txt"; exit 1; }
+# `unlimited` and `all` are the printed no-limit words, stored empty.
+HOME="$BH" "$OUT/kdos-box" profile foreign memory=unlimited cpus=all > "$OUT/box2u.txt" 2>&1 || true
+grep -q '^memory=$' "$BH/.config/kdos/boxes/foreign.conf" \
+    && grep -q '^cpus=$' "$BH/.config/kdos/boxes/foreign.conf" \
+    && grep -q "^foreign: unchanged — it already holds those values\.$" "$OUT/box2u.txt" \
+    || { echo "  FAIL  memory=unlimited cpus=all over no limit says unchanged"; cat "$OUT/box2u.txt"; exit 1; }
 rm -f "$BH/.config/kdos/boxes/foreign.conf"
+echo "  ok    a write that changes nothing says unchanged"
+# `<verb> --help` and `-h` print the usage on stdout and exit 0, whatever the verb.
+for _v in "profile --help" "remove -h" "create --help"; do
+    _rc=0; HOME="$BH" "$OUT/kdos-box" $_v > "$OUT/box2v.txt" 2> "$OUT/box2v.err" || _rc=$?
+    [ "$_rc" = 0 ] && grep -q '^usage: kdos-box list' "$OUT/box2v.txt" && [ ! -s "$OUT/box2v.err" ] \
+        || { echo "  FAIL  kdos-box $_v prints the usage on stdout, exit 0 (rc $_rc)"; cat "$OUT/box2v.txt" "$OUT/box2v.err"; exit 1; }
+done
+echo "  ok    kdos-box <verb> --help prints the usage on stdout"
 echo "  ok    an app box and a dev box differ in the profile, not in kind"
 
 # `export` names a box's launcher with its launcher id, <box>.<stem>, the app
 # id KWin gives the launch's windows, so its pin lights and its rule applies.
+printf 'base=image:docker.io/library/archlinux:latest\n' > "$BH/.config/kdos/boxes/arch.conf"
 HOME="$BH" "$OUT/kdos-box" export arch gimp > "$OUT/box3.txt" 2>&1 || true
 test -f "$BH/.local/share/applications/arch.gimp.desktop" \
     || { echo "  FAIL  an exported launcher is <box>.<stem>.desktop"; exit 1; }
@@ -538,6 +1806,646 @@ HOME="$BH" "$OUT/kdos-box" unexport arch gimp > /dev/null 2>&1 || true
 test ! -e "$BH/.local/share/applications/arch.gimp.desktop" \
     || { echo "  FAIL  unexport removes exactly what export added"; exit 1; }
 echo "  ok    and unexport removes exactly what export added"
+# REMOVE OVER A FAKE ENGINE: podman keeps its containers and images as files
+# under $FAKE_STATE, and distrobox ends a create the way the real one does.
+# A second uninstall of a removed app is "not installed", whatever profile the
+# first one kept; `kdos-box remove` takes the box's exports with it and a
+# neighbour's stay; a create prints KDOS's way in and none of distrobox's.
+RX="$SOCKD/rmx"
+rm -rf "$RX"; mkdir -p "$RX/bin" "$RX/state" "$RX/home/.config/kdos/boxes"
+cat > "$RX/bin/podman" <<'FAKE'
+#!/bin/bash
+S="$FAKE_STATE"
+case "$1 $2" in
+    "container exists") [ -e "$S/c.$3" ]; exit $? ;;
+    "image exists") [ -e "$S/i.${3//\//_}" ]; exit $? ;;
+    "ps --all") for c in "$S"/c.*; do [ -e "$c" ] && echo "${c##*/c.}"; done; exit 0 ;;
+    "images --format") for i in "$S"/i.kdos_*; do [ -e "$i" ] && echo "localhost/kdos/${i##*/i.kdos_}"; done; exit 0 ;;
+    "image inspect") i="${!#}"; [ -e "$S/i.${i//\//_}" ] && echo 557108224; exit 0 ;;
+esac
+case "$1" in
+    pull) echo "$*" >> "$S/pulls"; exit 0 ;;
+    inspect) case "$*" in *io.kdos.profile*) cat "$S/label.${!#}" 2>/dev/null; exit 0 ;; esac
+             [ -e "$S/c.${!#}" ] && echo exited; exit 0 ;;
+    rm) [ -e "$S/c.${!#}" ] || exit 1; rm -f "$S/c.${!#}"; exit 0 ;;
+    rmi) i="${!#}"; [ -e "$S/i.${i//\//_}" ] || exit 1; rm -f "$S/i.${i//\//_}"; exit 0 ;;
+    create) echo c0ffee; exit 0 ;;
+    start|exec) exit 1 ;;
+esac
+exit 0
+FAKE
+cat > "$RX/bin/distrobox" <<'FAKE'
+#!/bin/bash
+printf '%s\n' "$@" > "$FAKE_STATE/dbargs"
+while [ $# -gt 0 ]; do [ "$1" = --name ] && n="$2"; shift; done
+: > "$FAKE_STATE/c.$n"
+echo "Warning: a line distrobox's caller must still see" >&2
+printf >&2 "Creating '%s' using image x\t" "$n"
+printf >&2 "\033[32m [ OK ]\n\033[0mDistrobox '%s' successfully created.\n" "$n"
+printf >&2 "To enter, run:\n\n"
+printf "distrobox enter %s\n\n" "$n"
+echo "sha256:an-image-id-a-pull-prints"
+FAKE
+chmod +x "$RX/bin/podman" "$RX/bin/distrobox"
+ln -sf "$OUT/kdos-box" "$RX/bin/kdos-box"
+rx() { env -i PATH="$RX/bin:/usr/bin:/bin" HOME="$RX/home" FAKE_STATE="$RX/state" \
+    XDG_RUNTIME_DIR="$RX" KDOS_CATALOGUE=src/system/kdos-appbox/catalogue \
+    LANG=C.UTF-8 ASAN_OPTIONS="$ASAN_OPTIONS" "$@"; }
+: > "$RX/state/c.app.zathura"; : > "$RX/state/i.kdos_app.zathura"
+printf 'base=image:kdos/app.zathura\n' > "$RX/home/.config/kdos/boxes/app.zathura.conf"
+rx "$OUT/kdos-appbox" uninstall app.zathura > "$RX/rm1" 2>&1
+grep -q '^==> app.zathura removed$' "$RX/rm1" \
+    && test -e "$RX/home/.config/kdos/boxes/app.zathura.conf" \
+    || { echo "  FAIL  an installed app is removed and its profile kept"; cat "$RX/rm1"; exit 1; }
+rx "$OUT/kdos-appbox" uninstall app.zathura > "$RX/rm2" 2>&1
+grep -q '^==> app.zathura is not installed$' "$RX/rm2" \
+    && ! grep -q 'removed' "$RX/rm2" \
+    && test -e "$RX/home/.config/kdos/boxes/app.zathura.conf" \
+    || { echo "  FAIL  a second uninstall says not installed and keeps the profile"; cat "$RX/rm2"; exit 1; }
+echo "  ok    a second uninstall says not installed, whatever profile the first kept"
+# A STORE BOX WHOSE IMAGE IS GONE: the listing says so, and a create refuses
+# before any pull, since a kdos/ image never comes from a registry.
+cp "$RX/home/.config/kdos/boxes/app.zathura.conf" "$RX/zconf"
+: > "$RX/state/i.kdos_app.xournalpp"
+printf 'base=image:kdos/app.xournalpp\n' > "$RX/home/.config/kdos/boxes/app.xournalpp.conf"
+rx "$OUT/kdos-box" list --json > "$RX/lsz" 2>&1
+grep -q '"name":"app.zathura",[^}]*"image":"absent"' "$RX/lsz" \
+    && grep -q '"name":"app.xournalpp",[^}]*"image":"present"' "$RX/lsz" \
+    || { echo "  FAIL  list says whether a store box's image is in the local store"; cat "$RX/lsz"; exit 1; }
+rm -f "$RX/state/i.kdos_app.xournalpp" "$RX/home/.config/kdos/boxes/app.xournalpp.conf"
+rm -f "$RX/state/pulls"
+WRC=0; rx "$OUT/kdos-box" create app.zathura > "$RX/crz" 2>&1 || WRC=$?
+[ "$WRC" -ne 0 ] \
+    && grep -qF 'app.zathura: its application is not installed — `kdos app install app.zathura` builds its image and makes the box — nothing was written' "$RX/crz" \
+    && ! grep -q 'reaches the network' "$RX/crz" \
+    && test ! -e "$RX/state/pulls" \
+    && cmp -s "$RX/zconf" "$RX/home/.config/kdos/boxes/app.zathura.conf" \
+    || { echo "  FAIL  a create of a store box with no image refuses before any pull"; cat "$RX/crz"; exit 1; }
+echo "  ok    a store box with no image is listed absent, and its create refuses before any pull"
+WRC=0; rx "$OUT/kdos-box" create myzat base=image:kdos/app.zathura > "$RX/crm" 2>&1 || WRC=$?
+[ "$WRC" -ne 0 ] \
+    && grep -qF 'myzat: its image kdos/app.zathura is not installed — `kdos app install app.zathura` builds it, then this create can run — nothing was written' "$RX/crm" \
+    && ! grep -q 'makes the box' "$RX/crm" \
+    && test ! -e "$RX/state/pulls" \
+    && test ! -e "$RX/home/.config/kdos/boxes/myzat.conf" \
+    || { echo "  FAIL  a create of another box on a missing store image sends the create back round"; cat "$RX/crm"; exit 1; }
+echo "  ok    a create of another box on a missing store image says the install builds the image, then this create runs"
+printf 'base=image:kdos/deb.libc__-dev\n' > "$RX/home/.config/kdos/boxes/deb.libc__-dev.conf"
+rx "$OUT/kdos-box" create deb.libc__-dev 2>&1 \
+    | grep -qF '`kdos app install deb:libc++-dev` builds its image' \
+    || { echo "  FAIL  a Debian box's install hint writes its package's + back"; exit 1; }
+rm -f "$RX/home/.config/kdos/boxes/deb.libc__-dev.conf"
+echo "  ok    a Debian box's install hint names the package deb_name took it from"
+printf 'base=image:kdos/deb.hello\n' > "$RX/home/.config/kdos/boxes/deb.hello.conf"
+rx "$OUT/kdos-appbox" uninstall deb:hello > "$RX/rmd" 2>&1
+grep -q '^==> deb:hello is not installed$' "$RX/rmd" \
+    && ! grep -q 'removed' "$RX/rmd" \
+    && test -e "$RX/home/.config/kdos/boxes/deb.hello.conf" \
+    || { echo "  FAIL  a deb: uninstall with only a kept profile says not installed"; cat "$RX/rmd"; exit 1; }
+echo "  ok    a deb: uninstall with only a kept profile says not installed"
+: > "$RX/state/i.kdos_app.xournalpp"
+printf '# kept by kdos-box remove; remove --purge deletes it\nbase=image:kdos/app.xournalpp\n' \
+    > "$RX/home/.config/kdos/boxes/app.xournalpp.conf"
+rx "$OUT/kdos-appbox" uninstall app.xournalpp > "$RX/rmk" 2>&1
+grep -q '^==> app.xournalpp removed$' "$RX/rmk" \
+    && test ! -e "$RX/home/.config/kdos/boxes/app.xournalpp.conf" \
+    || { echo "  FAIL  an uninstall of a box with no container deletes its kept profile"; cat "$RX/rmk"; exit 1; }
+echo "  ok    an uninstall of a box with no container deletes its kept profile"
+: > "$RX/state/i.docker.io_library_alpine:latest"
+rx "$OUT/kdos-box" create t4 base=image:docker.io/library/alpine:latest > "$RX/cr" 2>&1 \
+    || { echo "  FAIL  a distrobox create over the fake engine"; cat "$RX/cr"; exit 1; }
+grep -q '^t4 created — enter it with: kdos-box enter t4$' "$RX/cr" \
+    && grep -q '^Warning: a line distrobox' "$RX/cr" \
+    && grep -q "^Creating 't4' using image x"$'\t'" \[ OK \]$" "$RX/cr" \
+    && ! grep -q 'To enter, run:\|distrobox enter\|successfully created\|an-image-id' "$RX/cr" \
+    && ! grep -q $'\033' "$RX/cr" \
+    || { echo "  FAIL  a create keeps distrobox's errors and drops its way in"; cat -A "$RX/cr"; exit 1; }
+echo "  ok    a create prints kdos-box enter and none of distrobox's closing lines"
+# THE CONTAINER CARRIES WHAT IT WAS MADE FROM: a launch-time key's write asks
+# for no recreate, and a create-time key's names itself in the report.
+grep -o 'io\.kdos\.profile=v1\.[0-9a-f]*' "$RX/state/dbargs" | cut -d= -f2 > "$RX/state/label.t4"
+[ "$(wc -c < "$RX/state/label.t4")" = 108 ] \
+    || { echo "  FAIL  a create labels its container with the profile digest"; cat "$RX/state/dbargs"; exit 1; }
+rx "$OUT/kdos-box" profile t4 x11=no > "$RX/pf1" 2>&1
+grep -q "^t4: written — it applies at the box's next launch\.$" "$RX/pf1" \
+    && ! grep -q 'written after' "$RX/pf1" \
+    || { echo "  FAIL  x11 applies at the next launch and needs no recreate"; cat "$RX/pf1"; exit 1; }
+rx "$OUT/kdos-box" profile t4 network=none > "$RX/pf2" 2>&1
+grep -q '^t4: written — network applies at CREATE time' "$RX/pf2" \
+    && grep -q '! the profile was written after this box was created: network differs — it applies once `kdos-box remove t4` has run' "$RX/pf2" \
+    && grep -q '^created     = differs     the container was made with other create-time values (label io\.kdos\.profile)$' "$RX/pf2" \
+    || { echo "  FAIL  a create-time change is named in the recreate warning"; cat "$RX/pf2"; exit 1; }
+# The keys named are those that differ from the container's label, not from
+# the profile before the write: one set back to its created value is in
+# effect now, and one an earlier write changed is still named.
+rx "$OUT/kdos-box" profile t4 network=host > "$RX/pf3" 2>&1
+grep -q '^t4: written — network is what the box was created with, so it is in effect now\.$' "$RX/pf3" \
+    && ! grep -q 'written after' "$RX/pf3" \
+    && grep -q '^created     = matches     the container was made with these create-time values (label io\.kdos\.profile)$' "$RX/pf3" \
+    || { echo "  FAIL  a create-time key set back to its created value is in effect now"; cat "$RX/pf3"; exit 1; }
+rx "$OUT/kdos-box" profile t4 network=none persistence=ephemeral > "$RX/pf4" 2>&1
+grep -q '^t4: written — persistence, network apply at CREATE time' "$RX/pf4" \
+    || { echo "  FAIL  two create-time changes are both named"; cat "$RX/pf4"; exit 1; }
+rx "$OUT/kdos-box" profile t4 network=host persistence=ephemeral > "$RX/pf5" 2>&1
+grep -q '^t4: written — persistence applies at CREATE time, so run `kdos-box remove t4` and create it again for it to take effect\. network is what the box was created with, so it is in effect now\.$' "$RX/pf5" \
+    && grep -q '! the profile was written after this box was created: persistence differs —' "$RX/pf5" \
+    || { echo "  FAIL  only the create-time key that still differs from the container is named"; cat "$RX/pf5"; exit 1; }
+rx "$OUT/kdos-box" profile t4 persistence=persistent x11=yes > "$RX/pf6" 2>&1
+grep -q "^t4: written — persistence is what the box was created with, so it is in effect now\. The rest applies at the box's next launch\.$" "$RX/pf6" \
+    && ! grep -q 'written after' "$RX/pf6" \
+    || { echo "  FAIL  a key set back and a launch-time key are reported apart"; cat "$RX/pf6"; exit 1; }
+rx "$OUT/kdos-box" profile t4 persistence=ephemeral > /dev/null 2>&1
+rx "$OUT/kdos-box" profile t4 x11=no > "$RX/pf7" 2>&1
+grep -q "^t4: written — persistence applies at CREATE time, so run \`kdos-box remove t4\` and create it again for it to take effect\. The rest applies at the box's next launch\.$" "$RX/pf7" \
+    || { echo "  FAIL  a launch-time write over an earlier create-time change names both"; cat "$RX/pf7"; exit 1; }
+rx "$OUT/kdos-box" profile t4 persistence=persistent > /dev/null 2>&1
+grep -q '^Order=.*kdos-box-t4' "$RX/home/.config/kwinrulesrc" \
+    || { echo "  FAIL  a create writes the box's window rule"; cat "$RX/home/.config/kwinrulesrc"; exit 1; }
+echo "  ok    the recreate warning names the create-time keys that changed, and only those"
+: > "$RX/state/c.t4.x"
+printf 'base=image:docker.io/library/alpine:latest\n' > "$RX/home/.config/kdos/boxes/t4.x.conf"
+# WHAT THE CONTAINER WAS MADE FROM is said for every box that has one: a
+# labelled container matches or differs, an unlabelled one is unrecorded, and
+# a box with no container prints no `created` line.
+rx "$OUT/kdos-box" profile t4.x > "$RX/pf8" 2>&1
+grep -q '^created     = unrecorded  the container has no io\.kdos\.profile label, so nothing records what it was made with$' "$RX/pf8" \
+    && ! grep -q 'written after' "$RX/pf8" \
+    || { echo "  FAIL  a container with no profile label is reported unrecorded"; cat "$RX/pf8"; exit 1; }
+printf 'base=image:docker.io/library/alpine:latest\nnetwork=none\n' > "$RX/home/.config/kdos/boxes/t5.conf"
+rx "$OUT/kdos-box" profile t5 > "$RX/pf9" 2>&1
+grep -q '^box         = t5$' "$RX/pf9" && ! grep -q '^created ' "$RX/pf9" \
+    || { echo "  FAIL  a box with no container prints no created line"; cat "$RX/pf9"; exit 1; }
+rm -f "$RX/home/.config/kdos/boxes/t5.conf"
+echo "  ok    the report says whether the container matches, differs or records nothing"
+rx "$OUT/kdos-box" export t4 sh > /dev/null 2>&1
+rx "$OUT/kdos-box" export t4.x sh > /dev/null 2>&1
+test -f "$RX/home/.local/share/applications/t4.sh.desktop" && test -L "$RX/home/.local/bin/sh@t4" \
+    && test -f "$RX/home/.local/share/applications/t4.x.sh.desktop" \
+    || { echo "  FAIL  export writes a launcher and a shim"; ls -R "$RX/home/.local"; exit 1; }
+rx "$OUT/kdos-box" remove t4 --force > "$RX/rmb" 2>&1 \
+    || { echo "  FAIL  remove of a box over the fake engine"; cat "$RX/rmb"; exit 1; }
+test ! -e "$RX/home/.local/share/applications/t4.sh.desktop" \
+    && test ! -L "$RX/home/.local/bin/sh@t4" \
+    && test -f "$RX/home/.local/share/applications/t4.x.sh.desktop" \
+    && test -L "$RX/home/.local/bin/sh@t4.x" \
+    || { echo "  FAIL  remove takes the box's exports and leaves a neighbour's"; cat "$RX/rmb"; ls -R "$RX/home/.local"; exit 1; }
+grep -q '^t4: 2 exported launchers and commands removed$' "$RX/rmb" \
+    && [ "$(tail -n1 "$RX/rmb")" = "t4: 2 exported launchers and commands removed" ] \
+    || { echo "  FAIL  remove counts the exports on a line of their own, after what it keeps"; cat "$RX/rmb"; exit 1; }
+echo "  ok    removing a box removes its exported launchers and shims, and only its own"
+! grep -q 'kdos-box-t4\]' "$RX/home/.config/kwinrulesrc" \
+    || { echo "  FAIL  a removed box's window rule goes, its profile kept"; cat "$RX/home/.config/kwinrulesrc"; exit 1; }
+echo "  ok    a removed box's window rule goes with it"
+# A REFUSED COMMAND WRITES NOTHING: no profile, no launcher, one line, and a
+# status that is not 0.
+for cmdl in "export nosuch foo" "create t7 base=image:" "create t7 base=pack:" \
+            "create t7 base=image:docker.io/library/alpine:latest frobnicate=1" \
+            "create t7 base=image:docker.io/library/alpine:latest nokv" \
+            "create t7 base=image:no.such/registry-image" \
+            "clone nosuch t7" "run nosuch ls" "stop nosuch" "apps nosuch"; do
+    WRC=0; rx "$OUT/kdos-box" $cmdl > "$RX/ref" 2>&1 || WRC=$?
+    [ "$WRC" != 0 ] && test ! -e "$RX/home/.config/kdos/boxes/t7.conf" \
+        && test ! -e "$RX/home/.config/kdos/boxes/nosuch.conf" \
+        && test ! -e "$RX/home/.local/share/applications/nosuch.foo.desktop" \
+        || { echo "  FAIL  kdos-box $cmdl is refused and writes nothing (got $WRC)"; cat "$RX/ref"; ls "$RX/home/.config/kdos/boxes"; exit 1; }
+    case "$cmdl" in
+        "create t7 base=image:no.such"*) ;;
+        *) [ "$(wc -l < "$RX/ref")" = 1 ] \
+               || { echo "  FAIL  kdos-box $cmdl is refused in one line"; cat "$RX/ref"; exit 1; } ;;
+    esac
+done
+for cmdl in "export nosuch foo" "clone nosuch t7" "run nosuch ls" "stop nosuch" "apps nosuch"; do
+    rx "$OUT/kdos-box" $cmdl 2>&1 | grep -qx 'kdos-box: there is no box named nosuch' \
+        || { echo "  FAIL  kdos-box $cmdl says there is no box named nosuch"; rx "$OUT/kdos-box" $cmdl; exit 1; }
+done
+WRC=0; rx "$OUT/kdos-box" --help > "$RX/help" 2> "$RX/help.err" || WRC=$?
+[ "$WRC" = 0 ] && grep -q '^usage: kdos-box list' "$RX/help" && test ! -s "$RX/help.err" \
+    || { echo "  FAIL  kdos-box --help prints the usage on stdout and exits 0 (got $WRC)"; exit 1; }
+WRC=0; rx "$OUT/kdos-box" list --bogus > "$RX/ref" 2>&1 || WRC=$?
+[ "$WRC" = 2 ] || { echo "  FAIL  list refuses an unknown flag (got $WRC)"; cat "$RX/ref"; exit 1; }
+WRC=0; rx "$OUT/kdos-box" remove > "$RX/ref" 2>&1 || WRC=$?
+[ "$WRC" = 2 ] && [ "$(cat "$RX/ref")" = "usage: kdos-box remove <name> [--force] [--purge]" ] \
+    || { echo "  FAIL  remove with no name prints its one usage line (got $WRC)"; cat "$RX/ref"; exit 1; }
+rx "$OUT/kdos-box" create .x base=image:docker.io/library/alpine:latest 2>&1 \
+    | grep -q 'a box name is 1 to 63 of the characters A-Z a-z 0-9 \. _ -, starting with a letter or a digit' \
+    || { echo "  FAIL  a refused name says the length limit and the first character"; exit 1; }
+echo "  ok    a refused command says why in one line and leaves no profile or launcher"
+# A VALUE ITS KEY DOES NOT TAKE IS REFUSED, never read as the default: for
+# `network` the default is the host's, so a typo would widen the box.
+WRC=0; rx "$OUT/kdos-box" create t7 base=image:docker.io/library/alpine:latest network=maybe \
+    > "$RX/ref" 2>&1 || WRC=$?
+[ "$WRC" != 0 ] && test ! -e "$RX/home/.config/kdos/boxes/t7.conf" && test ! -e "$RX/state/c.t7" \
+    && grep -q "'network=maybe': network takes host, private or none — nothing was written" "$RX/ref" \
+    || { echo "  FAIL  create refuses network=maybe and makes nothing (got $WRC)"; cat "$RX/ref"; exit 1; }
+rx "$OUT/kdos-box" profile t8 network=none > /dev/null 2>&1
+cp "$RX/home/.config/kdos/boxes/t8.conf" "$RX/t8.before"
+for kv in network=maybe network=no persistence=forever pids=abc "x11=no network=maybe"; do
+    WRC=0; rx "$OUT/kdos-box" profile t8 $kv > "$RX/ref" 2>&1 || WRC=$?
+    [ "$WRC" != 0 ] && [ "$(wc -l < "$RX/ref")" = 1 ] && grep -q 'nothing was written$' "$RX/ref" \
+        && cmp -s "$RX/t8.before" "$RX/home/.config/kdos/boxes/t8.conf" \
+        || { echo "  FAIL  profile t8 $kv is refused and writes nothing (got $WRC)"; cat "$RX/ref"; exit 1; }
+done
+rx "$OUT/kdos-box" profile t8 2>&1 | grep -q '^network *= none *--network none' \
+    || { echo "  FAIL  a refused network value leaves network=none in force"; rx "$OUT/kdos-box" profile t8; exit 1; }
+printf 'network=maybe\n' > "$RX/home/.config/kdos/boxes/t9.conf"
+rx "$OUT/kdos-box" profile t9 2>&1 | grep -q "! boxes/t9.conf: 'network=maybe' — network takes host, private or none; the line is ignored" \
+    || { echo "  FAIL  a hand-written bad value is named under the profile"; rx "$OUT/kdos-box" profile t9; exit 1; }
+printf 'network=none\nnetwork=maybe\n' > "$RX/home/.config/kdos/boxes/t9.conf"
+rx "$OUT/kdos-box" profile t9 2>&1 | grep -q '^network *= none *--network none' \
+    || { echo "  FAIL  a hand-written bad value after a good one leaves the good one in force"; rx "$OUT/kdos-box" profile t9; exit 1; }
+rm -f "$RX/home/.config/kdos/boxes/t8.conf" "$RX/home/.config/kdos/boxes/t9.conf"
+echo "  ok    a value its key does not take is refused, and a hand-written one named"
+# --purge RELEASES THE IMAGE no other profile names, and keeps one another
+# profile does.
+rx "$OUT/kdos-box" create t8 base=image:docker.io/library/alpine:latest > /dev/null 2>&1 \
+    || { echo "  FAIL  a second distrobox create"; exit 1; }
+rx "$OUT/kdos-box" remove t8 --force --purge > "$RX/rmp" 2>&1
+grep -q '^  its image docker.io/library/alpine:latest is kept: the box t4\(\.x\)\? is made of it too$' "$RX/rmp" \
+    && test -e "$RX/state/i.docker.io_library_alpine:latest" \
+    || { echo "  FAIL  --purge keeps an image another profile names"; cat "$RX/rmp"; exit 1; }
+rm -f "$RX/home/.config/kdos/boxes/t4.x.conf" "$RX/home/.config/kdos/boxes/t4.conf" "$RX/state/c.t4.x"
+rx "$OUT/kdos-box" create t8 base=image:docker.io/library/alpine:latest > /dev/null 2>&1 \
+    && grep -q '^Order=.*kdos-box-t8' "$RX/home/.config/kwinrulesrc" \
+    || { echo "  FAIL  a create over an image the fake holds"; exit 1; }
+rx "$OUT/kdos-box" remove t8 --force --purge > "$RX/rmp" 2>&1
+grep -q '^  and its image docker.io/library/alpine:latest, which no other box uses, is released$' "$RX/rmp" \
+    && test ! -e "$RX/state/i.docker.io_library_alpine:latest" \
+    && ! grep -q 'kdos-box-t8' "$RX/home/.config/kwinrulesrc" \
+    || { echo "  FAIL  --purge releases an image no other box uses"; cat "$RX/rmp"; exit 1; }
+echo "  ok    remove --purge releases an image no other box is made of"
+# THE DISK COLUMN adds podman's RwSize for an image box and never for a pack
+# box, whose --rootfs RwSize is the whole composed stack.
+LS="$SOCKD/lsx"
+rm -rf "$LS"; mkdir -p "$LS/bin" "$LS/home/.config/kdos/boxes" "$LS/home/.local/share/kdos/boxes/t9p"
+cat > "$LS/bin/podman" <<'FAKE'
+#!/bin/bash
+case "$*" in
+    "ps --all --size"*) printf 't9p\t5000000000\nt9i\t3000000\n'; exit 0 ;;
+    "ps --all"*) printf 't9p\texited\t1767225600\t\nt9i\texited\t1767225600\t\n'; exit 0 ;;
+esac
+exit 0
+FAKE
+chmod +x "$LS/bin/podman"
+head -c 4096 /dev/zero > "$LS/home/.local/share/kdos/boxes/t9p/f"
+printf 'base=pack:x\n' > "$LS/home/.config/kdos/boxes/t9p.conf"
+printf 'base=image:docker.io/library/alpine:latest\n' > "$LS/home/.config/kdos/boxes/t9i.conf"
+env -i PATH="$LS/bin:/usr/bin:/bin" HOME="$LS/home" XDG_RUNTIME_DIR="$LS" \
+    ASAN_OPTIONS="$ASAN_OPTIONS" "$OUT/kdos-box" list --json > "$LS/out" 2>&1
+grep -q '"name":"t9p",[^}]*"disk":4096,' "$LS/out" \
+    && grep -q '"name":"t9i",[^}]*"disk":3000000,' "$LS/out" \
+    || { echo "  FAIL  list adds the container's writes to an image box's disk and not to a pack box's"; cat "$LS/out"; exit 1; }
+echo "  ok    list's disk adds an image box's container writes and never a pack box's"
+# A KEPT BOX A LAUNCH MAKES AGAIN loses the kept mark and gets its window rule
+# from that launch, not from some later refresh.
+: > "$RX/state/i.docker.io_library_alpine:latest"
+printf '# kept by kdos-box remove; remove --purge deletes it\nbase=image:docker.io/library/alpine:latest\n' \
+    > "$RX/home/.config/kdos/boxes/tk.conf"
+rx "$OUT/kdos-box" run tk ls > "$RX/rk" 2>&1 || true
+grep -q "^==> Recreating 'tk'" "$RX/rk" \
+    && ! grep -q '^# kept by' "$RX/home/.config/kdos/boxes/tk.conf" \
+    && grep -q '^\[kdos-box-tk\]' "$RX/home/.config/kwinrulesrc" \
+    || { echo "  FAIL  a launch that makes a kept box again drops the mark and writes its rule"; cat "$RX/rk"; exit 1; }
+rm -f "$RX/home/.config/kdos/boxes/tk.conf" "$RX/state/c.tk" "$RX/state/i.docker.io_library_alpine:latest"
+echo "  ok    a launch that makes a kept box again drops the mark and writes its window rule"
+# An install's or a removal's regeneration is quiet; the verb itself reports.
+: > "$RX/state/c.app.zathura"; : > "$RX/state/i.kdos_app.zathura"; : > "$RX/state/c.deb.extra"
+printf 'base=image:kdos/app.zathura\n' > "$RX/home/.config/kdos/boxes/app.zathura.conf"
+: > "$RX/state/i.kdos_base"
+rx "$OUT/kdos-appbox" uninstall app.zathura > "$RX/rmq" 2>&1
+grep -q '^==> app.zathura removed$' "$RX/rmq" && ! grep -q 'pack(s) read\|mime types' "$RX/rmq" \
+    || { echo "  FAIL  an uninstall prints only its own lines"; cat "$RX/rmq"; exit 1; }
+# The last store box's removal says the base it kept, and a removal with a
+# box still over the base, a Debian one among them, says nothing of it.
+KEPT='    kept kdos/base and the debian:trixie-slim it is built on (about 557 MB together), the floor of every store application; `podman rmi kdos/base debian:trixie-slim` gives the space back'
+grep -qxF "$KEPT" "$RX/rmq" && { echo "  FAIL  a removal with a Debian box over the base says nothing of it"; cat "$RX/rmq"; exit 1; }
+rx "$OUT/kdos-appbox" genlaunchers --packs --user 2>&1 | grep -q 'extracted pack(s) read' \
+    || { echo "  FAIL  genlaunchers itself reports what it read"; rx "$OUT/kdos-appbox" genlaunchers --packs --user; exit 1; }
+rm -f "$RX/state/c.deb.extra"
+echo "  ok    kdos app remove prints its own lines and none of the launcher generator's"
+: > "$RX/state/c.app.zathura"; : > "$RX/state/i.kdos_app.zathura"
+printf 'base=image:kdos/app.zathura\n' > "$RX/home/.config/kdos/boxes/app.zathura.conf"
+rx "$OUT/kdos-appbox" uninstall app.zathura > "$RX/rmz" 2>&1
+grep -qxF "$KEPT" "$RX/rmz" && grep -q '^==> app.zathura removed$' "$RX/rmz" && test -e "$RX/state/i.kdos_base" \
+    || { echo "  FAIL  the last store app's removal says the base it kept"; cat "$RX/rmz"; exit 1; }
+: > "$RX/state/c.deb.hello"; : > "$RX/state/i.kdos_deb.hello"
+printf 'base=image:kdos/deb.hello\n' > "$RX/home/.config/kdos/boxes/deb.hello.conf"
+rx "$OUT/kdos-appbox" uninstall deb:hello > "$RX/rmh" 2>&1
+grep -qxF "$KEPT" "$RX/rmh" && grep -q '^==> deb:hello removed$' "$RX/rmh" && test -e "$RX/state/i.kdos_base" \
+    || { echo "  FAIL  the last Debian box's removal says the base it kept"; cat "$RX/rmh"; exit 1; }
+rm -f "$RX/state/i.kdos_base" "$RX/state/c.deb.hello" "$RX/state/i.kdos_deb.hello" \
+    "$RX/home/.config/kdos/boxes/deb.hello.conf"
+echo "  ok    the last store app's removal, a Debian box's too, names the base it kept and how to give it back"
+# EXPORT ASKS THE BOX: a running box over a fake engine whose `exec` runs the
+# command on the host, so `command -v` answers for sh and not for a name no
+# host has. An option is a usage error; a missing command is refused; neither
+# writes a file. A bare command is a terminal launcher with a subtitle.
+EX="$SOCKD/expx"
+rm -rf "$EX"; mkdir -p "$EX/bin" "$EX/state" "$EX/home/.config/kdos/boxes"
+cat > "$EX/bin/podman" <<'FAKE'
+#!/bin/bash
+S="$FAKE_STATE"
+case "$1 $2" in
+    "container exists") [ -e "$S/c.$3" ]; exit $? ;;
+    "ps --all") for c in "$S"/c.*; do [ -e "$c" ] && echo "${c##*/c.}"; done; exit 0 ;;
+esac
+case "$1" in
+    inspect) b="${!#}"
+             case "$*" in *State.Running*)
+                 [ -e "$S/r.$b" ] || exit 0
+                 if [ -e "$S/t.$b" ]; then echo "true $(cat "$S/t.$b")"
+                 else echo "true 1767225600 500000000 -62135596800 0"; fi; exit 0 ;; esac
+             [ -e "$S/r.$b" ] && echo running && exit 0
+             [ -e "$S/c.$b" ] && echo exited; exit 0 ;;
+    logs) b="${!#}"; [ -e "$S/badlog.$b" ] && exit 1
+          [ -e "$S/slow.$b" ] && sleep 0.4
+          since=; [ "$2" = --since ] && since=$3
+          [ -e "$S/log.$b" ] && awk -v s="$since" '$1 > s' "$S/log.$b"; exit 0 ;;
+    exec) echo "$*" >> "$S/exec.log"; b=$2; shift 2
+          [ "$1" = test ] && { [ -e "$S/done.$b" ]; exit $?; }
+          [ "$1" = cat ] && exit 1; exec "$@" ;;
+    rm) [ -e "$S/c.${!#}" ] || exit 1; rm -f "$S/c.${!#}"; exit 0 ;;
+    start) exit 1 ;;
+esac
+exit 0
+FAKE
+chmod +x "$EX/bin/podman"
+ex() { env -i PATH="$EX/bin:/usr/bin:/bin" HOME="$EX/home" FAKE_STATE="$EX/state" \
+    XDG_RUNTIME_DIR="$EX" LANG=C.UTF-8 ASAN_OPTIONS="$ASAN_OPTIONS" "$@"; }
+: > "$EX/state/c.t5"; : > "$EX/state/r.t5"
+printf 'base=image:docker.io/library/alpine:latest\n' > "$EX/home/.config/kdos/boxes/t5.conf"
+ex "$OUT/kdos-box" export t5 --help > "$EX/e1" 2>&1 \
+    && { echo "  FAIL  export refuses an option as an app"; cat "$EX/e1"; exit 1; }
+ex "$OUT/kdos-box" export t5 kdos-no-such-command-x > "$EX/e2" 2>&1 \
+    && { echo "  FAIL  export refuses a command the box does not have"; cat "$EX/e2"; exit 1; }
+grep -q 'the box t5 has no command or application named kdos-no-such-command-x' "$EX/e2" \
+    && test -z "$(ls -A "$EX/home/.local/share/applications" "$EX/home/.local/bin" 2>/dev/null)" \
+    || { echo "  FAIL  a refused export says why and writes no file"; cat "$EX/e1" "$EX/e2"; ls -R "$EX/home/.local"; exit 1; }
+echo "  ok    export refuses an option and a command the box does not have, and writes nothing"
+ex "$OUT/kdos-box" export t5 sh > "$EX/e3" 2>&1 \
+    || { echo "  FAIL  export of a command the box has"; cat "$EX/e3"; exit 1; }
+grep -q '^Icon=utilities-terminal$' "$EX/home/.local/share/applications/t5.sh.desktop" \
+    && grep -q '^Terminal=true$' "$EX/home/.local/share/applications/t5.sh.desktop" \
+    && grep -q '^Comment=sh in the box t5$' "$EX/home/.local/share/applications/t5.sh.desktop" \
+    || { echo "  FAIL  a bare command's launcher is a terminal one with a subtitle"; cat "$EX/home/.local/share/applications/t5.sh.desktop"; exit 1; }
+echo "  ok    a bare command exports as a terminal launcher with the terminal's icon and a subtitle"
+# AN EXPORTED APPLICATION TAKES ITS ICON AND ITS COMMENT OUT OF THE BOX: a fake
+# engine whose box root is a directory, read by `exec <box> cat` and listed by
+# the icon query; unexport deletes exactly the icons export wrote.
+IX="$SOCKD/iconx"
+rm -rf "$IX"; mkdir -p "$IX/bin" "$IX/state" "$IX/home/.config/kdos/boxes" \
+    "$IX/root/usr/share/applications" "$IX/root/usr/share/icons/hicolor/48x48/apps" \
+    "$IX/root/usr/share/icons/hicolor/scalable/apps"
+printf '[Desktop Entry]\nType=Application\nName=Galculator\nComment=Scientific calculator\nExec=galculator\nIcon=accessories-calculator\n' \
+    > "$IX/root/usr/share/applications/galculator.desktop"
+printf 'png' > "$IX/root/usr/share/icons/hicolor/48x48/apps/accessories-calculator.png"
+printf '<svg/>' > "$IX/root/usr/share/icons/hicolor/scalable/apps/accessories-calculator.svg"
+cat > "$IX/bin/podman" <<'FAKE'
+#!/bin/bash
+S="$FAKE_STATE"; R="$FAKE_ROOT"
+case "$1 $2" in
+    "container exists") [ -e "$S/c.$3" ]; exit $? ;;
+esac
+case "$1" in
+    inspect) case "$*" in *State.Status*) echo running ;; esac; exit 0 ;;
+    exec) shift 2
+          case "$1" in
+              cat) [ "$2" = -- ] && shift; exec cat "$R$2" ;;
+              sh) i="${!#}"
+                  for f in "$R"/usr/share/icons/hicolor/*/apps/"$i".* "$R"/usr/share/pixmaps/"$i".*; do
+                      [ -f "$f" ] && echo "${f#"$R"}"; done; exit 0 ;;
+          esac; exit 1 ;;
+esac
+exit 0
+FAKE
+chmod +x "$IX/bin/podman"
+ix() { env -i PATH="$IX/bin:/usr/bin:/bin" HOME="$IX/home" FAKE_STATE="$IX/state" FAKE_ROOT="$IX/root" \
+    XDG_RUNTIME_DIR="$IX" LANG=C.UTF-8 ASAN_OPTIONS="$ASAN_OPTIONS" "$@"; }
+: > "$IX/state/c.fed"
+printf 'base=image:registry.fedoraproject.org/fedora:latest\n' > "$IX/home/.config/kdos/boxes/fed.conf"
+ix "$OUT/kdos-box" export fed galculator > "$IX/e" 2>&1 \
+    || { echo "  FAIL  export of a box's application"; cat "$IX/e"; exit 1; }
+IE="$IX/home/.local/share/applications/fed.galculator.desktop"
+grep -q '^Icon=fed.galculator$' "$IE" && grep -q '^Comment=Scientific calculator$' "$IE" \
+    && grep -q '^Name=Galculator (fed)$' "$IE" \
+    && cmp -s "$IX/home/.local/share/icons/hicolor/48x48/apps/fed.galculator.png" \
+              "$IX/root/usr/share/icons/hicolor/48x48/apps/accessories-calculator.png" \
+    && test -f "$IX/home/.local/share/icons/hicolor/scalable/apps/fed.galculator.svg" \
+    && test -z "$(ls -A "$IX" | grep '^kdos-export-')" \
+    || { echo "  FAIL  an exported application carries its icon and comment out of the box"; cat "$IE" "$IX/e"; ls -R "$IX/home/.local/share"; exit 1; }
+ix "$OUT/kdos-box" unexport fed galculator > /dev/null 2>&1
+test ! -e "$IE" && test -z "$(find "$IX/home/.local/share/icons" -type f)" \
+    || { echo "  FAIL  unexport deletes the icons export copied"; ls -R "$IX/home/.local/share"; exit 1; }
+echo "  ok    an exported application carries its icon and its comment, and unexport takes them away"
+# AN ENTER INTO A BOX NOT YET SET UP: the fake's logs never say
+# container_setup_done, so an in-place enter, past its quiet grace, says it
+# is setting the box up and waits; a SIGTERM (what `kdos-box stop` sends a
+# waiting launch through its wait mark) ends it with status 1, the stopped
+# line and no mark left.
+: > "$EX/state/c.t4"; : > "$EX/state/r.t4"
+ex "$OUT/kdos-box" enter t4 true > "$EX/w1" 2>&1 &
+WP=$!
+WM=
+for _ in $(seq 200); do
+    grep -q 'first use' "$EX/w1" 2>/dev/null \
+        && WM=$(ls "$EX/kdos/boxes/" 2>/dev/null | grep -m1 '^t4\.wait\.') && break
+    sleep 0.05
+done
+[ -n "$WM" ] && kill -TERM "${WM#t4.wait.}"
+WRC=0; wait "$WP" || WRC=$?
+[ "$WRC" = 1 ] \
+    && grep -q '^kdos-box: setting up t4 for its first use; this can take a minute$' "$EX/w1" \
+    && grep -q '^kdos-box: t4 was stopped before it was ready$' "$EX/w1" \
+    && ! ls "$EX/kdos/boxes/" 2>/dev/null | grep -q '^t4\.wait\.' \
+    || { echo "  FAIL  an enter waiting for setup says so, and a stop ends it with status 1 (got $WRC)"; cat "$EX/w1"; ls "$EX/kdos/boxes/"; exit 1; }
+echo "  ok    an enter into a box not set up says so, and a stop while it waits exits 1 quietly"
+# A waiting `kdos-box run` still dies of the stop's SIGTERM, its mark gone,
+# and never goes on into the box.
+ex "$OUT/kdos-box" run t4 true > "$EX/w2" 2>&1 &
+WP=$!
+WM=
+for _ in $(seq 100); do
+    WM=$(ls "$EX/kdos/boxes/" 2>/dev/null | grep -m1 '^t4\.wait\.') && break
+    sleep 0.05
+done
+[ -n "$WM" ] && kill -TERM "${WM#t4.wait.}"
+WRC=0; wait "$WP" || WRC=$?
+[ "$WRC" = 143 ] && ! ls "$EX/kdos/boxes/" 2>/dev/null | grep -q '^t4\.wait\.' \
+    || { echo "  FAIL  a waiting run dies of a stop's SIGTERM and leaves no mark (got $WRC)"; cat "$EX/w2"; ls "$EX/kdos/boxes/"; exit 1; }
+echo "  ok    and a waiting run dies of it, its wait mark removed"
+# A wait the time runs out on exits 1 with the line naming podman logs, and
+# never goes on into the half-built box.
+rm -f "$EX/state/exec.log"
+WRC=0; ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t4 true > "$EX/w3" 2>&1 || WRC=$?
+[ "$WRC" = 1 ] \
+    && grep -q '^kdos-box: t4 did not finish setting up in 1 s — its init'"'"'s output is in `podman logs t4`$' "$EX/w3" \
+    && ! grep -q ' t4 true$' "$EX/state/exec.log" 2>/dev/null \
+    || { echo "  FAIL  an enter whose wait runs out exits 1 and execs nothing (got $WRC)"; cat "$EX/w3" "$EX/state/exec.log" 2>/dev/null; exit 1; }
+rm -f "$EX/state/c.t4" "$EX/state/r.t4"
+echo "  ok    an enter whose setup wait runs out exits 1, names podman logs and never execs into the box"
+# READINESS IS THIS START'S LOG, READ WHOLE. The fake's log lines carry a
+# stamp and `logs --since` drops those at or before it, as podman does. A
+# marker from before the start does not count; one past 64 KiB of this
+# start's output does; a log podman cannot read falls back to the box's
+# /.containersetupdone.
+: > "$EX/state/c.t6"; : > "$EX/state/r.t6"
+printf '2025-12-31T00:00:00Z container_setup_done\n' > "$EX/state/log.t6"
+WRC=0; ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t6 true > "$EX/w4" 2>&1 || WRC=$?
+[ "$WRC" = 1 ] && grep -q '^kdos-box: t6 did not finish setting up in 1 s' "$EX/w4" \
+    && grep -q '^kdos-box: waiting for t6 to start$' "$EX/w4" && ! grep -q 'first use' "$EX/w4" \
+    || { echo "  FAIL  a marker from an earlier start does not make a box ready, and the wait is not a first use (got $WRC)"; cat "$EX/w4"; exit 1; }
+# A restart of a box set up before: this start's marker lands 0.4 s in and
+# an older one is in the whole log, so the enter prints nothing and runs.
+: > "$EX/state/c.t10"; : > "$EX/state/r.t10"
+printf '2025-12-31T00:00:00Z container_setup_done\n' > "$EX/state/log.t10"
+( sleep 0.4; printf '2026-01-01T00:00:01Z container_setup_done\n' >> "$EX/state/log.t10" ) &
+BGP=$!
+rm -f "$EX/state/exec.log"
+WRC=0; ex "$OUT/kdos-box" enter t10 true > "$EX/w11" 2>&1 || WRC=$?
+wait "$BGP"
+[ "$WRC" = 0 ] && grep -q ' t10 true$' "$EX/state/exec.log" 2>/dev/null && ! grep -q 'kdos-box:' "$EX/w11" \
+    || { echo "  FAIL  a restart of a set-up box ready within the grace enters with no line (got $WRC)"; cat "$EX/w11"; exit 1; }
+rm -f "$EX/state/"*.t10
+# A TERMINAL IS HANDED ON ONLY FROM ITS FOREGROUND: under a pty, an enter in
+# the foreground execs with --interactive --tty, and the same enter as a
+# background job (job control on, so it has a process group of its own) with
+# neither, so podman never sets a mode on a terminal it does not own.
+if command -v script > /dev/null; then
+    : > "$EX/state/c.tf"; : > "$EX/state/r.tf"
+    printf '2026-01-01T00:00:01Z container_setup_done\n' > "$EX/state/log.tf"
+    rm -f "$EX/state/exec.log"
+    ex script -qec "$OUT/kdos-box enter tf true" /dev/null > /dev/null 2>&1
+    grep -q '^exec --interactive --tty .* tf true$' "$EX/state/exec.log" \
+        || { echo "  FAIL  a foreground enter hands podman the terminal"; cat "$EX/state/exec.log"; exit 1; }
+    rm -f "$EX/state/exec.log"
+    ex script -qec "set -m; $OUT/kdos-box enter tf true & wait" /dev/null > /dev/null 2>&1
+    grep -q ' tf true$' "$EX/state/exec.log" \
+        && ! grep -q -- '--tty\|--interactive' "$EX/state/exec.log" \
+        || { echo "  FAIL  a background enter takes neither --tty nor --interactive"; cat "$EX/state/exec.log"; exit 1; }
+    rm -f "$EX/state/"*.tf
+    echo "  ok    a background job gets the plain exec, the foreground the terminal"
+else
+    echo "  skip  no script(1): the foreground terminal check needs a pty"
+fi
+# A log that reads back with no marker is a first setup still running, even
+# with /.containersetupdone present: distrobox-init creates the file after
+# its package install and prints the marker only after the user setup.
+: > "$EX/state/c.t11"; : > "$EX/state/r.t11"; : > "$EX/state/done.t11"
+printf '2026-01-01T00:00:01Z installing packages
+' > "$EX/state/log.t11"
+WRC=0; ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t11 true > "$EX/w12" 2>&1 || WRC=$?
+[ "$WRC" = 1 ] && grep -q '^kdos-box: setting up t11 for its first use; this can take a minute$' "$EX/w12" \
+    && ! grep -q 'waiting for' "$EX/w12" \
+    || { echo "  FAIL  /.containersetupdone beside a readable log with no marker is still a first use (got $WRC)"; cat "$EX/w12"; exit 1; }
+rm -f "$EX/state/"*.t11
+# The grace is clocked, not counted in polls: with each `podman logs` taking
+# 0.4 s, 15 polls run past 4.5 s, and a marker landing at 4.5 s must still
+# find the line printed at 3 s.
+: > "$EX/state/c.t12"; : > "$EX/state/r.t12"; : > "$EX/state/slow.t12"
+printf '2026-01-01T00:00:01Z installing packages
+' > "$EX/state/log.t12"
+( sleep 4.5; printf '2026-01-01T00:00:02Z container_setup_done
+' >> "$EX/state/log.t12" ) &
+BGP=$!
+WRC=0; ex KDOS_BOX_SETUP_WAIT=20 "$OUT/kdos-box" enter t12 true > "$EX/w13" 2>&1 || WRC=$?
+wait "$BGP"
+[ "$WRC" = 0 ] && grep -q '^kdos-box: setting up t12 for its first use; this can take a minute$' "$EX/w13" \
+    || { echo "  FAIL  the quiet grace ends 3 s in by the clock however slow each poll is (got $WRC)"; cat "$EX/w13"; exit 1; }
+rm -f "$EX/state/"*.t12
+# The wait is clocked too: with each `podman logs` taking 0.4 s, a 2 s wait
+# counted in polls runs past 6 s; by the clock it ends within one poll of 2 s.
+: > "$EX/state/c.t13"; : > "$EX/state/r.t13"; : > "$EX/state/slow.t13"
+printf '2026-01-01T00:00:01Z installing packages
+' > "$EX/state/log.t13"
+WT0=$(date +%s%N)
+WRC=0; ex KDOS_BOX_SETUP_WAIT=2 "$OUT/kdos-box" enter t13 true > "$EX/w14" 2>&1 || WRC=$?
+WMS=$(( ($(date +%s%N) - WT0) / 1000000 ))
+[ "$WRC" = 1 ] && grep -q '^kdos-box: t13 did not finish setting up in 2 s' "$EX/w14" \
+    && [ "$WMS" -ge 2000 ] && [ "$WMS" -lt 3500 ] \
+    || { echo "  FAIL  a 2 s setup wait ends 2 s in by the clock however slow each poll is (got $WRC after $WMS ms)"; cat "$EX/w14"; exit 1; }
+rm -f "$EX/state/"*.t13
+echo "  ok    the enter grace is clocked, and a readable log with no marker is a first use"
+: > "$EX/state/c.t7"; : > "$EX/state/r.t7"
+awk 'BEGIN { for (i = 0; i < 1200; i++) printf "2026-01-01T00:00:01Z %s\n", sprintf("%060d", i);
+             print "2026-01-01T00:00:02Z container_setup_done" }' > "$EX/state/log.t7"
+rm -f "$EX/state/exec.log"
+ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t7 true > "$EX/w5" 2>&1
+[ "$(stat -c %s "$EX/state/log.t7")" -gt 65536 ] \
+    && grep -q ' t7 true$' "$EX/state/exec.log" 2>/dev/null \
+    && ! grep -q 'setting up\|did not finish' "$EX/w5" \
+    || { echo "  FAIL  a marker past 64 KiB of this start's log makes the box ready"; cat "$EX/w5"; exit 1; }
+: > "$EX/state/c.t8"; : > "$EX/state/r.t8"; : > "$EX/state/badlog.t8"; : > "$EX/state/done.t8"
+rm -f "$EX/state/exec.log"
+ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t8 true > "$EX/w6" 2>&1
+grep -q '^exec t8 test -e /.containersetupdone$' "$EX/state/exec.log" 2>/dev/null \
+    && grep -q ' t8 true$' "$EX/state/exec.log" \
+    && ! grep -q 'did not finish' "$EX/w6" \
+    || { echo "  FAIL  a log podman cannot read falls back to /.containersetupdone"; cat "$EX/w6" "$EX/state/exec.log"; exit 1; }
+# conmon stamps the init's first lines before podman takes StartedAt, so a
+# marker stamped just before it is this start's. On a restart the previous
+# run's FinishedAt bounds the read: a marker before it does not count, one
+# between it and StartedAt does.
+: > "$EX/state/c.t9"; : > "$EX/state/r.t9"
+printf '2026-01-01T00:00:00.3Z container_setup_done\n' > "$EX/state/log.t9"
+rm -f "$EX/state/exec.log"
+ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t9 true > "$EX/w8" 2>&1
+grep -q ' t9 true$' "$EX/state/exec.log" 2>/dev/null && ! grep -q 'setting up\|did not finish' "$EX/w8" \
+    || { echo "  FAIL  a marker stamped just before StartedAt makes the box ready"; cat "$EX/w8"; exit 1; }
+echo "1767225600 500000000 1767225600 200000000" > "$EX/state/t.t9"
+printf '2026-01-01T00:00:00.1Z container_setup_done\n' > "$EX/state/log.t9"
+WRC=0; ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t9 true > "$EX/w9" 2>&1 || WRC=$?
+[ "$WRC" = 1 ] && grep -q '^kdos-box: t9 did not finish setting up in 1 s' "$EX/w9" \
+    || { echo "  FAIL  a marker from before the previous run's end does not make a restart ready (got $WRC)"; cat "$EX/w9"; exit 1; }
+printf '2026-01-01T00:00:00.1Z container_setup_done\n2026-01-01T00:00:00.3Z container_setup_done\n' > "$EX/state/log.t9"
+rm -f "$EX/state/exec.log"
+ex KDOS_BOX_SETUP_WAIT=1 "$OUT/kdos-box" enter t9 true > "$EX/w10" 2>&1
+grep -q ' t9 true$' "$EX/state/exec.log" 2>/dev/null && ! grep -q 'did not finish' "$EX/w10" \
+    || { echo "  FAIL  a restart's own marker after the previous run's end makes it ready"; cat "$EX/w10"; exit 1; }
+rm -f "$EX/state/"*.t6 "$EX/state/"*.t7 "$EX/state/"*.t8 "$EX/state/"*.t9 "$EX/state/exec.log"
+echo "  ok    readiness reads this start's whole log, ignores an earlier start's marker, and falls back on an unreadable log"
+# A WINDOW ENTER STOPPED WHILE IT WAITS SAYS SO IN THE CALLING SHELL: the
+# fake Konsole runs its -e command with its output gone, as the window's is
+# to the caller, and the caller prints the stopped line once and exits 1.
+: > "$EX/state/c.t4"; : > "$EX/state/r.t4"
+printf '#!/bin/bash\nwhile [ $# -gt 0 ] && [ "$1" != -e ]; do shift; done; shift\nexec "$@" >/dev/null 2>&1\n' > "$EX/bin/konsole"
+chmod +x "$EX/bin/konsole"; ln -sf "$OUT/kdos-box" "$EX/bin/kdos-box"
+ex "$OUT/kdos-box" enter t4 --window > "$EX/w7" 2>&1 &
+WP=$!
+WM=
+for _ in $(seq 100); do
+    WM=$(ls "$EX/kdos/boxes/" 2>/dev/null | grep -m1 '^t4\.wait\.') && break
+    sleep 0.05
+done
+[ -n "$WM" ] && kill -TERM "${WM#t4.wait.}"
+WRC=0; wait "$WP" || WRC=$?
+[ "$WRC" = 1 ] \
+    && [ "$(cat "$EX/w7")" = "kdos-box: t4 was stopped before it was ready" ] \
+    && ! ls "$EX/kdos/boxes/" 2>/dev/null | grep -q '^t4\.\(wait\|enter\)\.' \
+    || { echo "  FAIL  a stopped window enter prints the stopped line in the calling shell and exits 1 (got $WRC)"; cat "$EX/w7"; ls "$EX/kdos/boxes/"; exit 1; }
+rm -f "$EX/state/c.t4" "$EX/state/r.t4" "$EX/bin/konsole" "$EX/bin/kdos-box"
+echo "  ok    a window enter stopped while it waits says so in the calling shell and exits 1"
+# REMOVE TWICE KEEPS WHAT THE FIRST KEPT: the second finds no container and a
+# profile the first marked, keeps it and names --purge; a failed create's
+# unmarked profile is deleted, and --purge deletes a marked one.
+rm -f "$EX/state/r.t5"
+ex "$OUT/kdos-box" remove t5 > "$EX/r1" 2>&1 \
+    && grep -q '^t5 removed — its profile is kept in ' "$EX/r1" \
+    || { echo "  FAIL  a first remove keeps the profile"; cat "$EX/r1"; exit 1; }
+ex "$OUT/kdos-box" remove t5 > "$EX/r2" 2>&1 \
+    && test -f "$EX/home/.config/kdos/boxes/t5.conf" \
+    && grep -q '^t5 has no container; its profile is kept in .*t5.conf; `kdos-box remove t5 --purge` deletes it$' "$EX/r2" \
+    && ex "$OUT/kdos-box" profile t5 accent=amber > /dev/null 2>&1 \
+    && ex "$OUT/kdos-box" remove t5 > "$EX/r3" 2>&1 \
+    && test -f "$EX/home/.config/kdos/boxes/t5.conf" \
+    || { echo "  FAIL  a second remove keeps the profile the first kept"; cat "$EX/r2" "$EX/r3"; exit 1; }
+ex "$OUT/kdos-box" remove t5 --purge > "$EX/r4" 2>&1 \
+    && test ! -e "$EX/home/.config/kdos/boxes/t5.conf" \
+    || { echo "  FAIL  remove --purge deletes a kept profile"; cat "$EX/r4"; exit 1; }
+printf 'base=image:docker.io/library/alpine:latest\n' > "$EX/home/.config/kdos/boxes/t6.conf"
+ex "$OUT/kdos-box" remove t6 > "$EX/r5" 2>&1 \
+    && test ! -e "$EX/home/.config/kdos/boxes/t6.conf" \
+    && grep -q '^t6 had no container — its profile is removed$' "$EX/r5" \
+    || { echo "  FAIL  a failed create's profile is removed"; cat "$EX/r5"; exit 1; }
+echo "  ok    a second remove keeps the profile the first kept; a failed create's goes"
 # The box policy's pure parts: names, launcher ids, the bus proxy's rules, the
 # three confinement states and the KWin rules written into a file that is
 # also the user's.
@@ -551,14 +2459,18 @@ echo "==> packs: the store, the solve, the graft and the two signature answers"
 # The fixture's packs are ASSEMBLED here rather than committed: a .kpack is a
 # binary nobody can read in a diff, and mkfs.erofs is not on a developer's
 # host. `--fixture` mounts nothing, so a stub image is as good as a filesystem.
-PKS="$OUT/packs"
-mkdir -p "$PKS" "$OUT/keys" "$OUT/medium"
+# The store and the medium are under $SOCKD: kdos-packd prints a pack's whole
+# overlay line in one bounded buffer, and paths that grew with TMPDIR would cut
+# it before the base layer is named.
+PKS="$SOCKD/packs"
+PKM="$SOCKD/medium"
+mkdir -p "$PKS" "$OUT/keys" "$PKM"
 printf 'this stands in for an EROFS image; --fixture never mounts it' > "$OUT/stub.img"
 for m in testing/fixtures/pack/meta/*.meta; do
     id=$(basename "$m" .meta)
     # app.bad goes on the MEDIUM, because that is the origin whose hash is
     # checked at mount time: a store pack was verified when root wrote it.
-    case "$id" in app.bad) d="$OUT/medium" ;; *) d="$PKS" ;; esac
+    case "$id" in app.bad) d="$PKM" ;; *) d="$PKS" ;; esac
     "$OUT/kdos-pack" assemble "$OUT/stub.img" "$m" "$d/$id.kpack" >/dev/null
 done
 # A PACK'S IMAGE MUST NOT DEPEND ON ITS VERSION. The EROFS UUID is derived from
@@ -586,9 +2498,9 @@ echo "  ok    while the packs themselves differ, because the version is in the m
 # One payload byte, flipped after assembly. It must read as a bad HASH: the
 # hash is checked before the signature, and a caller told "bad signature" here
 # would go looking for a key problem that does not exist.
-printf 'X' | dd of="$OUT/medium/app.bad.kpack" bs=1 seek=4 conv=notrunc status=none
+printf 'X' | dd of="$PKM/app.bad.kpack" bs=1 seek=4 conv=notrunc status=none
 
-fx() { KDOS_KEYS="$OUT/keys" "$OUT/kdos-packd" --fixture "$PKS" "$OUT/medium"; }
+fx() { KDOS_KEYS="$OUT/keys" "$OUT/kdos-packd" --fixture "$PKS" "$PKM"; }
 
 fx > "$OUT/fx.txt"
 check() {
@@ -740,7 +2652,7 @@ if pkg-config --exists wayland-client 2>/dev/null &&
         src/system/kdos-boxsock/main.c "$BP/security-context-v1-protocol.c" \
         src/libs/libkbase/*.c $(pkg-config --cflags --libs wayland-client)
     echo "  kdos-boxsock"
-    BSR="$OUT/bsrun"
+    BSR="$SOCKD/bsrun"
     mkdir -p "$BSR/kdos/box"
     out=$(XDG_RUNTIME_DIR="$BSR" "$OUT/kdos-boxsock" app.x app.y 2>/dev/null) && rc=0 || rc=$?
     [ "$rc" = 1 ] && [ "$out" = "error a launcher id is the box, or differs from it by one component" ] \
@@ -1042,6 +2954,182 @@ if (cd "$OUT" && ./syncdrv); then
     echo "  a frame is held only where the terminal answered DECRQM"
 else
     echo "  A FRAME IS BRACKETED ON A TERMINAL THAT NEVER SAID IT COULD"
+    exit 1
+fi
+
+echo
+echo "==> libktui: Shift+Tab under sudo on a VT is asked of the VT, not of stdin"
+# `sudo kinstall` on tty2 reads from a pts (use_pty), where KDGKBTYPE and
+# TIOCLINUX fail, and the console keymap sends a plain Tab for Shift+Tab. The
+# back-tab therefore comes from the Shift state of the VT ktui_term found:
+# $SUDO_TTY when it names /dev/ttyN. The shim plays that VT: open("/dev/tty")
+# fails as it does with no controlling terminal, $FAKEVT names the VT, and
+# console ioctls answer only on its descriptor, with $FAKEVT_SHIFT as the
+# Shift state. stdin is a pipe, so any ioctl on it fails as on the pts.
+cat > "$OUT/fakevt.c" <<'EOF'
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <asm/ioctls.h>
+#include <linux/kd.h>
+static int fake = -1, closes;
+int fakevt_closes(void) { return closes; }
+int fakevt_fd(void) { return fake; }
+int open(const char *p, int fl, ...)
+{
+	int (*real)(const char *, int, ...) =
+		(int (*)(const char *, int, ...))dlsym(RTLD_NEXT, "open");
+	const char *vt = getenv("FAKEVT");
+	va_list ap;
+	int mode;
+	va_start(ap, fl);
+	mode = va_arg(ap, int);
+	va_end(ap);
+	if (!strcmp(p, "/dev/tty")) {
+		errno = ENXIO;
+		return -1;
+	}
+	if (vt && !strcmp(p, vt)) {
+		fake = real("/dev/null", O_RDWR | O_CLOEXEC);
+		closes = 0;
+		return fake;
+	}
+	return real(p, fl, mode);
+}
+int close(int fd)
+{
+	int (*real)(int) = (int (*)(int))dlsym(RTLD_NEXT, "close");
+	if (fd >= 0 && fd == fake)
+		closes++;
+	return real(fd);
+}
+int ioctl(int fd, unsigned long req, ...)
+{
+	int (*real)(int, unsigned long, ...) =
+		(int (*)(int, unsigned long, ...))dlsym(RTLD_NEXT, "ioctl");
+	va_list ap;
+	char *arg;
+	unsigned r = (unsigned)req;
+	va_start(ap, req);
+	arg = va_arg(ap, char *);
+	va_end(ap);
+	if (r == KDGKBTYPE || r == TIOCLINUX || r == GIO_CMAP ||
+	    r == PIO_CMAP) {
+		if (fd < 0 || fd != fake) {
+			errno = ENOTTY;
+			return -1;
+		}
+		if (r == KDGKBTYPE)
+			*arg = KB_101;
+		else if (r == TIOCLINUX)
+			*arg = (char)atoi(getenv("FAKEVT_SHIFT") ?
+					  getenv("FAKEVT_SHIFT") : "0");
+		else if (r == GIO_CMAP)
+			memset(arg, 0, 48);
+		return 0;
+	}
+	return real(fd, req, arg);
+}
+EOF
+cat > "$OUT/btabdrv.c" <<'EOF'
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "ktui.h"
+
+int fakevt_closes(void);
+
+static int bad;
+
+static void want(int cond, const char *what)
+{
+	if (!cond) {
+		printf("    %s\n", what);
+		bad = 1;
+	}
+}
+
+/* One Tab typed under `term` with $SUDO_TTY = `sudo_tty` and Shift `shift`.
+ * Returns the key the library decoded; *had_vt says whether it found a VT. */
+static int tab(const char *term, const char *sudo_tty, int shift, int *had_vt)
+{
+	int in[2], s0 = dup(0), s1 = dup(1);
+	int f = open("btabdrv.out", O_RDWR | O_CREAT | O_TRUNC, 0600);
+	KtuiEvent ev;
+	int key = -1;
+
+	if (pipe(in) || f < 0 || s0 < 0 || s1 < 0)
+		return -1;
+	dup2(in[0], 0);
+	close(in[0]);
+	dup2(f, 1);
+	close(f);
+
+	setenv("TERM", term, 1);
+	setenv("COLUMNS", "20", 1);
+	setenv("LINES", "4", 1);
+	setenv("SUDO_UID", "1000", 1);
+	setenv("SUDO_TTY", sudo_tty, 1);
+	setenv("FAKEVT", "/dev/tty7", 1);
+	setenv("FAKEVT_SHIFT", shift ? "1" : "0", 1);
+	ktui_term_init(0);
+	ktui_input_init(0);
+	*had_vt = ktui_term_vt_fd() >= 0;
+	/* Typed after init: a terminal that is not a VT is probed, and the
+	 * probe reads standard input. */
+	if (write(in[1], "\t", 1) != 1)
+		bad = 1;
+	for (int i = 0; i < 20 && key < 0; i++)
+		if (ktui_input_next(&ev, 50) == 1 && ev.type == KT_EVT_KEY)
+			key = ev.key;
+	ktui_input_shutdown();
+	ktui_term_shutdown();
+	close(in[1]);
+
+	dup2(s1, 1);
+	dup2(s0, 0);
+	close(s0);
+	close(s1);
+	unlink("btabdrv.out");
+	return key;
+}
+
+int main(void)
+{
+	int vt;
+
+	want(tab("linux", "/dev/tty7", 1, &vt) == KT_K_BTAB,
+	     "Shift+Tab under sudo on a VT stayed a Tab");
+	want(vt, "the VT $SUDO_TTY names was not found");
+	want(ktui_term_vt_fd() < 0, "the VT descriptor outlived shutdown");
+	want(fakevt_closes() == 1, "the VT descriptor was not closed exactly once");
+
+	want(tab("linux", "/dev/tty7", 0, &vt) == KT_K_TAB,
+	     "a Tab with no Shift held became a back-tab");
+
+	want(tab("linux", "/dev/pts/3", 1, &vt) == KT_K_TAB && !vt,
+	     "a sudo from a pts was given a VT");
+	want(tab("xterm-256color", "/dev/tty7", 1, &vt) == KT_K_TAB && !vt,
+	     "a terminal emulator was given a VT");
+	return bad;
+}
+EOF
+cc -shared -fPIC -o "$OUT/fakevt.so" "$OUT/fakevt.c" -ldl \
+    || { echo "  the VT shim did not build"; exit 1; }
+$CC $STD $SHWARN $INC -o "$OUT/btabdrv" "$OUT/btabdrv.c" "$OUT/fakevt.so" \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c src/libs/libktui/*.c
+if (cd "$OUT" && env LD_PRELOAD="$OUT/fakevt.so" \
+        ASAN_OPTIONS=verify_asan_link_order=0 ./btabdrv); then
+    echo "  a Tab under Shift on the VT behind sudo is the back-tab, and only there"
+else
+    echo "  SHIFT+TAB UNDER SUDO ON A VT IS NOT THE BACK-TAB"
     exit 1
 fi
 
@@ -1474,7 +3562,8 @@ fi
 echo "==> kpkg copies licences and prunes manuals and translations"
 # The tree policy (prune.c) on a synthetic port with a real tarball, so the
 # licence copy has a source root to read. Each path below is one rule: what
-# must go, what must stay, and the two exempt manuals. A licence symlink out
+# must go, what must stay, and the two exempt manuals. A section-8 page for
+# a systemd unit goes; avahi.service.5, a file format, stays. A licence symlink out
 # of the source is not followed, and a staged symlink at a licence's target
 # is not written through. The symbol-table case
 # needs $CC, objcopy and readelf, and builds a 36 MB executable beside a 36 MB
@@ -1519,6 +3608,8 @@ for f in usr/share/locale/de/LC_MESSAGES/pol.mo usr/share/locale/en_GB/LC_MESSAG
          usr/share/doc/kfs/index.html usr/share/doc/kfs/kfs.pdf \
          usr/share/doc/HTML/en/kdos/index.html \
          usr/share/doc/HTML/de/pol/index.docbook usr/share/man/man1/pol.1 \
+         usr/share/man/man8/pol.service.8 usr/share/man/man8/pol.socket.8.gz \
+         usr/share/man/man8/pol.8 usr/share/man/man5/avahi.service.5 \
          usr/share/man/de/man1/pol.1 usr/share/texmf-dist/doc/latex/pol/pol.pdf \
          usr/share/licenses/pol/extra.html usr/share/X11/locale/de_DE.UTF-8/Compose \
          usr/share/doc/onlyhtml/index.html \
@@ -1558,6 +3649,7 @@ for _p in usr/share/licenses/pol/LICENSE usr/share/licenses/pol/COPYING.LIB \
           usr/share/doc/kfs/index.html usr/share/doc/kfs/kfs.pdf \
           usr/share/doc/HTML/en/kdos/index.html \
           usr/share/man/man1/pol.1 usr/share/X11/locale/de_DE.UTF-8/Compose \
+          usr/share/man/man8/pol.8 usr/share/man/man5/avahi.service.5 \
           usr/share/licenses/pol/LICENCE.alias usr/share/pol/org.kde.pol.mo \
           usr/share/doc/R/html/index.html usr/share/doc/R/html/R.css \
           usr/share/doc/geany/html/index.html usr/share/doc/wireshark/wireshark.html; do
@@ -1570,7 +3662,8 @@ for _p in usr/share/licenses/pol/README usr/share/locale/de/ usr/lib/locale/ \
           usr/share/doc/HTML/de/ usr/share/man/de/ usr/share/man/cat1/ \
           usr/share/texmf-dist/ usr/share/doc/onlyhtml/ usr/lib/R/ \
           usr/lib/pol/ usr/share/licenses/pol/license.c usr/share/licenses/pol/NOTICE \
-          usr/share/doc/R/a.pdf; do
+          usr/share/doc/R/a.pdf usr/share/man/man8/pol.service.8 \
+          usr/share/man/man8/pol.socket.8.gz; do
     ! printf '%s\n' "$_lst" | grep -qxF "./$_p" \
         || { echo "  $_p was packaged"; exit 1; }
 done
@@ -1578,7 +3671,7 @@ done
     || { echo "  a licence was written through a symlink out of \$PKG"; exit 1; }
 grep -qxF 'pol-license: [unset]' "$PP/out" \
     || { echo "  the license key reached build.sh as \$license"; exit 1; }
-echo "  licences copied; HTML, PDF and non-English catalogs, handbooks and man pages pruned; English, the HTML programs open and both books kept"
+echo "  licences copied; HTML, PDF, non-English catalogs, handbooks and man pages and systemd unit pages pruned; English, the HTML programs open, both books and man5 avahi.service kept"
 if [ -n "$_pcc" ]; then
     rm -rf "$PP/x"; mkdir -p "$PP/x"
     tar -xf "$PP/pkgs/pol-1.0-1.tar.xz" -C "$PP/x" ./usr/bin/big ./usr/lib/libbig.a ./usr/lib/big.o
@@ -1755,8 +3848,26 @@ grep -q "gtk-update-icon-cache.*/bare" "$TR/calls" \
 : > "$TR/calls"
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic page package did not install"; exit 1; }
-grep -qx "makewhatis -d $TR/root/usr/share/man man1/page.1" "$TR/calls" \
+grep -qx "makewhatis -d $TR/root/usr/share/man $TR/root/usr/share/man/man1/page.1" "$TR/calls" \
     || { echo "  an added manual page was not merged into the existing index"; exit 1; }
+# makewhatis -d changes into its base and crashes on a symlinked page named
+# relative to it, so the base and every page argument are absolute paths.
+mw_abs() {
+    grep '^makewhatis -d ' "$TR/calls" | while read -r _ _ base pages; do
+        for p in $base $pages; do case $p in /*) ;; *) exit 1;; esac; done
+    done
+}
+mw_abs || { echo "  makewhatis -d was given a relative path: $(cat "$TR/calls")"; exit 1; }
+# A relative --root: the pages still reach makewhatis by absolute path.
+mkdir -p "$TR/root5"
+( cd "$TR" && ktrig "$OUT/kpkgadd" --root root5 "$TR/pkgs/feed-1.0-1.tar.xz" >/dev/null ) \
+    || { echo "  the synthetic package did not install under a relative root"; exit 1; }
+: > "$TR/calls"
+( cd "$TR" && ktrig "$OUT/kpkgadd" --root root5 "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null ) \
+    || { echo "  the page package did not install under a relative root"; exit 1; }
+_r5=$(realpath "$TR/root5")
+grep -qx "makewhatis -d $_r5/usr/share/man $_r5/usr/share/man/man1/page.1" "$TR/calls" \
+    && mw_abs || { echo "  a relative root gave makewhatis -d a relative path: $(cat "$TR/calls")"; exit 1; }
 : > "$TR/calls"
 ktrig "$OUT/kpkgadd" --root "$TR/root" "$TR/pkgs/icontool-1.0-1.tar.xz" >/dev/null \
     || { echo "  the synthetic icon tool package did not install"; exit 1; }
@@ -1781,6 +3892,16 @@ grep -q 'index skipped: man' "$TR/skip.log" \
     || { echo "  KPKG_SKIP_INDEX=man did not say it skipped the manual index"; exit 1; }
 [ -e "$TR/root2/usr/share/man/mandoc.db" ] || grep -q makewhatis "$TR/calls" \
     && { echo "  KPKG_SKIP_INDEX=man still ran makewhatis"; exit 1; }
+# A root ending in a slash, as "/" does: makewhatis -d refuses every page
+# under a base spelled with a doubled slash.
+mkdir -p "$TR/root4"
+ktrig "$OUT/kpkgadd" --root "$TR/root4/" "$TR/pkgs/feed-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the synthetic package did not install under a root with a trailing slash"; exit 1; }
+: > "$TR/calls"
+ktrig "$OUT/kpkgadd" --root "$TR/root4/" "$TR/pkgs/page-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the page package did not install under a root with a trailing slash"; exit 1; }
+grep -qx "makewhatis -d $TR/root4/usr/share/man $TR/root4/usr/share/man/man1/page.1" "$TR/calls" \
+    || { echo "  a root ending in a slash gave makewhatis a doubled slash: $(cat "$TR/calls")"; exit 1; }
 # vlc-cache-gen runs inside the root, so as a user the trigger can only say it
 # needs root; as root it runs the stub, which is not a program.
 ( cd "$TR/ports/vlcplug" && ktrig "$OUT/kpkgbuild" >/dev/null ) \
@@ -1842,7 +3963,7 @@ kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" 2>&1 \
     | grep -q "File conflict" \
     || { echo "  a path claimed under its other spelling was not a conflict"; exit 1; }
 printf 'replaces    = other short\n' >> "$MU/ports/long/kpkgbuild"
-kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" | grep -q "Taking 1 path from short" \
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/long-1.0-1.tar.xz" | grep "Taking 1 path from short" >/dev/null \
     || { echo "  a takeover declared in replaces = was refused or not reported"; exit 1; }
 grep -q 'shared' "$MU/root/db/short" \
     && { echo "  a declared takeover left the path in the old owner's manifest"; exit 1; }
@@ -1880,6 +4001,27 @@ kmu "$OUT/kpkgdel" --root "$MU/root" dirkeep >/dev/null
     && { echo "  removing the last package listing an empty directory kept it"; exit 1; }
 echo "  an empty directory stays until the last package listing it goes"
 
+# A link to a directory on the root is kept. Reinstalling the same link says
+# nothing; a staged entry of another shape there is reported once, by its
+# path on the root.
+mkport iconlink 1.0 'install -Dm644 /dev/null "$PKG/usr/share/icons/t/16/a.png"; ln -s 16 "$PKG/usr/share/icons/t/16@2x"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/iconlink-1.0-1.tar.xz" >/dev/null
+rm -rf "$MU/ports/iconlink"
+mkport iconlink 1.1 'install -Dm644 /dev/null "$PKG/usr/share/icons/t/16/a.png"; ln -s 16 "$PKG/usr/share/icons/t/16@2x"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/iconlink-1.1-1.tar.xz" > "$MU/link.log"
+grep -q 'Skipping' "$MU/link.log" \
+    && { echo "  reinstalling a link to a directory reported a skip"; exit 1; }
+[ "$(readlink "$MU/root/usr/share/icons/t/16@2x")" = 16 ] \
+    || { echo "  reinstalling a link to a directory lost the link"; exit 1; }
+mkport iconother 1.0 'install -d "$PKG/usr/share/icons/t/32"; ln -s 32 "$PKG/usr/share/icons/t/16@2x"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/iconother-1.0-1.tar.xz" > "$MU/link.log"
+grep -qF '==> Skipping /usr/share/icons/t/16@2x (a link to a directory on the root; the package ships something else there)' "$MU/link.log" \
+    || { echo "  a different link over a link to a directory was not reported by its root path: $(cat "$MU/link.log")"; exit 1; }
+[ "$(readlink "$MU/root/usr/share/icons/t/16@2x")" = 16 ] \
+    || { echo "  a different link replaced a link to a directory"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" iconother iconlink >/dev/null
+echo "  a link to a directory is kept; the same link reinstalls silently"
+
 # One removal takes every name it is given: the image stage removes over a
 # thousand packages in one run.
 mkdir -p "$MU/root/usr/share/many"
@@ -1900,6 +4042,21 @@ kmu "$OUT/kpkgdel" --root "$MU/root" big >/dev/null
     && { echo "  kpkgdel left $(ls "$MU/root/usr/share/big" | wc -l) of a package's 20000 files"; exit 1; }
 echo "  one removal takes all 300 names it is given, and every file of a 20000-file package"
 
+# A removed package leaves the world set and the origin record; a name that
+# was not installed stays in both.
+mkdir -p "$MU/root/var/lib/kdos"
+printf '1.0-1\n' > "$MU/root/db/wgone"
+printf 'wkeep\n  wgone  # asked for\nwgonex\nwnot\n' > "$MU/root/var/lib/kdos/world"
+printf 'wgone source\nwkeep prebuilt\n' > "$MU/root/var/lib/kdos/origin"
+kmu "$OUT/kpkgdel" --root "$MU/root" wgone wnot >/dev/null \
+    && { echo "  kpkgdel reported success for a name that was not installed"; exit 1; }
+[ "$(cat "$MU/root/var/lib/kdos/world")" = "$(printf 'wkeep\nwgonex\nwnot')" ] \
+    || { echo "  kpkgdel left the world set as: $(tr '\n' ' ' < "$MU/root/var/lib/kdos/world")"; exit 1; }
+[ "$(cat "$MU/root/var/lib/kdos/origin")" = "wkeep prebuilt" ] \
+    || { echo "  kpkgdel left the origin record as: $(tr '\n' ' ' < "$MU/root/var/lib/kdos/origin")"; exit 1; }
+rm -rf "$MU/root/var/lib/kdos"
+echo "  a removal takes the package out of the world set and the origin record"
+
 # One extraction is both the install and the manifest; ownership is read only
 # for staged paths already on disk; the writer lock serialises two installers.
 echo "==> kpkgadd lists what it extracted, and two installers share one database"
@@ -1911,7 +4068,7 @@ printf 'echo hooked-ran\n' > "$MU/ports/hooked/postinstall.sh"
     || { echo "  the synthetic port hooked did not build"; exit 1; }
 tar -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -qx './.POSTINSTALL' \
     || { echo "  the fixture carries no hook to leave out"; exit 1; }
-kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -q hooked-ran \
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/hooked-1.0-1.tar.xz" | grep hooked-ran >/dev/null \
     || { echo "  the hooked package did not install or run its hook"; exit 1; }
 tar --quoting-style=literal -tf "$MU/pkgs/hooked-1.0-1.tar.xz" | grep -vx './.POSTINSTALL' > "$MU/want"
 tail -n +2 "$MU/root/db/hooked" | cmp -s - "$MU/want" \
@@ -1949,6 +4106,60 @@ kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/upper-1.0-1.tar.xz" 2>&1 \
     || { echo "  kpkgadd left no writer lock in the database"; exit 1; }
 kmu "$OUT/kpkg" list --root "$MU/root" 2>/dev/null | grep -q '^\.' \
     && { echo "  kpkg list reports a dot-file of the database as a package"; exit 1; }
+_unk=$(kmu "$OUT/kpkg" frobnicate; echo "rc=$?")
+[ "$_unk" = "kpkg: unknown command 'frobnicate' — try: kpkg help
+rc=1" ] || { echo "  kpkg answered an unknown command with: $(printf '%s' "$_unk" | head -3)"; exit 1; }
+for _o in --version -V; do
+    [ "$(kmu "$OUT/kpkg" $_o 2>&1; echo "rc=$?")" = "kpkg 1.0-kdos
+rc=0" ] || { echo "  kpkg $_o did not print its version"; exit 1; }
+done
+[ "$(kmu "$OUT/kpkg" --root "$MU/root" list 2>&1; echo "rc=$?")" = \
+  "$(kmu "$OUT/kpkg" list --root "$MU/root" 2>&1; echo "rc=$?")" ] \
+    || { echo "  kpkg --root before list differs from --root after it"; exit 1; }
+[ "$(kmu "$OUT/kpkg" --root "$MU/root" info taker2 2>&1; echo "rc=$?")" = \
+  "$(kmu "$OUT/kpkg" info --root "$MU/root" taker2 2>&1; echo "rc=$?")" ] \
+    || { echo "  kpkg --root before info differs from --root after it"; exit 1; }
+for _o in pre post; do
+    if [ $_o = pre ]; then _r=$(kmu "$OUT/kpkg" --root "$MU/none" list; echo "rc=$?")
+    else _r=$(kmu "$OUT/kpkg" list --root "$MU/none"; echo "rc=$?"); fi
+    printf '%s' "$_r" | grep -q "no such directory: $MU/none" && [ "${_r##*rc=}" = 1 ] \
+        || { echo "  kpkg list on a missing root ($_o) answered: $(printf '%s' "$_r" | head -3)"; exit 1; }
+    if [ $_o = pre ]; then _r=$(kmu "$OUT/kpkg" --root "$MU/none" remove zlib; echo "rc=$?")
+    else _r=$(kmu "$OUT/kpkg" remove --root "$MU/none" zlib; echo "rc=$?"); fi
+    printf '%s' "$_r" | grep -q "no such directory: $MU/none" && [ "${_r##*rc=}" = 1 ] \
+        || { echo "  kpkg remove on a missing root ($_o) answered: $(printf '%s' "$_r" | head -3)"; exit 1; }
+done
+: > "$MU/afile"
+for _c in "remove zlib" list; do
+    _r=$(kmu "$OUT/kpkg" --root "$MU/afile" $_c; echo "rc=$?")
+    printf '%s' "$_r" | grep -q "no such directory: $MU/afile\$" && [ "${_r##*rc=}" = 1 ] \
+        && ! printf '%s' "$_r" | grep -q "cannot lock" \
+        || { echo "  kpkg $_c on a root that is a regular file answered: $(printf '%s' "$_r" | head -3)"; exit 1; }
+done
+mkdir -p "$MU/empty"
+_r=$(kmu "$OUT/kpkg" --root "$MU/empty" list; echo "rc=$?")
+[ "$_r" = "rc=0" ] || { echo "  kpkg list on a root with no database answered: $(printf '%s' "$_r" | head -3)"; exit 1; }
+if [ "$(id -u)" != 0 ]; then
+    mkdir -p "$MU/locked"; chmod 555 "$MU/locked"
+    _r=$(kmu "$OUT/kpkg" --root "$MU/locked" remove zlib; echo "rc=$?")
+    chmod 755 "$MU/locked"
+    printf '%s' "$_r" | grep -q "cannot write to $MU/locked — run as root" && [ "${_r##*rc=}" = 1 ] \
+        || { echo "  kpkg remove on an unwritable root answered: $(printf '%s' "$_r" | head -3)"; exit 1; }
+    mkdir -p "$MU/shut/root"; chmod 000 "$MU/shut"
+    _r=$(kmu "$OUT/kpkg" --root "$MU/shut/root" list; echo "rc=$?")
+    chmod 755 "$MU/shut"
+    printf '%s' "$_r" | grep -q "cannot read $MU/shut/root: Permission denied" && [ "${_r##*rc=}" = 1 ] \
+        || { echo "  kpkg list on a root it cannot reach answered: $(printf '%s' "$_r" | head -3)"; exit 1; }
+fi
+_unk=$(kmu "$OUT/kpkg" --bogus list 2>&1; echo "rc=$?")
+[ "$_unk" = "kpkg: unknown option '--bogus' — try: kpkg help
+rc=1" ] || { echo "  kpkg answered an unknown leading option with: $(printf '%s' "$_unk" | head -3)"; exit 1; }
+_unk=$(kmu "$OUT/kpkg" --root "$MU/root" store gc 2>&1; echo "rc=$?")
+[ "$_unk" = "kpkg: option '--root' is not for 'store' — try: kpkg help
+rc=1" ] || { echo "  kpkg took a leading --root for a command that reads no root: $(printf '%s' "$_unk" | head -3)"; exit 1; }
+kmu "$OUT/kpkg" --root "$MU/root" -f -f -f -f -f -f -f -f -f --commit install nosuchport 2>&1 \
+    | grep -q "nothing built to commit" \
+    || { echo "  kpkg dropped a leading install option after eight others"; exit 1; }
 for i in 1 2 3 4; do
     mkport "par$i" 1.0 "for f in \$(seq 1 200); do install -Dm644 /dev/null \"\$PKG/usr/share/par$i/\$f\"; done"
 done
@@ -1961,7 +4172,18 @@ for i in 1 2 3 4; do
         || { echo "  concurrent install par$i did not complete"; cat "$MU/par$i.log"; exit 1; }
     tar --quoting-style=literal -tf "$MU/pkgs/par$i-1.0-1.tar.xz" | cmp -s - <(tail -n +2 "$MU/root/db/par$i") \
         || { echo "  concurrent install par$i wrote a short database entry"; exit 1; }
+    [ "$(wc -l < "$MU/par$i.log")" -lt 10 ] \
+        || { echo "  installing par$i's 200 files printed $(wc -l < "$MU/par$i.log") lines"; exit 1; }
 done
+mkport short 1.0 'mkdir -p "$PKG/usr/share/short" && head -c 300000 /dev/urandom > "$PKG/usr/share/short/x"'
+mkdir -p "$MU/cut"
+head -c 2000 "$MU/pkgs/short-1.0-1.tar.xz" > "$MU/cut/short-1.0-1.tar.xz"
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/cut/short-1.0-1.tar.xz" > "$MU/short.log" 2>&1 \
+    && { echo "  a truncated package installed"; exit 1; }
+_ord=$(grep -n -e '^==> Installing short' -e 'Failed to extract' "$MU/short.log" | cut -d: -f2- | cut -c1-14)
+[ "$_ord" = "==> Installing
+ERROR: Failed " ] && [ "$(wc -l < "$MU/short.log")" -gt 2 ] \
+    || { echo "  a failed extraction's log is out of order or says no cause:"; cat "$MU/short.log"; exit 1; }
 mkdir -p "$MU/root/db/.recipe" "$MU/root/db/.pkgsha"
 echo x > "$MU/root/db/.recipe/par1"; echo x > "$MU/root/db/.pkgsha/par1"
 kmu "$OUT/kpkgdel" --root "$MU/root" par1 >/dev/null
@@ -1994,6 +4216,44 @@ grep -q " 0700 ./usr/bin/hookmode$" "$MU/root/db/.files/hookmode" \
     && kmu "$OUT/kpkg" check --root "$MU/root" hookmode >/dev/null \
     || { echo "  the file record was taken before the install hook set a mode"; exit 1; }
 kmu "$OUT/kpkgdel" --root "$MU/root" hookmode >/dev/null
+# A same-version reinstall keeps an unchanged file's inode, replaces a changed
+# one, and hands the hook the version it replaced.
+mkdir -p "$MU/ports/samever"
+printf 'echo "old=[$PKG_OLD_VERSION]"\n' > "$MU/ports/samever/postinstall.sh"
+mkport samever 1.0 'printf same > "$PKG/usr-same"; install -Dm755 "$PKG/usr-same" "$PKG/usr/lib/libsame.so.1"
+install -Dm644 "$PKG/usr-same" "$PKG/usr/share/samever/data"; rm "$PKG/usr-same"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/samever-1.0-1.tar.xz" | grep -qx 'old=\[\]' \
+    || { echo "  a first install handed its hook a PKG_OLD_VERSION"; exit 1; }
+_ino=$(stat -c %i "$MU/root/usr/lib/libsame.so.1")
+printf diff > "$MU/root/usr/share/samever/data"
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/samever-1.0-1.tar.xz" > "$MU/same.log"
+grep -qx 'old=\[1.0-1\]' "$MU/same.log" \
+    || { echo "  a reinstall handed its hook no PKG_OLD_VERSION: $(cat "$MU/same.log")"; exit 1; }
+[ "$(stat -c %i "$MU/root/usr/lib/libsame.so.1")" = "$_ino" ] \
+    || { echo "  a same-version reinstall replaced an unchanged file with a new inode"; exit 1; }
+[ "$(cat "$MU/root/usr/share/samever/data")" = same ] \
+    || { echo "  a same-version reinstall kept a file whose bytes differ"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" samever >/dev/null
+echo "  a same-version reinstall keeps unchanged files; the hook sees PKG_OLD_VERSION"
+# A rebuild whose package time prune drops a unit page takes that page off a
+# root whose manifest still lists it: the man database is built from what is
+# on disk, so a page left behind stays in whatis and apropos.
+mkport unitman 1.0 'install -Dm644 /dev/null "$PKG/usr/share/man/man8/unitman.8"
+install -Dm644 /dev/null "$PKG/usr/share/man/man8/unitman.service.8"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/unitman-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the unitman package did not install"; exit 1; }
+grep -qx './usr/share/man/man8/unitman.service.8' "$MU/root/db/unitman" \
+    && { echo "  the package kept a systemd unit page"; exit 1; }
+: > "$MU/root/usr/share/man/man8/unitman.service.8"
+echo './usr/share/man/man8/unitman.service.8' >> "$MU/root/db/unitman"
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/unitman-1.0-1.tar.xz" >/dev/null \
+    || { echo "  the unitman reinstall failed"; exit 1; }
+[ -e "$MU/root/usr/share/man/man8/unitman.service.8" ] \
+    && { echo "  a reinstall left the unit page its old manifest listed"; exit 1; }
+[ -e "$MU/root/usr/share/man/man8/unitman.8" ] \
+    || { echo "  a reinstall removed the program's own page"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" unitman >/dev/null
+echo "  a rebuilt package takes the unit page its old manifest listed off the root"
 printf y > "$MU/root/usr/share/checked/caf$(printf '\303\251').txt"
 chmod 0700 "$MU/root/usr/bin/checked"
 rc=0; kmu "$OUT/kpkg" check --root "$MU/root" checked > "$MU/check.log" || rc=$?
@@ -2019,6 +4279,25 @@ kmu "$OUT/kpkg" check --root "$MU/root" --all > "$MU/check.log" || true
 grep -q "checked: missing ./usr/bin/checked" "$MU/check.log" \
     && grep -qx "unowned ./usr/share/nobody/f" "$MU/check.log" \
     || { echo "  kpkg check --all missed a missing or an unowned file"; cat "$MU/check.log"; exit 1; }
+# --brief prints the faults and the counts, --log keeps every line.
+rc=0; kmu "$OUT/kpkg" check --root "$MU/root" --all --brief --log "$MU/brief.full" \
+    > "$MU/check.log" || rc=$?
+[ "$rc" = 1 ] && grep -q "checked: missing ./usr/bin/checked" "$MU/check.log" \
+    && ! grep -q "^unowned \|: config " "$MU/check.log" \
+    && grep -qx "unowned ./usr/share/nobody/f" "$MU/brief.full" \
+    && grep -q "checked: config ./etc/checked.conf$" "$MU/brief.full" \
+    && grep -q "checked: missing ./usr/bin/checked" "$MU/brief.full" \
+    && grep -q "packages checked: .*, 1 unowned$" "$MU/brief.full" \
+    || { echo "  kpkg check --brief printed config or unowned lines, or --log lost them"; cat "$MU/check.log"; exit 1; }
+install -Dm755 /dev/null "$MU/root/usr/bin/checked"
+install -Dm644 /dev/null "$MU/root/etc/checked.keep"
+install -Dm644 /dev/null "$MU/root/usr/share/gone/f"
+rc=0; kmu "$OUT/kpkg" check --root "$MU/root" --all --brief > "$MU/check.log" || rc=$?
+rm "$MU/root/usr/share/gone/f"
+[ "$rc" = 0 ] && ! grep -q "^unowned \|: config " "$MU/check.log" \
+    && grep -q "packages\? checked: 0 missing, 0 changed, 0 mode, 1 config, 1 unowned$" "$MU/check.log" \
+    || { echo "  kpkg check --brief changed the status or the counts (exit $rc)"; cat "$MU/check.log"; exit 1; }
+echo "  --brief prints faults and counts only; --log holds every line"
 kmu "$OUT/kpkgdel" --root "$MU/root" checked >/dev/null
 [ -e "$MU/root/db/.files/checked" ] \
     && { echo "  kpkgdel left the file record of the package it removed"; exit 1; }
@@ -2071,7 +4350,7 @@ fcheck() {  # <what>
     kmu "$OUT/kpkg" check --root "$MU/root" facety >/dev/null \
         || { echo "  $1: kpkg check failed a package installed without its facets"; exit 1; }
 }
-kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$FP" | grep -q "Leaving out 5 development and documentation files" \
+kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$FP" | grep "Leaving out 5 development and documentation files" >/dev/null \
     || { echo "  a FACETS=run install did not say it left five files out"; exit 1; }
 fcheck "FACETS=run"
 kmu "$OUT/kpkg" facets --list --root "$MU/root" facety | sort | cmp -s - <(fleft | sort) \
@@ -2091,7 +4370,7 @@ kmu "$OUT/kpkg" facets --strip --root "$MU/root" facety > "$MU/strip.log" \
 grep -q 'facety: 5 files left out' "$MU/strip.log" && grep -q 'facets: 1 package stripped, 4 bytes' "$MU/strip.log" \
     || { echo "  --strip reported:"; cat "$MU/strip.log"; exit 1; }
 fcheck "kpkg facets --strip"
-kmu "$OUT/kpkg" facets --strip --root "$MU/root" facety | grep -q 'facets: 0 packages stripped' \
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" facety | grep 'facets: 0 packages stripped' >/dev/null \
     || { echo "  a second --strip found something to strip"; exit 1; }
 fcheck "a second --strip"
 # A build against it refuses before it starts, naming the restore.
@@ -2120,7 +4399,7 @@ mkport sharea 1.0 'install -Dm644 /dev/null "$PKG/usr/include/shared.h"'
 mkport shareb 1.0 'install -Dm644 /dev/null "$PKG/usr/include/shared.h"'
 kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/sharea-1.0-1.tar.xz" >/dev/null
 kmu "$OUT/kpkgadd" --force --root "$MU/root" "$MU/pkgs/shareb-1.0-1.tar.xz" >/dev/null
-kmu "$OUT/kpkg" facets --strip --root "$MU/root" sharea | grep -qF 'Keeping ./usr/include/shared.h: shareb claims it' \
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" sharea | grep -F 'Keeping ./usr/include/shared.h: shareb claims it' >/dev/null \
     && [ -e "$MU/root/usr/include/shared.h" ] \
     || { echo "  --strip removed a header another package still claims"; exit 1; }
 kmu "$OUT/kpkgadd" --force --root "$MU/root" "$MU/pkgs/sharea-1.0-1.tar.xz" >/dev/null
@@ -2290,6 +4569,94 @@ iv --root "$NE/stage" --full "$NE/root" --verify --all > "$NE/verify.log" \
     && grep -qxF 'unmeasured needy' "$NE/verify.log" \
     || { echo "  a package without a record failed, or was not reported unmeasured:"; cat "$NE/verify.log"; exit 1; }
 echo "  sonames, interpreters, QML and Python imports and runtime = recorded at install, printed, measured again, resolved; check and --strip unaffected; removed with the package; a base missing a provider fails, in the tree and in a stage"
+# The real tree: a port named by a recipe's runtime = is read at run time, so
+# ports/buildonly never lists it: the closure does not follow a dependency
+# into ports/buildonly, so the base image would drop the port and
+# imageset.py --verify would fail it. kdoctools' meinproc6 and the help worker read the DocBook DTD and
+# stylesheets on every handbook, and its runtime = names both.
+python3 -I - <<'EOF' || exit 1
+import glob, os
+bo = set()
+for l in open("ports/buildonly"):
+    bo.update(l.split("#", 1)[0].split())
+bad = []
+for p in glob.glob("ports/core/*/*/kpkgbuild") + glob.glob("src/*/*/kpkgbuild"):
+    for l in open(p):
+        k, _, v = l.partition("=")
+        if k.strip() == "runtime":
+            bad += [f"{os.path.basename(os.path.dirname(p))} needs {w}" for w in v.split() if w in bo]
+kd = [l.partition("=")[2].split() for l in open(glob.glob("ports/core/*/kdoctools/kpkgbuild")[0])
+      if l.partition("=")[0].strip() == "runtime"]
+if bad or not kd or not {"docbook-xml", "docbook-xsl"} <= set(kd[0]):
+    print("  ports/buildonly lists a runtime = need, or kdoctools does not name the DocBook DTD and stylesheets:", bad, kd)
+    raise SystemExit(1)
+EOF
+echo "  no runtime = need is build-only; kdoctools needs docbook-xml and docbook-xsl at run time"
+# The real tree: a prebuilt install follows an edge into ports/buildonly only
+# where the stanza's N: line names it, and N: reads the run-time facet alone.
+# shiboken6 is the one file of python3-pyside6 that links libclang, so with it
+# in run a prebuilt Falkon or FreeCAD installs clang; Chromium's empty N:
+# keeps its build toolchain out only while ports/buildonly lists every port
+# of it, crubit (which needs rust) among them.
+python3 -I - <<'EOF' || exit 1
+import glob, fnmatch
+bo = set()
+for l in open("ports/buildonly"):
+    bo.update(l.split("#", 1)[0].split())
+r = open(glob.glob("ports/core/*/python3-pyside6/kpkgbuild")[0]).read().splitlines()
+fd = [l.partition("=")[2].split() for l in r if l.partition("=")[0].strip() == "facet_dev"]
+if not fd or not any(fnmatch.fnmatchcase("usr/bin/shiboken6", g) for g in fd[0]) \
+        or any(fnmatch.fnmatchcase(p, g) for g in fd[0]
+               for p in ("usr/lib/libshiboken6.abi3.so.6.12", "usr/lib/libpyside6.abi3.so.6.12",
+                         "usr/lib/python3.14/site-packages/PySide6/QtCore.abi3.so")):
+    print("  python3-pyside6's facet_dev does not hold the shiboken6 generator alone:", fd)
+    raise SystemExit(1)
+need = {"compiler-rt", "crubit", "esbuild", "typescript-go", "rust"}
+if not need <= bo:
+    print("  ports/buildonly leaves Chromium's build toolchain to a prebuilt install:", sorted(need - bo))
+    raise SystemExit(1)
+EOF
+echo "  python3-pyside6's generator is in its dev facet; Chromium's build toolchain is build-only"
+# The real tree: the base draws the scripts administration.md says it draws.
+# noto-fonts carries Latin, Greek and Cyrillic only, so a base without
+# noto-fonts-extra shows Devanagari, Thai and the other Indic and Southeast
+# Asian scripts as boxes; noto-cjk stays in the lang-* groups, as the
+# known gaps say.
+for f in noto-fonts noto-fonts-extra noto-emoji; do
+    python3 script/lib/imageset.py --why "$f" > /dev/null \
+        || { echo "  the base image does not carry $f"; exit 1; }
+done
+python3 script/lib/imageset.py --why noto-cjk > /dev/null \
+    && { echo "  the base image carries noto-cjk, which the docs place in the lang-* groups"; exit 1; }
+echo "  the base carries noto-fonts, noto-fonts-extra and noto-emoji, and not noto-cjk"
+# The real tree: kde-portals.conf routes Settings to kde;gtk;, and only the
+# gtk backend answers org.gnome.desktop.*. A base without it leaves GTK 4 on
+# Wayland with gtk-im-module `simple` (no input method) and the button
+# layout `menu:close`, as session.md says.
+python3 script/lib/imageset.py --why xdg-desktop-portal-gtk > /dev/null \
+    || { echo "  the base image does not carry xdg-desktop-portal-gtk, which session.md says answers org.gnome.* Settings"; exit 1; }
+echo "  the base carries xdg-desktop-portal-gtk for the org.gnome.* Settings keys"
+# The real tree: a desktop entry a recipe writes with Terminal=true runs
+# inside a terminal and is not one. KDE's default-terminal lookup takes
+# Categories=TerminalEmulator literally, and a Name of "Terminal ..."
+# outranks Konsole when a newcomer types "terminal" in Kickoff, so Enter
+# opens that program instead of a plain terminal.
+python3 -I - <<'EOF' || exit 1
+import glob, re
+bad = []
+for p in glob.glob("ports/core/*/*/build.sh") + glob.glob("src/*/*/build.sh"):
+    for e in re.findall(r"\[Desktop Entry\]\n(.*?)\n(?:EOF|')", open(p).read(), re.S):
+        k = dict(l.split("=", 1) for l in e.splitlines() if "=" in l)
+        if k.get("Terminal") != "true":
+            continue
+        if "TerminalEmulator" in k.get("Categories", "").split(";") \
+                or k.get("Name", "").lower().startswith("terminal"):
+            bad.append(p)
+if bad:
+    print("  a Terminal=true entry claims to be a terminal emulator:", bad)
+    raise SystemExit(1)
+EOF
+echo "  no recipe's Terminal=true desktop entry is named or categorised as a terminal emulator"
 
 echo
 
@@ -2325,26 +4692,29 @@ kstrict() {
         PKGDB_DIR=/db KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
         TZ=UTC "$@" "$OUT/kpkg" install --root "$SR/root" demo 2>&1
 }
+# kpkg's stdout is line-buffered, so a `grep -q` that closes the pipe on its
+# first match kills the install with SIGPIPE before it records anything; every
+# check below that reads an install's output reads all of it.
 kstrict >/dev/null || { echo "  the synthetic port did not install"; exit 1; }
 SIDE="$SR/root/db/.recipe/demo"
 [ -s "$SIDE" ] || { echo "  no recipe-hash sidecar was recorded"; exit 1; }
 H1=$(cat "$SIDE")
 [ "${#H1}" = 64 ] || { echo "  the sidecar is not a 64-char hash"; exit 1; }
 
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  an UNCHANGED recipe was rebuilt under strict mode"; exit 1; }
 
 # The recipe changes. Without strict mode nothing happens: the flag is the only
 # thing that makes the comparison apply.
 printf '# a change\n' >> "$SR/ports/demo/build.sh"
-kstrict | grep -q "Nothing to do" \
+kstrict | grep "Nothing to do" >/dev/null \
     || { echo "  strict mode leaked into the default behaviour"; exit 1; }
 
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Building demo" >/dev/null \
     || { echo "  a CHANGED recipe was not rebuilt under strict mode"; exit 1; }
 H2=$(cat "$SIDE")
 [ "$H1" != "$H2" ] || { echo "  the sidecar was not updated after the rebuild"; exit 1; }
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  it rebuilt again after the hash was brought up to date"; exit 1; }
 
 # A SOURCE-LESS PORT'S OWN FILES ARE ITS RECIPE. `demo` names no `source =`,
@@ -2360,16 +4730,16 @@ kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
 # below leaves the port reading as UNKNOWN, which correctly skips for ever.
 H3=$(cat "$SIDE")
 printf 'int demo_probe(void) { return 1; }\n' > "$SR/ports/demo/probe.c"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Building demo" >/dev/null \
     || { echo "  a source-less port did not rebuild after its own .c changed"
          exit 1; }
 [ "$H3" != "$(cat "$SIDE")" ] \
     || { echo "  the sidecar did not move when a source file changed"; exit 1; }
 # And it settles: a hash that kept moving would rebuild for ever.
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  the source-aware hash is not stable across runs"; exit 1; }
 rm -f "$SR/ports/demo/probe.c"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Building demo" >/dev/null \
     || { echo "  REMOVING a source file did not rebuild it either"; exit 1; }
 kstrict KPKG_STRICT_RECIPE=1 >/dev/null
 echo "  a source-less port's own sources are part of its recipe"
@@ -2380,25 +4750,25 @@ echo "  a source-less port's own sources are part of its recipe"
 # moves it. Below the port directory the name is an ordinary source file.
 H4=$(cat "$SIDE")
 printf '# demo\n\n## Notes\nA note.\n' > "$SR/ports/demo/kfs.md"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  adding kfs.md rebuilt the port"; exit 1; }
 printf '# demo\n\n## Notes\nAnother note.\n' > "$SR/ports/demo/kfs.md"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  editing kfs.md rebuilt the port"; exit 1; }
 [ "$H4" = "$(cat "$SIDE")" ] \
     || { echo "  the recipe hash moved with kfs.md"; exit 1; }
 printf '# with a note beside it\n' >> "$SR/ports/demo/build.sh"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Building demo" >/dev/null \
     || { echo "  build.sh changed beside kfs.md and the port did not rebuild"
          exit 1; }
 H5=$(cat "$SIDE")
 [ "$H4" != "$H5" ] || { echo "  the recipe hash did not move with build.sh"; exit 1; }
 rm -f "$SR/ports/demo/kfs.md"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  removing kfs.md rebuilt the port"; exit 1; }
 mkdir -p "$SR/ports/demo/src"
 printf 'not a note\n' > "$SR/ports/demo/src/kfs.md"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Building demo" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Building demo" >/dev/null \
     || { echo "  a kfs.md below the port directory was not hashed"; exit 1; }
 rm -rf "$SR/ports/demo/src"
 kstrict KPKG_STRICT_RECIPE=1 >/dev/null
@@ -2410,10 +4780,10 @@ echo "  kfs.md beside a recipe leaves its hash alone; build.sh still moves it"
 # predates the mechanism; a corrupt one is a truncated write. Neither may read
 # as "changed".
 rm -f "$SIDE"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  a MISSING sidecar was treated as a changed recipe"; exit 1; }
 printf 'garbage\n' > "$SIDE"
-kstrict KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kstrict KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  a CORRUPT sidecar was treated as a changed recipe"; exit 1; }
 echo "  match skips, drift rebuilds, unknown and corrupt are left alone"
 
@@ -2473,6 +4843,24 @@ grep -q 'UNVERIFIED: no sha256 for withsrc-1.0.tar.gz' "$KB/log" \
 rm -f "$KB/pkgs/"*
 kb_recipe "$KB_GOOD"
 echo "  a wrong hash fails before extraction; an undeclared source is refused unless KDOS_ALLOW_UNVERIFIED=1"
+# A build that fails keeps its work directory, unless KPKG_CLEAN_FAILED asks
+# for it to go: then it is removed, said so, and the free space measured
+# before the removal is recorded for kdos update in $WORK_DIR/.kpkg-failed.
+cp "$KB/ports/withsrc/build.sh" "$KB/build.sh.good"
+printf 'exit 1\n' > "$KB/ports/withsrc/build.sh"
+rm -rf "$KB/work/withsrc" "$KB/work/.kpkg-failed"
+kb_build >"$KB/log" && { echo "  a failing build.sh built"; exit 1; }
+[ -d "$KB/work/withsrc" ] && [ ! -e "$KB/work/.kpkg-failed" ] \
+    || { echo "  a failed build without KPKG_CLEAN_FAILED lost its work directory"; exit 1; }
+kb_build KPKG_CLEAN_FAILED=0 >"$KB/log" && { echo "  a failing build.sh built"; exit 1; }
+[ -d "$KB/work/withsrc" ] || { echo "  KPKG_CLEAN_FAILED=0 removed the work directory"; exit 1; }
+kb_build KPKG_CLEAN_FAILED=1 >"$KB/log" && { echo "  a failing build.sh built"; exit 1; }
+[ ! -e "$KB/work/withsrc" ] && grep -qxF "==> Removed the work directory $KB/work/withsrc" "$KB/log" \
+    && grep -qE '^withsrc [0-9]+ [0-9]+$' "$KB/work/.kpkg-failed" \
+    || { echo "  KPKG_CLEAN_FAILED=1 left the work directory or no record:"; cat "$KB/log"; exit 1; }
+rm -f "$KB/work/.kpkg-failed"
+cp "$KB/build.sh.good" "$KB/ports/withsrc/build.sh"
+echo "  a failed build keeps its work directory; KPKG_CLEAN_FAILED=1 removes it and records the free space"
 
 # Two ports, one name the prefix of the other, both packages kept.
 for p in foo foo-bar; do
@@ -2513,11 +4901,11 @@ kb_install "$KB/r3" selfedit >"$KB/log" \
 grep -q '^# edited' "$KB/ports/selfedit/kpkgbuild" \
     || { echo "  the self-editing fixture did not edit its recipe"; exit 1; }
 KB_H1=$(cat "$KB/r3/db/.recipe/selfedit")
-kb_install "$KB/r3" selfedit KPKG_STRICT_RECIPE=1 | grep -q "Building selfedit" \
+kb_install "$KB/r3" selfedit KPKG_STRICT_RECIPE=1 | grep "Building selfedit" >/dev/null \
     || { echo "  a recipe edited during its own build was recorded as built"; exit 1; }
 [ "$KB_H1" != "$(cat "$KB/r3/db/.recipe/selfedit")" ] \
     || { echo "  the rebuild did not record the edited recipe"; exit 1; }
-kb_install "$KB/r3" selfedit KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kb_install "$KB/r3" selfedit KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  the edited recipe did not settle after one rebuild"; exit 1; }
 echo "  the recorded hash is of the recipe the build started from"
 
@@ -2537,22 +4925,22 @@ echo "  kpkg verify --repro reports BYTE-IDENTICAL"
 # hashed, and a port holding nothing else settles on the first strict run.
 kb_install "$KB/r4" withsrc >"$KB/log" \
     || { echo "  withsrc did not install"; cat "$KB/log"; exit 1; }
-kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  a sourced port with only named files did not settle"; exit 1; }
 printf 'CONFIG_DEMO=y\n' > "$KB/ports/withsrc/demo.config"
-kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Building withsrc" \
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep "Building withsrc" >/dev/null \
     || { echo "  a file beside a sourced recipe was not part of its hash"; exit 1; }
-kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  the extra file's hash is not stable across runs"; exit 1; }
 printf 'CONFIG_DEMO=n\n' > "$KB/ports/withsrc/demo.config"
-kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Building withsrc" \
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep "Building withsrc" >/dev/null \
     || { echo "  EDITING a file beside a sourced recipe did not rebuild it"; exit 1; }
 rm -f "$KB/ports/withsrc/demo.config"
 echo "  a file beside a sourced recipe that no sha256 names is part of its hash"
 # Except the book's note, which a sourced port skips as a source-less one does.
 kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 >/dev/null
 printf '# withsrc\n\n## Notes\nA note.\n' > "$KB/ports/withsrc/kfs.md"
-kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep -q "Nothing to do" \
+kb_install "$KB/r4" withsrc KPKG_STRICT_RECIPE=1 | grep "Nothing to do" >/dev/null \
     || { echo "  kfs.md beside a sourced recipe rebuilt it"; exit 1; }
 rm -f "$KB/ports/withsrc/kfs.md"
 echo "  kfs.md beside a sourced recipe is not part of its hash"
@@ -2575,6 +4963,7 @@ printf 'name        = b\nversion     = 1.0\nrelease     = 1\ndescription = a syn
 for p in a b; do
     printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/who"\n' "$p" > "$BC/ports/$p/build.sh"
 done
+echo 'echo build-output-of-a' >> "$BC/ports/a/build.sh"
 ln -sf kdos-kpkg "$OUT/kpkg"
 for t in kpkgbuild kpkgadd kpkgdepends; do ln -sf kdos-kpkg "$OUT/$t"; done
 kbc() {
@@ -2593,6 +4982,12 @@ grep -q 'dependency a ' "$BC/log" \
 kbc "$OUT/kpkg" install --root "$BC/root" --build-only a >"$BC/log" \
     || { echo "  --build-only a failed"; cat "$BC/log"; exit 1; }
 grep -q 'Building a' "$BC/log" || { echo "  --build-only a built nothing"; exit 1; }
+# The log is a file, as it is under `tee` or Discover's helper pipe: kpkg's
+# own lines must be out before the build it forks writes to the same stdout.
+[ "$(grep -n -m1 -e '^==> Building a-1.0-1' -e '^build-output-of-a' "$BC/log")" \
+    = "$(grep -n -m1 '^==> Building a-1.0-1' "$BC/log")" ] \
+    && grep -q '^build-output-of-a' "$BC/log" \
+    || { echo "  kpkg's ==> lines reach a file after the build output they announce"; cat "$BC/log"; exit 1; }
 [ "$(sed -n 1p "$BC/pkgs/a.pending")" = "$BC/pkgs/a-1.0-1.tar.xz" ] \
     && [ -f "$BC/pkgs/a-1.0-1.tar.xz" ] \
     || { echo "  a.pending does not name the package it built"; cat "$BC/pkgs/a.pending"; exit 1; }
@@ -2855,6 +5250,41 @@ _bhidx() {  # <dir> <key> <version>
 _bhidx "$BH/repo" "$BH/builder.key" 0.2.14
 grep -q ' - PACKAGES binhost/PACKAGES$' "$BH/repo/kdos-update.idx" && test -s "$BH/repo/kdos-update.idx.sig" \
     || { echo "  the binhost's release index was not written"; cat "$BH/repo/kdos-update.idx"; exit 1; }
+# 010_binhost.sh moves every file whose stanza has an empty E: out of the
+# directory before the last index: a superseded release of a port in the tree
+# and a port the tree no longer has. Its own functions run here, over a copy.
+python3 -I - "$BH/retire.sh" <<'PYEOF' || { echo "  010_binhost.sh has no bh_superseded/bh_retire"; exit 1; }
+import re, sys
+s = open('script/phases/70_image/010_binhost.sh').read()
+fns = re.findall(r"^(bh_(?:superseded|retire)\(\) \{\n.*?^\})\n", s, re.S | re.M)
+if len(fns) != 2:
+    sys.exit(1)
+open(sys.argv[1], 'w').write("\n".join(fns) + "\n")
+PYEOF
+_bhr="$BH/rt"
+rm -rf "$_bhr"; mkdir -p "$_bhr/repo"
+cp "$RP/one.tar.xz" "$_bhr/repo/tiny-1.0-1.tar.xz"
+cp "$RP/one.tar.xz" "$_bhr/repo/tiny-0.9-1.tar.xz"
+cp "$RP/one.tar.xz" "$_bhr/repo/gone-2.0-1.tar.xz"
+kpkg_bh kpkg index "$_bhr/repo" --sign "$BH/builder.key" >/dev/null 2>&1 \
+    || { echo "  indexing the retire fixture failed"; exit 1; }
+_bhn=$(bash -c '. "$1"; bh_retire "$2" "$3"' _ "$BH/retire.sh" "$_bhr/repo" "$_bhr/old") \
+    || { echo "  bh_retire failed"; exit 1; }
+test "$(printf '%s\n' "$_bhn" | sort | tr '\n' ' ')" = "gone-2.0-1.tar.xz tiny-0.9-1.tar.xz " \
+    || { echo "  bh_retire named '$_bhn', not the two files it moved"; ls "$_bhr/repo" "$_bhr/old"; exit 1; }
+for f in tiny-0.9-1.tar.xz tiny-0.9-1.tar.xz.sig gone-2.0-1.tar.xz gone-2.0-1.tar.xz.sig; do
+    test -f "$_bhr/old/$f" && test ! -e "$_bhr/repo/$f" \
+        || { echo "  $f was not moved out of the binhost"; exit 1; }
+done
+test -f "$_bhr/repo/tiny-1.0-1.tar.xz" && test -f "$_bhr/repo/tiny-1.0-1.tar.xz.sig" \
+    || { echo "  bh_retire moved the current package"; exit 1; }
+kpkg_bh kpkg index "$_bhr/repo" --sign "$BH/builder.key" >/dev/null 2>&1 \
+    || { echo "  re-indexing the retired binhost failed"; exit 1; }
+test "$(grep -c '^P:' "$_bhr/repo/PACKAGES")" = 1 && grep -qx 'F:tiny-1.0-1.tar.xz' "$_bhr/repo/PACKAGES" \
+    || { echo "  PACKAGES still names a retired file:"; cat "$_bhr/repo/PACKAGES"; exit 1; }
+test "$(bash -c '. "$1"; bh_superseded "$2"' _ "$BH/retire.sh" "$_bhr/repo")" = "" \
+    || { echo "  the re-indexed binhost still lists a superseded file"; exit 1; }
+rm -rf "$_bhr" "$BH/retire.sh"
 echo "  signed, verified, and every refusal refused"
 
 echo
@@ -2921,10 +5351,468 @@ upd install --dry-run tiny > "$UC/inst" 2>&1 \
     || { echo "  a covered install dry run failed:"; cat "$UC/inst"; exit 1; }
 grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qE '^total 1 [0-9]+ 0$' "$UC/inst" \
     || { echo "  the install dry run is:"; cat "$UC/inst"; exit 1; }
+# A check asks no server: with no fetch recorded it says so. A refusal over
+# the keys names the keys and the release key, in check and in install,
+# never the fetch that fails the same way until the keys change.
+_ucstate=
+[ -e "$UC/state" ] && { _ucstate=1; mv "$UC/state" "$UC/state.keep"; }
+upd check 2>/dev/null | grep -qF 'no fetch is recorded yet: `sudo kdos update fetch` (or `sudo kdos update check --fetch`)' \
+    || { echo "  a check with no fetch recorded did not say so"; exit 1; }
+printf 'fetch ok 1761600000 tree current\n' > "$UC/state"
+! upd check 2>/dev/null | grep -qF 'no fetch is recorded' \
+    || { echo "  a check after a fetch said no fetch is recorded"; exit 1; }
+printf 'binhost unverified 1761600000 the release index'"'"'s signature does not verify against /etc/kdos/keys\n' > "$UC/state"
+upd check > "$UC/out" 2>&1 || true
+grep -qF "binhost-unverified: the release index's signature does not verify against /etc/kdos/keys — the keys in $UC/keys verify no signed index of this release; put this release's public keys there (kdos-release.pub" "$UC/out" \
+    || { echo "  an unverified binhost record did not name the keys:"; cat "$UC/out"; exit 1; }
+printf 'fetch fetch-failed 1761600000 the tree'"'"'s signature does not verify against /etc/kdos/keys/tree\n' > "$UC/state"
+upd check > "$UC/out" 2>&1 || true
+grep -qF "fetch-failed: the tree's signature does not verify against /etc/kdos/keys/tree — the keys in /etc/kdos/keys/tree verify no tree of this release; put this release's public key there (kdos-release.pub" "$UC/out" \
+    || { echo "  a tree refused over its signature did not name the tree keys:"; cat "$UC/out"; exit 1; }
+rm -f "$UC/state"
+mv "$UC/keys" "$UC/keys.good"
+mkdir "$UC/keys"
+upd check > "$UC/out" 2>&1 || true
+grep -qF "binhost: no trusted key in $UC/keys can verify the binhost index — the keys in $UC/keys verify no signed index" "$UC/out" && \
+    ! grep -qF 'fetch --binhost-only` takes' "$UC/out" \
+    || { echo "  a check with an empty ring named the fetch, not the keys:"; cat "$UC/out"; exit 1; }
+rc=0; upd install --dry-run tiny > "$UC/inst" 2>&1 || rc=$?
+test "$rc" = 1 && grep -qF "kdos update: the keys in $UC/keys verify no signed index of this release" "$UC/inst" && \
+    grep -qF 'kdos-binhost.pub' "$UC/inst" && ! grep -qF 'fetches the release' "$UC/inst" \
+    || { echo "  an install with an empty ring (exit $rc) named the fetch, not the keys:"; cat "$UC/inst"; exit 1; }
+mv "$UC/tiny.db" "$UC/db/tiny"
+upd check > "$UC/out" 2>&1 || true
+grep -qF "binhost: no trusted key in $UC/keys can verify the binhost index — the keys in $UC/keys verify no signed index" "$UC/out" && \
+    grep -qF '; or `kdos update apply --source` builds what is behind' "$UC/out" \
+    || { echo "  a check with an empty ring and a package behind did not name the keys:"; cat "$UC/out"; exit 1; }
+mv "$UC/db/tiny" "$UC/tiny.db"
+rmdir "$UC/keys"
+mv "$UC/keys.good" "$UC/keys"
+# A no-key record against a ring that holds keys again: the fetch is left.
+printf 'binhost no-key 1761600000 no trusted key in /etc/kdos/keys can verify the binhost index\n' > "$UC/state"
+upd check > "$UC/out" 2>&1 || true
+grep -qF 'binhost-no-key: ' "$UC/out" && ! grep -qF 'verify no signed index' "$UC/out" && \
+    grep -qF 'fetch --binhost-only` takes' "$UC/out" \
+    || { echo "  a no-key record with keys in place named the keys, not the fetch:"; cat "$UC/out"; exit 1; }
+rm -f "$UC/state"
+[ -z "$_ucstate" ] || mv "$UC/state.keep" "$UC/state"
+# A download the cache's filesystem has no room for is refused before it
+# starts, the dry run too: a full tmpfs as the cache, in a namespace of
+# this run's own.
+if unshare -rm true 2>/dev/null; then
+    mkdir -p "$UC/small"
+    rc=0
+    unshare -rm sh -c 'mount -t tmpfs -o size=128k tmpfs "$1" && cp -a "$2"/. "$1"/ &&
+        { dd if=/dev/zero of="$1/fill" bs=4k 2>/dev/null; true; } && shift 2 && exec "$@"' sh \
+        "$UC/small" "$UC/cache" env PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+        KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" KDOS_UPDATE_CACHE="$UC/small" \
+        KDOS_UPDATE_SYSROOT="$UC/sys" KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update install --dry-run tiny >/dev/null 2>"$UC/err" || rc=$?
+    test "$rc" = 1 && grep -qF 'the packages to download take' "$UC/err" \
+        || { echo "  a download with no room exited $rc:"; cat "$UC/err"; exit 1; }
+else
+    echo "  (no user namespaces here: the full-cache refusal is not exercised)"
+fi
+# A cut download keeps what arrived and says the same command continues it;
+# run again, it asks for the rest with a Range request (curl -C -) and the
+# joined file is the package. Each download is announced on stdout as it
+# starts. A curl shim cuts the package at half; a kpkg that refuses stops
+# the install after the downloads, so nothing is installed anywhere.
+_cutroot=
+if [ "$(id -u)" = 0 ]; then _cutroot=env
+elif unshare -r true 2>/dev/null; then _cutroot="unshare -r env"
+fi
+if [ -n "$_cutroot" ]; then
+    _pkf="$BH/repo/tiny-1.0-1.tar.xz"
+    mkdir -p "$UC/shim"
+    cat > "$UC/shim/curl" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$UC/curl.log"
+out= prev= url=
+for a; do [ "\$prev" = -o ] && out=\$a; prev=\$a; url=\$a; done
+"$(command -v curl)" "\$@" || exit \$?
+case \$url in *.tar.xz) [ -e "$UC/cut" ] || exit 0 ;; */PACKAGES) [ -e "$UC/cutidx" ] || exit 0 ;; *) exit 0 ;; esac
+head -c \$(( \$(stat -c %s "\$out") / 2 )) "\$out" > "\$out.cut" && mv "\$out.cut" "\$out"
+exit 18
+EOF
+    printf '#!/bin/sh\nexit 1\n' > "$UC/shim/kpkg"
+    chmod +x "$UC/shim/curl" "$UC/shim/kpkg"
+    _cutinst() {
+        $_cutroot PATH="$UC/shim:$PATH" PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent \
+            PKGDB_DIR="$UC/db" KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+            KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+            KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 $_cutenv \
+            "$OUT/kdos" update install --${_cutroute:-prebuilt} tiny > "$UC/inst" 2>"$UC/err" || true
+    }
+    rm -f "$UC/cache/tiny-1.0-1.tar.xz" "$UC/cache/tiny-1.0-1.tar.xz.sig" "$UC/curl.log"
+    : > "$UC/cut"
+    _cutinst
+    _pkn=$(stat -c %s "$_pkf")
+    grep -qxF "kdos update: $UC/cache/tiny-1.0-1.tar.xz was cut off at $((_pkn / 2)) of $_pkn bytes (curl exit 18); nothing was installed — run the same command again to continue the download" "$UC/err" \
+        && test "$(stat -c %s "$UC/cache/tiny-1.0-1.tar.xz.part")" = $((_pkn / 2)) \
+        && grep -q '^==> downloading tiny-1\.0-1\.tar\.xz (' "$UC/inst" \
+        || { echo "  a cut download did not keep its part and name the next step:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    # The total to download is what the part lacks; the package line keeps
+    # the file's size.
+    $_cutroot PATH="$UC/shim:$PATH" PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent \
+        PKGDB_DIR="$UC/db" KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+        KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+        KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update install --dry-run tiny > "$UC/inst" 2>"$UC/err" || true
+    grep -qxF "total 1 $((_pkn - _pkn / 2)) 0" "$UC/inst" \
+        && grep -qxF "tiny prebuilt tiny-1.0-1.tar.xz $_pkn" "$UC/inst" \
+        || { echo "  the dry run after a cut counts more than the rest:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    rm -f "$UC/cut" "$UC/curl.log"
+    _cutinst
+    grep -q -- '-C - -o [^ ]*/tiny-1\.0-1\.tar\.xz\.part -- ' "$UC/curl.log" \
+        && cmp -s "$_pkf" "$UC/cache/tiny-1.0-1.tar.xz" && test ! -e "$UC/cache/tiny-1.0-1.tar.xz.part" \
+        && grep -q '^==> downloading tiny-1\.0-1\.tar\.xz (' "$UC/inst" \
+        || { echo "  the cut download was not continued:"; cat "$UC/curl.log" "$UC/inst" "$UC/err"; exit 1; }
+    # Run by Discover's helpers, the cut download's next step is the button;
+    # the download is then finished as a command would finish it.
+    rm -f "$UC/cache/tiny-1.0-1.tar.xz" "$UC/cache/tiny-1.0-1.tar.xz.sig"
+    : > "$UC/cut"
+    _cutenv=KDOS_UPDATE_FRONT=discover _cutinst
+    grep -qxF "kdos update: $UC/cache/tiny-1.0-1.tar.xz was cut off at $((_pkn / 2)) of $_pkn bytes (curl exit 18); nothing was installed — pressing Install again continues the download" "$UC/err" \
+        || { echo "  a cut download under Discover did not name its button:"; cat "$UC/err"; exit 1; }
+    rm -f "$UC/cut"
+    _cutinst
+    cmp -s "$_pkf" "$UC/cache/tiny-1.0-1.tar.xz" \
+        || { echo "  the cut download under Discover was not continued:"; cat "$UC/err"; exit 1; }
+    # A failed build under kdos-ports-builder names the log it keeps; at a
+    # terminal it says the log is above. The kpkg shim fetches and fails
+    # every install.
+    printf '#!/bin/sh\n[ "$1" = fetch ] && exit 0\nexit 1\n' > "$UC/shim/kpkg"
+    _cutroute=source _cutenv=KDOS_UPDATE_LOG=/var/log/kdos-build/tiny.log _cutinst
+    grep -qE "^kdos update: tiny did not install(: its build failed)?; the build's log is in /var/log/kdos-build/tiny\.log\$" "$UC/err" \
+        || { echo "  a failed build with a kept log did not name it:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    _cutroute=source _cutinst
+    grep -qE '^kdos update: tiny did not install(: its build failed)?; the log is above$' "$UC/err" \
+        || { echo "  a failed build at a terminal did not point above:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    printf '#!/bin/sh\nexit 1\n' > "$UC/shim/kpkg"
+    _cutfetch() {
+        $_cutroot PATH="${_cutpath:-$PATH}" PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent \
+            PKGDB_DIR="$UC/db" KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+            KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+            KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+            KDOS_UPDATE_BINHOST="$KDOS_UPDATE_BINHOST" \
+            "$OUT/kdos" update fetch --binhost-only >/dev/null 2>"$UC/err"
+    }
+    # A refused connection is a missing network only on a machine with no
+    # default route; with one, it is a server that did not answer, named by
+    # its host and port alone.
+    _rport=$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    _routed=0
+    python3 -I - <<'PYEOF' && _routed=1
+import sys
+def rows(p):
+    try:
+        return [l.split() for l in open(p)]
+    except OSError:
+        return []
+v4 = any(r[1] == "00000000" and r[7] == "00000000" and int(r[3], 16) & 1 and r[0] != "lo"
+         for r in rows("/proc/net/route")[1:] if len(r) > 7)
+v6 = any(set(r[0]) == {"0"} and r[1] == "00" and int(r[8], 16) & 1 and not int(r[8], 16) & 0x200
+         and r[9] != "lo" for r in rows("/proc/net/ipv6_route") if len(r) > 9)
+sys.exit(0 if v4 or v6 else 1)
+PYEOF
+    rc=0; cp "$UC/state" "$UC/state.keep" 2>/dev/null || : > "$UC/state.keep"
+    KDOS_UPDATE_BINHOST=https://127.0.0.1:$_rport _cutfetch || rc=$?
+    if [ "$_routed" = 1 ]; then
+        test "$rc" = 1 && grep -qxF "kdos update: the server at 127.0.0.1:$_rport did not answer" "$UC/err" \
+            && grep -q "^binhost fetch-failed .*the server at 127.0.0.1:$_rport did not answer" "$UC/state" \
+            || { echo "  a refused binhost on a routed machine (exit $rc):"; cat "$UC/err" "$UC/state"; exit 1; }
+    else
+        test "$rc" = 1 && grep -qF 'kdos update: the network could not be reached for the release index' "$UC/err" \
+            || { echo "  a refused binhost on a machine with no route (exit $rc):"; cat "$UC/err"; exit 1; }
+    fi
+    # A file under a staging directory the next run removes keeps no part,
+    # and its words name no next step that would not continue it.
+    : > "$UC/cutidx"
+    rc=0; KDOS_UPDATE_BINHOST="file://$BH/repo" _cutpath="$UC/shim:$PATH" _cutfetch || rc=$?
+    test "$rc" = 1 && grep -qxF 'kdos update: binhost/PACKAGES could not be downloaded' "$UC/err" \
+        && test -z "$(find "$UC/cache" -name '*.part')" \
+        || { echo "  a cut binhost index (exit $rc):"; cat "$UC/err"; find "$UC/cache" -name '*.part'; exit 1; }
+    rm -f "$UC/cutidx"
+    mv "$UC/state.keep" "$UC/state"
+    rm -rf "$UC/shim" "$UC/cache/tiny-1.0-1.tar.xz" "$UC/cache/tiny-1.0-1.tar.xz.sig"
+    echo "  a cut download keeps its part, names the next step (the button under Discover), and is continued with a Range request; a failed build names its kept log; a cut binhost index keeps none and names none; a refused binhost on a routed machine did not answer, not no network"
+else
+    echo "  (neither root nor a user namespace: the cut download is not exercised)"
+fi
 upd install --dry-run --source tiny > "$UC/inst" 2>&1 \
     || { echo "  a source install dry run failed:"; cat "$UC/inst"; exit 1; }
 grep -qxF 'tiny source 1.0-1' "$UC/inst" && grep -qxF 'total 0 0 1' "$UC/inst" \
+    && [ "$(sed -n 's/^build-space \([0-9][0-9]*\)$/\1/p' "$UC/inst")" -ge 536870912 ] \
     || { echo "  the source install dry run is:"; cat "$UC/inst"; exit 1; }
+# The build-space estimate: six times the largest build's archives, each other
+# distinct archive once, 512 MiB once. esta depends on estb and estc; esta and
+# estb share one archive, counted once.
+for p in esta estb estc; do mkdir -p "$RP/ports/$p"; : > "$RP/ports/$p/build.sh"; done
+head -c 1048576 /dev/zero > "$RP/ports/esta/shared.tar.gz"
+ln "$RP/ports/esta/shared.tar.gz" "$RP/ports/estb/shared.tar.gz"
+head -c 2097152 /dev/zero > "$RP/ports/estb/extra.tar.gz"
+head -c 1048576 /dev/zero > "$RP/ports/estc/own.tar.gz"
+_h=0000000000000000000000000000000000000000000000000000000000000000
+printf 'name = esta\nversion = 1.0\nrelease = 1\nsource = https://example.invalid/shared.tar.gz\nsha256 = %s  shared.tar.gz\ndepends = estb estc\n' \
+    "$_h" > "$RP/ports/esta/kpkgbuild"
+printf 'name = estb\nversion = 1.0\nrelease = 1\nsource = https://example.invalid/shared.tar.gz https://example.invalid/extra.tar.gz\nsha256 = %s  shared.tar.gz %s  extra.tar.gz\n' \
+    "$_h" "$_h" > "$RP/ports/estb/kpkgbuild"
+printf 'name = estc\nversion = 1.0\nrelease = 1\nsource = https://example.invalid/own.tar.gz\nsha256 = %s  own.tar.gz\n' \
+    "$_h" > "$RP/ports/estc/kpkgbuild"
+upd install --dry-run --source esta > "$UC/inst" 2>&1 \
+    || { echo "  the estimate's dry run failed:"; cat "$UC/inst"; exit 1; }
+test "$(sed -n 's/^build-space \([0-9][0-9]*\)$/\1/p' "$UC/inst")" = $(( (18 + 1 + 512) * 1048576 )) \
+    || { echo "  the build-space estimate is not 6 x 3 MiB + 1 MiB + 512 MiB:"; cat "$UC/inst"; exit 1; }
+rm -r "$RP/ports/esta" "$RP/ports/estb" "$RP/ports/estc"
+echo "  the build-space estimate counts the largest build six times and each other archive once"
+# An archive not on the machine counts at the size `kpkg fetch --size` reads
+# where the fetch would download it, and nothing is downloaded: estd names a
+# 3 MiB archive held only by a file:// KDOS_SOURCES_BASE. With neither the
+# archive nor upstream reachable it counts nothing and is named.
+if command -v curl >/dev/null 2>&1; then
+    mkdir -p "$RP/ports/estd" "$UC/estsrc" "$UC/estarch/sources-1"
+    : > "$RP/ports/estd/build.sh"
+    head -c 3145728 /dev/zero > "$UC/estarch/sources-1/misc--estd-1.0.tar.gz"
+    _h=$(sha256sum "$UC/estarch/sources-1/misc--estd-1.0.tar.gz" | cut -d' ' -f1)
+    printf '# kdos-sources-index 2\n%s sources-1 misc--estd-1.0.tar.gz estd/estd-1.0.tar.gz\n' \
+        "$_h" > "$RP/ports/sources.idx"
+    printf 'name = estd\nversion = 1.0\nrelease = 1\nsource = http://127.0.0.1:9/estd-$version.tar.gz\nsha256 = %s  estd-1.0.tar.gz\n' \
+        "$_h" > "$RP/ports/estd/kpkgbuild"
+    PATH="$OUT:$PATH" SOURCE_DIR="$UC/estsrc" KDOS_SOURCES_BASE="$UC/estarch" \
+        upd install --dry-run --source estd > "$UC/inst" 2>"$UC/err" \
+        || { echo "  the unfetched estimate's dry run failed:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    test "$(sed -n 's/^build-space \([0-9][0-9]*\)$/\1/p' "$UC/inst")" = $(( (18 + 512) * 1048576 )) \
+        && ! grep -qF 'is not known' "$UC/err" && test -z "$(ls -A "$UC/estsrc")" \
+        || { echo "  an unfetched 3 MiB archive is not reckoned 6 x 3 MiB + 512 MiB, or was downloaded:"; cat "$UC/inst" "$UC/err"; ls -A "$UC/estsrc"; exit 1; }
+    PATH="$OUT:$PATH" SOURCE_DIR="$UC/estsrc" KDOS_SOURCES_BASE= \
+        upd install --dry-run --source estd > "$UC/inst" 2>"$UC/err" \
+        || { echo "  the offline estimate's dry run failed:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    test "$(sed -n 's/^build-space \([0-9][0-9]*\)$/\1/p' "$UC/inst")" = $(( 512 * 1048576 )) \
+        && grep -qxF 'kdos update: the size of 1 source archive (estd-1.0.tar.gz) is not known until it is downloaded; the space is checked again after the download' "$UC/err" \
+        || { echo "  an archive no server measured is not named:"; cat "$UC/inst" "$UC/err"; exit 1; }
+    rm -r "$RP/ports/estd" "$RP/ports/sources.idx" "$UC/estsrc" "$UC/estarch"
+    echo "  an archive not fetched yet is reckoned at the size its download would have, and named when none answered"
+else
+    echo "  (no curl: the unfetched archive's estimate is not exercised)"
+fi
+# A build the work directory's filesystem has no room for is refused before
+# anything is fetched, the dry run too: a 1 MiB tmpfs as WORK_DIR.
+if unshare -rm true 2>/dev/null; then
+    mkdir -p "$UC/smallwork"
+    rc=0
+    unshare -rm sh -c 'mount -t tmpfs -o size=1m tmpfs "$1" && shift && exec "$@"' sh \
+        "$UC/smallwork" env PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+        WORK_DIR="$UC/smallwork/work" KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+        KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" KDOS_UPDATE_TREE="$UC/nowhere" \
+        SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update install --dry-run --source tiny >"$UC/inst" 2>"$UC/err" || rc=$?
+    test "$rc" = 1 && grep -qF "building tiny needs about 512M in $UC/smallwork/work and the root has" "$UC/err" \
+        && grep -qE '^build-space [0-9]+$' "$UC/inst" \
+        || { echo "  a build with no room exited $rc:"; cat "$UC/inst" "$UC/err"; exit 1; }
+else
+    echo "  (no user namespaces here: the full-work-directory refusal is not exercised)"
+fi
+# A prebuilt install leaves out a ports/buildonly dependency the index's `N:`
+# line does not name, and keeps one it does: app depends on tiny and boa,
+# both build-only, and its stanza names tiny alone. An empty `N:` drops both;
+# --source follows every edge.
+BO="$OUT/buildonly"
+rm -rf "$BO"
+mkdir -p "$BO/ports/app" "$BO/ports/boa" "$BO/repo" "$BO/cache" "$BO/db" "$BO/work" "$BO/pkgs"
+cp -r "$RP/ports/tiny" "$BO/ports/"
+cp "$RP/TREE" "$RP/RELEASE" "$BO/"
+printf 'tiny boa\n' > "$BO/buildonly"
+for p in app boa; do
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\nhomepage    = https://example.invalid/\n' \
+        "$p" > "$BO/ports/$p/kpkgbuild"
+    printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/x"\n' "$p" > "$BO/ports/$p/build.sh"
+done
+printf 'depends     = tiny boa\n' >> "$BO/ports/app/kpkgbuild"
+( cd "$BO/ports/app" &&
+  env PORT_REPO="$BO/ports" WORK_DIR="$BO/work" PACKAGE_DIR="$BO/pkgs" \
+      PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+      "$OUT/kpkgbuild" >/dev/null 2>&1 ) || { echo "  the synthetic app did not build"; exit 1; }
+cp "$BO/pkgs/app-1.0-1.tar.xz" "$BO/repo/"
+cp "$RP/one.tar.xz" "$BO/repo/tiny-1.0-1.tar.xz"
+bo_index() {  # <the N: words of app's stanza>
+    rm -f "$BO/repo/PACKAGES" "$BO/repo/PACKAGES.sig" "$BO/repo/"*.tar.xz.sig
+    env PORT_REPO="$BO/ports" KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null \
+        KPKG_KEYRING="$BH/keys" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos-kpkg" kpkg index "$BO/repo" --sign "$BH/builder.key" >/dev/null 2>&1 \
+        || { echo "  the build-only index was not written"; exit 1; }
+    awk -v n="N:$1" -v m="N:$2" -v two="$#" \
+        '{ print } $0 == "P:app" { print n } $0 == "P:app2" && two == 2 { print m }' \
+        "$BO/repo/PACKAGES" > "$BO/P" &&
+        mv "$BO/P" "$BO/repo/PACKAGES" && rm -f "$BO/repo/PACKAGES.sig"
+    kpkg_bh kpkg sign "$BO/repo/PACKAGES" "$BH/builder.key" >/dev/null 2>&1 \
+        || { echo "  the build-only index was not signed"; exit 1; }
+    _bhidx "$BO/repo" "$BH/builder.key" 0.2.14
+    cp "$BO/repo/PACKAGES" "$BO/repo/PACKAGES.sig" "$BO/cache/"
+    cp "$BO/repo/kdos-update.idx" "$BO/cache/INDEX"
+    cp "$BO/repo/kdos-update.idx.sig" "$BO/cache/INDEX.sig"
+    printf 'file://%s\n' "$BO/repo" > "$BO/cache/ORIGIN"
+}
+bo_upd() {
+    env PORT_REPO="$BO/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$BO/db" \
+        KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$BO/state" \
+        KDOS_UPDATE_CACHE="$BO/cache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+        KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update "$@"
+}
+bo_index tiny
+bo_upd install --dry-run app > "$BO/inst" 2>&1 \
+    || { echo "  the build-only dry run failed:"; cat "$BO/inst"; exit 1; }
+grep -q '^tiny prebuilt ' "$BO/inst" && grep -q '^app prebuilt ' "$BO/inst" && ! grep -q '^boa ' "$BO/inst" \
+    || { echo "  an N: line naming tiny planned:"; cat "$BO/inst"; exit 1; }
+bo_index ''
+bo_upd install --dry-run app > "$BO/inst" 2>&1 \
+    || { echo "  the build-only dry run failed:"; cat "$BO/inst"; exit 1; }
+grep -q '^app prebuilt ' "$BO/inst" && ! grep -qE '^(tiny|boa) ' "$BO/inst" \
+    || { echo "  an empty N: line planned:"; cat "$BO/inst"; exit 1; }
+bo_upd install --dry-run --source app > "$BO/inst" 2>&1 \
+    || { echo "  the build-only source dry run failed:"; cat "$BO/inst"; exit 1; }
+grep -q '^boa source ' "$BO/inst" && grep -q '^tiny ' "$BO/inst" \
+    || { echo "  --source left out a build-only dependency:"; cat "$BO/inst"; exit 1; }
+echo "  a prebuilt install takes the build-only ports the index's N: line names, and no other"
+# A slot apply cuts its worklist the same way, from every root at once: the
+# world set holds app (N: tiny) and app2, which depends on boa and whose N:
+# is empty, so tiny goes in with them and boa does not.
+mkdir -p "$BO/ports/app2" "$BO/sys/var/lib/kdos"
+printf 'name        = app2\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\nhomepage    = https://example.invalid/\ndepends     = boa\n' \
+    > "$BO/ports/app2/kpkgbuild"
+printf 'install -Dm644 /dev/null "$PKG/usr/share/app2/x"\n' > "$BO/ports/app2/build.sh"
+( cd "$BO/ports/app2" &&
+  env PORT_REPO="$BO/ports" WORK_DIR="$BO/work" PACKAGE_DIR="$BO/pkgs" \
+      PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+      "$OUT/kpkgbuild" >/dev/null 2>&1 ) || { echo "  the synthetic app2 did not build"; exit 1; }
+cp "$BO/pkgs/app2-1.0-1.tar.xz" "$BO/repo/"
+bo_index tiny ''
+printf 'app\napp2\n' > "$BO/sys/var/lib/kdos/world"
+env PORT_REPO="$BO/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$BO/db" \
+    KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$BO/state" \
+    KDOS_UPDATE_CACHE="$BO/cache" KDOS_UPDATE_SYSROOT="$BO/sys" \
+    KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+    "$OUT/kdos" update apply --dry-run --in-place > "$BO/plan" 2>&1 \
+    || { echo "  the two-root apply dry run failed:"; cat "$BO/plan"; exit 1; }
+grep -qE '^  app  ' "$BO/plan" && grep -qE '^  app2 ' "$BO/plan" && grep -qE '^  tiny ' "$BO/plan" \
+    && ! grep -qE '^  boa ' "$BO/plan" \
+    || { echo "  a world set of app and app2 planned:"; cat "$BO/plan"; exit 1; }
+# A package of origin `source` is compiled in the slot, so it keeps every
+# edge wherever the walk reaches it: the world set holds app3 alone, app3
+# depends on app2, and app2, built here, depends on boa, which its empty N:
+# would otherwise drop.
+mkdir -p "$BO/ports/app3"
+printf 'name        = app3\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\nhomepage    = https://example.invalid/\ndepends     = app2\n' \
+    > "$BO/ports/app3/kpkgbuild"
+printf 'install -Dm644 /dev/null "$PKG/usr/share/app3/x"\n' > "$BO/ports/app3/build.sh"
+( cd "$BO/ports/app3" &&
+  env PORT_REPO="$BO/ports" WORK_DIR="$BO/work" PACKAGE_DIR="$BO/pkgs" \
+      PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+      "$OUT/kpkgbuild" >/dev/null 2>&1 ) || { echo "  the synthetic app3 did not build"; exit 1; }
+cp "$BO/pkgs/app3-1.0-1.tar.xz" "$BO/repo/"
+bo_index tiny ''
+printf 'app3\n' > "$BO/sys/var/lib/kdos/world"
+printf 'app2 source\n' > "$BO/sys/var/lib/kdos/origin"
+env PORT_REPO="$BO/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$BO/db" \
+    KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$BO/state" \
+    KDOS_UPDATE_CACHE="$BO/cache" KDOS_UPDATE_SYSROOT="$BO/sys" \
+    KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+    "$OUT/kdos" update apply --dry-run --in-place > "$BO/plan" 2>&1 || :
+grep -qE '^  app3 ' "$BO/plan" && grep -qE '^  app2 .*built here$' "$BO/plan" && grep -qE '^  boa ' "$BO/plan" \
+    || { echo "  a dependency built here lost its build-only edge:"; cat "$BO/plan"; exit 1; }
+rm -rf "$BO/ports/app3" "$BO/repo/app3-1.0-1.tar.xz"
+bo_index tiny ''
+# The build tools come prebuilt, so their plan for a build here leaves out
+# what a tool was only built with: app2 is the one tool, and its empty N:
+# drops boa, which the binhost does not hold and would refuse the plan.
+printf 'group build-tools Build tools\napp2\n' > "$BO/groups"
+bo_upd install --dry-run --source tiny > "$BO/inst" 2>&1 \
+    || { echo "  a source install with a build-only tool dependency failed:"; cat "$BO/inst"; exit 1; }
+grep -q '^app2 ' "$BO/inst" && ! grep -q '^boa ' "$BO/inst" \
+    || { echo "  the build-tools plan is:"; cat "$BO/inst"; exit 1; }
+rm -f "$BO/groups"
+rm -rf "$BO/ports/app2" "$BO/repo/app2-1.0-1.tar.xz" "$BO/sys"
+echo "  a slot apply takes the build-only ports its roots' N: lines name, a source build's and no other; so do the build tools"
+# `kpkg index --buildonly` writes that line: the build-only ports among the
+# installed packages providing a package's recorded run-time needs. app needs
+# tiny (build-only) and zlib (not); tiny's record is empty; boa has none and
+# is unmeasured, so its stanza carries no N: at all.
+mkdir -p "$BO/idb/.needs"
+for p in app tiny boa zlib; do printf '1.0 1\n' > "$BO/idb/$p"; done
+printf 'need tiny\nneed zlib\n' > "$BO/idb/.needs/app"
+: > "$BO/idb/.needs/tiny"
+cp "$RP/one.tar.xz" "$BO/repo/boa-1.0-1.tar.xz"
+rm -f "$BO/repo/PACKAGES" "$BO/repo/PACKAGES.sig"
+env PORT_REPO="$BO/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$BO/idb" SOURCE_DATE_EPOCH=1735689600 \
+    "$OUT/kdos-kpkg" kpkg index "$BO/repo" --buildonly "$BO/buildonly" >/dev/null 2>&1 \
+    || { echo "  kpkg index --buildonly failed"; exit 1; }
+_bon() { awk -v RS= -v p="P:$1" '$0 ~ "(^|\n)" p "(\n|$)"' "$BO/repo/PACKAGES" | grep '^N:' || true; }
+test "$(_bon app)" = "N:tiny" && test "$(_bon tiny)" = "N:" && test -z "$(_bon boa)" \
+    || { echo "  the measured N: lines are:"; cat "$BO/repo/PACKAGES"; exit 1; }
+rm -f "$BO/repo/boa-1.0-1.tar.xz"
+echo "  kpkg index --buildonly writes N: from the recorded needs, empty when measured and none, absent when unmeasured"
+# A source build takes the build-only header ports an installed package's
+# headers include (ports/buildheaders), prebuilt, and leaves out what a
+# prebuilt build dependency was only built with: app depends on installed
+# libx, which depends on proto (build-only, a header port), and on missing
+# ecm (build-only), which depends on build-only doc and whose N: is empty.
+BHD="$OUT/bheaders"
+rm -rf "$BHD"
+mkdir -p "$BHD/ports" "$BHD/repo" "$BHD/cache" "$BHD/db" "$BHD/sys"
+cp "$RP/TREE" "$RP/RELEASE" "$BHD/"
+printf 'proto ecm doc\n' > "$BHD/buildonly"
+printf 'proto\n' > "$BHD/buildheaders"
+for p in app libx proto ecm doc; do
+    mkdir -p "$BHD/ports/$p"
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\nhomepage    = https://example.invalid/\n' \
+        "$p" > "$BHD/ports/$p/kpkgbuild"
+    printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/x"\n' "$p" > "$BHD/ports/$p/build.sh"
+done
+printf 'depends     = libx ecm\n' >> "$BHD/ports/app/kpkgbuild"
+printf 'depends     = proto\n' >> "$BHD/ports/libx/kpkgbuild"
+printf 'depends     = doc\n' >> "$BHD/ports/ecm/kpkgbuild"
+printf '1.0 1\n' > "$BHD/db/libx"
+for p in proto ecm doc; do cp "$RP/one.tar.xz" "$BHD/repo/$p-1.0-1.tar.xz"; done
+_bhdidx() {
+    rm -f "$BHD/repo/PACKAGES" "$BHD/repo/PACKAGES.sig"
+    env PORT_REPO="$BHD/ports" KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null \
+        KPKG_KEYRING="$BH/keys" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos-kpkg" kpkg index "$BHD/repo" --sign "$BH/builder.key" >/dev/null 2>&1 \
+        || { echo "  the build-headers index was not written"; exit 1; }
+    awk '{ print } $0 == "P:ecm" { print "N:" }' "$BHD/repo/PACKAGES" > "$BHD/P" &&
+        mv "$BHD/P" "$BHD/repo/PACKAGES" && rm -f "$BHD/repo/PACKAGES.sig"
+    kpkg_bh kpkg sign "$BHD/repo/PACKAGES" "$BH/builder.key" >/dev/null 2>&1 \
+        || { echo "  the build-headers index was not signed"; exit 1; }
+    _bhidx "$BHD/repo" "$BH/builder.key" 0.2.14
+    cp "$BHD/repo/PACKAGES" "$BHD/repo/PACKAGES.sig" "$BHD/cache/"
+    cp "$BHD/repo/kdos-update.idx" "$BHD/cache/INDEX"
+    cp "$BHD/repo/kdos-update.idx.sig" "$BHD/cache/INDEX.sig"
+    printf 'file://%s\n' "$BHD/repo" > "$BHD/cache/ORIGIN"
+}
+_bhdrun() {
+    env PORT_REPO="$BHD/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$BHD/db" \
+        KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$BHD/state" \
+        KDOS_UPDATE_CACHE="$BHD/cache" KDOS_UPDATE_SYSROOT="$BHD/sys" \
+        KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update install --dry-run --source app > "$BHD/inst" 2>&1
+}
+_bhdidx
+_bhdrun || { echo "  the build-headers source dry run failed:"; cat "$BHD/inst"; exit 1; }
+grep -q '^proto prebuilt ' "$BHD/inst" && grep -q '^ecm prebuilt ' "$BHD/inst" \
+    && ! grep -q '^doc ' "$BHD/inst" && grep -q '^app source ' "$BHD/inst" \
+    || { echo "  a source build of app against libx and ecm planned:"; cat "$BHD/inst"; exit 1; }
+echo "  a source build takes the header ports installed packages' headers include, and not what a prebuilt dependency was built with"
+# A header port the index does not cover refuses the build by name, with
+# the package whose headers include it and bh_match's reason.
+rm -f "$BHD/repo/proto-1.0-1.tar.xz"
+_bhdidx
+rc=0; _bhdrun || rc=$?
+test "$rc" = 1 && grep -qF "proto, whose headers libx's headers include, cannot be installed prebuilt: not in the binhost" "$BHD/inst" \
+    || { echo "  a source build with no prebuilt proto exited $rc and said:"; cat "$BHD/inst"; exit 1; }
+rm -rf "$BHD"
+unset -f _bhdidx _bhdrun
+echo "  a header port the binhost lacks refuses the build, naming the package whose headers include it"
 rc=0; upd install --dry-run --build-deps=maybe tiny >/dev/null 2>&1 || rc=$?
 test "$rc" = 2 || { echo "  an unknown --build-deps exited $rc, not 2"; exit 1; }
 mv "$UC/tiny.db" "$UC/db/tiny"
@@ -2941,10 +5829,48 @@ upd groups --json > "$UC/groups" \
 grep -qF '[{"id":"smalls","title":"Small things","ports":["tiny"],"installed":true,"missing":0,' "$UC/groups" \
     || { echo "  the groups document is:"; cat "$UC/groups"; exit 1; }
 mv "$UC/db/tiny" "$UC/tiny.db"
-upd groups --json | grep -qE '"installed":false,"missing":1,"packages":1,"size":[0-9]+\}' \
+upd groups --json | grep -qE '"installed":false,"missing":1,"packages":1,"binhost":true,"size":[0-9]+\}' \
     || { echo "  a group to install has no size:"; upd groups --json; exit 1; }
+# With no index, nothing naming a binhost (no TREE version, no
+# $KDOS_UPDATE_BINHOST) and a refresh that cannot name one either — the last
+# binhost step found none named, or the last fetch refused the published
+# tree as older — a row says so, which is what tells Welcome Center a
+# refresh cannot help. Before any refresh, or with one named, it does not.
+# update.conf is read from its fixed path, so a host whose update.conf names
+# a binhost skips the case; a host with kdos-bootctl may read its own layout
+# as one slot, so the no-state half is skipped there.
+if ! grep -qs '^binhost' /etc/kdos/update.conf; then
+    mkdir -p "$UC/nobh" "$UC/nobhcache" && ln -sfn "$RP/ports" "$UC/nobh/ports" && cp "$RP/groups" "$UC/nobh/groups"
+    nobh() {
+        env PORT_REPO="$UC/nobh/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+            KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/nobhstate" \
+            KDOS_UPDATE_CACHE="$UC/nobhcache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+            KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 "$@" \
+            "$OUT/kdos" update groups --json
+    }
+    rm -f "$UC/nobhstate"
+    if ! command -v kdos-bootctl >/dev/null 2>&1; then
+        nobh KDOS_UPDATE_BINHOST= | grep -qF '"packages":1,"binhost":true,"size":null}' \
+            || { echo "  a tree no refresh has looked at yet lists:"; nobh KDOS_UPDATE_BINHOST=; exit 1; }
+    fi
+    printf 'binhost absent 1735689600 no binhost is named for this tree\n' > "$UC/nobhstate"
+    nobh KDOS_UPDATE_BINHOST= | grep -qF '"packages":1,"binhost":false,"size":null}' \
+        || { echo "  a tree the last binhost step found unnamed lists:"; nobh KDOS_UPDATE_BINHOST=; exit 1; }
+    printf 'fetch fetch-failed 1735689600 the published tree 0123456789ab is older than this machine'"'"'s ba9876543210\n' > "$UC/nobhstate"
+    nobh KDOS_UPDATE_BINHOST= | grep -qF '"packages":1,"binhost":false,"size":null}' \
+        || { echo "  a tree whose published one is older lists:"; nobh KDOS_UPDATE_BINHOST=; exit 1; }
+    nobh KDOS_UPDATE_BINHOST=http://example.invalid | grep -qF '"packages":1,"binhost":true,"size":null}' \
+        || { echo "  a named binhost with no index lists:"; nobh KDOS_UPDATE_BINHOST=http://example.invalid; exit 1; }
+    echo "  groups --json says binhost false only where no refresh can name one"
+else
+    echo "  groups --json binhost case skipped: /etc/kdos/update.conf names a binhost"
+fi
 upd groups 2>&1 | grep -q '^  smalls  *Small things — 1 of 1 to install, 1 package, ' \
     || { echo "  the human groups list is:"; upd groups; exit 1; }
+mv "$UC/cache" "$UC/cache.ix"
+upd groups 2>&1 | head -1 | grep -q '^no binhost index here, so no sizes: ' \
+    || { echo "  with no index the groups list opens:"; upd groups 2>&1; mv "$UC/cache.ix" "$UC/cache"; exit 1; }
+mv "$UC/cache.ix" "$UC/cache"
 upd install --dry-run smalls > "$UC/inst" 2>&1 \
     || { echo "  a group dry run failed:"; cat "$UC/inst"; exit 1; }
 grep -qxF '==> smalls: tiny (1 of 1)' "$UC/inst" && grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" \
@@ -2958,8 +5884,143 @@ upd install --dry-run --pending > "$UC/inst" 2>&1 \
     || { echo "  a pending dry run failed:"; cat "$UC/inst"; exit 1; }
 grep -qxF '==> smalls: tiny (1 of 1)' "$UC/inst" && test -f "$UC/sys/var/lib/kdos/groups-pending" \
     || { echo "  the pending dry run is:"; cat "$UC/inst"; exit 1; }
+# With no index a group whose dependencies come prebuilt (the prebuilt
+# route, or --source with --build-deps=prebuilt) is refused once, before its
+# first member, and exits 1: every member would be refused for the same
+# reason.
+cp "$RP/groups" "$UC/groups.keep"
+printf 'group trio Three things\ntiny tinyb tinyc\n' >> "$RP/groups"
+printf 'trio\n' > "$UC/sys/var/lib/kdos/groups-pending"
+mv "$UC/cache" "$UC/cache.ix"
+rc=0; upd install --dry-run --prebuilt --pending > "$UC/inst" 2>&1 || rc=$?
+rs=0; upd install --dry-run --source --build-deps=prebuilt --pending > "$UC/inst.src" 2>&1 || rs=$?
+mv "$UC/cache.ix" "$UC/cache"
+cp "$UC/groups.keep" "$RP/groups"
+test "$rc" = 1 && ! grep -q '^==> trio' "$UC/inst" \
+    && test "$(grep -c 'nothing in trio was installed$' "$UC/inst")" = 1 \
+    && test "$(grep -c 'no signed binhost index is on this machine' "$UC/inst")" = 1 \
+    || { echo "  a pending group with no index (exit $rc) prints:"; cat "$UC/inst"; exit 1; }
+test "$rs" = 1 && ! grep -q '^==> trio' "$UC/inst.src" \
+    && test "$(grep -c 'nothing in trio was installed$' "$UC/inst.src")" = 1 \
+    && test "$(grep -c 'no signed binhost index is on this machine' "$UC/inst.src")" = 1 \
+    || { echo "  a source group with prebuilt dependencies and no index (exit $rs) prints:"; cat "$UC/inst.src"; exit 1; }
+echo "  a prebuilt group with no index is refused once"
 rm "$UC/sys/var/lib/kdos/groups-pending"
 mv "$UC/tiny.db" "$UC/db/tiny"
+# A group leaves a member already installed out of the world set, so a
+# base-image program is not offered for removal; the port named by itself
+# joins it. Install needs root: run as root, or in a namespace of its own.
+_grroot=
+if [ "$(id -u)" = 0 ]; then _grroot=env
+elif unshare -r true 2>/dev/null; then _grroot="unshare -r env"
+fi
+if [ -n "$_grroot" ]; then
+    rm -f "$UC/sys/var/lib/kdos/world"
+    $_grroot PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+        KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+        KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+        KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update install smalls > "$UC/inst" 2>&1 \
+        || { echo "  a group of installed members failed:"; cat "$UC/inst"; exit 1; }
+    grep -qxF 'tiny is already installed' "$UC/inst" && ! grep -qsx tiny "$UC/sys/var/lib/kdos/world" \
+        || { echo "  a group recorded an installed member:"; cat "$UC/inst" "$UC/sys/var/lib/kdos/world"; exit 1; }
+    $_grroot PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+        KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+        KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+        KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update install tiny > "$UC/inst" 2>&1 \
+        || { echo "  an installed port named by itself failed:"; cat "$UC/inst"; exit 1; }
+    grep -qsx tiny "$UC/sys/var/lib/kdos/world" \
+        || { echo "  an installed port named by itself was not recorded:"; cat "$UC/inst"; exit 1; }
+    rm -f "$UC/sys/var/lib/kdos/world"
+    echo "  a group leaves an installed member out of the world set; a port named by itself joins it"
+    # Two pending groups, no index cached and a binhost that refuses: on
+    # either route whose dependencies come prebuilt the index is fetched
+    # once, the first group is refused, the run stops with one line naming
+    # both as pending, and the pending file keeps both.
+    cp "$RP/groups" "$UC/groups.keep"
+    printf 'group trio Three things\ntiny tinyb tinyc\n' >> "$RP/groups"
+    _pport=$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    for _proute in --prebuilt "--source --build-deps=prebuilt"; do
+        printf 'smalls\ntrio\n' > "$UC/sys/var/lib/kdos/groups-pending"
+        cp "$UC/sys/var/lib/kdos/groups-pending" "$UC/pending.keep"
+        mkdir -p "$UC/nocache"
+        rc=0
+        # shellcheck disable=SC2086
+        $_grroot PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+            KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/pstate" \
+            KDOS_UPDATE_CACHE="$UC/nocache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+            KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+            KDOS_UPDATE_BINHOST="https://127.0.0.1:$_pport" \
+            "$OUT/kdos" update install $_proute --pending > "$UC/inst" 2>&1 || rc=$?
+        test "$rc" = 1 \
+            && test "$(grep -c 'fetching the release index' "$UC/inst")" = 1 \
+            && test "$(grep -c 'nothing in smalls was installed$' "$UC/inst")" = 1 \
+            && ! grep -q 'trio was installed' "$UC/inst" \
+            && grep -qxF 'kdos update: smalls trio stay pending; run `kdos update install --pending` again once the network is up' "$UC/inst" \
+            && cmp -s "$UC/pending.keep" "$UC/sys/var/lib/kdos/groups-pending" \
+            || { cp "$UC/groups.keep" "$RP/groups"; echo "  pending groups ($_proute) with no reachable binhost (exit $rc) print:"; cat "$UC/inst" "$UC/sys/var/lib/kdos/groups-pending"; exit 1; }
+        rm -rf "$UC/nocache" "$UC/pstate" "$UC/pending.keep" "$UC/sys/var/lib/kdos/groups-pending"
+    done
+    echo "  pending groups with no reachable binhost fetch the index once and stop at the first refusal, prebuilt or with prebuilt build-deps"
+    # Two pending groups and a named binhost that publishes no release
+    # index: the fetch is tried once, the first group is refused once, and
+    # the run stops until the binhost publishes an index.
+    printf 'smalls\ntrio\n' > "$UC/sys/var/lib/kdos/groups-pending"
+    cp "$UC/sys/var/lib/kdos/groups-pending" "$UC/pending.keep"
+    mkdir -p "$UC/nocache" "$UC/emptybh"
+    rc=0
+    $_grroot PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+        KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/pstate" \
+        KDOS_UPDATE_CACHE="$UC/nocache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+        KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+        KDOS_UPDATE_BINHOST="$UC/emptybh" \
+        "$OUT/kdos" update install --pending > "$UC/inst" 2>&1 || rc=$?
+    test "$rc" = 1 \
+        && test "$(grep -c 'fetching the release index' "$UC/inst")" = 1 \
+        && test "$(grep -c 'nothing in smalls was installed$' "$UC/inst")" = 1 \
+        && ! grep -q 'trio was installed' "$UC/inst" \
+        && grep -qxF 'kdos update: smalls trio stay pending; run `kdos update install --pending` again once the binhost publishes an index' "$UC/inst" \
+        && cmp -s "$UC/pending.keep" "$UC/sys/var/lib/kdos/groups-pending" \
+        || { cp "$UC/groups.keep" "$RP/groups"; echo "  pending groups with a binhost that publishes nothing (exit $rc) print:"; cat "$UC/inst" "$UC/sys/var/lib/kdos/groups-pending"; exit 1; }
+    rm -rf "$UC/nocache" "$UC/emptybh" "$UC/pstate" "$UC/pending.keep" "$UC/sys/var/lib/kdos/groups-pending"
+    echo "  pending groups with a binhost that publishes no index stop at the first refusal"
+    # Two pending groups and no binhost named (a TREE with no version, no
+    # $KDOS_UPDATE_BINHOST): the fetch finds nothing to take, the first
+    # group is refused once with its advice, and the run stops with one line
+    # naming both as pending until a binhost is named. update.conf is read
+    # from its fixed path, so a host whose update.conf names a binhost skips
+    # the case.
+    if ! grep -qs '^binhost' /etc/kdos/update.conf; then
+        cp "$RP/TREE" "$UC/tree.keep"
+        grep -v '^version ' "$UC/tree.keep" > "$RP/TREE"
+        printf 'smalls\ntrio\n' > "$UC/sys/var/lib/kdos/groups-pending"
+        cp "$UC/sys/var/lib/kdos/groups-pending" "$UC/pending.keep"
+        mkdir -p "$UC/nocache"
+        rc=0
+        $_grroot PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+            KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/pstate" \
+            KDOS_UPDATE_CACHE="$UC/nocache" KDOS_UPDATE_SYSROOT="$UC/sys" \
+            KDOS_UPDATE_TREE="$UC/nowhere" SOURCE_DATE_EPOCH=1735689600 \
+            KDOS_UPDATE_BINHOST= \
+            "$OUT/kdos" update install --pending > "$UC/inst" 2>&1 || rc=$?
+        test "$rc" = 1 \
+            && test "$(grep -c 'no signed binhost index is on this machine; nothing in smalls was installed$' "$UC/inst")" = 1 \
+            && test "$(grep -c 'no binhost is named' "$UC/inst")" = 1 \
+            && ! grep -q 'trio was installed' "$UC/inst" \
+            && grep -qxF 'kdos update: smalls trio stay pending; run `kdos update install --pending` again once a binhost is named' "$UC/inst" \
+            && cmp -s "$UC/pending.keep" "$UC/sys/var/lib/kdos/groups-pending" \
+            || { cp "$UC/groups.keep" "$RP/groups"; cp "$UC/tree.keep" "$RP/TREE"; echo "  pending groups with no binhost named (exit $rc) print:"; cat "$UC/inst" "$UC/sys/var/lib/kdos/groups-pending"; exit 1; }
+        cp "$UC/tree.keep" "$RP/TREE"
+        rm -rf "$UC/nocache" "$UC/pstate" "$UC/pending.keep" "$UC/tree.keep" "$UC/sys/var/lib/kdos/groups-pending"
+        echo "  pending groups with no binhost named stop at the first refusal"
+    else
+        echo "  the no-binhost pending case skipped: /etc/kdos/update.conf names a binhost"
+    fi
+    cp "$UC/groups.keep" "$RP/groups"
+else
+    echo "  the group world-set case skipped: neither root nor a user namespace"
+fi
 rc=0; upd install --dry-run --source --root "$UC/elsewhere" tiny >/dev/null 2>&1 || rc=$?
 test "$rc" = 2 || { echo "  --source into another root exited $rc, not 2"; exit 1; }
 rc=0; upd install --dry-run --root elsewhere tiny >/dev/null 2>&1 || rc=$?
@@ -2989,11 +6050,37 @@ upd install --dry-run --source tinyapp > "$UC/inst" 2>&1 \
 grep -qE '^tiny dev tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qxF 'tinyapp source 1.0-1' "$UC/inst" \
     && grep -qE '^total 1 [0-9]+ 1$' "$UC/inst" \
     || { echo "  the source dry run does not restore its dependency:"; cat "$UC/inst"; exit 1; }
+# --dev --deps restores what a build against the port compiles against as
+# well, and for a port not installed its closure alone; --dev alone restores
+# the port only.
+upd install --dry-run --dev --deps tinyapp > "$UC/inst" 2>&1 \
+    && grep -qE '^tiny dev tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && ! grep -q 'tinyapp is not installed' "$UC/inst" \
+    || { echo "  --dev --deps of a port not installed is:"; cat "$UC/inst"; exit 1; }
+printf '1.0 1\n' > "$UC/db/tinyapp"
+upd install --dry-run --dev tinyapp > "$UC/inst" 2>&1 \
+    && grep -qxF 'every file of tinyapp is installed' "$UC/inst" && ! grep -q '^tiny dev' "$UC/inst" \
+    || { echo "  --dev without --deps is:"; cat "$UC/inst"; exit 1; }
+upd install --dry-run --dev --deps tinyapp > "$UC/inst" 2>&1 \
+    && grep -qE '^tiny dev tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qE '^total 1 [0-9]+ 0$' "$UC/inst" \
+    || { echo "  --dev --deps does not restore the closure:"; cat "$UC/inst"; exit 1; }
+rm "$UC/db/tinyapp"
+# The build-tools group restores the development files of a member already
+# installed without them: the image's gcc carries no compiler driver.
+cp "$RP/groups" "$UC/groups.keep"
+printf 'group build-tools Build tools\ntiny\n' >> "$RP/groups"
+upd install --dry-run build-tools > "$UC/inst" 2>&1 \
+    && grep -qxF 'tiny is already installed' "$UC/inst" && grep -qE '^tiny dev tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" \
+    || { echo "  the build-tools group does not restore a stripped member:"; cat "$UC/inst"; exit 1; }
+cp "$UC/groups.keep" "$RP/groups"
 printf '0.9 1\n' > "$UC/db/tiny"
 rc=0; upd install --dry-run --dev tiny >/dev/null 2>"$UC/err" || rc=$?
 test "$rc" = 1 && grep -qF 'tiny is older than its recipe' "$UC/err" \
     || { echo "  --dev of a package behind its recipe exited $rc:"; cat "$UC/err"; exit 1; }
 rm -r "$UC/db/.facets"
+# A closure already whole is said to be, not passed over in silence.
+upd install --dry-run --dev --deps tinyapp > "$UC/inst" 2>&1 \
+    && grep -qxF 'the development files of what tinyapp builds against are installed' "$UC/inst" \
+    || { echo "  --dev --deps over a whole closure is:"; cat "$UC/inst"; exit 1; }
 upd install --dry-run --dev tiny 2>&1 | grep -qxF 'every file of tiny is installed' \
     || { echo "  --dev of a whole package does not say so"; exit 1; }
 mv "$UC/db/tiny" "$UC/tiny.db"
@@ -3006,14 +6093,35 @@ grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qxF '
 mv "$UC/tiny.db" "$UC/db/tiny"
 rm -r "$RP/ports/tinyapp"
 rm "$RP/groups"
+# The shipped build-tools group carries the overlay headers chroot.env's
+# flags include: without /usr/include/fortify a build here ignores
+# _FORTIFY_SOURCE under the binhost's build-config hash.
+if grep -q -- '-isystem /usr/include/fortify' script/env/chroot.env; then
+    awk '/^group /{g=$2; next} g=="build-tools"{for(i=1;i<=NF;i++) if($i=="fortify-headers") f=1}
+         END{exit !f}' ports/groups \
+        || { echo "  chroot.env names /usr/include/fortify and the build-tools group has no fortify-headers"; exit 1; }
+fi
 rc=0; upd install --dry-run -x >/dev/null 2>&1 || rc=$?
 test "$rc" = 2 || { echo "  an option as the port name exited $rc, not 2"; exit 1; }
 # `notes --json` is the What's New page's document: the running version, the
-# other slot's (none recorded here) and the tree's RELEASE as one string.
+# other slot's (none recorded here), not the live medium, and the tree's
+# RELEASE as one string.
 KDOS_BOOTSTATE="$UC/nobootstate" upd notes --json > "$UC/notes" \
     || { echo "  notes --json failed"; exit 1; }
-grep -qxF '{"version":"0.2.13","previous":"","notes":"Plasma 6.8.2.\n"}' "$UC/notes" \
+grep -qxF '{"version":"0.2.13","previous":"","went_back":false,"live":false,"notes":"Plasma 6.8.2.\n"}' "$UC/notes" \
     || { echo "  the notes document is:"; cat "$UC/notes"; exit 1; }
+# Two writers of the update document at once (kdos-sysupdated's refresh and a
+# fetch) each rename a temp file of their own: neither fails, and the
+# document left is whole.
+rm -f "$UC/race"
+for _ in 1 2 3 4 5 6 7 8; do
+    upd check --out "$UC/u.json" >/dev/null 2>>"$UC/race" &
+    upd check --out "$UC/u.json" >/dev/null 2>>"$UC/race" &
+done
+wait
+! grep -q 'cannot write' "$UC/race" && python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$UC/u.json" \
+    && ! ls "$UC"/u.json.?* >/dev/null 2>&1 \
+    || { echo "  two writers of the update document collided:"; cat "$UC/race"; exit 1; }
 # Matched under another build's environment: nothing is offered, and apply
 # refuses before anything is written, naming the way that works — on the
 # progress descriptor too, which is where kdos-sysupdated reads it.
@@ -3041,8 +6149,31 @@ upd check --json > "$UC/doc" 2>/dev/null || test $? = 1
 grep -qF '"covered":1,"uncovered":0' "$UC/doc" && grep -qF '"builds":1' "$UC/doc" \
     && grep -qF '"lane":"binhost"' "$UC/doc" \
     || { echo "  a source-origin package was not offered as a build:"; cat "$UC/doc"; exit 1; }
-upd apply --dry-run --in-place 2>&1 | grep -q "tiny .* → 1.0-1: built here" \
+upd apply --dry-run --in-place > "$UC/plan" 2>&1 || :
+grep -q "tiny .* → 1.0-1: built here" "$UC/plan" \
     || { echo "  the dry run does not build the source-origin package"; exit 1; }
+grep -qE '^build-space [0-9]+$' "$UC/plan" \
+    || { echo "  the binhost lane's dry run prints no build-space:"; cat "$UC/plan"; exit 1; }
+upd apply --dry-run --in-place --source > "$UC/plan" 2>&1 || :
+grep -qE '^build-space [0-9]+$' "$UC/plan" \
+    || { echo "  the source lane's dry run prints no build-space:"; cat "$UC/plan"; exit 1; }
+# Neither lane builds where the work directory has no room: a 1 MiB tmpfs.
+if unshare -rm true 2>/dev/null; then
+    mkdir -p "$UC/smallwork"
+    for lane in --binhost --source; do
+        rc=0
+        unshare -rm sh -c 'mount -t tmpfs -o size=1m tmpfs "$1" && shift && exec "$@"' sh \
+            "$UC/smallwork" env PORT_REPO="$RP/ports" KPKG_CONF=/nonexistent PKGDB_DIR="$UC/db" \
+            WORK_DIR="$UC/smallwork/work" KPKG_KEYRING="$UC/keys" KDOS_UPDATE_STATE="$UC/state" \
+            KDOS_UPDATE_CACHE="$UC/cache" KDOS_UPDATE_SYSROOT="$UC/sys" KDOS_UPDATE_TREE="$UC/nowhere" \
+            SOURCE_DATE_EPOCH=1735689600 \
+            "$OUT/kdos" update apply --dry-run --in-place $lane >"$UC/plan" 2>"$UC/err" || rc=$?
+        test "$rc" = 3 && grep -qF "building tiny needs about 512M in $UC/smallwork/work and the root has" "$UC/err" \
+            || { echo "  an apply $lane with no room to build exited $rc:"; cat "$UC/plan" "$UC/err"; exit 1; }
+    done
+else
+    echo "  (no user namespaces here: the apply lanes' full-work-directory refusal is not exercised)"
+fi
 rm "$UC/sys/var/lib/kdos/origin"
 rm "$UC/sys/etc/kdos/chroot.env"
 # A key nobody trusts, an edited index, no index: never offered.
@@ -3081,11 +6212,360 @@ rc=0; upd install --dry-run tiny >/dev/null 2>&1 || rc=$?
 test "$rc" = 1 || { echo "  an install with no index exited $rc, not 1"; exit 1; }
 upd install --dry-run tiny 2>&1 | grep -qF '`sudo kdos update fetch --binhost-only`' \
     || { echo "  a dry run with no index does not name the fetch"; exit 1; }
+# A build with a build tool missing and no index refuses, naming the fetch.
+mkdir -p "$RP/ports/tinytool" "$RP/ports/tinysrc"
+printf 'name        = tinytool\nversion     = 1.0\nrelease     = 1\ndescription = synthetic\n' \
+    > "$RP/ports/tinytool/kpkgbuild"
+printf 'name        = tinysrc\nversion     = 1.0\nrelease     = 1\ndescription = synthetic\n' \
+    > "$RP/ports/tinysrc/kpkgbuild"
+printf 'group build-tools Build tools\ntinytool\n' > "$RP/groups"
+rc=0; upd install --dry-run --source --build-deps=source tinysrc >/dev/null 2>"$UC/err" || rc=$?
+test "$rc" = 1 && grep -qF 'tinytool of the build tools cannot be installed prebuilt: no binhost index here — `sudo kdos update fetch --binhost-only`' "$UC/err" \
+    || { echo "  the build-tools refusal with no index exited $rc:"; cat "$UC/err"; exit 1; }
+rm -r "$RP/ports/tinytool" "$RP/ports/tinysrc" "$RP/groups"
+# An http:// binhost is refused by curl's --proto, so its advice is the
+# https:// rule, never the fetch that would fail the same way; curl reads the
+# scheme in any case, so HTTP:// is refused alike.
+for hb in http://example.invalid HTTP://example.invalid; do
+    KDOS_UPDATE_BINHOST=$hb upd install --dry-run tiny > "$UC/hint" 2>&1 || :
+    grep -qF 'names an http:// URL' "$UC/hint" && grep -qF 'name an https:// URL or a directory' "$UC/hint" \
+        && ! grep -qF -- '--binhost-only' "$UC/hint" \
+        || { echo "  the hint for binhost $hb is:"; cat "$UC/hint"; exit 1; }
+done
+# A tree that names no release, and no binhost named: the hint offers the
+# fetch of a published tree, unless the last fetch refused that tree as older
+# than this machine's, when `binhost =` is the one way left.
+cp "$RP/TREE" "$UC/TREE.named"; cp "$UC/state" "$UC/state.keep" 2>/dev/null || :
+grep -v '^version ' "$UC/TREE.named" > "$RP/TREE"
+printf 'binhost absent 1761600000 no binhost is named for this tree\n' > "$UC/state"
+upd install --dry-run tiny 2>&1 | grep -qF '`sudo kdos update fetch` takes a published tree' \
+    || { echo "  an unnamed tree's hint does not offer the fetch"; exit 1; }
+printf "fetch fetch-failed 1761600000 the published tree 21b67721d537 is older than this machine's 53a78a241000\n" >> "$UC/state"
+upd install --dry-run tiny > "$UC/hint" 2>&1 || :
+grep -qF 'name one with `binhost =`' "$UC/hint" && ! grep -qF 'takes a published tree' "$UC/hint" \
+    || { echo "  the hint after an older published tree is:"; cat "$UC/hint"; exit 1; }
+cp "$UC/TREE.named" "$RP/TREE"; rm -f "$UC/state"; [ -f "$UC/state.keep" ] && mv "$UC/state.keep" "$UC/state"
 rm -f "$RP/RELEASE"
 rc=0; upd notes --json >/dev/null 2>&1 || rc=$?
 test "$rc" = 1 || { echo "  notes with no RELEASE exited $rc, not 1"; exit 1; }
 rm -f "$RP/TREE"
 echo "  offered only when a trusted, unedited index covers every package under this build's environment; install and notes answer from the same index and tree"
+
+echo
+echo "==> kdos update fetch names an image's unnamed tree from the release of the same commit"
+# An image stamps /ports/TREE with its commit alone, and an unnamed tree has
+# no binhost: `fetch --binhost-only` says so and fails, and a full fetch
+# whose signed tree is the same commit but names its release takes that
+# stamp; the next fetch is current. Run as root in a namespace of its own,
+# which is what fetch needs.
+if unshare -r true 2>/dev/null; then
+    TF="$OUT/treefetch"
+    rm -rf "$TF"
+    mkdir -p "$TF/ports/core/x/tiny" "$TF/pub" "$TF/src/core/x/tiny" "$TF/keys"
+    ( cd "$TF" && "$OUT/kdos-kpkg" kpkg keygen release >/dev/null 2>&1 ) \
+        || { echo "  keygen failed"; exit 1; }
+    cp "$TF/release.pub" "$TF/keys/"
+    printf 'name = tiny\nversion = 1.0\nrelease = 1\n' > "$TF/ports/core/x/tiny/kpkgbuild"
+    cp "$TF/ports/core/x/tiny/kpkgbuild" "$TF/src/core/x/tiny/"
+    : > "$TF/ports/sources.idx"
+    : > "$TF/src/sources.idx"
+    printf 'kdos-tree 1\ncommit 21b67721d\ntime 1761600000\n' > "$TF/ports/TREE"
+    printf 'kdos-tree 1\ncommit 21b67721d0123456789abcdef0123456789abcde\ntime 1761600000\nversion 0.3.0\n' \
+        > "$TF/src/TREE"
+    tar -C "$TF/src" -cJf "$TF/pub/kdos-ports.tar.xz" .
+    "$OUT/kdos-kpkg" kpkg sign "$TF/pub/kdos-ports.tar.xz" "$TF/release.key" >/dev/null 2>&1 \
+        || { echo "  the tree could not be signed"; exit 1; }
+    tfu() {
+        unshare -r env PORT_REPO="$TF/ports/core" KPKG_CONF=/nonexistent \
+            KDOS_UPDATE_STATE="$TF/state" KDOS_UPDATE_CACHE="$TF/cache" \
+            KDOS_TREE_KEYS="$TF/keys" KPKG_KEYRING="$TF/keys" KDOS_UPDATE_TREE="$TF/pub" \
+            KDOS_UPDATE_IMAGE="$TF/noimage" "$OUT/kdos" update "$@"
+    }
+    rc=0; tfu fetch --binhost-only >/dev/null 2>"$TF/err" || rc=$?
+    test "$rc" = 1 && grep -qF 'TREE names no release' "$TF/err" \
+        || { echo "  --binhost-only on an unnamed tree exited $rc:"; cat "$TF/err"; exit 1; }
+    # A release index that cannot be downloaded is said at once, and an
+    # http:// binhost, which curl's --proto refuses, is named as the cause.
+    rc=0; KDOS_UPDATE_BINHOST=http://example.invalid tfu fetch --binhost-only >/dev/null 2>"$TF/err" || rc=$?
+    test "$rc" = 1 && grep -qF 'kdos update: the release index at http://example.invalid could not be downloaded' "$TF/err" \
+        && grep -qF 'binhost takes an https:// URL or a directory' "$TF/err" \
+        || { echo "  a binhost fetch that failed exited $rc without saying why:"; cat "$TF/err"; exit 1; }
+    # check keeps the https:// rule on its binhost-fetch-failed line and
+    # names it on its binhost: line, instead of the fetch that fails again.
+    mkdir -p "$TF/db"
+    PKGDB_DIR="$TF/db" KDOS_UPDATE_BINHOST=http://example.invalid tfu check > "$TF/out" 2>&1 || true
+    grep -q 'binhost-fetch-failed: .*could not be downloaded; binhost takes an https:// URL or a directory' "$TF/out" \
+        && grep -q 'binhost: .*names an http:// URL.*name an https:// URL or a directory' "$TF/out" \
+        && ! grep -qF -- '--binhost-only' "$TF/out" \
+        || { echo "  check after an http:// binhost lost the https:// rule:"; cat "$TF/out"; exit 1; }
+    # That result is for http://example.invalid alone: once another binhost,
+    # or none, is named, check names no failure of it and its binhost: line
+    # is about the base named now.
+    if ! grep -qs '^binhost' /etc/kdos/update.conf; then
+        PKGDB_DIR="$TF/db" KDOS_UPDATE_BINHOST= tfu check > "$TF/out" 2>&1 || true
+        PKGDB_DIR="$TF/db" KDOS_UPDATE_BINHOST= tfu check --json > "$TF/doc" 2>/dev/null || true
+        ! grep -q 'binhost-fetch-failed\|example\.invalid' "$TF/out" && grep -q 'binhost: .*has no `binhost =` line' "$TF/out" \
+            && grep -qF '"problem":null' "$TF/doc" \
+            || { echo "  check with no binhost named after an http:// one failed:"; cat "$TF/out" "$TF/doc"; exit 1; }
+        PKGDB_DIR="$TF/db" KDOS_UPDATE_BINHOST=https://example.invalid tfu check > "$TF/out" 2>&1 || true
+        ! grep -q 'binhost-fetch-failed\|http://example\.invalid' "$TF/out" \
+            && grep -qF 'binhost: no signed binhost index is on this machine — `sudo kdos update fetch --binhost-only`' "$TF/out" \
+            || { echo "  check with another binhost named after an http:// one failed:"; cat "$TF/out"; exit 1; }
+        # A directory with no binhost in it: check says the last fetch found
+        # none there and reports binhost-absent, never the same fetch again.
+        mkdir -p "$TF/bh"
+        rc=0; KDOS_UPDATE_BINHOST="$TF/bh" tfu fetch --binhost-only >/dev/null 2>"$TF/err" || rc=$?
+        test "$rc" = 1 && grep -qF "no binhost is published at file://$TF/bh" "$TF/err" \
+            && grep -qx "binhost-at named [0-9]* file://$TF/bh" "$TF/state" \
+            && grep -q '^binhost absent ' "$TF/state" \
+            || { echo "  --binhost-only at an empty directory exited $rc:"; cat "$TF/err" "$TF/state"; exit 1; }
+        PKGDB_DIR="$TF/db" KDOS_UPDATE_BINHOST="$TF/bh" tfu check > "$TF/out" 2>&1 || true
+        PKGDB_DIR="$TF/db" KDOS_UPDATE_BINHOST="$TF/bh" tfu check --json > "$TF/doc" 2>/dev/null || true
+        grep -qF "the last fetch found no binhost published at file://$TF/bh; publish one there" "$TF/out" \
+            && grep -qF "binhost-absent: no binhost is published at file://$TF/bh" "$TF/out" \
+            && ! grep -qF -- '--binhost-only' "$TF/out" \
+            && grep -qF '"problem":"binhost-absent"' "$TF/doc" \
+            || { echo "  check after a binhost fetch that found none:"; cat "$TF/out" "$TF/doc"; exit 1; }
+        echo "  a binhost result is reported only for the base it was fetched from; one that found none is not advised again"
+    fi
+    KDOS_UPDATE_BINHOST="$TF/nobinhost" tfu fetch > "$TF/out" 2>&1 || true
+    grep -qx 'version 0.3.0' "$TF/ports/TREE" && grep -q 'now holds tree' "$TF/out" \
+        || { echo "  the same commit's named tree was not taken:"; cat "$TF/out" "$TF/ports/TREE"; exit 1; }
+    KDOS_UPDATE_BINHOST="$TF/nobinhost" tfu fetch > "$TF/out" 2>&1 || true
+    grep -q 'the ports tree is current' "$TF/out" \
+        || { echo "  the named tree was fetched again:"; cat "$TF/out"; exit 1; }
+    echo "  --binhost-only fails naming why; the same commit's named tree replaces the unnamed one, then is current"
+else
+    echo "  (no user namespaces here: fetch needs root and is not exercised)"
+fi
+
+echo
+echo "==> kdos update ranks an ahead-of-release tree last, names another base's index, and removes only a port asked for"
+# A tree fetch that refused the published tree as older is no cut-off and
+# must not hide the binhost result: problem() ranks it last, so the update
+# document names binhost-absent and the base it is about. An index in place
+# from another base is said on check's binhost: line. `removable` lists the
+# world ports nothing installed depends on, and `remove` refuses a port of
+# the system and one an installed package needs. A removal takes the
+# packages with an origin line that only it needs, and never one of the
+# image (basec, with no origin line); with the world set emptied, both
+# installed-on-request packages are listed as left by removals.
+RM="$OUT/updremove"
+rm -rf "$RM"
+mkdir -p "$RM/ports/core/x/liba" "$RM/ports/core/x/appb" "$RM/ports/core/x/basec" \
+    "$RM/db" "$RM/sys/var/lib/kdos" "$RM/cache" "$RM/keys" "$RM/bh"
+printf 'name = liba\nversion = 1.0\nrelease = 1\n' > "$RM/ports/core/x/liba/kpkgbuild"
+printf 'name = appb\nversion = 1.0\nrelease = 1\ndepends = liba\n' > "$RM/ports/core/x/appb/kpkgbuild"
+printf 'name = basec\nversion = 1.0\nrelease = 1\n' > "$RM/ports/core/x/basec/kpkgbuild"
+printf 'kdos-tree 1\ncommit 53a78a241\ntime 1761600000\n' > "$RM/ports/TREE"
+for p in liba appb basec; do printf '1.0 1\n' > "$RM/db/$p"; done
+printf 'liba\nappb\n' > "$RM/sys/var/lib/kdos/world"
+printf 'liba prebuilt\nappb prebuilt\n' > "$RM/sys/var/lib/kdos/origin"
+{
+    echo "fetch fetch-failed 1761600000 the published tree 21b67721d537 is older than this machine's 53a78a241"
+    echo "binhost absent 1761600000 no binhost is published at file://$RM/bh"
+    echo "binhost-at named 1761600000 file://$RM/bh"
+} > "$RM/state"
+rmu() {
+    env PORT_REPO="$RM/ports/core" KPKG_CONF=/nonexistent PKGDB_DIR="$RM/db" \
+        KPKG_KEYRING="$RM/keys" KDOS_UPDATE_STATE="${RMS:-$RM/state}" KDOS_UPDATE_CACHE="$RM/cache" \
+        KDOS_UPDATE_SYSROOT="$RM/sys" KDOS_UPDATE_TREE="$RM/nowhere" KDOS_UPDATE_IMAGE="$RM/noimage" \
+        KDOS_UPDATE_BINHOST="$RM/bh" "$OUT/kdos" update "$@"
+}
+if ! grep -qs '^binhost' /etc/kdos/update.conf; then
+    rmu check --json > "$RM/doc" 2>/dev/null || true
+    grep -qF '"problem":"binhost-absent"' "$RM/doc" \
+        && grep -qF "\"binhost_base\":\"file://$RM/bh\"" "$RM/doc" \
+        || { echo "  an older published tree hid the binhost result:"; cat "$RM/doc"; exit 1; }
+    # With no other problem the older tree is the one recorded still.
+    grep -v '^binhost' "$RM/state" > "$RM/state.tree"
+    RMS="$RM/state.tree" rmu check --json > "$RM/doc" 2>/dev/null || true
+    grep -qF '"problem":"fetch-failed"' "$RM/doc" \
+        || { echo "  the older-tree refusal alone is not the problem:"; cat "$RM/doc"; exit 1; }
+    # A signed index from another base stays in place; check names both.
+    cp "$BH/repo/PACKAGES" "$BH/repo/PACKAGES.sig" "$RM/cache/"
+    cp "$BH/repo/kdos-update.idx" "$RM/cache/INDEX"
+    cp "$BH/repo/kdos-update.idx.sig" "$RM/cache/INDEX.sig"
+    printf 'https://10.0.2.2:8443\n' > "$RM/cache/ORIGIN"
+    cp "$BH/builder.pub" "$RM/keys/"
+    rmu check > "$RM/out" 2>&1 || true
+    grep -qF "binhost: the index in place is from https://10.0.2.2:8443, not file://$RM/bh that \$KDOS_UPDATE_BINHOST names; the last fetch of file://$RM/bh found no binhost there; installs still read the index in place" "$RM/out" \
+        && grep -qF "binhost-absent: no binhost is published at file://$RM/bh" "$RM/out" \
+        || { echo "  check did not name the index from another base:"; cat "$RM/out"; exit 1; }
+    rm -f "$RM/cache/"*
+fi
+rmu removable > "$RM/rm" 2>&1 || { echo "  removable failed:"; cat "$RM/rm"; exit 1; }
+[ "$(cat "$RM/rm")" = "$(printf 'appb\nkept, needed by an installed package:\nliba (needed by appb)')" ] \
+    || { echo "  removable listed:"; cat "$RM/rm"; exit 1; }
+rmu removable --json > "$RM/rm" 2>&1
+grep -qxF '{"removable":["appb"],"needed":{"liba":"appb"},"left":[]}' "$RM/rm" \
+    || { echo "  removable --json is:"; cat "$RM/rm"; exit 1; }
+rc=0; rmu remove liba > /dev/null 2> "$RM/err" || rc=$?
+[ "$rc" = 1 ] && grep -qF 'liba is needed by appb' "$RM/err" \
+    || { echo "  remove of a needed port exited $rc:"; cat "$RM/err"; exit 1; }
+rc=0; rmu remove basec > /dev/null 2> "$RM/err" || rc=$?
+[ "$rc" = 1 ] && grep -qF 'basec is part of the system' "$RM/err" \
+    || { echo "  remove of a system port exited $rc:"; cat "$RM/err"; exit 1; }
+rc=0; rmu remove --dry-run appb > "$RM/out" 2> "$RM/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RM/out")" = 'remove appb' ] \
+    || { echo "  the dry run took a dependency still in the world set:"; cat "$RM/out" "$RM/err"; exit 1; }
+printf 'appb\n' > "$RM/sys/var/lib/kdos/world"
+rc=0; rmu remove --dry-run appb > "$RM/out" 2> "$RM/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RM/out")" = "$(printf 'remove appb\nremove liba')" ] \
+    || { echo "  the dry run of a removable port exited $rc:"; cat "$RM/out" "$RM/err"; exit 1; }
+: > "$RM/sys/var/lib/kdos/world"
+rmu removable > "$RM/rm" 2>&1
+[ "$(cat "$RM/rm")" = "$(printf 'left by removals:\nappb\nliba')" ] \
+    || { echo "  removable did not list what removals left:"; cat "$RM/rm"; exit 1; }
+rmu removable --json > "$RM/rm" 2>&1
+grep -qxF '{"removable":[],"needed":{},"left":["appb","liba"]}' "$RM/rm" \
+    || { echo "  removable --json left is:"; cat "$RM/rm"; exit 1; }
+rc=0; rmu remove liba > /dev/null 2> "$RM/err" || rc=$?
+[ "$rc" = 1 ] && grep -qF 'liba is needed by appb' "$RM/err" \
+    || { echo "  remove of a left package another needs exited $rc:"; cat "$RM/err"; exit 1; }
+# appc brought cyca and cycb, which depend on each other, and imgd, whose
+# origin line a newer image's record overrules: the cycle goes with appc,
+# imgd is of the image and stays, and is refused by name.
+for p in cyca cycb appc imgd cyca-extra; do mkdir -p "$RM/ports/core/x/$p"; done
+printf 'name = cyca\nversion = 1.0\nrelease = 1\ndepends = cycb\n' > "$RM/ports/core/x/cyca/kpkgbuild"
+printf 'name = cycb\nversion = 1.0\nrelease = 1\ndepends = cyca\n' > "$RM/ports/core/x/cycb/kpkgbuild"
+printf 'name = appc\nversion = 1.0\nrelease = 1\ndepends = cyca imgd\n' > "$RM/ports/core/x/appc/kpkgbuild"
+printf 'name = imgd\nversion = 1.0\nrelease = 1\n' > "$RM/ports/core/x/imgd/kpkgbuild"
+printf 'name = cyca-extra\nversion = 1.0\nrelease = 1\n' > "$RM/ports/core/x/cyca-extra/kpkgbuild"
+for p in cyca cycb appc imgd cyca-extra; do printf '1.0 1\n' > "$RM/db/$p"; done
+printf 'appc\ncyca-extra\n' > "$RM/sys/var/lib/kdos/world"
+printf 'cyca prebuilt\ncycb prebuilt\nappc prebuilt\nimgd prebuilt\ncyca-extra prebuilt\n' >> "$RM/sys/var/lib/kdos/origin"
+mkdir -p "$RM/sys/var/lib/kdos/image"
+printf 'kdos-image 1\nversion 0.2.1\n\nf 644 0 0 0 4 %064d %s/db/imgd\n' 0 "${RM#/}" \
+    > "$RM/sys/var/lib/kdos/image/MANIFEST"
+rc=0; rmu remove --dry-run appc > "$RM/out" 2> "$RM/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RM/out")" = "$(printf 'remove appc\nremove cyca\nremove cycb')" ] \
+    || { echo "  the dry run did not take the cycle appc brought, or took the image's imgd:"; cat "$RM/out" "$RM/err"; exit 1; }
+rc=0; rmu remove imgd > /dev/null 2> "$RM/err" || rc=$?
+[ "$rc" = 1 ] && grep -qF 'imgd is part of the system' "$RM/err" \
+    || { echo "  remove of a package the image record names exited $rc:"; cat "$RM/err"; exit 1; }
+rmu removable > "$RM/rm" 2>&1
+[ "$(cat "$RM/rm")" = "$(printf 'appc\ncyca-extra\nleft by removals:\nappb\nliba')" ] \
+    || { echo "  removable with a cycle and an image package:"; cat "$RM/rm"; exit 1; }
+# A world package another installed package needs is listed between the
+# removable ports and what removals left, each section under its heading.
+printf 'appc\ncyca-extra\ncycb\n' > "$RM/sys/var/lib/kdos/world"
+rmu removable > "$RM/rm" 2>&1
+[ "$(cat "$RM/rm")" = "$(printf 'appc\ncyca-extra\nkept, needed by an installed package:\ncycb (needed by cyca)\nleft by removals:\nappb\nliba')" ] \
+    || { echo "  removable with a kept package and packages left by removals:"; cat "$RM/rm"; exit 1; }
+printf 'appc\ncyca-extra\n' > "$RM/sys/var/lib/kdos/world"
+# A removal as root: a stand-in kpkg takes the database entry, and the cache
+# keeps only files of installed packages, and, with an acquired slot waiting,
+# the files of packages the removal did not take.
+_rmroot=
+if [ "$(id -u)" = 0 ]; then _rmroot=env
+elif unshare -r true 2>/dev/null; then _rmroot="unshare -r env"
+fi
+if [ -n "$_rmroot" ]; then
+    mkdir -p "$RM/bin"
+    printf '#!/bin/sh\n[ "$1" = remove ] && rm -f "$PKGDB_DIR/$2"\n' > "$RM/bin/kpkg"
+    chmod +x "$RM/bin/kpkg"
+    for f in appc-1.0-1.tar.xz appc-1.0-1.tar.xz.sig cyca-1.0-1.tar.xz.part \
+        cycb-1.0-1--from--cycb-0.9-1.kdelta cyca-extra-1.0-1.tar.xz cyca-extra-1.0-1.tar.xz.sig \
+        imgd-1.0-1.tar.xz gone-1.0-1.tar.xz appb-1.0-1.tar.xz liba-1.0-1.tar.xz; do
+        : > "$RM/cache/$f"
+    done
+    cp "$RM/state" "$RM/state.acq"
+    echo "apply acquired 1761600000 slot b 0.2.1" >> "$RM/state.acq"
+    rc=0; $_rmroot PATH="$RM/bin:$PATH" \
+        PORT_REPO="$RM/ports/core" KPKG_CONF=/nonexistent PKGDB_DIR="$RM/db" \
+        KPKG_KEYRING="$RM/keys" KDOS_UPDATE_STATE="$RM/state.acq" KDOS_UPDATE_CACHE="$RM/cache" \
+        KDOS_UPDATE_SYSROOT="$RM/sys" KDOS_UPDATE_TREE="$RM/nowhere" KDOS_UPDATE_IMAGE="$RM/noimage" \
+        KDOS_UPDATE_BINHOST="$RM/bh" "$OUT/kdos" update remove appc > "$RM/out" 2> "$RM/err" || rc=$?
+    [ "$rc" = 0 ] && [ ! -e "$RM/db/appc" ] && [ ! -e "$RM/db/cyca" ] && [ ! -e "$RM/db/cycb" ] && [ -e "$RM/db/imgd" ] \
+        && [ "$(LC_ALL=C ls "$RM/cache" | tr '\n' ' ')" = "appb-1.0-1.tar.xz cyca-extra-1.0-1.tar.xz cyca-extra-1.0-1.tar.xz.sig gone-1.0-1.tar.xz imgd-1.0-1.tar.xz liba-1.0-1.tar.xz " ] \
+        || { echo "  the removal of appc exited $rc, or left the cache as:"; ls "$RM/cache" "$RM/db"; cat "$RM/out" "$RM/err"; exit 1; }
+    : > "$RM/sys/var/lib/kdos/world"
+    rc=0; $_rmroot PATH="$RM/bin:$PATH" \
+        PORT_REPO="$RM/ports/core" KPKG_CONF=/nonexistent PKGDB_DIR="$RM/db" \
+        KPKG_KEYRING="$RM/keys" KDOS_UPDATE_STATE="$RM/state" KDOS_UPDATE_CACHE="$RM/cache" \
+        KDOS_UPDATE_SYSROOT="$RM/sys" KDOS_UPDATE_TREE="$RM/nowhere" KDOS_UPDATE_IMAGE="$RM/noimage" \
+        KDOS_UPDATE_BINHOST="$RM/bh" "$OUT/kdos" update remove appb > "$RM/out" 2> "$RM/err" || rc=$?
+    [ "$rc" = 0 ] && [ ! -e "$RM/db/appb" ] && [ ! -e "$RM/db/liba" ] \
+        && [ "$(LC_ALL=C ls "$RM/cache" | tr '\n' ' ')" = "cyca-extra-1.0-1.tar.xz cyca-extra-1.0-1.tar.xz.sig imgd-1.0-1.tar.xz " ] \
+        || { echo "  the removal of appb exited $rc, or left the cache as:"; ls "$RM/cache" "$RM/db"; cat "$RM/out" "$RM/err"; exit 1; }
+    echo "  a removal as root takes its packages and every cached file of a package no longer installed, holding an acquired slot's"
+else
+    echo "  (not root and no user namespaces here: a removal as root is not exercised)"
+fi
+# The removal graph cuts the edges a prebuilt install cuts: kact's recipe
+# names build-only boost and its stanza's N: is empty, ink's N: names boost,
+# and boost depends on numpy. Removing ink takes boost and numpy; with ink
+# gone alone they are left by removals and boost is not refused as needed by
+# kact. With no verified index, a stanza for a kact other than the one
+# installed, or kact built here (origin source), every recipe edge holds.
+RG="$OUT/updremovebo"
+rm -rf "$RG"
+for p in kact ink boost numpy; do mkdir -p "$RG/ports/core/x/$p"; done
+mkdir -p "$RG/db" "$RG/sys/var/lib/kdos" "$RG/cache" "$RG/keys" "$RG/repo"
+printf 'name = kact\nversion = 1.0\nrelease = 1\ndepends = boost\n' > "$RG/ports/core/x/kact/kpkgbuild"
+printf 'name = ink\nversion = 1.0\nrelease = 1\ndepends = boost\n' > "$RG/ports/core/x/ink/kpkgbuild"
+printf 'name = boost\nversion = 1.0\nrelease = 1\ndepends = numpy\n' > "$RG/ports/core/x/boost/kpkgbuild"
+printf 'name = numpy\nversion = 1.0\nrelease = 1\n' > "$RG/ports/core/x/numpy/kpkgbuild"
+printf 'boost\n' > "$RG/ports/buildonly"
+for p in kact ink boost numpy; do printf '1.0 1\n' > "$RG/db/$p"; done
+printf 'ink\n' > "$RG/sys/var/lib/kdos/world"
+printf 'ink prebuilt\nboost prebuilt\nnumpy prebuilt\n' > "$RG/sys/var/lib/kdos/origin"
+printf 'P:kact\nV:1.0\nR:1\nN:\n\nP:ink\nV:1.0\nR:1\nN:boost\n\nP:boost\nV:1.0\nR:1\n\nP:numpy\nV:1.0\nR:1\n\n' > "$RG/repo/PACKAGES"
+kpkg_bh kpkg sign "$RG/repo/PACKAGES" "$BH/builder.key" >/dev/null 2>&1 \
+    || { echo "  the removal graph's index was not signed"; exit 1; }
+_bhidx "$RG/repo" "$BH/builder.key" 0.2.14
+cp "$BH/builder.pub" "$RG/keys/"
+rgu() {
+    env PORT_REPO="$RG/ports/core" KPKG_CONF=/nonexistent PKGDB_DIR="$RG/db" \
+        KPKG_KEYRING="$RG/keys" KDOS_UPDATE_STATE="$RG/state" KDOS_UPDATE_CACHE="$RG/cache" \
+        KDOS_UPDATE_SYSROOT="$RG/sys" KDOS_UPDATE_TREE="$RG/nowhere" KDOS_UPDATE_IMAGE="$RG/noimage" \
+        KDOS_UPDATE_BINHOST="$RG/bh" "$OUT/kdos" update "$@"
+}
+rc=0; rgu remove --dry-run ink > "$RG/out" 2> "$RG/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RG/out")" = 'remove ink' ] \
+    || { echo "  with no index the removal graph cut a recipe edge:"; cat "$RG/out" "$RG/err"; exit 1; }
+cp "$RG/repo/PACKAGES" "$RG/repo/PACKAGES.sig" "$RG/cache/"
+cp "$RG/repo/kdos-update.idx" "$RG/cache/INDEX"
+cp "$RG/repo/kdos-update.idx.sig" "$RG/cache/INDEX.sig"
+printf 'file://%s\n' "$RG/repo" > "$RG/cache/ORIGIN"
+rc=0; rgu remove --dry-run ink > "$RG/out" 2> "$RG/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RG/out")" = "$(printf 'remove ink\nremove boost\nremove numpy')" ] \
+    || { echo "  the removal of ink kept what a build-only edge of kact held:"; cat "$RG/out" "$RG/err"; exit 1; }
+printf '0.9 1\n' > "$RG/db/kact"
+rc=0; rgu remove --dry-run ink > "$RG/out" 2> "$RG/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RG/out")" = 'remove ink' ] \
+    || { echo "  a stanza for another kact than the installed one cut its edge:"; cat "$RG/out" "$RG/err"; exit 1; }
+printf '1.0 1\n' > "$RG/db/kact"
+rm -f "$RG/db/ink"; : > "$RG/sys/var/lib/kdos/world"
+rgu removable > "$RG/rm" 2>&1
+[ "$(cat "$RG/rm")" = "$(printf 'left by removals:\nboost\nnumpy')" ] \
+    || { echo "  removable with ink gone is:"; cat "$RG/rm"; exit 1; }
+rc=0; rgu remove --dry-run boost > "$RG/out" 2> "$RG/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RG/out")" = "$(printf 'remove boost\nremove numpy')" ] \
+    || { echo "  boost was refused through kact's build-only edge:"; cat "$RG/out" "$RG/err"; exit 1; }
+cp "$RG/sys/var/lib/kdos/origin" "$RG/origin.keep"
+printf 'kact source\n' >> "$RG/sys/var/lib/kdos/origin"
+printf 'kact\n' > "$RG/sys/var/lib/kdos/world"
+rgu removable > "$RG/rm" 2>&1
+[ "$(cat "$RG/rm")" = 'kact' ] \
+    || { echo "  removable with kact built here listed what its build brought:"; cat "$RG/rm"; exit 1; }
+rgu removable --json > "$RG/rm" 2>&1
+grep -qF '"left":[]' "$RG/rm" \
+    || { echo "  removable --json with kact built here:"; cat "$RG/rm"; exit 1; }
+rc=0; rgu remove --dry-run boost > "$RG/out" 2> "$RG/err" || rc=$?
+[ "$rc" = 1 ] && grep -qF 'boost is needed by kact' "$RG/err" \
+    || { echo "  boost was not held by kact, built here (exit $rc):"; cat "$RG/out" "$RG/err"; exit 1; }
+rc=0; rgu remove --dry-run kact > "$RG/out" 2> "$RG/err" || rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RG/out")" = "$(printf 'remove kact\nremove boost\nremove numpy')" ] \
+    || { echo "  the removal of kact, built here, did not take what its build brought:"; cat "$RG/out" "$RG/err"; exit 1; }
+cp "$RG/origin.keep" "$RG/sys/var/lib/kdos/origin"
+: > "$RG/sys/var/lib/kdos/world"
+rm -f "$RG/db/boost" "$RG/db/numpy"
+rgu removable > "$RG/rm" 2>&1
+[ ! -s "$RG/rm" ] || { echo "  removable after the removal is:"; cat "$RG/rm"; exit 1; }
+echo "  the removal graph follows the edges a prebuilt install follows, and every edge of a package built here"
+echo "  the older tree ranks below the binhost; another base's index is named; only an unneeded world port is removed, with what only it brought"
 
 echo
 echo "==> kpkg fetch takes a source from the archive and tells offline from gone"
@@ -3134,7 +6614,16 @@ if command -v curl >/dev/null 2>&1; then
         || { echo "  a source that did not verify was kept"; exit 1; }
     rc=0; KDOS_SOURCES_BASE= kpkg_kf || rc=$?
     test "$rc" = 3 || { echo "  an unreachable upstream gave exit $rc, not 3"; exit 1; }
-    echo "  archive first, every copy hashed, offline told apart"
+    # --size measures the same copies and downloads none.
+    rc=0; KDOS_SOURCES_BASE="$KF/arch" env PORT_REPO="$KF/tree/core" KPKG_CONF=/nonexistent \
+        SOURCE_DIR="$KF/src" "$OUT/kdos-kpkg" kpkg fetch --size fz fz > "$KF/size" 2>&1 || rc=$?
+    test "$rc" = 0 && [ "$(cat "$KF/size")" = "fz-1.0.tar.gz 12" ] && test ! -e "$KF/src/fz-1.0.tar.gz" \
+        || { echo "  fetch --size (exit $rc) printed:"; cat "$KF/size"; exit 1; }
+    rc=0; KDOS_SOURCES_BASE= env PORT_REPO="$KF/tree/core" KPKG_CONF=/nonexistent \
+        SOURCE_DIR="$KF/src" "$OUT/kdos-kpkg" kpkg fetch --size fz > "$KF/size" 2>&1 || rc=$?
+    test "$rc" = 3 && [ "$(cat "$KF/size")" = "fz-1.0.tar.gz ?" ] \
+        || { echo "  an offline fetch --size (exit $rc) printed:"; cat "$KF/size"; exit 1; }
+    echo "  archive first, every copy hashed, offline told apart; --size measures the same copies"
 else
     echo "  skipped — no curl"
 fi
@@ -3667,6 +7156,75 @@ else
 fi
 
 #
+# CUPS'S COMPANIONS RUN ONLY WHILE cupsd DOES. 81_cups-browsed.sh and
+# 82_ipp-usb.sh skip with `CUPS is off` while cupsd is not supervised;
+# 80_cups.sh starts them after cupsd, even with the cups marker present (as
+# `service start cups` runs it), skips one whose own marker exists, and stops
+# both before cupsd. The shipped scripts run here with their paths moved into
+# the suite's directory and sleeps for daemons. rcS's stage_verdict, run on
+# each start's output, reads SKIP only for a start that left nothing up: a
+# companion skipped while cupsd is down, not the `already supervised` one
+# rcS's own start of 81 meets after 80 has started it, nor a stage that
+# skipped one part and supervised another.
+#
+echo "==> cups-browsed and ipp-usb start and stop with cupsd"
+_kc="$_kv/cups"
+mkdir -p "$_kc/init.d" "$_kc/sbin" "$_kc/off" "$_kc/bin"
+ln -sf "$_kv/ksvc" "$_kc/bin/ksvc"
+cp fs/etc/init.d/service_helper "$_kc/init.d/service_helper"
+for _f in 80_cups 81_cups-browsed 82_ipp-usb; do
+    sed -e "s|/etc/init.d/|$_kc/init.d/|g" -e "s|/usr/sbin/|$_kc/sbin/|g" \
+        -e "s|/etc/service.disabled/|$_kc/off/|g" -e "s|/run/cups|$_kc/runcups|g" \
+        "fs/etc/init.d/$_f.sh" > "$_kc/init.d/$_f.sh"
+done
+for _f in cupsd cups-browsed ipp-usb; do
+    printf '#!/bin/sh\nexec sleep 600\n' > "$_kc/sbin/$_f"
+done
+chmod 755 "$_kc/init.d"/*.sh "$_kc/sbin"/*
+: > "$_kc/off/cups"
+_kfail=""
+_kcs() { PATH="$_kc/bin:$PATH" "$_kc/init.d/$1.sh" "$2"; }
+_kup() { PATH="$_kc/bin:$PATH" "$_kv/ksvc" check "$1" >/dev/null 2>&1; }
+eval "$(sed -n '/^stage_verdict() {/,/^}/p' fs/etc/init.d/rcS)"
+_kcs 81_cups-browsed start > "$_kc/log.off"
+grep -qx '\[SKIP\] cups-browsed: CUPS is off' "$_kc/log.off" || _kfail="$_kfail browsed-no-skip"
+[ "$(stage_verdict 0 "$_kc/log.off")" = skip ] || _kfail="$_kfail verdict-off-not-skip"
+_kcs 82_ipp-usb start | grep -qx '\[SKIP\] ipp-usb: CUPS is off' || _kfail="$_kfail ippusb-no-skip"
+_kup cups-browsed && _kfail="$_kfail browsed-up-without-cupsd"
+_kup ipp-usb && _kfail="$_kfail ippusb-up-without-cupsd"
+_kcs 80_cups start >/dev/null || _kfail="$_kfail start-failed"
+for _f in cupsd cups-browsed ipp-usb; do
+    _kup "$_f" || _kfail="$_kfail $_f-not-started"
+done
+_kcs 81_cups-browsed start > "$_kc/log.up"
+grep -q 'already supervised' "$_kc/log.up" || _kfail="$_kfail rcS-start-not-skip"
+[ "$(stage_verdict 0 "$_kc/log.up")" = ok ] || _kfail="$_kfail verdict-up-not-ok"
+printf '[SKIP] x: /a: no health monitor\n[KDOS] (x-2) Supervisor started (pid 1)\n' > "$_kc/log.part"
+[ "$(stage_verdict 0 "$_kc/log.part")" = ok ] || _kfail="$_kfail verdict-part-not-ok"
+[ "$(stage_verdict 1 "$_kc/log.off")" = fail ] || _kfail="$_kfail verdict-rc-not-fail"
+unset -f stage_verdict
+_kcs 80_cups stop >/dev/null || _kfail="$_kfail stop-failed"
+for _f in cupsd cups-browsed ipp-usb; do
+    _kup "$_f" && _kfail="$_kfail $_f-not-stopped"
+done
+: > "$_kc/off/ipp-usb"
+_kcs 80_cups start >/dev/null
+_kup cups-browsed || _kfail="$_kfail browsed-not-started-alone"
+_kup ipp-usb && _kfail="$_kfail ippusb-marker-ignored"
+_kcs 80_cups stop >/dev/null
+_kup cupsd && _kfail="$_kfail cupsd-not-stopped-again"
+if [ -z "$_kfail" ]; then
+    unset -f _kcs _kup
+    echo "  the companions skip while cupsd is down, and start and stop with it"
+else
+    for _f in cupsd cups-browsed ipp-usb; do
+        PATH="$_kc/bin:$PATH" "$_kv/ksvc" stop-supervised "$_f" >/dev/null 2>&1
+    done
+    echo "  CUPS COMPANIONS DO NOT FOLLOW cupsd:$_kfail"
+    exit 1
+fi
+
+#
 # A USER'S TABLE IS THE USER'S, AND ROOT NEVER RUNS ONE. KSVC_RUN_DIR (what
 # the turnstile backend exports) or `--user` moves every pid, state and log
 # file into the user's run directory, which must be the caller's and writable
@@ -3840,6 +7398,179 @@ else
 fi
 
 #
+# THE SESSION WRAPPER NAMES THE STAGE EVERY LOGIN REACHED, AND NEVER ENDS ONE
+# IN SILENCE. SDDM reports a session that ends at once only by its exit
+# status, so a login logs to syslog before the login shell and after the
+# profile, and every way out before Plasma — a refusal, a profile that exits,
+# a SIGTERM — logs as well. A previous login's teardown still running (the
+# backend's `stop`, which ends in the runtime directory being cleared) is
+# waited for before Plasma starts. logger, dbus-send and the session command
+# are stubs; the shell is sh, which reads the profile the fixture names.
+#
+echo "==> the session wrapper logs each login's stages and every early exit, and waits out a teardown"
+_sw="$OUT/sessionwrap"
+mkdir -p "$_sw/bin" "$_sw/home" "$_sw/rt" "$_sw/lib" "$_sw/turnstile"
+chmod 700 "$_sw/rt"
+cp fs/usr/local/lib/kdos/session-common.sh "$_sw/lib/"
+printf '#!/bin/sh\necho "$*" >> "$SW_LOG"\n' > "$_sw/bin/logger"
+printf '#!/bin/sh\n[ -z "$SW_NOBUS" ]\n' > "$_sw/bin/dbus-send"
+printf '#!/bin/sh\necho "started $*" > "$SW_RAN"\n' > "$_sw/bin/sw-plasma"
+printf '#!/bin/bash\nsleep 1.5\n' > "$_sw/turnstile/ksvc"
+printf 'exit 63\n' > "$_sw/profile63"
+chmod 755 "$_sw/bin"/* "$_sw/turnstile/ksvc"
+_swenv="PATH=$_sw/bin:/usr/bin:/bin HOME=$_sw/home SHELL=/bin/sh XDG_RUNTIME_DIR=$_sw/rt KDOS_SESSION_PROFILE=/dev/null KDOS_SESSION_LIB=$_sw/lib SW_LOG=$_sw/log SW_RAN=$_sw/ran"
+_swrun() { rm -f "$_sw/log" "$_sw/ran"; env -i $_swenv "$@" sh fs/usr/local/bin/kdos-session-wrapper "sw-plasma --a b" 2>/dev/null; }
+_swfail=""
+_swrun
+grep -q 'login [0-9]*: entered as .* bus socket absent$' "$_sw/log" 2>/dev/null || _swfail="$_swfail no-entry-line"
+grep -q 'login [0-9]*: profile read;' "$_sw/log" 2>/dev/null || _swfail="$_swfail no-profile-line"
+grep -q 'login [0-9]*: starting sw-plasma --a b$' "$_sw/log" 2>/dev/null || _swfail="$_swfail no-start-line"
+[ "$(cat "$_sw/ran" 2>/dev/null)" = "started --a b" ] || _swfail="$_swfail not-started"
+[ "$(grep -o 'login [0-9]*' "$_sw/log" 2>/dev/null | sort -u | wc -l)" = 1 ] || _swfail="$_swfail lines-name-other-pids"
+_swrc=0
+_swrun KDOS_SESSION_PROFILE="$_sw/profile63" || _swrc=$?
+[ "$_swrc" = 63 ] || _swfail="$_swfail profile-exit-not-passed-on"
+grep -q 'user.err login [0-9]*: ended with status 63 before Plasma started' "$_sw/log" 2>/dev/null \
+    || _swfail="$_swfail profile-exit-silent"
+grep -q 'profile read' "$_sw/log" 2>/dev/null && _swfail="$_swfail profile-exit-read-as-read"
+env -i $_swenv SW_NOBUS=1 sh fs/usr/local/bin/kdos-session-wrapper "sw-plasma" 2>/dev/null &
+_swp=$!
+sleep 0.5
+rm -f "$_sw/log"
+kill -TERM "$_swp" 2>/dev/null
+_swrc=0
+wait "$_swp" || _swrc=$?
+[ "$_swrc" = 143 ] || _swfail="$_swfail term-status"
+grep -q 'user.err login [0-9]*: SIGTERM before Plasma started$' "$_sw/log" 2>/dev/null || _swfail="$_swfail term-silent"
+[ "$(cat "$_sw/log" 2>/dev/null | wc -l)" = 1 ] || _swfail="$_swfail term-logged-twice"
+_swrun SW_NOBUS=1 || :
+grep -q 'user.err login [0-9]*: the session bus at .* does not answer' "$_sw/log" 2>/dev/null || _swfail="$_swfail nobus-silent"
+grep -c 'user.err' "$_sw/log" 2>/dev/null | grep -qx 1 || _swfail="$_swfail refusal-logged-twice"
+[ -e "$_sw/ran" ] && _swfail="$_swfail nobus-started"
+"$_sw/turnstile/ksvc" stop 1 &
+_swt=$!
+sleep 0.2
+_sws=$(date +%s%N)
+_swrun
+_swe=$(( ($(date +%s%N) - _sws) / 1000000 ))
+wait "$_swt" 2>/dev/null || :
+grep -q "user.warning login [0-9]*: the previous login's teardown (ksvc stop, pid $_swt) is still running" "$_sw/log" 2>/dev/null \
+    || _swfail="$_swfail teardown-not-seen"
+grep -q "the previous login's teardown is over" "$_sw/log" 2>/dev/null || _swfail="$_swfail teardown-not-over"
+[ "$_swe" -ge 1000 ] || _swfail="$_swfail teardown-not-waited-${_swe}ms"
+[ -e "$_sw/ran" ] || _swfail="$_swfail not-started-after-teardown"
+# The image's path: /bin/sh is bash and the user's shell is /bin/bash, so the
+# wrapper runs again as a bash login shell and reads bash's files itself,
+# the first of ~/.bash_profile, ~/.bash_login and ~/.profile only.
+mkdir -p "$_sw/bhome"
+printf '[ -n "$SW_EXIT" ] && exit "$SW_EXIT"
+echo "bash-profile $(shopt -q login_shell && echo login)" >> "$SW_LOG"
+' \
+    > "$_sw/bhome/.bash_profile"
+printf 'echo dot-profile >> "$SW_LOG"
+' > "$_sw/bhome/.profile"
+_swbash() { rm -f "$_sw/log" "$_sw/ran"; env -i $_swenv HOME="$_sw/bhome" SHELL="$(command -v bash)" "$@" \
+    bash fs/usr/local/bin/kdos-session-wrapper "sw-plasma --a b" 2>/dev/null; }
+_swbash
+grep -qx 'bash-profile login' "$_sw/log" 2>/dev/null || _swfail="$_swfail bash-profile-not-read-in-a-login-shell"
+grep -q 'dot-profile' "$_sw/log" 2>/dev/null && _swfail="$_swfail bash-read-profile-after-bash_profile"
+[ "$(grep -c 'bash-profile' "$_sw/log" 2>/dev/null)" = 1 ] || _swfail="$_swfail bash-profile-read-twice"
+grep -q 'login [0-9]*: starting sw-plasma --a b$' "$_sw/log" 2>/dev/null || _swfail="$_swfail bash-no-start-line"
+[ "$(grep -o 'login [0-9]*' "$_sw/log" 2>/dev/null | sort -u | wc -l)" = 1 ] || _swfail="$_swfail bash-lines-name-other-pids"
+[ "$(cat "$_sw/ran" 2>/dev/null)" = "started --a b" ] || _swfail="$_swfail bash-not-started"
+_swrc=0
+_swbash SW_EXIT=63 || _swrc=$?
+[ "$_swrc" = 63 ] || _swfail="$_swfail bash-profile-exit-not-passed-on"
+grep -q 'user.info login [0-9]*: entered as ' "$_sw/log" 2>/dev/null || _swfail="$_swfail bash-no-entry-line"
+grep -q 'user.err login [0-9]*: ended with status 63 before Plasma started' "$_sw/log" 2>/dev/null \
+    || _swfail="$_swfail bash-profile-exit-silent"
+grep -q 'profile read' "$_sw/log" 2>/dev/null && _swfail="$_swfail bash-profile-exit-read-as-read"
+if [ -z "$_swfail" ]; then
+    echo "  entry, profile and start lines name one pid; a profile exit under sh and under bash, a SIGTERM and a refusal each log once; a teardown is waited out"
+else
+    echo "  THE SESSION WRAPPER IS WRONG:$_swfail"
+    cat "$_sw/log" 2>/dev/null
+    exit 1
+fi
+
+#
+# A NEW ACCOUNT'S FCITX5 PROFILE NAMES THE SYSTEM LAYOUT. With 'Allow
+# Overriding System XKB Settings' on, fcitx5 writes its group's Default Layout
+# into ~/.config/kxkbrc, which outranks the system's, so a profile naming any
+# other layout would put it under the lock screen. A home
+# with no profile gets one from xkb.conf's first layout and variant; a profile
+# already there, the person's own, is never rewritten; a value outside
+# xkb.conf's character set is not written; with no layout anywhere, `us`.
+# dbus-send is a stub that answers nothing, so locale1 has no say.
+#
+echo "==> a new account's fcitx5 profile takes the system layout, and an existing one is kept"
+_fx="$OUT/fcitx5profile"
+mkdir -p "$_fx/bin" "$_fx/h1" "$_fx/h2" "$_fx/h3"
+printf '#!/bin/sh\nexit 0\n' > "$_fx/bin/dbus-send"
+chmod 755 "$_fx/bin/dbus-send"
+printf '# the fixture\nXKBMODEL=pc105\nXKBLAYOUT=de,us\nXKBVARIANT=nodeadkeys,\nXKBOPTIONS=\n' > "$_fx/xkb.conf"
+printf 'XKBLAYOUT=de;rm\nXKBVARIANT=\n' > "$_fx/bad.conf"
+_fxrun() { env -i PATH="$_fx/bin:/usr/bin:/bin" HOME="$1" sh -c \
+    '. fs/usr/local/lib/kdos/session-common.sh && kdos_session_fcitx5_profile "$1"' sh "$2"; }
+_fxfail=""
+_fxp="$_fx/h1/.config/fcitx5/profile"
+_fxrun "$_fx/h1" "$_fx/xkb.conf"
+grep -qx 'Default Layout=de-nodeadkeys' "$_fxp" 2>/dev/null || _fxfail="$_fxfail no-default-layout"
+grep -qx 'DefaultIM=keyboard-de-nodeadkeys' "$_fxp" 2>/dev/null || _fxfail="$_fxfail no-default-im"
+[ "$(grep '^Name=' "$_fxp" 2>/dev/null | tr '\n' ' ')" = "Name=Default Name=keyboard-de-nodeadkeys Name=pinyin Name=anthy Name=hangul " ] \
+    || _fxfail="$_fxfail items-$(grep '^Name=' "$_fxp" 2>/dev/null | tr '\n' ,)"
+grep -qx '0=Default' "$_fxp" 2>/dev/null || _fxfail="$_fxfail no-group-order"
+[ "$(ls -A "$_fx/h1/.config/fcitx5" 2>/dev/null)" = profile ] || _fxfail="$_fxfail temporary-left"
+printf '[Groups/0]\nDefault Layout=fr\n' > "$_fxp"
+_fxrun "$_fx/h1" "$_fx/xkb.conf"
+[ "$(cat "$_fxp")" = "$(printf '[Groups/0]\nDefault Layout=fr')" ] || _fxfail="$_fxfail existing-rewritten"
+_fxrun "$_fx/h2" "$_fx/bad.conf"
+grep -qx 'Default Layout=us' "$_fx/h2/.config/fcitx5/profile" 2>/dev/null || _fxfail="$_fxfail bad-value-used"
+_fxrun "$_fx/h3" "$_fx/absent.conf"
+grep -qx 'DefaultIM=keyboard-us' "$_fx/h3/.config/fcitx5/profile" 2>/dev/null || _fxfail="$_fxfail no-fallback"
+if [ -z "$_fxfail" ]; then
+    echo "  de/nodeadkeys gives Default Layout=de-nodeadkeys and its four items; an edited profile is kept; a bad or absent layout gives us"
+else
+    echo "  THE FCITX5 PROFILE IS WRONG:$_fxfail"
+    cat "$_fxp" 2>/dev/null
+    exit 1
+fi
+
+#
+# THE LIVE MEDIUM'S WELCOME CENTER ENTRY REACHES THE LAUNCHER THERE ALONE.
+# kdos_session_live_data puts the data-live directory in front of
+# XDG_DATA_DIRS once, keeping the specification's default behind it when the
+# list is unset, and only on the live medium (kdos_session_live is replaced
+# by a stub answering yes or no); the wrapper and the environment script both
+# call it; and the entry it carries is Welcome Center's desktop id with the
+# --live-environment argument the tour's live pages read.
+#
+echo "==> the live medium's data directory leads XDG_DATA_DIRS there alone, and its Welcome Center entry passes --live-environment"
+_ld="$OUT/livedata"
+mkdir -p "$_ld/data-live"
+_ldrun() { env -i PATH=/usr/bin:/bin ${3:+XDG_DATA_DIRS=$3} sh -c \
+    '. fs/usr/local/lib/kdos/session-common.sh && _ldans=$2 && kdos_session_live() { return "$_ldans"; } &&
+     kdos_session_live_data "$1" && kdos_session_live_data "$1" && printf %s "${XDG_DATA_DIRS:-unset}"' sh "$1" "$2"; }
+_ldfail=""
+[ "$(_ldrun "$_ld/data-live" 0)" = "$_ld/data-live:/usr/local/share:/usr/share" ] || _ldfail="$_ldfail live-unset-$(_ldrun "$_ld/data-live" 0)"
+[ "$(_ldrun "$_ld/data-live" 0 /a:/b)" = "$_ld/data-live:/a:/b" ] || _ldfail="$_ldfail live-set"
+[ "$(_ldrun "$_ld/data-live" 1)" = unset ] || _ldfail="$_ldfail installed-changed"
+[ "$(_ldrun "$_ld/data-live" 1 /a:/b)" = /a:/b ] || _ldfail="$_ldfail installed-set-changed"
+[ "$(_ldrun "$_ld/absent" 0 /a:/b)" = /a:/b ] || _ldfail="$_ldfail absent-dir-added"
+grep -qx 'kdos_session_live_data' fs/usr/local/bin/kdos-session-wrapper || _ldfail="$_ldfail wrapper-does-not-call"
+grep -qx '	kdos_session_live_data' fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh || _ldfail="$_ldfail env-script-does-not-call"
+_lde=fs/usr/share/kdos/data-live/applications/org.kde.plasma-welcome.desktop
+grep -qx 'Exec=plasma-welcome --live-environment' "$_lde" 2>/dev/null || _ldfail="$_ldfail entry-exec"
+[ "$(grep -c '^Exec=' "$_lde" 2>/dev/null)" = 1 ] || _ldfail="$_ldfail entry-exec-count"
+grep -qx 'Name=Welcome Center' "$_lde" 2>/dev/null || _ldfail="$_ldfail entry-name"
+if [ -z "$_ldfail" ]; then
+    echo "  live: data-live first, once, the default kept; installed or absent: untouched; both callers; the entry passes --live-environment"
+else
+    echo "  THE LIVE DATA DIRECTORY IS WRONG:$_ldfail"
+    exit 1
+fi
+
+#
 # A PER-USER TIMER REPEATS, AND STOPPING THE SERVICE LEAVES NOTHING. `snooze`
 # waits for its slot, runs the command ONCE and exits, so the runner keeps one
 # loop per row that starts it again; a row whose file is removed — a reminder
@@ -3852,6 +7583,10 @@ fi
 #
 echo "==> a per-user timer repeats, a removed row ends, and the runner's TERM leaves no snooze"
 _ut="$OUT/usertimers"
+# The job and the loops are told from another run's by this run's pid in the
+# job's duration and UT_LOG in their environment: a name match would find a
+# concurrent selftest's own and fail both.
+_sl="41.$$"
 mkdir -p "$_ut/bin" "$_ut/sys" "$_ut/home/.config/kdos/timers.d" "$_ut/rt"
 cat > "$_ut/bin/snooze" <<'UTEOF'
 #!/bin/bash
@@ -3888,23 +7623,26 @@ grep -q '^true later$' "$_ut/log" || _tfail="$_tfail hup-not-reread"
 # USR1 starts a file with no loops yet and restarts nothing: a job that is
 # running when the next file arrives — what `kdos remind` signals — keeps its
 # one run and its pid.
-printf 'slow -H * -- sleep 41.25\n' > "$_ut/home/.config/kdos/timers.d/slow.timer"
+printf 'slow -H * -- sleep %s\n' "$_sl" > "$_ut/home/.config/kdos/timers.d/slow.timer"
 kill -USR1 "$_ur"
 sleep 1
-_sp=$(pgrep -fx 'sleep 41.25')
+_sp=$(pgrep -fx "sleep $_sl")
 [ -n "$_sp" ] || _tfail="$_tfail usr1-not-started"
 printf 'next -H * -- true next\n' > "$_ut/home/.config/kdos/timers.d/next.timer"
 kill -USR1 "$_ur"
 sleep 1
 grep -q '^true next$' "$_ut/log" || _tfail="$_tfail usr1-second-not-started"
-[ "$(grep -c '^sleep 41.25$' "$_ut/log")" = 1 ] || _tfail="$_tfail usr1-restarted-a-job"
-[ -n "$_sp" ] && [ "$(pgrep -fx 'sleep 41.25')" = "$_sp" ] || _tfail="$_tfail usr1-job-pid-changed"
+[ "$(grep -cx "sleep $_sl" "$_ut/log")" = 1 ] || _tfail="$_tfail usr1-restarted-a-job"
+[ -n "$_sp" ] && [ "$(pgrep -fx "sleep $_sl")" = "$_sp" ] || _tfail="$_tfail usr1-job-pid-changed"
 kill -TERM "$_ur"
 wait "$_ur" 2>/dev/null
 sleep 0.3
 pgrep -f "$_ut/bin/snooze" >/dev/null && _tfail="$_tfail snooze-left"
-pgrep -fx 'sleep 41.25' >/dev/null && _tfail="$_tfail job-left"
-pgrep -f 'lib/kdos/user-timers' >/dev/null && _tfail="$_tfail loop-left"
+pgrep -fx "sleep $_sl" >/dev/null && _tfail="$_tfail job-left"
+for _e in /proc/[0-9]*/environ; do
+    grep -qsxz "UT_LOG=$_ut/log" "$_e" && grep -qsz 'lib/kdos/user-timers' "${_e%environ}cmdline" &&
+        { _tfail="$_tfail loop-left"; break; }
+done
 [ -e "$_ut/rt/kdos/user-timers.pid" ] && _tfail="$_tfail pidfile-left"
 if [ -z "$_tfail" ]; then
     echo "  every row repeats, a removed or refused one does not, HUP re-reads, USR1 adds, TERM leaves nothing"
@@ -3969,6 +7707,25 @@ env $_tenv "$OUT/kdos" app tui rm disk-usage >/dev/null 2>&1 \
 rm -rf "$_tw"
 echo "  the marker gates rm, and the Exec is quoted a field at a time"
 
+echo "==> kdos app info counts the base and runtime an install still has to build"
+_ai=$(mktemp -d)
+printf '%s\n' '#!/bin/sh' 'case "$2" in' \
+    "--chain) printf 'base\t209715200\t-\tabsent\nrt-gtk\t104857600\tbase\tabsent\nrt-qt\t52428800\tbase\tbuilt\n' ;;" \
+    "*) printf 'app.z\tZ\tOffice\t1048576\trt-gtk\tavailable\tz\napp.q\tQ\tOffice\t1048576\trt-qt\tavailable\tq\napp.i\tI\tOffice\t1048576\trt-gtk\tinstalled\ti\n' ;;" \
+    'esac' > "$_ai/kdos-appbox"
+chmod +x "$_ai/kdos-appbox"
+_ain() { PATH="$_ai:$PATH" "$OUT/kdos" app info "$1" 2>&1 | grep -E '^  size|a port by'; }
+_ain app.z | grep -q 'size .*, 301M with rt-gtk and base, which this computer has not built$' \
+    || { echo "  an unbuilt chain was not counted: $(_ain app.z)"; exit 1; }
+_ain app.q | grep -q ', 201M with base, which' \
+    || { echo "  a built runtime was counted: $(_ain app.q)"; exit 1; }
+[ "$(_ain app.i)" = '  size        1.0M (an estimate)' ] \
+    || { echo "  an installed app counted its chain: $(_ain app.i)"; exit 1; }
+_ain gimp | grep -q 'kdos update install --dry-run gimp' \
+    || { echo "  a name outside the catalogue got no port hint"; exit 1; }
+rm -rf "$_ai"
+echo "  absent rows up the chain are added and named; built ones and installed apps are not"
+
 #
 # A REMINDER IS DELIVERED ONCE, and that is the whole of what can go quietly
 # wrong here. It is armed twice on purpose — once by `kdos remind` because
@@ -3999,7 +7756,9 @@ chmod +x "$_rw/bin/snooze" "$_rw/bin/gdbus"
 _rt="$_rw/home/.config/kdos/timers.d"
 _renv="HOME=$_rw/home XDG_CONFIG_HOME=$_rw/home/.config REMIND_ARMED=$_rw/armed REMIND_TOAST=$_rw/toast PATH=$_rw/bin:$PATH"
 # shellcheck disable=SC2086
+_rs0=$(date +%S)
 env $_renv "$OUT/kdos" remind in 90m tea and biscuits > "$_rw/set.out" 2>&1
+_rs1=$(date +%S)
 grep -q 'tea and biscuits at ' "$_rw/set.out" \
     || { echo "  setting a reminder said: $(cat "$_rw/set.out")"; exit 1; }
 _rf=$(ls "$_rt" 2>/dev/null | head -1)
@@ -4015,9 +7774,46 @@ grep -q -- '-t .*\.timer' "$_rt/$_rf" \
     || { echo "  no -t timefile, so a missed slot would never fire"; exit 1; }
 grep -q -- '-- kdos remind fire ' "$_rt/$_rf" \
     || { echo "  the row does not run the once-only deliverer"; exit 1; }
+# `in` IS THAT LONG FROM NOW TO THE SECOND: ninety minutes on, the clock's
+# seconds are what they were when it was set, never the minute's start.
+grep -qE -- "-S (${_rs0#0}|${_rs1#0}) " "$_rt/$_rf" \
+    || { echo "  'in 90m' is not 90 minutes to the second (set at :$_rs0)"; cat "$_rt/$_rf"; exit 1; }
 # AND IT WAS ARMED NOW, not left for the next login.
 grep -q 'remind fire' "$_rw/armed" \
     || { echo "  nothing was armed, so it would wait for a re-login"; exit 1; }
+# `ls` NAMES THE TIME IT FIRES, the one `set` printed, not the time it was set.
+_rdue=$(sed -n 's/^tea and biscuits at //p' "$_rw/set.out")
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind ls >/dev/null 2>&1
+grep -qF "due $_rdue  tea and biscuits" "$_rw/toast" \
+    || { echo "  ls does not list the due time $_rdue:"; cat "$_rw/toast"; exit 1; }
+: > "$_rw/toast"
+printf '# odd\nremind-x no pattern here\n' > "$_rt/remind-000000000000.timer"
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind ls >/dev/null 2>&1
+grep -q '000000000000  set .*  odd' "$_rw/toast" \
+    || { echo "  a row with no pattern is not listed by its set time:"; cat "$_rw/toast"; exit 1; }
+rm -f "$_rt/remind-000000000000.timer"
+# `ls` IS SOONEST FIRST, whatever order the directory gives, and a row with
+# no due time comes after every row that has one.
+: > "$_rw/toast"
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind in 3h zz-third >/dev/null 2>&1
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind in 5m zz-first >/dev/null 2>&1
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind in 2h zz-second >/dev/null 2>&1
+printf '# odd\nremind-x no pattern here\n' > "$_rt/remind-000000000000.timer"
+: > "$_rw/toast"
+# shellcheck disable=SC2086
+env $_renv "$OUT/kdos" remind ls >/dev/null 2>&1
+for _i in $(seq 50); do grep -q Reminders "$_rw/toast" && break; sleep 0.1; done
+_rord=$(grep -oE 'zz-first|zz-second|zz-third|tea and biscuits|  odd' "$_rw/toast" | tr '\n' ,)
+[ "$_rord" = "zz-first,tea and biscuits,zz-second,zz-third," ] \
+    || { echo "  ls is not soonest first (the toast shows four): $_rord"; cat "$_rw/toast"; exit 1; }
+for _f in "$_rt"/remind-*.timer; do grep -qE '^# (zz-|odd)' "$_f" && rm -f "$_f"; done
+: > "$_rw/armed"
+: > "$_rw/toast"
 # WITH THIS USER'S TIMER RUNNER ALIVE, the runner is told with SIGUSR1 and no
 # snooze of the command's own is started; SIGHUP would restart every job.
 mkdir -p "$_rw/run/kdos"
@@ -4052,6 +7848,12 @@ env $_renv DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent-kdos-bus \
     "$OUT/kdos" remind fire "$_rid" >/dev/null 2>&1
 grep -q 'tea and biscuits' "$_rw/toast" \
     || { echo "  the reminder was not raised"; cat "$_rw/toast"; exit 1; }
+grep -qF "{'x-kde-appname': <'kdos'>}" "$_rw/toast" \
+    || { echo "  the reminder names no notifyrc, so Plasma keeps it out of the history"; exit 1; }
+# THE SENDER IS kdos.notifyrc's NAME, the one name every KDOS notification
+# is filed under; kb_notify() is what the toggles and the reminders share.
+grep -q 'Notify KDOS Tools 0 ' "$_rw/toast" \
+    || { echo "  the reminder's sender is not KDOS Tools"; cat "$_rw/toast"; exit 1; }
 [ -e "$_rt/$_rf" ] \
     && { echo "  the row survived delivery, so it would fire again"; exit 1; }
 # AND THE SECOND ARMING FINDS NOTHING.
@@ -4139,6 +7941,42 @@ SHARE_QR_SEEN="$OUT/qr-payload" PATH="$OUT/sharebin:$PATH" \
     && { echo "  a QR was drawn for output carrying no code"; exit 1; }
 echo "  and output with no code in it draws nothing"
 
+echo "==> kdos-shot qr hands the decoded text to wl-copy on stdin"
+# A decoded QR is a secret as often as not, and /proc/<pid>/cmdline is
+# world-readable for as long as wl-copy serves the selection. The stubs stand
+# in for the capture and the decoder; the wl-copy stub records its argv and its
+# stdin apart, so a payload in either place is told from one in the other.
+ln -sf kdos-tools "$OUT/kdos-shot"
+_qs="$OUT/shotqr"
+rm -rf "$_qs"; mkdir -p "$_qs/bin" "$_qs/rt" "$_qs/home"
+cat > "$_qs/bin/spectacle" <<'SPECEOF'
+#!/bin/sh
+while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { echo png > "$2"; exit 0; }; shift; done
+exit 1
+SPECEOF
+cat > "$_qs/bin/zbarimg" <<'ZBAREOF'
+#!/bin/sh
+echo SECRET-42
+ZBAREOF
+cat > "$_qs/bin/wl-copy" <<'WLEOF'
+#!/bin/sh
+printf '%s\n' "$0" "$@" > "$QS_ARGV"
+cat > "$QS_STDIN"
+WLEOF
+printf '#!/bin/sh\nexit 0\n' > "$_qs/bin/gdbus"
+chmod +x "$_qs/bin/"*
+env -i PATH="$_qs/bin:/usr/bin:/bin" HOME="$_qs/home" \
+    XDG_RUNTIME_DIR="$_qs/rt" QS_ARGV="$_qs/argv" QS_STDIN="$_qs/stdin" \
+    "$OUT/kdos-shot" qr > "$_qs/out" 2>&1 < /dev/null \
+    || { echo "  kdos-shot qr failed: $(cat "$_qs/out")"; exit 1; }
+[ "$(wc -l < "$_qs/argv")" -eq 1 ] && [ "$(basename "$(cat "$_qs/argv")")" = wl-copy ] \
+    || { echo "  wl-copy was given arguments: $(tr '\n' ' ' < "$_qs/argv")"; exit 1; }
+[ "$(cat "$_qs/stdin")" = "SECRET-42" ] \
+    || { echo "  wl-copy read '$(cat "$_qs/stdin")' on stdin"; exit 1; }
+[ -e "$_qs/rt/kdos-qr.png" ] && { echo "  the QR picture was kept"; exit 1; }
+grep -q SECRET-42 "$_qs/out" && { echo "  the payload was printed"; exit 1; }
+echo "  argv is wl-copy alone and the text is on its stdin"
+
 echo "==> -march is kept only where the win beat the noise"
 # N14's whole claim is the DECISION, and it is testable without building
 # anything twice: `kdos march decide <baseline> <optimised> <noise%>` is the
@@ -4173,38 +8011,86 @@ ln -sf kdos-tools "$OUT/kdos"
 # THE WORK DIRECTORY FOR THE ACCEPTING CASES MUST NOT BE IN RAM. $OUT is
 # `mktemp -d`, which is /tmp, which is tmpfs on essentially every modern Linux
 # — exactly what `kdos rebuild` exists to refuse. The repo is on a real
-# filesystem by construction, since the sources being checked are in it.
-RBW="$PWD/.selftest-rebuild-work"
-rm -rf "$RBW"; mkdir -p "$RBW"
+# filesystem by construction, since the sources being checked are in it. Each
+# run takes its own directory there, so two runs from one checkout do not
+# share it, and the EXIT trap removes it on a failure as well as at the end.
+RBW=$(mktemp -d "$PWD/.selftest-rebuild.XXXXXX")
+trap 'rm -rf "$OUT" "$SOCKD" "$RBW"' EXIT
 rb() { env KDOS_SOURCES="$1" "$OUT/kdos" rebuild "${@:2}"; }
+# Each refusal is matched on its own words: the free-space check comes after
+# the tree checks, so a host short of space refuses everything, and a bare
+# non-zero exit would pass a refusal that never looked at the tree.
 # From a directory that is not a tree and with nothing pointing at one: the
 # search falls back to `.`, which is the repo when this script runs from it.
 ( cd "$OUT" && env -u KDOS_SOURCES "$OUT/kdos" rebuild --dry-run "$OUT/rb" ) \
     >/dev/null 2>&1 \
     && { echo "  a rebuild with no sources was allowed"; exit 1; }
-rb /tmp --dry-run "$OUT/rb" >/dev/null 2>&1 \
-    && { echo "  a directory that is not a KDOS tree was accepted"; exit 1; }
-rb "$PWD" --dry-run "$RBW" >/dev/null 2>&1 \
-    || { echo "  this repo was not recognised as a KDOS tree"; exit 1; }
+rb /tmp --dry-run "$OUT/rb" 2>&1 | grep -q "no KDOS tree found" \
+    || { echo "  a directory that is not a KDOS tree was accepted"; exit 1; }
 # A tree without the fs/ overlay builds a root with no configuration.
 RBT="$OUT/rb-tree"
 mkdir -p "$RBT/script" "$RBT/ports/core" "$RBT/src/devtools/kdosbuild"
 : > "$RBT/script/kdosbuild.sh"
-rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
-    && { echo "  a tree with no fs/ overlay was accepted"; exit 1; }
-mkdir -p "$RBT/fs/etc"
-rb "$RBT" --dry-run "$RBW" >/dev/null 2>&1 \
-    || { echo "  a tree with every part was not recognised"; exit 1; }
+rb "$RBT" --dry-run "$RBW" 2>&1 | grep -q "no KDOS tree found" \
+    || { echo "  a tree with no fs/ overlay was accepted"; exit 1; }
 # /dev/shm is tmpfs on any Linux that has it, which is the case this exists for.
 if [ -d /dev/shm ]; then
-    rb "$PWD" --dry-run /dev/shm/kdos-rebuild-check >/dev/null 2>&1 \
-        && { echo "  a work directory in RAM was accepted"; exit 1; }
+    rb "$PWD" --dry-run /dev/shm/kdos-rebuild-check 2>&1 | grep -q "is in RAM" \
+        || { echo "  a work directory in RAM was accepted"; exit 1; }
     rm -rf /dev/shm/kdos-rebuild-check
 fi
-rb "$PWD" --dry-run "$RBW" 2>&1 | grep -q "nothing was copied" \
-    || { echo "  --dry-run did not say it did nothing"; exit 1; }
+# The accepting cases need the space a rebuild needs where $RBW is. A host
+# short of it gets rebuild.c's own refusal, which skips them and nothing else;
+# any other refusal is a failure, reported in the tool's words. rb_low reads
+# that refusal, and a statvfs shim reporting no free blocks proves it matches
+# the line rebuild.c prints, on a host with room as well as on one without.
+rb_low() { printf '%s\n' "$1" | grep -o '^kdos: [0-9-]* GB free, [0-9]* needed$'; }
+cat > "$OUT/rbfull.c" <<'EOF'
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <sys/statvfs.h>
+#define FULL(name, st)                                                   \
+	int name(const char *p, st *v)                                   \
+	{                                                                \
+		int (*real)(const char *, st *) =                        \
+			(int (*)(const char *, st *))dlsym(RTLD_NEXT, #name); \
+		int r = real ? real(p, v) : -1;                          \
+		if (r == 0)                                              \
+			v->f_bavail = 0;                                 \
+		return r;                                                \
+	}
+FULL(statvfs, struct statvfs)
+#ifdef __GLIBC__
+FULL(statvfs64, struct statvfs64)
+#endif
+EOF
+cc -shared -fPIC -o "$OUT/rbfull.so" "$OUT/rbfull.c" -ldl \
+    || { echo "  the statvfs shim did not build"; exit 1; }
+rbo=$(env LD_PRELOAD="$OUT/rbfull.so" ASAN_OPTIONS=verify_asan_link_order=0 \
+      KDOS_SOURCES="$PWD" "$OUT/kdos" rebuild --dry-run "$RBW" 2>&1) \
+    && { echo "  a work directory with no free space was accepted"; exit 1; }
+[ "$(rb_low "$rbo")" = "kdos: 0 GB free, 25 needed" ] \
+    || { echo "  a full work directory was not refused for its space:"
+         printf '%s\n' "$rbo" | sed 's/^/    /'; exit 1; }
+if rbo=$(rb "$PWD" --dry-run "$RBW" 2>&1); then
+    printf '%s\n' "$rbo" | grep -q "nothing was copied" \
+        || { echo "  --dry-run did not say it did nothing"; exit 1; }
+    mkdir -p "$RBT/fs/etc"
+    rbo=$(rb "$RBT" --dry-run "$RBW" 2>&1) \
+        || { echo "  a tree with every part was not recognised:"
+             printf '%s\n' "$rbo" | sed 's/^/    /'; exit 1; }
+    echo "  no tree, a wrong tree and a work directory in RAM are all refused"
+elif rbs=$(rb_low "$rbo"); then
+    rbs=${rbs#kdos: }
+    echo "  no tree, a wrong tree and a work directory in RAM are all refused"
+    echo "  (accepting cases skipped: ${rbs%%,*})"
+else
+    echo "  this repo was refused as a rebuild source:"
+    printf '%s\n' "$rbo" | sed 's/^/    /'
+    exit 1
+fi
 rm -rf "$RBW"
-echo "  no tree, a wrong tree and a work directory in RAM are all refused"
+trap 'rm -rf "$OUT" "$SOCKD"' EXIT
 
 echo
 echo "==> doctor can tell whether the initrd carries this CPU's microcode"
@@ -4243,6 +8129,154 @@ KDOS_INITRD="$UC/nosuch.img" "$OUT/kdos" doctor 2>/dev/null \
     || { echo "  a missing initrd was not reported honestly"; exit 1; }
 echo "  found when carried, reported when not, honest when there is no image"
 fi
+
+echo
+echo "==> doctor takes the session bus with a guid for the session's own"
+# dbus-daemon hands the services it activates (KRunner, and what it starts)
+# the address with ,guid= appended; only the socket path decides.
+ln -sf kdos-tools "$OUT/kdos"
+_brt="$SOCKD/busrt"; mkdir -p "$_brt"
+XDG_RUNTIME_DIR="$_brt" DBUS_SESSION_BUS_ADDRESS="unix:path=$_brt/bus,guid=abc" \
+    "$OUT/kdos" doctor 2>/dev/null \
+    | grep -qF "[ ok ] DBUS_SESSION_BUS_ADDRESS=unix:path=$_brt/bus,guid=abc" \
+    || { echo "  the session bus with a guid was not taken as the session's"; exit 1; }
+XDG_RUNTIME_DIR="$_brt" DBUS_SESSION_BUS_ADDRESS="unix:path=$_brt/other,guid=abc" \
+    "$OUT/kdos" doctor 2>/dev/null \
+    | grep -q "this shell's bus is not the session's" \
+    || { echo "  a bus at another path was not warned about"; exit 1; }
+XDG_RUNTIME_DIR="$_brt" DBUS_SESSION_BUS_ADDRESS="unix:path=$_brt/bus" \
+    "$OUT/kdos" doctor 2>/dev/null \
+    | grep -qF "[ ok ] DBUS_SESSION_BUS_ADDRESS=unix:path=$_brt/bus" \
+    || { echo "  the plain session bus address was not taken"; exit 1; }
+echo "  same path with or without a guid is ok, another path is warned"
+echo
+echo "==> kdos persist knows a Ventoy BIOS boot's medium by its device number"
+# Under BIOS, Ventoy's hook points the stick's second-partition node at its
+# mapping, so /mnt/iso is mounted from /dev/sda2 and that node opens dm-0 (253:0),
+# whose dm name is ventoy. A shim moves /sys and /proc/mounts into a fake tree
+# and gives /dev/sda and /dev/sda2 their device numbers; read by name, sda2 is
+# an ordinary partition of a writable stick, and status offers it a store.
+PV="$OUT/pventoy"
+rm -rf "$PV"; mkdir -p "$PV/bin" "$PV/root/sys/devices/virtual/block/dm-0/dm" \
+    "$PV/root/sys/devices/usb1/block/sda/sda1/holders" \
+    "$PV/root/sys/devices/usb1/block/sda/sda2" \
+    "$PV/root/sys/class/block" "$PV/root/sys/block" "$PV/root/sys/dev/block" "$PV/root/proc"
+_pd="$PV/root/sys/devices"
+echo ventoy > "$_pd/virtual/block/dm-0/dm/name"
+touch "$_pd/usb1/block/sda/sda1/holders/dm-0"
+for _f in sda/sda1 sda/sda2; do echo "${_f##*sda}" > "$_pd/usb1/block/$_f/partition"; done
+for _f in sda sda/sda1 sda/sda2 ../../virtual/block/dm-0; do echo 0 > "$_pd/usb1/block/$_f/ro"; done
+echo 1 > "$_pd/usb1/block/sda/removable"
+echo 62914560 > "$_pd/usb1/block/sda/size"
+ln -s ../../devices/virtual/block/dm-0 "$PV/root/sys/class/block/dm-0"
+ln -s ../../devices/virtual/block/dm-0 "$PV/root/sys/block/dm-0"
+ln -s ../../devices/virtual/block/dm-0 "$PV/root/sys/dev/block/253:0"
+ln -s ../../devices/usb1/block/sda "$PV/root/sys/class/block/sda"
+ln -s ../../devices/usb1/block/sda "$PV/root/sys/block/sda"
+ln -s ../../devices/usb1/block/sda "$PV/root/sys/dev/block/8:0"
+for _p in sda1 sda2; do
+    ln -s ../../devices/usb1/block/sda/$_p "$PV/root/sys/class/block/$_p"
+done
+printf '/dev/sda2 /mnt/iso iso9660 ro 0 0\n' > "$PV/root/proc/mounts"
+printf '#!/bin/sh\nexit 2\n' > "$PV/bin/blkid"; chmod +x "$PV/bin/blkid"
+cat > "$PV/shim.c" <<'EOF'
+#define _GNU_SOURCE
+#include <dirent.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+static const char *map(const char *p, char *buf)
+{
+	const char *r = getenv("PV_ROOT");
+	if (r && p && (!strncmp(p, "/sys/", 5) || !strcmp(p, "/sys") ||
+		       !strcmp(p, "/proc/mounts"))) {
+		snprintf(buf, PATH_MAX, "%s%s", r, p);
+		return buf;
+	}
+	return p;
+}
+static dev_t node(const char *p)
+{
+	return !p ? 0 : !strcmp(p, "/dev/sda") ? makedev(8, 0)
+		: !strcmp(p, "/dev/sda2") ? makedev(253, 0) : 0;
+}
+#define NEXT(name) ((__typeof__(&name))dlsym(RTLD_NEXT, #name))
+int open(const char *p, int fl, ...)
+{
+	char b[PATH_MAX];
+	va_list ap;
+	va_start(ap, fl);
+	int mode = va_arg(ap, int);
+	va_end(ap);
+	return NEXT(open)(map(p, b), fl, mode);
+}
+DIR *opendir(const char *p)
+{
+	char b[PATH_MAX];
+	return NEXT(opendir)(map(p, b));
+}
+#define STAT(name, st)                                                   \
+	int name(const char *p, st *s)                                   \
+	{                                                                \
+		char b[PATH_MAX];                                        \
+		dev_t d = node(p);                                       \
+		int r = NEXT(name)(d ? "/" : map(p, b), s);              \
+		if (r == 0 && d) {                                       \
+			s->st_mode = S_IFBLK | 0660;                     \
+			s->st_rdev = d;                                  \
+		}                                                        \
+		return r;                                                \
+	}
+STAT(stat, struct stat)
+#ifdef __GLIBC__
+STAT(stat64, struct stat64)
+#endif
+char *realpath(const char *p, char *out)
+{
+	char b[PATH_MAX], *r;
+	const char *root = getenv("PV_ROOT");
+	if (node(p)) {
+		r = out ? out : malloc(PATH_MAX);
+		return r ? strcpy(r, p) : NULL;
+	}
+	r = NEXT(realpath)(map(p, b), out);
+	size_t n = root ? strlen(root) : 0;
+	if (r && n && !strncmp(r, root, n))
+		memmove(r, r + n, strlen(r + n) + 1);
+	return r;
+}
+#ifdef __GLIBC__
+char *__realpath_chk(const char *p, char *out, size_t n)
+{
+	(void)n;
+	return realpath(p, out);
+}
+#endif
+EOF
+cc -shared -fPIC -o "$PV/shim.so" "$PV/shim.c" -ldl \
+    || { echo "  the sysfs shim did not build"; exit 1; }
+ln -sf kdos-tools "$OUT/kdos"
+pv() { env LD_PRELOAD="$PV/shim.so" ASAN_OPTIONS=verify_asan_link_order=0 \
+       PV_ROOT="$PV/root" PATH="$PV/bin" "$OUT/kdos" persist "$@" 2>&1; }
+_pvo=$(pv) || { echo "  status failed:"; printf '%s\n' "$_pvo"; exit 1; }
+printf '%s\n' "$_pvo" | grep -q "The boot medium /dev/sda2 is a Ventoy stick" \
+    || { echo "  status did not name a Ventoy BIOS medium:"; printf '%s\n' "$_pvo"; exit 1; }
+_pvo=$(pv --json)
+printf '%s\n' "$_pvo" | grep -qF '"kind": "ventoy", "writable": false, "candidates": []' \
+    || { echo "  --json did not report the Ventoy BIOS medium:"; printf '%s\n' "$_pvo"; exit 1; }
+for _d in "" /dev/sda2 /dev/sda; do
+    _pvo=$(pv create $_d --yes) \
+        && { echo "  create ${_d:-on the medium} went ahead:"; printf '%s\n' "$_pvo"; exit 1; }
+    printf '%s\n' "$_pvo" | grep -q "^kdos persist: /dev/sda2\{0,1\} is a Ventoy stick" \
+        || { echo "  create ${_d:-on the medium} was not refused as Ventoy:"; printf '%s\n' "$_pvo"; exit 1; }
+done
+echo "  status, --json and create name the medium and its stick Ventoy"
 
 echo
 echo "==> a bad update led by the menu boots three times and rolls itself back"
@@ -4338,6 +8372,15 @@ bootctl crypt AAAA-1111 >/dev/null 2>&1 \
 echo "  each slot carries its own LUKS container, across a rollback"
 
 echo
+echo "==> the boot menu plate is the same under every accent"
+# The menu plate is the backdrop's achromatic floor under every accent: one
+# kdos-backdrop.png serves them all and Limine cannot retint it.
+_tb() { "$OUT/kdos-bootctl" theme --print "$1" | grep '^term_background:'; }
+[ -n "$(_tb bone)" ] && [ "$(_tb phosphor)" = "$(_tb bone)" ] && [ "$(_tb paper)" = "$(_tb bone)" ] \
+    || { echo "  kdos-bootctl theme --print gives a per-accent menu plate"; exit 1; }
+echo "  the boot menu plate is the backdrop's floor under every accent"
+
+echo
 echo "==> each slot boots its own kernel, and the menu follows the state"
 # A fixture ESP laid out the way kinstall leaves one — the state file at
 # EFI/kdos/bootstate is what tells kdos-bootctl where the ESP is — starting
@@ -4391,7 +8434,7 @@ esb status | grep -q "kernel   b  7.2.7 from EFI/kdos/b" \
 # pair stays on the ESP.
 grep -A3 '^/KDOS$' "$ES/esp/limine.conf" | grep -q 'path: boot():/EFI/kdos/vmlinuz' \
     || { echo "  slot a lost the flat kernel it boots"; exit 1; }
-grep -A5 '^/KDOS (slot b)$' "$ES/esp/limine.conf" | grep -q 'kdos_slot=b .*root=UUID=BBBB-2222 rw nomodeset quiet' \
+grep -A5 '^/KDOS (slot B)$' "$ES/esp/limine.conf" | grep -q 'kdos_slot=b .*root=UUID=BBBB-2222 rw nomodeset quiet' \
     || { echo "  slot b's entry is missing or lost the hand-added words"; exit 1; }
 grep -q '^/Memory Test' "$ES/esp/limine.conf" \
     || { echo "  an entry that is not ours was dropped"; exit 1; }
@@ -4413,6 +8456,19 @@ esb status | grep -q "trying   nothing" || { echo "  the rollback left a try fla
 esb try b >/dev/null
 test "$(esb select a 2>/dev/null)" = AAAA-1111 || { echo "  a hand-picked a did not boot a"; exit 1; }
 esb status | grep -q "trying   nothing" || { echo "  picking the confirmed slot kept the candidate"; exit 1; }
+# A candidate set aside by hand is `abandoned`, never `failed`: the rollback
+# notice and banner read `failed`, and nothing failed to start.
+grep -qx 'abandoned = b' "$ES/esp/EFI/kdos/bootstate" && \
+    grep -qx 'failed   = ' "$ES/esp/EFI/kdos/bootstate" \
+    || { echo "  a candidate set aside at the menu is not recorded abandoned:"; cat "$ES/esp/EFI/kdos/bootstate"; exit 1; }
+esb status --json | grep -qF '"failed": null, "abandoned": "b"' && \
+    esb status --json | grep -qF '"b": {"state": "abandoned"' && \
+    esb status | grep -qx 'abandoned b: set aside at the boot menu' \
+    || { echo "  status does not report the candidate set aside:"; esb status; esb status --json; exit 1; }
+esb try b >/dev/null
+grep -qx 'abandoned = ' "$ES/esp/EFI/kdos/bootstate" \
+    || { echo "  a new trial kept the one set aside"; exit 1; }
+esb cancel >/dev/null
 test "$(esb select b 2>/dev/null)" = BBBB-2222 || { echo "  a hand-picked b did not boot b"; exit 1; }
 esb mark-good >/dev/null
 esb status | grep -q "^active   a" || { echo "  a one-off boot was confirmed"; exit 1; }
@@ -4425,6 +8481,13 @@ test "$(cat "$ES/esp/EFI/kdos/a/initramfs.cpio.gz")" = image-a \
 cp "$ES/esp/limine.conf" "$ES/settled.conf"
 esb mark-good >/dev/null
 cmp -s "$ES/settled.conf" "$ES/esp/limine.conf" || { echo "  an unchanged state rewrote the menu"; exit 1; }
+# A slot an update is writing has no entry to pick by hand, until the deploy
+# that finishes it.
+esb unfill b >/dev/null || { echo "  unfill b failed"; exit 1; }
+grep -q '^/KDOS (slot B)$' "$ES/esp/limine.conf" && { echo "  an unfilled slot kept its menu entry"; exit 1; }
+esb deploy "$ES/rb" b >/dev/null || { echo "  deploy b failed"; exit 1; }
+cmp -s "$ES/settled.conf" "$ES/esp/limine.conf" \
+    || { echo "  the deploy that clears unfill did not give the entry back"; diff "$ES/settled.conf" "$ES/esp/limine.conf"; exit 1; }
 # The splash's motion is kdos.splash= on every /KDOS entry and on nothing
 # else, and a menu regenerated from the state keeps it: kdos-splash reads it
 # before any root is mounted, so the menu is the only place it can live.
@@ -4459,9 +8522,10 @@ esb set-slot a AAAA-1111 LUKS-AAAA >/dev/null
 # The menu is rendered from the format strings in kinstall-core's install.c,
 # the KI_QUIET words spliced in where the source names the macro, once for a
 # machine with one root and once for the A/B layout, whose slot B entry is the
-# one kdos-bootctl gives the other slot.
+# one kdos-bootctl gives the other slot. A second argument is the release the
+# target's /etc/kdos-release names, which both writers put in the comments.
 kimenu() {
-    python3 - "$ES/esp/limine.conf" "$1" <<'PYEOF' || { echo "  could not render kinstall's limine.conf"; exit 1; }
+    python3 - "$ES/esp/limine.conf" "$1" "${2:-}" <<'PYEOF' || { echo "  could not render kinstall's limine.conf"; exit 1; }
 import re, sys
 s = open('src/system/kinstall-core/install.c').read()
 quiet = re.search(r'#define KI_QUIET "([^"]*)"', s).group(1)
@@ -4471,12 +8535,15 @@ def lits(block):
     return fmt.encode().decode('unicode_escape')
 m = re.search(r'wr\("/boot/efi/limine.conf",\n(.*?)\n\t   theme, paper', s, re.S)
 fmt = lits(m.group(1))
-b = re.search(r'snprintf\(b_entry, sizeof\(b_entry\),\n(.*?),\n\t\t\t slot_opt', s, re.S)
+b = re.search(r'snprintf\(b_entry, sizeof\(b_entry\),\n(.*?),\n\t\t\t name, slot_opt', s, re.S)
 bfmt = lits(b.group(1))
 st, cr = 'bootstate=UUID=ESP-1 ', 'cryptdevice=UUID=LUKS-AAAA:kdosroot '
-bent = bfmt % (st, cr, 'BBBB-2222') if sys.argv[2] == 'ab' else ''
-open(sys.argv[1], 'w').write(fmt % ('term_background: 000000\n', '', '',
-    st, cr, 'AAAA-1111', st, cr, 'AAAA-1111', st, cr, 'AAAA-1111', bent,
+ver = sys.argv[3]
+a_note = ', KDOS %s' % ver if ver else ''
+name = 'KDOS %s' % ver if ver else 'KDOS'
+bent = bfmt % (name, st, cr, 'BBBB-2222') if sys.argv[2] == 'ab' else ''
+open(sys.argv[1], 'w').write(fmt % ('term_background: 000000\n', '', '', name, a_note,
+    st, cr, 'AAAA-1111', name, st, cr, 'AAAA-1111', name, st, cr, 'AAAA-1111', bent,
     '\n/Memory Test (memtest86+)\n    protocol: efi\n'))
 PYEOF
 }
@@ -4494,7 +8561,20 @@ cp "$ES/esp/limine.conf" "$ES/kinstall.conf"
 esb mark-good >/dev/null
 cmp -s "$ES/kinstall.conf" "$ES/esp/limine.conf" \
     || { echo "  kdos-bootctl regenerates kinstall's A/B menu differently"; diff "$ES/kinstall.conf" "$ES/esp/limine.conf"; exit 1; }
-rm -rf "$ES/esp/EFI/kdos/b"
+printf 'VERSION="0.2.1+4dc1f7f82"\n' > "$ES/esp/EFI/kdos/a/release"
+cp "$ES/esp/EFI/kdos/a/release" "$ES/esp/EFI/kdos/b/release"
+kimenu ab 0.2.1
+grep -qxF '    comment: Start this computer (slot A, KDOS 0.2.1)' "$ES/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1' "$ES/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1 (verbose)' "$ES/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1 (single user)' "$ES/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1 (slot B)' "$ES/esp/limine.conf" \
+    || { echo "  kinstall's menu does not name the release"; grep comment: "$ES/esp/limine.conf"; exit 1; }
+cp "$ES/esp/limine.conf" "$ES/kinstall.conf"
+esb mark-good >/dev/null
+cmp -s "$ES/kinstall.conf" "$ES/esp/limine.conf" \
+    || { echo "  kdos-bootctl names the release in kinstall's A/B menu differently"; diff "$ES/kinstall.conf" "$ES/esp/limine.conf"; exit 1; }
+rm -rf "$ES/esp/EFI/kdos/b" "$ES/esp/EFI/kdos/a/release"
 
 # An initramfs is deployed beside a kernel only when it carries that kernel's
 # modules, or none at all. The archives are laid out as the image's is: an
@@ -4646,7 +8726,7 @@ first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/a/' \
     || { echo "  the candidate leads the menu an unattended boot reads"; exit 1; }
 grep -q '^default_entry: 4$' "$BN/esp/EFI/kdos/trial/limine.conf" \
     || { echo "  the trial menu does not default to the candidate"; exit 1; }
-grep -A5 '^/KDOS (slot b)$' "$BN/esp/EFI/kdos/trial/limine.conf" \
+grep -A5 '^/KDOS (slot B)$' "$BN/esp/EFI/kdos/trial/limine.conf" \
     | grep -q 'kdos_slot=b .*root=UUID=BBBB-2222 .*panic=10' \
     || { echo "  the candidate entry does not reset on a panic"; exit 1; }
 bn status | grep -q "trying   b once, through UEFI BootNext" \
@@ -4712,7 +8792,51 @@ bn try b >/dev/null
 cmp -s "$EV/Boot0001-$G" "$BN/want-ia32" \
     || { echo "  a 32-bit firmware was sent to BOOTX64.EFI"; exit 1; }
 rm -f "$EV/BootNext-$G"
-bn select a >/dev/null 2>&1; bn mark-good >/dev/null
+bn select a >/dev/null 2>&1
+# A fallback through the ESP root's loader carries no kdos_menu=: `failed`.
+grep -qx 'failed   = b' "$BN/esp/EFI/kdos/bootstate" &&
+    grep -qx 'abandoned = ' "$BN/esp/EFI/kdos/bootstate" \
+    || { echo "  a firmware fallback was not recorded as failed"; exit 1; }
+bn mark-good >/dev/null
+
+# The trial menu's three confirmed-slot entries carry kdos_menu=trial and the
+# first says picking it sets the update aside; the candidate's entry and the
+# ESP root's menu carry no such word.
+echo 64 > "$BN/fw/fw_platform_size"
+bn try b >/dev/null
+T="$BN/esp/EFI/kdos/trial/limine.conf"
+test "$(awk '/^\/KDOS/ { n++ } /cmdline:.*kdos_menu=trial/ { printf "%d ", n }' "$T")" = "1 2 3 " \
+    || { echo "  kdos_menu=trial is not on the trial menu's first three entries:"; grep cmdline: "$T"; exit 1; }
+grep -qxF '    comment: The confirmed version: picking it sets the update aside' "$T" \
+    || { echo "  the trial menu's first entry does not say it sets the update aside"; exit 1; }
+grep -q 'kdos_menu' "$BN/esp/limine.conf" && { echo "  the ESP root's menu carries kdos_menu="; exit 1; }
+# The confirmed entry picked at the trial menu sets the candidate aside.
+rm -f "$EV/BootNext-$G"
+printf 'kdos_slot=a bootstate=UUID=ESP-1 root=UUID=AAAA-1111 rw kdos_menu=trial quiet\n' > "$BN/cmdline.trial"
+test "$(KDOS_CMDLINE="$BN/cmdline.trial" bn select a 2>/dev/null)" = AAAA-1111 \
+    || { echo "  the confirmed entry of the trial menu did not boot a"; exit 1; }
+grep -qx 'abandoned = b' "$BN/esp/EFI/kdos/bootstate" &&
+    grep -qx 'failed   = ' "$BN/esp/EFI/kdos/bootstate" \
+    || { echo "  a confirmed entry picked at the trial menu was not recorded as abandoned:"; cat "$BN/esp/EFI/kdos/bootstate"; exit 1; }
+bn status | grep -q "trying   nothing" || { echo "  the set-aside candidate is still on trial"; exit 1; }
+test ! -e "$BN/esp/EFI/kdos/trial" || { echo "  the trial directory outlived the set-aside trial"; exit 1; }
+# A menu regenerated from an entry that carried the word does not keep it.
+awk '/^\/KDOS/ { n++ } n == 1 && /cmdline:/ && !done { $0 = $0 " kdos_menu=trial"; done = 1 } { print }' \
+    "$BN/esp/limine.conf" > "$BN/seeded.conf"
+cp "$BN/seeded.conf" "$BN/esp/limine.conf"
+grep -q 'kdos_menu=trial' "$BN/esp/limine.conf" || { echo "  the fixture did not seed kdos_menu= into the root menu"; exit 1; }
+bn set-slot b BBBB-2222 >/dev/null
+grep -q 'kdos_menu' "$BN/esp/limine.conf" && { echo "  kdos_menu= leaked into the ESP root's menu"; exit 1; }
+bn mark-good >/dev/null
+# An apply into the set-aside slot: `unfill` drops `abandoned`, so status
+# reports the slot incomplete alone.
+bn unfill b >/dev/null || { echo "  unfill of the set-aside slot failed"; exit 1; }
+grep -qx 'abandoned = ' "$BN/esp/EFI/kdos/bootstate" &&
+    grep -qx 'unfilled = b' "$BN/esp/EFI/kdos/bootstate" \
+    || { echo "  unfill left the stale abandoned line:"; cat "$BN/esp/EFI/kdos/bootstate"; exit 1; }
+bn status | grep -q '^abandoned' && { echo "  status still reports the unfilled slot abandoned"; exit 1; }
+awk '/^unfilled/ { print "unfilled = "; next } { print }' "$BN/esp/EFI/kdos/bootstate" > "$BN/filled-state"
+cp "$BN/filled-state" "$BN/esp/EFI/kdos/bootstate"
 
 # No firmware variables — a BIOS boot — is the menu-led trial, counted.
 env KDOS_BOOTSTATE="$BN/esp/EFI/kdos/bootstate" KDOS_EFIVARS="$BN/none" \
@@ -4722,7 +8846,66 @@ first_bn "$BN/esp/limine.conf" | grep -q '/EFI/kdos/b/' \
     || { echo "  a trial with no BootNext is not led by the menu"; exit 1; }
 bn status | grep -q "trying   b, 3 attempt(s) left" \
     || { echo "  a trial with no BootNext is not counted"; exit 1; }
-echo "  the spec's load option, the confirmed slot's default kept, one boot then rollback, confirmed only on its own kernel, BIOS counted"
+# The menu names the release each slot's ESP record holds, without its build,
+# in every entry's title and the first entry's comment; a slot with no record
+# is named "KDOS" and its letter alone.
+printf 'VERSION="0.2.1+4dc1f7f82"\n' > "$BN/esp/EFI/kdos/a/release"
+printf 'VERSION="0.2.14+cccc3333"\n' > "$BN/esp/EFI/kdos/b/release"
+bn set-slot b BBBB-2222 >/dev/null
+grep -qxF '    comment: Try the update (slot B, KDOS 0.2.14)' "$BN/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.14' "$BN/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1 (slot A)' "$BN/esp/limine.conf" &&
+    grep -qxF '    comment: The confirmed version: picking it sets the update aside' "$BN/esp/limine.conf" \
+    || { echo "  the menu does not name each slot's release:"; grep comment: "$BN/esp/limine.conf"; exit 1; }
+# Limine's entry editor draws a comment byte by byte: every comment
+# kdos-bootctl writes, the ones built from a format included, is ASCII.
+if grep 'comment:' "$BN/esp/limine.conf" | LC_ALL=C grep -n '[^ -~[:space:]]'; then
+    echo "  a menu comment kdos-bootctl wrote is not ASCII"; exit 1
+fi
+rm "$BN/esp/EFI/kdos/a/release" "$BN/esp/EFI/kdos/b/release"
+bn set-slot b BBBB-2222 >/dev/null
+grep -qxF '    comment: Try the update (slot B)' "$BN/esp/limine.conf" &&
+    grep -qxF '/KDOS (slot A)' "$BN/esp/limine.conf" \
+    || { echo "  a slot with no release record changed its menu comment:"; grep comment: "$BN/esp/limine.conf"; exit 1; }
+# A trial of an older or equal slot, which System Versions arms to go back,
+# is no update: the menu calls it "this version", and only a candidate whose
+# tree is later, or whose version sorts above where a tree time is missing,
+# is "the update". The entries' titles carry the release.
+bn cancel >/dev/null
+printf 'VERSION="0.2.1+4dc1f7f82"\nTREE_TIME="1761600000"\n' > "$BN/esp/EFI/kdos/a/release"
+printf 'VERSION="0.2.0+bbbb2222"\nTREE_TIME="1761500000"\n' > "$BN/esp/EFI/kdos/b/release"
+bn try b >/dev/null
+grep -qxF '    comment: This version, for one boot; then the confirmed version again' "$BN/esp/limine.conf" &&
+    grep -qxF '    comment: The confirmed version: picking it sets the trial aside' "$T" &&
+    grep -qxF '/KDOS 0.2.1' "$BN/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1 (verbose)' "$BN/esp/limine.conf" &&
+    grep -qxF '/KDOS 0.2.1 (single user)' "$BN/esp/limine.conf" &&
+    ! grep -q 'comment:.*update' "$BN/esp/limine.conf" "$T" \
+    || { echo "  a one-boot trial of an older slot is called the update:"; grep -h comment: "$BN/esp/limine.conf" "$T"; exit 1; }
+bn cancel >/dev/null
+printf 'VERSION="0.2.1+cccc3333"\nTREE_TIME="1761600000"\n' > "$BN/esp/EFI/kdos/b/release"
+env KDOS_BOOTSTATE="$BN/esp/EFI/kdos/bootstate" KDOS_EFIVARS="$BN/none" \
+    "$OUT/kdos-bootctl" try b >/dev/null 2>&1
+grep -qxF '    comment: Try this version (slot B, KDOS 0.2.1)' "$BN/esp/limine.conf" &&
+    grep -qxF '    comment: The confirmed version: picking it sets the trial aside' "$BN/esp/limine.conf" \
+    || { echo "  a menu-led trial of an equal tree is called the update:"; grep comment: "$BN/esp/limine.conf"; exit 1; }
+bn cancel >/dev/null
+printf 'VERSION="0.2.14+cccc3333"\nTREE_TIME="1761700000"\n' > "$BN/esp/EFI/kdos/b/release"
+bn try b >/dev/null
+grep -qxF '    comment: The update, for one boot; then the confirmed version again' "$BN/esp/limine.conf" &&
+    grep -qxF '    comment: The confirmed version: picking it sets the update aside' "$T" \
+    || { echo "  a one-boot trial of a later tree is not called the update:"; grep -h comment: "$BN/esp/limine.conf" "$T"; exit 1; }
+bn cancel >/dev/null
+# With no tree time the versions decide.
+printf 'VERSION="0.2.1+4dc1f7f82"\n' > "$BN/esp/EFI/kdos/a/release"
+printf 'VERSION="0.2+bbbb2222"\n' > "$BN/esp/EFI/kdos/b/release"
+bn try b >/dev/null
+grep -qxF '    comment: This version, for one boot; then the confirmed version again' "$BN/esp/limine.conf" \
+    || { echo "  a one-boot trial of an older version is called the update:"; grep comment: "$BN/esp/limine.conf"; exit 1; }
+bn cancel >/dev/null
+rm "$BN/esp/EFI/kdos/a/release" "$BN/esp/EFI/kdos/b/release"
+bn set-slot b BBBB-2222 >/dev/null
+echo "  the spec's load option, the confirmed slot's default kept, one boot then rollback, confirmed only on its own kernel, BIOS counted, each slot's release in the menu"
 
 echo
 echo "==> each slot is named by its version, and a trial armed in this boot is kept"
@@ -4743,6 +8926,7 @@ sv() {
         KDOS_REBOOT_ENTRY="$SV/run/systemd/reboot-to-boot-loader-entry" \
         KDOS_BOOT_ENTRIES="$SV/run/kdos/boot-entries.json" \
         KDOS_BOOTSTATE_PUB="$SV/run/kdos/bootstate.json" \
+        KDOS_BOOTSTATE_TXT="$SV/run/kdos/bootstate.txt" \
         KDOS_SLOT_PUB="$SV/run/kdos/slot.json" \
         "$OUT/kdos-bootctl" "$@"
 }
@@ -4751,6 +8935,7 @@ svuser() {
     env KDOS_BOOTSTATE="$SV/closed/bootstate" \
         KDOS_BOOT_ENTRIES="$SV/run/kdos/boot-entries.json" \
         KDOS_BOOTSTATE_PUB="$SV/run/kdos/bootstate.json" \
+        KDOS_BOOTSTATE_TXT="$SV/run/kdos/bootstate.txt" \
         "$OUT/kdos-bootctl" "$@"
 }
 printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$SV/cmdline"
@@ -4765,6 +8950,36 @@ sv status --json | grep -qF '"a": {"state": "running", "title": "KDOS 0.2+a81bec
     || { echo "  the running slot is not named from its os-release:"; sv status --json; exit 1; }
 grep -qx 'failed   = ' "$SV/esp/EFI/kdos/bootstate" \
     || { echo "  a new boot state records a failed trial"; exit 1; }
+# One root: the state is configured with no slot B, and the text says the
+# machine has no rollback rather than naming an empty slot.
+mkdir -p "$SV/one"
+svone() { env KDOS_BOOTSTATE="$SV/one/bootstate" KDOS_CMDLINE="$SV/cmdline" "$OUT/kdos-bootctl" "$@"; }
+svone set-slot a AAAA-1111 >/dev/null
+svone status | grep -qx 'other    none: this machine has one root and no rollback' && \
+    svone status --json | grep -qF '{"configured": true, "active": "a", ' && \
+    svone status --json | grep -qF '"slot_b": ""' \
+    || { echo "  a one-root state is not described as one:"; svone status; svone status --json; exit 1; }
+# Slot b picked at the boot menu with a confirmed and nothing on trial: b is
+# `visiting`, for this boot only, and the next boot starts a — never
+# `inactive` beside "this slot is confirmed good".
+printf 'kdos_slot=b root=UUID=BBBB-2222 rw\n' > "$SV/cmdline.b"
+svb() { env KDOS_BOOTSTATE="$SV/esp/EFI/kdos/bootstate" KDOS_CMDLINE="$SV/cmdline.b" "$OUT/kdos-bootctl" "$@"; }
+svb status | grep -q '^slot b   .*, visiting (this boot only)$' && \
+    svb status | grep -q '^slot a   .*, confirmed$' && \
+    svb status | grep -qx 'trying   nothing — this boot was picked from the menu; the next boot starts a' && \
+    svb status --json | grep -qF '"b": {"state": "visiting"' && \
+    svb status --json | grep -qF '"running": "b"' \
+    || { echo "  a slot picked at the menu is not reported as visiting:"; svb status; svb status --json; exit 1; }
+# The ESP not mounted (the emergency shell): the directory that holds
+# EFI/kdos/bootstate is on its parent's filesystem and the file is absent, so
+# status says to mount it rather than calling the machine one-root.
+mkdir -p "$SV/unmounted/esp/EFI/kdos"
+rc=0; _st=$(env KDOS_BOOTSTATE="$SV/unmounted/esp/EFI/kdos/bootstate" "$OUT/kdos-bootctl" status) || rc=$?
+test "$rc" = 1 && \
+    test "$_st" = "the ESP is not mounted at $SV/unmounted/esp, so the boot state cannot be read; mount $SV/unmounted/esp" \
+    || { echo "  an unmounted ESP reads as a one-root machine (rc $rc): $_st"; exit 1; }
+test "$(env KDOS_BOOTSTATE="$SV/unmounted/esp/EFI/kdos/bootstate" "$OUT/kdos-bootctl" status --json)" = '{"configured": false}' \
+    || { echo "  an unmounted ESP changed status --json"; exit 1; }
 printf 'VERSION="0.2.13"\n' > "$SV/a/etc/kdos-release"
 sv deploy "$SV/b" b >/dev/null || { echo "  deploy failed"; exit 1; }
 for want in 'VERSION="0.2.14"' 'TREE="5555666677778888"' 'TREE_TIME="1761600000"'; do
@@ -4791,7 +9006,8 @@ test "$(cat "$SV/run/systemd/reboot-to-boot-loader-entry")" = kdos-b \
 # state is a directory with no search permission, which root ignores, so it
 # is proved only where the selftest is not root.
 sv list --json=short | cmp -s - "$SV/run/kdos/boot-entries.json" && \
-    sv status --json | cmp -s - "$SV/run/kdos/bootstate.json" \
+    sv status --json | cmp -s - "$SV/run/kdos/bootstate.json" && \
+    sv status | cmp -s - "$SV/run/kdos/bootstate.txt" \
     || { echo "  try did not publish what list and status print"; exit 1; }
 # About this System's slot row reads the flat copy: the running slot, its
 # version, its state and the other slot.
@@ -4808,6 +9024,9 @@ if [ "$(id -u)" != 0 ]; then
         || { echo "  a session's list does not name the trial"; exit 1; }
     svuser status --json | grep -qF '"trying": "b"' \
         || { echo "  a session's status is not the published one"; exit 1; }
+    svuser status | cmp -s - "$SV/run/kdos/bootstate.txt" && \
+        grep -q '^slot b   KDOS 0.2.14 (slot B), armed$' "$SV/run/kdos/bootstate.txt" \
+        || { echo "  a session's plain status is not the published text:"; svuser status; exit 1; }
     test "$(env KDOS_BOOTSTATE="$SV/none" KDOS_BOOT_ENTRIES="$SV/run/kdos/boot-entries.json" \
             "$OUT/kdos-bootctl" list --json=short)" = "[]" \
         || { echo "  a machine with no boot state printed a published list"; exit 1; }
@@ -4840,7 +9059,221 @@ sv status --json | grep -qF '"failed": "b"' && \
 sv try b >/dev/null
 grep -qx 'failed   = ' "$SV/esp/EFI/kdos/bootstate" \
     || { echo "  a new trial kept the old failure"; exit 1; }
-echo "  versions on the ESP, the logout entry, cancel, the rollback slot, the armed boot's own mark-good"
+# A slot an update is writing is `unfill`ed first: refused while armed,
+# reported incomplete, never tried, until the deploy that ends the update.
+rc=0; sv unfill b >/dev/null 2>&1 || rc=$?
+test "$rc" = 1 || { echo "  an armed slot was marked unfilled"; exit 1; }
+SVB=boot-4 sv cancel >/dev/null
+sv unfill b >/dev/null || { echo "  unfill failed"; exit 1; }
+grep -qx 'unfilled = b' "$SV/esp/EFI/kdos/bootstate" && \
+    sv status --json | grep -qF '"unfilled": "b"' && \
+    sv status --json | grep -qF '"b": {"state": "incomplete"' \
+    || { echo "  an unfilled slot is not reported incomplete:"; sv status --json; exit 1; }
+rc=0; sv try b >/dev/null 2>"$SV/err" || rc=$?
+test "$rc" = 1 && grep -q 'incomplete' "$SV/err" \
+    || { echo "  try took an unfilled slot ($rc)"; exit 1; }
+sv deploy "$SV/b" b >/dev/null || { echo "  deploy into the unfilled slot failed"; exit 1; }
+grep -qx 'unfilled = ' "$SV/esp/EFI/kdos/bootstate" && sv try b >/dev/null \
+    || { echo "  deploy did not clear the unfilled mark"; exit 1; }
+# mark-good with no state is nothing to confirm, unless the command line
+# names a boot state: then the ESP is not where it was, and it is a failure.
+printf 'kdos_slot=b bootstate=UUID=EEEE-0000 rw\n' > "$SV/cmdline.esp"
+rc=0; env KDOS_BOOTSTATE="$SV/none" KDOS_CMDLINE="$SV/cmdline.esp" "$OUT/kdos-bootctl" mark-good \
+    >/dev/null 2>&1 || rc=$?
+test "$rc" = 1 || { echo "  mark-good with the ESP missing exited $rc, not 1"; exit 1; }
+env KDOS_BOOTSTATE="$SV/none" KDOS_CMDLINE="$SV/cmdline" "$OUT/kdos-bootctl" mark-good >/dev/null 2>&1 \
+    || { echo "  mark-good on a machine with no boot state failed"; exit 1; }
+echo "  versions on the ESP, the logout entry, cancel, the rollback slot, the armed boot's own mark-good, unfill, a missing ESP"
+
+echo
+echo "==> kdos update notes names the version this boot came from, and only that"
+# What's New reads `notes --json`. The installer writes both slots' records
+# alike, so a fresh install has no version it was updated from; a slot whose
+# trial failed, or that holds a later tree, is the one this boot went back
+# from; an older one is the version it was updated from.
+NT="$OUT/notes-ab"
+rm -rf "$NT"
+mkdir -p "$NT/esp/EFI/kdos/a" "$NT/esp/EFI/kdos/b" "$NT/a/etc" "$NT/a/ports/core"
+ntenv() {
+    env PATH="$OUT:$PATH" KDOS_BOOTSTATE="$NT/esp/EFI/kdos/bootstate" \
+        KDOS_CMDLINE="$NT/cmdline" KDOS_SYSROOT="$NT/a" KDOS_BOOT_ID=boot-1 \
+        KDOS_REBOOT_ENTRY="$NT/run/reboot-entry" KDOS_BOOT_ENTRIES="$NT/run/entries.json" \
+        KDOS_BOOTSTATE_PUB="$NT/run/bootstate.json" KDOS_SLOT_PUB="$NT/run/slot.json" \
+        PORT_REPO="$NT/a/ports/core" KPKG_CONF=/nonexistent KDOS_UPDATE_SYSROOT="$NT/a" "$@"
+}
+ntrec() { printf 'VERSION="%s"\nBUILD_ID=""\nBUILD_DATE=""\nTREE="%s"\nTREE_TIME="%s"\n' "$@"; }
+printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$NT/cmdline"
+printf 'Plasma 6.8.2.\n' > "$NT/a/ports/RELEASE"
+ntrec 0.2.13 aaaa1111 1761600000 > "$NT/a/etc/kdos-release"
+cp "$NT/a/etc/kdos-release" "$NT/esp/EFI/kdos/a/release"
+cp "$NT/a/etc/kdos-release" "$NT/esp/EFI/kdos/b/release"
+ntenv "$OUT/kdos-bootctl" set-slot a AAAA-1111 >/dev/null
+ntenv "$OUT/kdos-bootctl" set-slot b BBBB-2222 >/dev/null
+ntenv "$OUT/kdos" update notes --json | grep -qF '"version":"0.2.13","previous":"","went_back":false' \
+    || { echo "  a fresh install's notes name a previous version:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+# `kdos version` names the release as What's New does: the record's VERSION,
+# or os-release's VERSION_ID+BUILD_ID on a root with no record.
+ntenv "$OUT/kdos" version | grep -qx '  release  0.2.13' \
+    || { echo "  kdos version does not give the record's VERSION:"; ntenv "$OUT/kdos" version; exit 1; }
+mkdir -p "$NT/osr/etc"
+printf 'VERSION_ID=0.2.1\nBUILD_ID="047d4b99779b-dirty"\n' > "$NT/osr/etc/os-release"
+KDOS_UPDATE_SYSROOT="$NT/osr" "$OUT/kdos" version | grep -qx '  release  0.2.1+047d4b99779b-dirty' \
+    || { echo "  kdos version on a root with no record is not VERSION_ID+BUILD_ID:"; KDOS_UPDATE_SYSROOT="$NT/osr" "$OUT/kdos" version; exit 1; }
+ntenv "$OUT/kdos" update notes | grep -q 'updated from\|went back' \
+    && { echo "  a fresh install's notes say it was updated"; exit 1; }
+ntrec 0.2.12 bbbb2222 1761000000 > "$NT/esp/EFI/kdos/b/release"
+ntenv "$OUT/kdos" update notes --json | grep -qF '"previous":"0.2.12","went_back":false' \
+    || { echo "  an update's notes do not name the version before:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+ntenv "$OUT/kdos" update notes | grep -qF 'updated from 0.2.12' \
+    || { echo "  the plain notes do not name the version before"; exit 1; }
+ntrec 0.2.14 cccc3333 1762000000 > "$NT/esp/EFI/kdos/b/release"
+ntenv "$OUT/kdos" update notes --json | grep -qF '"previous":"0.2.14","went_back":true' \
+    || { echo "  a later tree left by hand is not a way back:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+ntrec 0.2.14 cccc3333 1761000000 > "$NT/esp/EFI/kdos/b/release"
+sed -i 's/^failed   = .*/failed   = b/' "$NT/esp/EFI/kdos/bootstate"
+ntenv "$OUT/kdos" update notes --json | grep -qF '"previous":"0.2.14","went_back":true' \
+    || { echo "  a failed trial is not a way back:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+ntenv "$OUT/kdos" update notes | grep -qF 'went back from 0.2.14' \
+    || { echo "  the plain notes do not say it went back"; exit 1; }
+# A release rebuilt from the commit this slot runs carries the same tree; its
+# failed trial is still a way back.
+ntrec 0.2.14 aaaa1111 1762000000 > "$NT/esp/EFI/kdos/b/release"
+ntenv "$OUT/kdos" update notes --json | grep -qF '"previous":"0.2.14","went_back":true' \
+    || { echo "  a failed trial of the same tree is not a way back:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+ntrec 0.2.14 cccc3333 1761000000 > "$NT/esp/EFI/kdos/b/release"
+# The live medium has no slots: bootctl's status says so and exits 1.
+mkdir -p "$NT/livebin"
+printf '#!/bin/sh\necho '"'"'{"configured": false, "live": true}'"'"'\nexit 1\n' > "$NT/livebin/kdos-bootctl"
+chmod +x "$NT/livebin/kdos-bootctl"
+ntenv env PATH="$NT/livebin:$OUT:$PATH" "$OUT/kdos" update notes --json \
+    | grep -qF '"previous":"","went_back":false,"live":true' \
+    || { echo "  the live medium's notes do not say live:"; ntenv env PATH="$NT/livebin:$OUT:$PATH" "$OUT/kdos" update notes --json; exit 1; }
+ntenv "$OUT/kdos" update notes --json | grep -qF '"live":false' \
+    || { echo "  an installed machine's notes say live"; exit 1; }
+sed -i 's/^failed   = .*/failed   = /' "$NT/esp/EFI/kdos/bootstate"
+ntrec 0.2.13 aaaa1111 '' > "$NT/esp/EFI/kdos/a/release"
+ntrec 0.2.14 cccc3333 '' > "$NT/esp/EFI/kdos/b/release"
+ntenv "$OUT/kdos" update notes --json | grep -qF '"previous":"0.2.14","went_back":true' \
+    || { echo "  a hand rollback between records with no tree time is not a way back:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+ntrec 0.2.12 bbbb2222 '' > "$NT/esp/EFI/kdos/b/release"
+ntenv "$OUT/kdos" update notes --json | grep -qF '"previous":"0.2.12","went_back":false' \
+    || { echo "  an update between records with no tree time is not named as one:"; ntenv "$OUT/kdos" update notes --json; exit 1; }
+echo "  a fresh install names nothing, an update its version before, a rollback the version it left"
+echo
+echo "==> kdos update apply stops on SIGINT the way it stops on SIGTERM"
+# A SIGINT sent to the apply alone ends the run through the same cancel as
+# Job.Cancel: the package being installed finishes, the next is never
+# started, and apply_end unmounts what --mount mounted. A run killed by the
+# signal's default action would leave the slot mounted. A group signal
+# (Ctrl-C, `timeout -s INT`) also kills the child in flight; that run ends
+# through fail() and apply_end instead, which this does not drive. As root, or root in a user
+# namespace, which is what apply needs; kpkg is a stand-in whose install takes seconds.
+_asroot=
+if [ "$(id -u)" = 0 ]; then _asroot=env
+elif unshare -r true 2>/dev/null; then _asroot="unshare -r env"
+fi
+if [ -n "$_asroot" ]; then
+    SI="$OUT/sigint"
+    rm -rf "$SI"
+    mkdir -p "$SI/bin" "$SI/db" "$SI/sys/etc" "$SI/cache"
+    for p in one two; do
+        mkdir -p "$SI/ports/core/misc/$p"
+        printf 'name = %s\nversion = 1.0\nrelease = 1\n' "$p" > "$SI/ports/core/misc/$p/kpkgbuild"
+        : > "$SI/ports/core/misc/$p/build.sh"
+        printf '0.9 1\n' > "$SI/db/$p"
+    done
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\nversion 0.2.14\n' \
+        > "$SI/ports/TREE"
+    printf '#!/bin/sh\n[ "$1" = install ] && { echo "$2" >> "%s/installed"; sleep 2; }\nexit 0\n' "$SI" > "$SI/bin/kpkg"
+    chmod +x "$SI/bin/kpkg"
+    $_asroot PATH="$SI/bin:$PATH" PORT_REPO="$SI/ports/core" KPKG_CONF=/nonexistent \
+        PKGDB_DIR="$SI/db" KDOS_UPDATE_STATE="$SI/state" KDOS_UPDATE_SYSROOT="$SI/sys" \
+        KDOS_UPDATE_CACHE="$SI/cache" KDOS_UPDATE_TREE="$SI/nowhere" \
+        KDOS_BOOTSTATE="$SI/none" SOURCE_DATE_EPOCH=1735689600 \
+        "$OUT/kdos" update apply --in-place --source >"$SI/out" 2>&1 &
+    _si=$!
+    for _ in $(seq 1 50); do [ -s "$SI/installed" ] && break; sleep 0.1; done
+    kill -INT "$_si"
+    rc=0; wait "$_si" || rc=$?
+    test "$rc" = 4 && test "$(wc -l < "$SI/installed")" = 1 && grep -q '^apply cancelled ' "$SI/state" \
+        || { echo "  an apply sent SIGINT exited $rc after $(wc -l < "$SI/installed") install(s):"; cat "$SI/out" "$SI/state"; exit 1; }
+    echo "  a SIGINT to the apply finishes the package being installed, starts no other, and ends through the cancel"
+else
+    echo "  skipped — not root and no user namespace to run apply as root in"
+fi
+
+echo
+echo "==> a root an apply fills records its VERSION in the image build's form"
+# 70_image/045_identity.sh names a release build `0.2.1` and any other
+# `<VERSION_ID>+<commit>`; the record `kdos update` writes from a tree takes
+# the same form, so the two slots of one machine read alike. A tree named
+# `v0.2.1` gives `0.2.1`; an unnamed one the filled root's VERSION_ID and the
+# commit's first twelve characters; an unnamed tree whose commit is the running
+# root's TREE the running root's VERSION and BUILD_ID, `-dirty` included, and a
+# named one at that commit still its release name. As root,
+# or root in a user namespace.
+if [ -n "$_asroot" ]; then
+    RW="$OUT/relwrite"
+    rm -rf "$RW"
+    mkdir -p "$RW/bin" "$RW/root$RW/db" "$RW/sys/etc" "$RW/root/etc" "$RW/ports/core/misc/one"
+    printf 'name = one\nversion = 1.0\nrelease = 1\n' > "$RW/ports/core/misc/one/kpkgbuild"
+    : > "$RW/ports/core/misc/one/build.sh"
+    printf '0.9 1\n' > "$RW/root$RW/db/one"
+    printf '#!/bin/sh\nexit 0\n' > "$RW/bin/kpkg"
+    chmod +x "$RW/bin/kpkg"
+    printf 'NAME="KDOS"\nVERSION_ID="0.2.1"\n' > "$RW/root/etc/os-release"
+    relw() {
+        $_asroot PATH="$RW/bin:$PATH" PORT_REPO="$RW/ports/core" KPKG_CONF=/nonexistent \
+            PKGDB_DIR="$RW/db" KDOS_UPDATE_STATE="$RW/state" KDOS_UPDATE_SYSROOT="$RW/sys" \
+            KDOS_UPDATE_CACHE="$RW/cache" KDOS_UPDATE_TREE="$RW/nowhere" \
+            KDOS_BOOTSTATE="$RW/none" SOURCE_DATE_EPOCH=1735689600 \
+            "$OUT/kdos" update apply --root "$RW/root" --source >"$RW/out" 2>&1 \
+            || { echo "  the apply into a fixture root failed:"; cat "$RW/out"; exit 1; }
+    }
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\nversion v0.2.1\n' \
+        > "$RW/ports/TREE"
+    relw
+    grep -qxF 'VERSION="0.2.1"' "$RW/root/etc/kdos-release" \
+        || { echo "  a tree named v0.2.1 recorded:"; cat "$RW/root/etc/kdos-release"; exit 1; }
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\n' \
+        > "$RW/ports/TREE"
+    relw
+    grep -qxF 'VERSION="0.2.1+29d742c14cc8"' "$RW/root/etc/kdos-release" \
+        || { echo "  an unnamed tree recorded:"; cat "$RW/root/etc/kdos-release"; exit 1; }
+    # A root with no os-release takes the running root's VERSION_ID.
+    rm "$RW/root/etc/os-release"
+    printf 'VERSION_ID=0.2.1\n' > "$RW/sys/etc/os-release"
+    relw
+    grep -qxF 'VERSION="0.2.1+29d742c14cc8"' "$RW/root/etc/kdos-release" \
+        || { echo "  a root with no os-release recorded:"; cat "$RW/root/etc/kdos-release"; exit 1; }
+    # A slot of the running root's own tree takes the running root's name,
+    # -dirty included; another tree's form never carries -dirty.
+    printf 'VERSION="0.2.1+29d742c14cc8-dirty"\nBUILD_ID="29d742c14cc8-dirty"\nTREE="29d742c14cc8aef873af7f1f28e267d6318facc2"\n' \
+        > "$RW/sys/etc/kdos-release"
+    relw
+    grep -qxF 'VERSION="0.2.1+29d742c14cc8-dirty"' "$RW/root/etc/kdos-release" \
+        && grep -qxF 'BUILD_ID="29d742c14cc8-dirty"' "$RW/root/etc/kdos-release" \
+        || { echo "  a slot of the running root's own tree recorded:"; cat "$RW/root/etc/kdos-release"; exit 1; }
+    # A tree that names a release keeps that name at the running root's commit.
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\nversion v0.2.1\n' \
+        > "$RW/ports/TREE"
+    relw
+    grep -qxF 'VERSION="0.2.1"' "$RW/root/etc/kdos-release" \
+        && grep -qxF 'BUILD_ID="29d742c14cc8"' "$RW/root/etc/kdos-release" \
+        || { echo "  a named tree at the running root's commit recorded:"; cat "$RW/root/etc/kdos-release"; exit 1; }
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\n' \
+        > "$RW/ports/TREE"
+    printf 'VERSION="0.2.1+aaaa1111bbbb-dirty"\nBUILD_ID="aaaa1111bbbb-dirty"\nTREE="aaaa1111bbbb"\n' \
+        > "$RW/sys/etc/kdos-release"
+    relw
+    grep -qxF 'VERSION="0.2.1+29d742c14cc8"' "$RW/root/etc/kdos-release" \
+        && grep -qxF 'BUILD_ID="29d742c14cc8"' "$RW/root/etc/kdos-release" \
+        || { echo "  a slot of another tree recorded:"; cat "$RW/root/etc/kdos-release"; exit 1; }
+    rm "$RW/sys/etc/kdos-release"
+    echo "  a named tree records 0.2.1, an unnamed one 0.2.1+<commit>, from the root's os-release or the running one's; the running root's own tree its -dirty name"
+else
+    echo "  skipped — not root and no user namespace to run apply as root in"
+fi
 
 echo
 echo "==> kdos update --arm arms only the slot an acquire filled, and says so"
@@ -4907,6 +9340,115 @@ if [ "$(id -u)" = 0 ]; then
     echo "  refused without an acquire; verified, the tree, the version, the kernel, the trial, armed; refused on the trial boot"
 else
     echo "  skipped — an arm writes into a slot as root, and this is not root"
+fi
+echo
+echo "==> an apply with nothing behind finishes a slot an update left incomplete"
+# A run stopped after its fill leaves the slot holding every package of the
+# tree and the boot state marking it `unfilled`, with no boot-menu entry.
+# With the running root current too, the next apply must finish it: the
+# check, the tree, the release and the deploy that clears the mark and puts
+# the entry back, and no trial, since the slot holds the version running.
+# Root, or root in a user namespace: KDOS_UPDATE_SLOT stands in for the
+# slot's mountpoint.
+if [ -n "$_asroot" ]; then
+    RF="$OUT/refill"
+    rm -rf "$RF"
+    mkdir -p "$RF/ports/core/misc/one" "$RF/esp/EFI/kdos" "$RF/bin" "$RF/db" \
+             "$RF/sys/etc" "$RF/slot/etc" "$RF/slot/boot" "$RF/slot$RF/db"
+    printf 'name = one\nversion = 1.0\nrelease = 1\n' > "$RF/ports/core/misc/one/kpkgbuild"
+    : > "$RF/ports/core/misc/one/build.sh"
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\nversion 0.2.14\n' \
+        > "$RF/ports/TREE"
+    printf '1.0 1\n' > "$RF/db/one"
+    printf '1.0 1\n' > "$RF/slot$RF/db/one"
+    printf 'VERSION="0.2.14"\n' > "$RF/sys/etc/kdos-release"
+    printf 'not a bzImage\n' > "$RF/slot/boot/vmlinuz-kdos"
+    printf 'not an initramfs\n' > "$RF/slot/boot/initramfs.cpio.gz"
+    printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$RF/cmdline"
+    printf '#!/bin/sh\nexit 0\n' > "$RF/bin/kpkg"
+    chmod +x "$RF/bin/kpkg"
+    ln -sf "$OUT/kdos-tools" "$RF/bin/kdos-bootctl"
+    refill() {
+        $_asroot PATH="$RF/bin:$PATH" PORT_REPO="$RF/ports/core" KPKG_CONF=/nonexistent \
+            PKGDB_DIR="$RF/db" KDOS_UPDATE_STATE="$RF/state" KDOS_UPDATE_CACHE="$RF/cache" \
+            KDOS_UPDATE_SYSROOT="$RF/sys" KDOS_UPDATE_SLOT="$RF/slot" KDOS_UPDATE_TREE="$RF/nowhere" \
+            KDOS_BOOTSTATE="$RF/esp/EFI/kdos/bootstate" KDOS_CMDLINE="$RF/cmdline" \
+            KDOS_SYSROOT="$RF/sys" KDOS_BOOT_ID=refill-boot SOURCE_DATE_EPOCH=1735689600 \
+            KDOS_REBOOT_ENTRY="$RF/reboot-entry" "$@"
+    }
+    refill "$OUT/kdos-bootctl" set-slot a AAAA-1111 >/dev/null
+    refill "$OUT/kdos-bootctl" set-slot b BBBB-2222 >/dev/null
+    refill "$OUT/kdos-bootctl" unfill b >/dev/null
+    grep -qx 'unfilled = b' "$RF/esp/EFI/kdos/bootstate" \
+        || { echo "  the fixture's slot b is not marked unfilled"; exit 1; }
+    # Not mounted, the slot cannot be read, but its mark is in the boot
+    # state: a dry run with --mount says --mount finishes it, and the
+    # refusal without --mount says so too.
+    refill KDOS_UPDATE_SLOT="$RF/unmounted" "$OUT/kdos" update apply --source --dry-run --mount >"$RF/out" 2>&1 \
+        || { echo "  the dry run on the unmounted slot failed:"; cat "$RF/out"; exit 1; }
+    grep -qF 'dry run: slot b (BBBB-2222) is not mounted, and an update stopped while writing it; without --dry-run, --mount mounts it at /run/kdos/slot-b and finishes it' "$RF/out" \
+        || { echo "  the dry run on the unmounted slot said:"; cat "$RF/out"; exit 1; }
+    rc=0; refill KDOS_UPDATE_SLOT="$RF/unmounted" "$OUT/kdos" update apply --source --dry-run >"$RF/out" 2>&1 || rc=$?
+    test "$rc" != 0 && grep -qF 'is not mounted, so there is nowhere to install the candidate; an update stopped while writing it, and --mount finishes it. Mount it' "$RF/out" \
+        || { echo "  the refusal on the unmounted slot exited $rc and said:"; cat "$RF/out"; exit 1; }
+    # With the running root behind the slot, the slot is the candidate and
+    # the real run arms it, so the dry run must not call it a refill.
+    printf '0.9 1\n' > "$RF/db/one"
+    refill "$OUT/kdos" update apply --source --dry-run >"$RF/out" 2>&1 \
+        || { echo "  the dry run with the running root behind failed:"; cat "$RF/out"; exit 1; }
+    grep -qF 'slot b already holds every package of 0.2.14' "$RF/out" && \
+        ! grep -q 'finishing it' "$RF/out" \
+        || { echo "  the dry run with the running root behind said:"; cat "$RF/out"; exit 1; }
+    printf '1.0 1\n' > "$RF/db/one"
+    refill "$OUT/kdos" update apply --source --dry-run >"$RF/out" 2>&1 \
+        || { echo "  the dry run failed:"; cat "$RF/out"; exit 1; }
+    grep -qF 'slot b holds every package of 0.2.14 but was left incomplete; finishing it' "$RF/out" && \
+        grep -qx 'unfilled = b' "$RF/esp/EFI/kdos/bootstate" && test ! -e "$RF/slot/etc/kdos-release" \
+        || { echo "  the dry run said, or wrote:"; cat "$RF/out"; exit 1; }
+    refill "$OUT/kdos" update apply --source --progress 3 3>"$RF/prog" >"$RF/out" 2>&1 \
+        || { echo "  the refill exited non-zero:"; cat "$RF/out"; exit 1; }
+    grep -qF 'slot b is complete again and holds 0.2.14, the version running; nothing is tried' "$RF/out" \
+        || { echo "  the refill said:"; cat "$RF/out"; exit 1; }
+    grep -q 'nothing to take' "$RF/out" && { echo "  the refill said there was nothing to take"; exit 1; }
+    test "$(head -n1 "$RF/prog")" = 'verified source 0.2.14 0 0' \
+        || { echo "  the refill's progress lines are:"; cat "$RF/prog"; exit 1; }
+    grep -qx 'unfilled = ' "$RF/esp/EFI/kdos/bootstate" && grep -qx 'try      = ' "$RF/esp/EFI/kdos/bootstate" \
+        || { echo "  the refill left the boot state:"; cat "$RF/esp/EFI/kdos/bootstate"; exit 1; }
+    ! grep -q '^armed ' "$RF/prog" && test ! -e "$RF/reboot-entry" \
+        || { echo "  the refill armed the slot:"; cat "$RF/prog"; ls "$RF"; exit 1; }
+    grep -qxF 'VERSION="0.2.14"' "$RF/slot/etc/kdos-release" && \
+        grep -qxF 'VERSION="0.2.14"' "$RF/esp/EFI/kdos/b/release" && test -s "$RF/esp/EFI/kdos/b/vmlinuz" \
+        || { echo "  the refilled slot is not deployed as 0.2.14"; ls -R "$RF/esp"; exit 1; }
+    grep -q '^apply ok [0-9]* slot b written again$' "$RF/state" \
+        || { echo "  the refill recorded:"; cat "$RF/state"; exit 1; }
+    # An unnamed tree at the running root's commit: both lines name the slot
+    # by the VERSION its record takes, the running root's, as System
+    # Versions and `kdos-bootctl status` do, not by the bare commit.
+    printf 'kdos-tree 1\ncommit 29d742c14cc8aef873af7f1f28e267d6318facc2\ntime 1761600000\n' \
+        > "$RF/ports/TREE"
+    printf 'TREE="29d742c14cc8aef873af7f1f28e267d6318facc2"\nVERSION="0.2.14+29d742c14cc8-dirty"\nBUILD_ID="20251028-29d742c14cc8"\n' \
+        > "$RF/sys/etc/kdos-release"
+    refill "$OUT/kdos-bootctl" unfill b >/dev/null
+    rm -f "$RF/slot/etc/kdos-release"
+    refill "$OUT/kdos" update apply --source --progress 3 3>"$RF/prog" >"$RF/out" 2>&1 \
+        || { echo "  the unnamed refill exited non-zero:"; cat "$RF/out"; exit 1; }
+    grep -qxF 'slot b holds every package of 0.2.14+29d742c14cc8-dirty but was left incomplete; finishing it' "$RF/out" && \
+        grep -qxF 'slot b is complete again and holds 0.2.14+29d742c14cc8-dirty, the version running; nothing is tried' "$RF/out" \
+        || { echo "  the unnamed refill said:"; cat "$RF/out"; exit 1; }
+    grep -qxF 'VERSION="0.2.14+29d742c14cc8-dirty"' "$RF/slot/etc/kdos-release" \
+        || { echo "  the unnamed refill recorded:"; cat "$RF/slot/etc/kdos-release"; exit 1; }
+    test "$(head -n1 "$RF/prog")" = 'verified source 29d742c14cc8 0 0' \
+        || { echo "  the unnamed refill's progress lines are:"; cat "$RF/prog"; exit 1; }
+    refill KDOS_UPDATE_SLOT="$RF/unmounted" "$OUT/kdos" update apply --source --dry-run --mount >"$RF/out" 2>&1 \
+        || { echo "  the dry run on the unmounted complete slot failed:"; cat "$RF/out"; exit 1; }
+    grep -qxF 'dry run: slot b (BBBB-2222) is not mounted; without --dry-run, --mount mounts it at /run/kdos/slot-b and installs the candidate there' "$RF/out" \
+        || { echo "  the dry run on the unmounted complete slot said:"; cat "$RF/out"; exit 1; }
+    rc=0; refill KDOS_UPDATE_SLOT="$RF/unmounted" "$OUT/kdos" update apply --source --dry-run >"$RF/out" 2>&1 || rc=$?
+    test "$rc" != 0 && grep -qF 'nowhere to install the candidate. Mount it' "$RF/out" && ! grep -q 'stopped while writing' "$RF/out" \
+        || { echo "  the refusal on the unmounted complete slot exited $rc and said:"; cat "$RF/out"; exit 1; }
+    echo "  the slot is checked, deployed and no longer unfilled, untried; a dry run says so and writes nothing, calls a slot ahead of the running root the candidate, and reads the mark of a slot that is not mounted"
+else
+    echo "  skipped — not root and no user namespace to run apply as root in"
 fi
 
 echo
@@ -4997,6 +9539,11 @@ img make "$IM/v2" "$IM/r2" --key "$IM/release.key" --level 3 \
     || { echo "  the 0.3.1 image and its delta were not made"; exit 1; }
 grep -q '^delta 0.3.0 kdos-image-0.3.1.from-0.3.0.delta ' "$IM/r2/kdos-image.manifest" \
     || { echo "  the manifest names no delta from 0.3.0"; exit 1; }
+# The release image's own layer holds /boot/efi: v0.2's apply deletes every
+# directory its manifest does not name and makes no fstab mount point, so a
+# slot it writes from an image without one boots with no ESP and rolls back.
+grep -qE '^install -d .*"\$LAYER/boot/efi"' script/release-image.sh \
+    || { echo "  release-image.sh's layer carries no boot/efi"; exit 1; }
 grep -qx 'h usr/bin/hello-again usr/bin/hello' "$IM/r1/kdos-image.manifest" \
     || { echo "  a hard link is not recorded as one"; exit 1; }
 grep -qF 'usr/lib/a%20b%25c' "$IM/r1/kdos-image.manifest" \
@@ -5192,7 +9739,27 @@ test "$(cat "$CY/slot/var/lib/kdos/world")" = zlib && \
     test "$(cat "$CY/slot/var/lib/kdos/origin")" = "zlib source" && \
     test "$(cat "$CY/slot/var/lib/bluetooth/aa/info")" = paired \
     || { echo "  machine state under /var was not carried"; exit 1; }
-echo "  untouched takes the new default, edited keeps its own, accounts merge, fstab keeps the slot's root, state follows"
+# Every absolute mount point the fstab names is made in the slot: a manifest
+# need not name every mount point the fstab adds, and rcS mounts nothing on
+# a path that is not there. Inside a `.d`
+# directory, which its reader reads whole, the slot's differing copy is kept
+# as a dotfile the reader skips, not as a second file it reads last.
+rm -rf "$CY"
+mkdir -p "$CY/run/etc/sddm.conf.d" "$CY/run/var/lib/kpkg/db/.files" "$CY/slot/etc/sddm.conf.d"
+printf 'UUID=AAAA-1111\t/\text4\tdefaults\t0 1\nUUID=EEEE-0000\t/boot/efi\tvfat\tumask=0077\t0 2\nnone\tswap\tswap\tdefaults\t0 0\n' \
+    > "$CY/run/etc/fstab"
+printf 'UUID=BBBB-2222\t/\text4\tdefaults\t0 1\n' > "$CY/slot/etc/fstab"
+printf '[Autologin]\nUser=\n' > "$CY/run/etc/sddm.conf.d/kde_settings.conf"
+printf '[Autologin]\nUser=kdos\n' > "$CY/slot/etc/sddm.conf.d/kde_settings.conf"
+"$OUT/kdos" image carry "$CY/run" "$CY/slot" >/dev/null \
+    || { echo "  the carry with an ESP line failed"; exit 1; }
+test -d "$CY/slot/boot/efi" && test "$(stat -c %a "$CY/slot/boot" "$CY/slot/boot/efi" | tr '\n' ' ')" = "755 755 " \
+    || { echo "  the fstab's /boot/efi was not made in the slot"; exit 1; }
+test "$(cat "$CY/slot/etc/sddm.conf.d/kde_settings.conf")" = "$(printf '[Autologin]\nUser=')" && \
+    test -f "$CY/slot/etc/sddm.conf.d/.kde_settings.conf.kdos-new" && \
+    test ! -e "$CY/slot/etc/sddm.conf.d/kde_settings.conf.kdos-new" \
+    || { echo "  a .d file's new default is not a dotfile:"; ls -a "$CY/slot/etc/sddm.conf.d"; exit 1; }
+echo "  untouched takes the new default, edited keeps its own, accounts merge, fstab keeps the slot's root, state follows; mount points made, .d defaults hidden"
 
 echo
 echo "==> kdos update offers a newer slot image and writes it into the inactive slot"
@@ -5240,6 +9807,66 @@ uim "$OUT/kdos" update apply --dry-run > "$UI/plan" 2>&1 \
     || { echo "  the image dry run failed:"; cat "$UI/plan"; exit 1; }
 grep -q "installing into slot b at $UI/slot" "$UI/plan" && grep -q 'the delta from 0.3.0' "$UI/plan" \
     || { echo "  slot a running did not put the image into slot b by its delta:"; cat "$UI/plan"; exit 1; }
+# One slot (a disk too small for two: slot_b empty): no image is offered,
+# apply names the image it passes over and takes the binhost lane into the
+# running root, and only --image is refused.
+cp "$UI/esp/EFI/kdos/bootstate" "$UI/bootstate.ab"
+sed -i 's/^slot_b *=.*/slot_b   = /' "$UI/esp/EFI/kdos/bootstate"
+rc=0; uim "$OUT/kdos" update check --json > "$UI/doc1" 2>/dev/null || rc=$?
+test "$rc" != 1 && ! grep -qF '"lane":"image"' "$UI/doc1" && grep -qF '"image":null' "$UI/doc1" \
+    || { echo "  a one-slot machine was offered the slot image (exit $rc):"; cat "$UI/doc1"; exit 1; }
+uim "$OUT/kdos" update check 2>/dev/null | grep -q 'image: slot image 0.3.1 is on offer, but this machine has one slot' \
+    || { echo "  check on one slot did not say why the image is not offered"; exit 1; }
+rc=0; uim "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 && grep -q '^refused this machine has no ports tree' "$UI/prog" \
+    || { echo "  apply with no tree on one slot was not refused for the tree (exit $rc):"; cat "$UI/prog"; exit 1; }
+mv "$UI/bootstate.ab" "$UI/esp/EFI/kdos/bootstate"
+# Two slots, but a state this user cannot read (closed on the ESP, no copy
+# published): kdos-bootctl says `"configured": false`, which is no answer
+# about the slots, so the image stays offered.
+if [ "$(id -u)" != 0 ]; then
+    chmod 000 "$UI/esp/EFI/kdos/bootstate"
+    rc=0; uim "$OUT/kdos" update check --json > "$UI/doc1" 2>/dev/null || rc=$?
+    chmod 644 "$UI/esp/EFI/kdos/bootstate"
+    test "$rc" = 1 && grep -qF '"lane":"image"' "$UI/doc1" \
+        || { echo "  a boot state closed to this user hid the image as one slot (exit $rc):"; cat "$UI/doc1"; exit 1; }
+fi
+# --in-place passes every image over, so with no tree it is refused for the tree.
+rc=0; uim "$OUT/kdos" update apply --dry-run --in-place --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 && grep -q '^refused this machine has no ports tree' "$UI/prog" \
+    || { echo "  apply --in-place with no tree was not refused for the tree (exit $rc):"; cat "$UI/prog"; exit 1; }
+cp "$UI/esp/EFI/kdos/bootstate" "$UI/bootstate.ab"
+sed -i 's/^slot_b *=.*/slot_b   = /' "$UI/esp/EFI/kdos/bootstate"
+mkdir -p "$UI/run/ports/core/misc/oneslot" "$UI/run/var/lib/kpkg/db"
+cp "$BH/repo/PACKAGES" "$BH/repo/PACKAGES.sig" "$UI/cache/"
+cp "$BH/repo/kdos-update.idx" "$UI/cache/INDEX"
+cp "$BH/repo/kdos-update.idx.sig" "$UI/cache/INDEX.sig"
+printf 'name = oneslot\nversion = 1.0\nrelease = 1\n' > "$UI/run/ports/core/misc/oneslot/kpkgbuild"
+: > "$UI/run/ports/core/misc/oneslot/build.sh"
+rc=0; uim "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" > "$UI/plan1" 2>&1 || rc=$?
+test "$rc" = 0 && grep -qx 'a slot image is on offer, but this machine has one slot; installing from the binhost' "$UI/plan1" \
+    && grep -qx 'nothing to take: everything installed matches the ports tree' "$UI/plan1" \
+    && ! grep -q 'inactive A/B slot' "$UI/plan1" "$UI/prog" \
+    || { echo "  apply on one slot did not take the binhost lane (exit $rc):"; cat "$UI/plan1" "$UI/prog"; exit 1; }
+rc=0; uim "$OUT/kdos" update apply --dry-run --image --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 3 && grep -q '^refused a slot image is written into the inactive A/B slot' "$UI/prog" \
+    || { echo "  --image on one slot was not refused (exit $rc):"; cat "$UI/prog"; exit 1; }
+# Into one file, the lane line still comes before the refusal it explains.
+rm -f "$UI/cache/PACKAGES" "$UI/cache/PACKAGES.sig" "$UI/cache/INDEX" "$UI/cache/INDEX.sig"
+rc=0; uim "$OUT/kdos" update apply --dry-run > "$UI/plan3" 2>&1 || rc=$?
+_lane=$(grep -n 'a slot image is on offer, but this machine has one slot' "$UI/plan3" | cut -d: -f1)
+_ref=$(grep -n '^kdos update: ' "$UI/plan3" | head -1 | cut -d: -f1)
+test "$rc" != 0 && [ -n "$_lane" ] && [ -n "$_ref" ] && [ "$_lane" -lt "$_ref" ] \
+    || { echo "  apply's lane line came after the refusal (exit $rc):"; cat "$UI/plan3"; exit 1; }
+# Two slots and --in-place: the slots are there, and only the rollback is given up.
+cp "$UI/bootstate.ab" "$UI/esp/EFI/kdos/bootstate"
+uim "$OUT/kdos" update apply --dry-run --in-place > "$UI/plan4" 2>&1 || :
+grep -qF -- '--in-place: updating the running root in place, without an A/B rollback' "$UI/plan4" \
+    && ! grep -q 'no A/B slots' "$UI/plan4" \
+    || { echo "  --in-place on two slots said the machine has none:"; cat "$UI/plan4"; exit 1; }
+rm -rf "$UI/run/ports/core/misc/oneslot" "$UI/run/var/lib/kpkg"
+rm -f "$UI/cache/PACKAGES" "$UI/cache/PACKAGES.sig" "$UI/cache/INDEX" "$UI/cache/INDEX.sig"
+mv "$UI/bootstate.ab" "$UI/esp/EFI/kdos/bootstate"
 # A slot image carries the base only. A port installed on purpose that the
 # release's binhost does not hold (here there is no binhost index at all)
 # refuses the image lane before the slot is written; built here, it does not.
@@ -5253,6 +9880,53 @@ test "$rc" = 3 && grep -q '^refused 1 package of what was installed on purpose i
 printf 'wanted source\n' > "$UI/run/var/lib/kdos/origin"
 uim "$OUT/kdos" update apply --dry-run >/dev/null 2>&1 \
     || { echo "  a world package built here still refused the image"; exit 1; }
+# The coverage walk follows the edges the world step installs: wanted2, in
+# the binhost, depends on the build-only bo, which the binhost lacks and
+# wanted2's empty N: leaves out, so the image is not refused; wanted3 depends
+# on wanted, which is built here and compiles against bo, so it is.
+mkdir -p "$UI/run/ports/core/misc/bo" "$UI/run/ports/core/misc/wanted2" "$UI/run/ports/core/misc/wanted3" \
+    "$UI/wbh" "$UI/wwork" "$UI/wpkgs"
+printf 'bo\n' > "$UI/run/ports/buildonly"
+for p in wanted:bo wanted2:bo wanted3:wanted; do
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\nhomepage    = https://example.invalid/\ndepends     = %s\n' \
+        "${p%%:*}" "${p#*:}" > "$UI/run/ports/core/misc/${p%%:*}/kpkgbuild"
+    printf 'install -Dm644 /dev/null "$PKG/usr/share/%s/x"\n' "${p%%:*}" > "$UI/run/ports/core/misc/${p%%:*}/build.sh"
+done
+printf 'name        = bo\nversion     = 1.0\nrelease     = 1\ndescription = a synthetic port\nhomepage    = https://example.invalid/\n' \
+    > "$UI/run/ports/core/misc/bo/kpkgbuild"
+: > "$UI/run/ports/core/misc/bo/build.sh"
+for p in wanted2 wanted3; do
+    ( cd "$UI/run/ports/core/misc/$p" &&
+      env PORT_REPO="$UI/run/ports/core" WORK_DIR="$UI/wwork" PACKAGE_DIR="$UI/wpkgs" \
+          PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent SOURCE_DATE_EPOCH=1735689600 \
+          "$OUT/kpkgbuild" >/dev/null 2>&1 ) || { echo "  the synthetic $p did not build"; exit 1; }
+    cp "$UI/wpkgs/$p-1.0-1.tar.xz" "$UI/wbh/"
+done
+env PORT_REPO="$UI/run/ports/core" KPKG_CONF=/nonexistent PKGDB_DIR=/dev/null \
+    KPKG_KEYRING="$BH/keys" SOURCE_DATE_EPOCH=1735689600 \
+    "$OUT/kdos-kpkg" kpkg index "$UI/wbh" --sign "$BH/builder.key" >/dev/null 2>&1 \
+    || { echo "  the world binhost was not indexed"; exit 1; }
+awk '{ print } $0 == "P:wanted2" || $0 == "P:wanted3" { print "N:" }' "$UI/wbh/PACKAGES" > "$UI/wbh/P" \
+    && mv "$UI/wbh/P" "$UI/wbh/PACKAGES" && rm -f "$UI/wbh/PACKAGES.sig"
+kpkg_bh kpkg sign "$UI/wbh/PACKAGES" "$BH/builder.key" >/dev/null 2>&1 \
+    || { echo "  the world binhost index was not signed"; exit 1; }
+_bhidx "$UI/wbh" "$BH/builder.key" 0.3.1
+cp "$UI/wbh/PACKAGES" "$UI/wbh/PACKAGES.sig" "$UI/cache/"
+cp "$UI/wbh/kdos-update.idx" "$UI/cache/INDEX"
+cp "$UI/wbh/kdos-update.idx.sig" "$UI/cache/INDEX.sig"
+rm -f "$UI/run/var/lib/kdos/origin"
+printf 'wanted2\n' > "$UI/run/var/lib/kdos/world"
+rc=0; uim "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+! grep -q 'of what was installed on purpose' "$UI/prog" \
+    || { echo "  a build-only port no N: line names refused the image (exit $rc):"; cat "$UI/prog"; exit 1; }
+printf 'wanted3\n' > "$UI/run/var/lib/kdos/world"
+printf 'wanted source\n' > "$UI/run/var/lib/kdos/origin"
+rc=0; uim "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 3 && grep -q '^refused 1 package of what was installed on purpose is not in release 0.3.1.s binhost (bo)' "$UI/prog" \
+    || { echo "  what a dependency built here compiles against did not refuse the image (exit $rc):"; cat "$UI/prog"; exit 1; }
+rm -rf "$UI/run/ports/core/misc/bo" "$UI/run/ports/core/misc/wanted2" "$UI/run/ports/core/misc/wanted3" \
+    "$UI/run/ports/buildonly" "$UI/wbh" "$UI/wwork" "$UI/wpkgs"
+rm -f "$UI/cache/PACKAGES" "$UI/cache/PACKAGES.sig" "$UI/cache/INDEX" "$UI/cache/INDEX.sig"
 rm -rf "$UI/run/ports/core/misc/wanted" "$UI/run/var/lib/kdos/world" "$UI/run/var/lib/kdos/origin"
 # What this machine keeps whole, a package under FACETS=run with development
 # files and no facet record as `--dev` or a build here leaves one, is brought
@@ -5302,8 +9976,21 @@ uim env KDOS_MOUNTS="$UI/mounts" "$UI/bin/kdos-bootctl" status 2>/dev/null | gre
 rc=0; uim env KDOS_MOUNTS="$UI/mounts" "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
 test "$rc" = 3 && grep -q '^refused this is the live medium' "$UI/prog" \
     || { echo "  the live medium was not refused (exit $rc)"; cat "$UI/prog"; exit 1; }
-uim env KDOS_MOUNTS="$UI/mounts" "$OUT/kdos" update apply --dry-run --in-place 2>&1 | grep -q 'no A/B slots' \
-    || { echo "  --in-place on the live medium did not update in place"; exit 1; }
+rc=0; uim env KDOS_MOUNTS="$UI/mounts" "$OUT/kdos" update apply --dry-run --in-place --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 && grep -q '^refused this machine has no ports tree' "$UI/prog" \
+    || { echo "  --in-place on the live medium with no tree was not refused for the tree (exit $rc)"; cat "$UI/prog"; exit 1; }
+mkdir -p "$UI/run/ports/core/misc/oneslot" "$UI/run/var/lib/kpkg/db"
+cp "$BH/repo/PACKAGES" "$BH/repo/PACKAGES.sig" "$UI/cache/"
+cp "$BH/repo/kdos-update.idx" "$UI/cache/INDEX"
+cp "$BH/repo/kdos-update.idx.sig" "$UI/cache/INDEX.sig"
+printf 'name = oneslot\nversion = 1.0\nrelease = 1\n' > "$UI/run/ports/core/misc/oneslot/kpkgbuild"
+: > "$UI/run/ports/core/misc/oneslot/build.sh"
+uim env KDOS_MOUNTS="$UI/mounts" "$OUT/kdos" update apply --dry-run --in-place > "$UI/plan1" 2>&1
+grep -q 'no A/B slots' "$UI/plan1" \
+    && grep -qx 'a slot image is on offer, but --in-place updates the running root; installing from the binhost' "$UI/plan1" \
+    || { echo "  --in-place on the live medium did not update in place from the binhost"; cat "$UI/plan1"; exit 1; }
+rm -rf "$UI/run/ports/core/misc/oneslot" "$UI/run/var/lib/kpkg"
+rm -f "$UI/cache/PACKAGES" "$UI/cache/PACKAGES.sig" "$UI/cache/INDEX" "$UI/cache/INDEX.sig"
 printf '/dev/sda2 / ext4 rw 0 0\n' > "$UI/mounts"
 uim env KDOS_MOUNTS="$UI/mounts" "$UI/bin/kdos-bootctl" status --json 2>/dev/null | grep -qxF '{"configured": false}' \
     || { echo "  a one-root install was called live"; exit 1; }
@@ -5478,8 +10165,13 @@ cat > "$IR/bin/cryptsetup" <<'EOF'
 # Accepts exactly one passphrase, and only on stdin.
 # argv is: open --key-file=- <device> <name>
 read -r given
+[ -n "${ORDER_LOG:-}" ] && echo open >> "$ORDER_LOG"
 [ "$given" = "opensesame" ] || exit 2
 touch "$CRYPT_MAPPER_DIR/$4"
+EOF
+cat > "$IR/bin/loadkeys" <<'EOF'
+#!/bin/sh
+printf 'loadkeys %s\n' "$*" >> "$ORDER_LOG"
 EOF
 cat > "$IR/bin/modprobe" <<'EOF'
 #!/bin/sh
@@ -5506,11 +10198,146 @@ luks_try "$IR/good.tty" "UUID=1234-abcd:kdosroot" \
 test -e "$IR/mapper/kdosroot" \
     || { echo "  no mapper device after a successful unlock"; exit 1; }
 rm -f "$IR/mapper/"*
-luks_try "$IR/bad.tty" "UUID=1234-abcd:kdosroot" \
-    && { echo "  a wrong passphrase unlocked the volume"; exit 1; }
-luks_try "$IR/good.tty" "this-is-not-a-spec" \
-    && { echo "  a malformed cryptdevice= was accepted"; exit 1; }
-echo "  cryptdevice= parsed, passphrase on stdin, three tries then a shell"
+_rc=0
+luks_try "$IR/bad.tty" "UUID=1234-abcd:kdosroot" || _rc=$?
+[ "$_rc" -eq 2 ] \
+    || { echo "  three wrong passphrases returned $_rc, not 2"; exit 1; }
+# The prompt counts the attempts and never names the mapper device.
+grep -q 'Disk passphrase (attempt 3 of 3): ' "$IR/bad.tty" \
+    || { echo "  the passphrase prompt does not count to 3 of 3"; exit 1; }
+grep -q 'kdosroot' "$IR/bad.tty" \
+    && { echo "  the passphrase prompt names the mapper"; exit 1; }
+_rc=0
+luks_try "$IR/good.tty" "this-is-not-a-spec" || _rc=$?
+[ "$_rc" -eq 1 ] \
+    || { echo "  a malformed cryptdevice= returned $_rc, not 1"; exit 1; }
+unset _rc
+# Three wrong passphrases have their own rescue line, which names the restart
+# and fits one splash detail line (DETAIL_COLS, 68), or the splash cuts it.
+_l=$(sed -n 's/^ *rescue "\(Wrong passphrase three times\.[^"]*\)"$/\1/p' "$IR/init")
+case "$_l" in
+*Ctrl+Alt+Del*) ;;
+*) echo "  three wrong passphrases do not say Ctrl+Alt+Del restarts"; exit 1 ;;
+esac
+[ "${#_l}" -le 68 ] \
+    || { echo "  the three-wrong rescue line is ${#_l} columns, over the splash's 68"; exit 1; }
+unset _l
+# THE PROMPT TYPES WITH THE MACHINE'S CONSOLE MAP: the name on the ESP,
+# loaded on the passphrase tty once and before the first read, and nothing
+# loaded for a file that is absent or names a path or an option.
+luks_km_try() {  # <esp> <tty>: the loadkeys and open calls, in order, in $IR/order
+    : > "$IR/order"
+    ( . /dev/stdin <<EOF
+$(sed -n '/^esp_keymap() {/,/^}/p; /^unlock_root() {/,/^}/p' "$IR/init")
+EOF
+      KEYMAP=""
+      esp_keymap "$1"
+      PATH="$IR/bin:$PATH" PASS_TTY="$2" CRYPT_MAPPER_DIR="$IR/mapper" \
+          LOADKEYS="$IR/bin/loadkeys" ORDER_LOG="$IR/order" \
+          FAKE_LUKS_DEV="$IR/fake-luks" unlock_root "UUID=1234-abcd:kdosroot" \
+          >/dev/null 2>&1 )
+}
+mkdir -p "$IR/esp/EFI/kdos"
+printf 'de-latin1\n' > "$IR/esp/EFI/kdos/keymap"
+printf 'nope\nnope\nnope\n' > "$IR/bad.tty"
+rm -f "$IR/mapper/"*
+luks_km_try "$IR/esp" "$IR/bad.tty" || true
+test "$(cat "$IR/order")" = "$(printf 'loadkeys -q -u -C %s de-latin1\nopen\nopen\nopen' "$IR/bad.tty")" \
+    || { echo "  the ESP's keymap is not loaded once before the first read:"; cat "$IR/order"; exit 1; }
+for _k in "../etc/passwd" "-C /dev/tty2" "/usr/share/x" ".hidden"; do
+    printf '%s\n' "$_k" > "$IR/esp/EFI/kdos/keymap"
+    printf 'opensesame\n' > "$IR/good.tty"
+    rm -f "$IR/mapper/"*
+    luks_km_try "$IR/esp" "$IR/good.tty" \
+        || { echo "  a bad ESP keymap ($_k) stopped the unlock"; exit 1; }
+    grep -q '^loadkeys' "$IR/order" \
+        && { echo "  the ESP keymap '$_k' reached loadkeys"; exit 1; }
+done
+rm -f "$IR/esp/EFI/kdos/keymap"
+rm -f "$IR/mapper/"*
+luks_km_try "$IR/esp" "$IR/good.tty" && ! grep -q '^loadkeys' "$IR/order" \
+    || { echo "  an ESP with no keymap loaded one, or did not unlock"; exit 1; }
+unset _k
+# The image carries loadkeys and the maps it loads, and the ESP is read for
+# the name while it is mounted.
+grep -q '^copy_closure bin/loadkeys /usr/bin/loadkeys$' script/phases/70_image/090_initramfs.sh \
+    && grep -q '^mkdir -p usr/share && cp -a /usr/share/keymaps usr/share/keymaps$' \
+        script/phases/70_image/090_initramfs.sh \
+    && awk '/mount -t vfat "\$ESP_DEV" \/esp/ { m = 1 } m && /^ *esp_keymap \/esp$/ { k = 1 }
+            m && /umount \/esp/ { exit !k } END { if (!m) exit 1 }' "$IR/init" \
+    || { echo "  the initramfs does not carry loadkeys, or reads the keymap off the mounted ESP"; exit 1; }
+echo "  cryptdevice= parsed, passphrase on stdin, three tries then a shell, with the ESP's keymap"
+
+# THE RESCUE REASON IS PRINTED ONCE PER SCREEN. With /dev/console a virtual
+# terminal (an installed machine) the console is the one screen, and the
+# reason appears there once; with a serial console it appears once there and
+# once on tty1. The console list and the terminals are files here, and the
+# shells the helper would open are left out: a setsid stub logs its arguments
+# and the terminal it was handed, and ends the run on its second call.
+RS="$OUT/rescue"
+mkdir -p "$RS"
+rescue_run() {  # <active console>: stdout to $RS/con, tty1 to $RS/tty1
+    printf '%s\n' "$1" > "$RS/active"
+    : > "$RS/tty1"
+    : > "$RS/tty0"
+    : > "$RS/setsid"
+    ( setsid() {
+          printf '%s <%s\n' "$*" "$(readlink /proc/self/fd/0)" >> "$RS/setsid"
+          [ "$(wc -l < "$RS/setsid")" -lt 2 ] || exit 0
+      }
+      sleep() { :; }
+      . /dev/stdin <<EOF
+$(sed -n '/^rescue() {/,/^}/p' "$IR/init" | sed -e "s#/sys/class/tty/console/active#$RS/active#; s#/dev/tty1#$RS/tty1#g; s#\"/dev/\\\$con\"#\"$RS/\\\$con\"#g; \#setsid -f /bin/sh -c#d; s#^ */bin/sh; sleep 1\$#return 0#")
+EOF
+      rescue "Wrong passphrase three times." ) > "$RS/con" 2>&1
+}
+rescue_run tty0
+[ "$(grep -c 'Wrong passphrase three times' "$RS/con")" = 1 ] \
+    || { echo "  on a VT console the rescue reason is not printed once:"; cat "$RS/con"; exit 1; }
+# AND THE VT'S SHELL HAS THAT VT AS ITS CONTROLLING TERMINAL, never
+# /dev/console, which cannot be one: a shell there has no job control and
+# Ctrl+C reaches nothing it runs. An exit opens another, since PID 1 that
+# returns panics the kernel.
+[ "$(grep -cx -- "-c -w /bin/sh -i <$RS/tty0" "$RS/setsid")" = 2 ] \
+    || { echo "  on a VT console the rescue shell is not a setsid -c session on that VT, reopened on exit:"; cat "$RS/setsid"; exit 1; }
+RESCUE_TRIED="  /dev/sr0: no medium" rescue_run "tty0 ttyS0"
+[ "$(grep -c 'Wrong passphrase three times' "$RS/con")" = 1 ] \
+    && [ "$(grep -c 'Wrong passphrase three times' "$RS/tty1")" = 1 ] \
+    || { echo "  on a serial console the rescue reason is not once there and once on tty1"; exit 1; }
+# AND tty1 LISTS THE DEVICES A FAILED SCAN TRIED, once, under the reason: the
+# scan's own line about them reached the serial console alone.
+[ "$(grep -cx 'Devices tried:' "$RS/tty1")" = 1 ] \
+    && [ "$(grep -cx '  /dev/sr0: no medium' "$RS/tty1")" = 1 ] \
+    && ! grep -q 'Devices tried:\|/dev/sr0: no medium' "$RS/con" \
+    || { echo "  under a serial console tty1 does not list the devices tried once, or the console does:"; cat "$RS/tty1"; exit 1; }
+# AND THE tty1 SHELL IS LOOPED IN A PROCESS OF ITS OWN. One setsid -f line
+# detaches the loop; a background job of PID 1's shell would start with SIGINT
+# ignored, and Ctrl+C would reach nothing the tty1 shell runs. The loop body
+# runs here under a setsid stub that ends it on the second call: an exit on
+# tty1 must open another setsid -c session there.
+_rl=$(sed -n '/^rescue() {/,/^}/p' "$IR/init" | grep -F 'setsid -f ')
+[ "$(grep -c . <<< "$_rl")" = 1 ] \
+    && grep -qx "    setsid -f /bin/sh -c 'while :; do setsid -c -w /bin/sh -i < /dev/tty1 > /dev/tty1 2>&1; sleep 1; done' < /dev/null > /dev/null 2>&1" <<< "$_rl" \
+    && ! sed -n '/^rescue() {/,/^}/p' "$IR/init" | grep -qE '/bin/sh[^|]*&[[:space:]]*$|\)[[:space:]]*&[[:space:]]*$' \
+    || { echo "  the serial branch does not loop its tty1 shell in one setsid -f process:"; echo "$_rl"; exit 1; }
+_rb=$(sed -n "s#^ *setsid -f /bin/sh -c '\(.*\)' < /dev/null.*#\1#p" <<< "$_rl")
+: > "$RS/setsid"
+RS="$RS" bash -c 'setsid() { printf "%s <%s\n" "$*" "$(readlink /proc/self/fd/0)" >> "$RS/setsid"; [ "$(wc -l < "$RS/setsid")" -lt 2 ] || exit 0; }
+         sleep() { :; }
+         '"${_rb//\/dev\/tty1/$RS/tty1}" < /dev/null > /dev/null 2>&1
+[ "$(grep -cx -- "-c -w /bin/sh -i <$RS/tty1" "$RS/setsid")" = 2 ] \
+    || { echo "  the tty1 rescue shell is not opened again after it exits:"; cat "$RS/setsid"; exit 1; }
+unset _rl _rb
+# AND THE INITRAMFS'S udevd ENDS BEFORE EVERY switch_root: each move of /dev
+# into the new root comes after a udev_release, or the old udevd outlives
+# the switch beside the root's own.
+awk '/^[[:space:]]+udev_release$/ { r = 1 }
+     /mount --move \/dev \/newroot\/dev/ { n++; if (!r) bad++; r = 0 }
+     END { exit !(n >= 2 && !bad) }' "$IR/init" \
+    || { echo "  a switch_root path moves /dev with the initramfs's udevd still running"; exit 1; }
+sed -n '/^udev_release() {/,/^}/p' "$IR/init" | grep -q 'udevadm control --exit' \
+    || { echo "  udev_release does not stop udevd"; exit 1; }
+echo "  the rescue reason once per screen, the VT's shell on its own terminal, and udevd stopped before every switch_root"
 
 # AND THE VOLUME GROUPS, ACTIVATED ONLY WHEN THERE ARE ANY. activate_lvm runs
 # on each side of the unlock; a disk boot with no LVM must never start lvm, a
@@ -5752,6 +10579,212 @@ _unl=$(_ln 'if \[ -n "\$CRYPTDEV" \]')
     || { echo "  the unlock does not follow the slot selection"; exit 1; }
 echo "  a slot's LUKS container is read while the ESP is mounted, before the unlock"
 
+# THE MEDIUM SCAN, RUN AGAINST STUB DEVICES. The block between MEDIA_HINT and
+# the summary line is lifted out of the generated init with its device list,
+# /mnt/iso and the 10 s bound pointed at a fixture, and mount and umount
+# stubbed. A node without an ISO 9660 descriptor is read once however many
+# passes run and never mounted (a mount claims the device, and Ventoy's mapping
+# over the stick then fails with EBUSY), an optical drive keeps being read, a
+# drive with no medium is never read or mounted, and the one summary line
+# names each device and what it was. dd is real, behind a stub that logs each
+# node it reads.
+_sc="$SOCKD/scan"
+# sr0 is a socket, a node whose open fails as an empty drive's does, as root
+# too; its path is under $SOCKD so a long TMPDIR leaves it room.
+mkdir -p "$_sc/dev" "$_sc/bin"
+python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$_sc/dev/sr0"
+: > "$_sc/dev/sr1"; : > "$_sc/dev/sda"
+# An ISO 9660 node: the primary volume descriptor's type and CD001 at 32 KiB.
+_pvd() {
+    : > "$1"
+    printf '\001CD001' | dd of="$1" bs=1 seek=32768 conv=notrunc 2>/dev/null
+}
+_pvd "$_sc/dev/sda1"
+printf '#!/bin/sh\necho "${1#if=}" >> "$SCAN_READS"\nexec %s "$@"\n' "$(command -v dd)" > "$_sc/bin/dd"
+cat > "$_sc/bin/mount" <<'EOF'
+#!/bin/sh
+echo "$3" >> "$SCAN_LOG"
+case "$3" in */sda1) mkdir -p "$4"; exit 0 ;; esac
+echo "mount: $3: wrong fs type" >&2
+exit 32
+EOF
+printf '#!/bin/sh\nexit 0\n' > "$_sc/bin/umount"
+chmod +x "$_sc/bin/mount" "$_sc/bin/umount" "$_sc/bin/dd"
+cat > "$IR/scanlift.py" <<'PYEOF'
+import sys
+s, d = open(sys.argv[1]).read(), sys.argv[2]
+a = s.index('MEDIA_HINT="')
+b = s.index('echo "No KDOS media; tried:', a)
+b = s.index('\nfi\n', b) + 4
+blk = s[a:b]
+for old, new in (
+        ('for dev in /dev/mapper/ventoy /dev/sr* /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk*;',
+         'for dev in %s/dev/mapper/ventoy %s/dev/sr* %s/dev/sd*;' % (d, d, d)),
+        ('[ -b "$dev" ]', '[ -e "$dev" ]'),
+        ('/mnt/iso', d + '/mnt'),
+        ('/proc/cmdline', d + '/cmdline'),
+        ('/dev/sr*)', d + '/dev/sr*)'),
+        ('${tried_line:0:80}', '${tried_line:0:%d}' % (80 + len(d))),
+        ('+ 10 ))', '+ 2 ))')):
+    if old not in blk:
+        sys.exit('scan block has no ' + old)
+    blk = blk.replace(old, new)
+print(blk)
+print('echo "MEDIUM=$MEDIUM"')
+PYEOF
+: > "$_sc/cmdline"
+python3 "$IR/scanlift.py" "$IR/init" "$_sc" > "$_sc/scan.sh" \
+    || { echo "  the init lost its medium scan"; exit 1; }
+for _l in "$(sed -n 's/^RESCUE_RESTART="\(.*\)"$/\1/p' "$IR/init")" \
+          "$(sed -n 's/^RESCUE_VERBOSE="\(.*\)"$/\1/p' "$IR/init")" \
+          "$(sed -n 's/^MEDIA_HINT="\(.*\)"$/\1/p' "$IR/init")"; do
+    [ -n "$_l" ] && [ "${#_l}" -le 80 ] \
+        || { echo "  a rescue line is missing or wider than 80 columns: '$_l'"; exit 1; }
+done
+# THE RESCUE SHELL IS NEVER PID 1 ITSELF. rescue() runs as PID 1, and a shell
+# exec'd there panics the kernel ("Attempted to kill init") on its first exit;
+# each branch runs its shell in a loop that never ends, and waits a second
+# after every shell whatever its status, so a line at end-of-file cannot spin it.
+_rf=$(sed -n '/^rescue() {/,/^}/p' "$IR/init")
+! grep -qE '^[[:space:]]*exec ' <<< "$_rf" \
+    && [ "$(grep -c '^ *while :; do$' <<< "$_rf")" = 2 ] \
+    && grep -qx '        /bin/sh; sleep 1' <<< "$_rf" \
+    && [ "$(grep -c '; sleep 1$' <<< "$_rf")" = 2 ] \
+    || { echo "  rescue() can return or exec a shell as PID 1"; exit 1; }
+unset _rf
+: > "$_sc/mounts"; : > "$_sc/reads"
+SCAN_LOG="$_sc/mounts" SCAN_READS="$_sc/reads" PATH="$_sc/bin:$PATH" \
+    bash "$_sc/scan.sh" > "$_sc/out" 2>&1 \
+    || { echo "  the medium scan exited non-zero:"; sed 's/^/    /' "$_sc/out"; exit 1; }
+! grep -qx "$_sc/dev/sda" "$_sc/mounts" && ! grep -qx "$_sc/dev/sr1" "$_sc/mounts" \
+    || { echo "  a node without an ISO 9660 descriptor is mounted"; exit 1; }
+[ "$(grep -cx "$_sc/dev/sda" "$_sc/reads")" = 1 ] \
+    || { echo "  a disk that is not ISO 9660 is read more than once"; exit 1; }
+[ "$(grep -cx "$_sc/dev/sda1" "$_sc/mounts")" = 1 ] \
+    || { echo "  an ISO 9660 node is not mounted, or mounted more than once"; exit 1; }
+[ "$(grep -cx "$_sc/dev/sr1" "$_sc/reads")" -gt 1 ] \
+    || { echo "  an optical drive is not read again after a failed read"; exit 1; }
+! grep -qx "$_sc/dev/sr0" "$_sc/mounts" && ! grep -qx "$_sc/dev/sr0" "$_sc/reads" \
+    || { echo "  a drive with no medium is read or mounted"; exit 1; }
+[ "$(grep -c "^Checking $_sc/dev/sr1\.\.\.\$" "$_sc/out")" = 1 ] \
+    || { echo "  a device is narrated more than once, or never"; exit 1; }
+grep -qF "No KDOS media; tried: $_sc/dev/sr0 (no medium), $_sc/dev/sr1 (not ISO 9660), $_sc/dev/sda (not ISO 9660), $_sc/dev/sda1 (ISO 9660 without system.sfs)" "$_sc/out" \
+    || { echo "  the scan's summary line does not name each device and why:"; sed 's/^/    /' "$_sc/out"; exit 1; }
+# AND RESCUE_TRIED HOLDS THE SAME DEVICES one to a line for tty1, each line
+# 80 columns or fewer once the fixture's directory is taken off the names,
+# and the scan-failure reason fits as well. The fixture's names carry its
+# directory, so scanlift.py widens the init's 80-column cut by that
+# directory's length and the width is checked once it is stripped; a cut left
+# at 80 would count the fixture's directory against the names. trymany below
+# proves the real cut.
+sed -n '/^RESCUE_TRIED=""$/p' "$IR/init" > "$_sc/tried.sh"
+cat "$_sc/scan.sh" >> "$_sc/tried.sh"
+printf 'printf "%%s\\n" "$RESCUE_TRIED"\n' >> "$_sc/tried.sh"
+PATH="$_sc/bin:$PATH" SCAN_LOG=/dev/null SCAN_READS=/dev/null bash "$_sc/tried.sh" 2>/dev/null \
+    | sed -n '/^  /p' | sed "s#$_sc##" > "$_sc/tried"
+test "$(cat "$_sc/tried")" = "$(printf '  /dev/sr0: no medium\n  /dev/sr1: not ISO 9660\n  /dev/sda: not ISO 9660\n  /dev/sda1: ISO 9660 without system.sfs')" \
+    || { echo "  RESCUE_TRIED does not list each device tried and why:"; cat "$_sc/tried"; exit 1; }
+awk 'length > 80 { bad = 1 } END { exit bad }' "$_sc/tried" \
+    || { echo "  a RESCUE_TRIED line is wider than 80 columns:"; cat "$_sc/tried"; exit 1; }
+_r=$(sed -n 's/^ *rescue "\(Failed to find the KDOS live medium\.\)" "\$MEDIA_HINT"$/\1/p' "$IR/init")
+[ -n "$_r" ] && [ "${#_r}" -le 80 ] \
+    || { echo "  the scan-failure reason is missing or wider than 80 columns"; exit 1; }
+unset _r
+# AND THE LIST IS BOUNDED. Run alone, the scan's failure block cuts a device
+# line to 80 columns, lists eight devices and one '...and N more' line past
+# that, and says no block device appeared when the scan saw none.
+sed -n '/^if \[ "\$FOUND" != "1" \]; then$/,/^fi$/p' "$IR/init" > "$_sc/trybody.sh"
+grep -q 'RESCUE_TRIED' "$_sc/trybody.sh" \
+    || { echo "  the init lost the scan's failure block"; exit 1; }
+{ echo 'declare -A WHY; FOUND=0; RESCUE_TRIED=""; SEEN=""'
+  echo 'for i in 1 2 3 4 5 6 7 8 9 10 11; do SEEN="$SEEN /dev/sd$i"; WHY[/dev/sd$i]="not ISO 9660"; done'
+  printf 'WHY[/dev/sd1]="another KDOS medium (%s)"\n' "$(printf 'x%.0s' $(seq 90))"
+  cat "$_sc/trybody.sh"
+  echo 'printf "%s\n" "$RESCUE_TRIED"'
+} > "$_sc/trymany.sh"
+bash "$_sc/trymany.sh" 2>/dev/null | sed -n '/^  /p' > "$_sc/trymany"
+[ "$(grep -c '^  /dev/sd[0-9]*: ' "$_sc/trymany")" = 8 ] \
+    && [ "$(tail -n 1 "$_sc/trymany")" = "  ...and 3 more; the serial line lists every one." ] \
+    && [ "$(wc -l < "$_sc/trymany")" = 9 ] \
+    && grep -q '^  /dev/sd1: another KDOS medium (x*$' "$_sc/trymany" \
+    && awk 'length > 80 { bad = 1 } END { exit bad }' "$_sc/trymany" \
+    || { echo "  RESCUE_TRIED is not cut to 80 columns and eight devices:"; cat "$_sc/trymany"; exit 1; }
+{ echo 'declare -A WHY; FOUND=0; RESCUE_TRIED=""; SEEN=""'
+  cat "$_sc/trybody.sh"
+  echo 'printf "%s\n" "$RESCUE_TRIED"'
+} > "$_sc/trynone.sh"
+[ "$(bash "$_sc/trynone.sh" 2>/dev/null | sed -n '/^  /p')" = "  no block device appeared" ] \
+    || { echo "  RESCUE_TRIED does not say no block device appeared"; exit 1; }
+grep -q '^ *for dev in /dev/mapper/ventoy /dev/sr\*' "$IR/init" \
+    || { echo "  the scan does not try Ventoy's mapping first"; exit 1; }
+# AND THE SCAN TAKES THE MEDIUM ITS ENTRY NAMES. Three media hold system.sfs:
+# sda with another build's kdos-medium.id, sdb with none, sdc with the id
+# kdos.medium= names. The scan passes over the first two and takes sdc; with
+# no kdos.medium= it takes the first; with an id none carries it finds nothing
+# and the summary names each as another KDOS medium. A mount is a symlink from
+# the mount point to the device's fixture tree, so the stub umount has nothing
+# to remove.
+_sm="$IR/scan-id"
+mkdir -p "$_sm/dev" "$_sm/bin" "$_sm/media/sda" "$_sm/media/sdb" "$_sm/media/sdc"
+for _d in sda sdb sdc; do _pvd "$_sm/dev/$_d"; done
+for _d in sda sdb sdc; do : > "$_sm/media/$_d/system.sfs"; done
+echo aaaaaaaaaaaaaaaa > "$_sm/media/sda/kdos-medium.id"
+echo cccccccccccccccc > "$_sm/media/sdc/kdos-medium.id"
+cat > "$_sm/bin/mount" <<'EOF'
+#!/bin/sh
+d="${3%/dev/*}/media/${3##*/}"
+[ -d "$d" ] || exit 32
+ln -sfn "$d" "$4"
+EOF
+printf '#!/bin/sh\nexit 0\n' > "$_sm/bin/umount"
+chmod +x "$_sm/bin/mount" "$_sm/bin/umount"
+python3 "$IR/scanlift.py" "$IR/init" "$_sm" > "$_sm/scan.sh" \
+    || { echo "  the init lost its medium scan"; exit 1; }
+_scan_id() {
+    printf '%s\n' "$1" > "$_sm/cmdline"
+    PATH="$_sm/bin:$PATH" bash "$_sm/scan.sh" > "$_sm/out" 2>&1
+}
+_scan_id "root=/dev/ram0 quiet kdos.medium=cccccccccccccccc"
+grep -qx "MEDIUM=$_sm/dev/sdc" "$_sm/out" \
+    && grep -qF "Found KDOS media on $_sm/dev/sdc (medium cccccccccccccccc)" "$_sm/out" \
+    && grep -qF "$_sm/dev/sda is another KDOS medium (aaaaaaaaaaaaaaaa)" "$_sm/out" \
+    || { echo "  the scan does not take the medium kdos.medium= names:"; sed 's/^/    /' "$_sm/out"; exit 1; }
+_scan_id "root=/dev/ram0 quiet"
+grep -qx "MEDIUM=$_sm/dev/sda" "$_sm/out" \
+    || { echo "  without kdos.medium= the scan does not take the first medium:"; sed 's/^/    /' "$_sm/out"; exit 1; }
+_scan_id "root=/dev/ram0 kdos.medium=dddddddddddddddd"
+grep -qF "No KDOS media; tried: $_sm/dev/sda (another KDOS medium (aaaaaaaaaaaaaaaa)), $_sm/dev/sdb (another KDOS medium (none)), $_sm/dev/sdc (another KDOS medium (cccccccccccccccc))" "$_sm/out" \
+    || { echo "  the summary does not name each other KDOS medium:"; sed 's/^/    /' "$_sm/out"; exit 1; }
+unset -f _scan_id _pvd
+unset _sm _d
+# The id the scan compares is the one every live entry carries.
+[ "$(grep -c '^    cmdline: root=/dev/ram0 rw .* kdos.medium=\$MEDIUM_ID$' script/phases/70_image/110_iso.sh)" = 3 ] \
+    && grep -qF 'printf '"'"'%s\n'"'"' "$MEDIUM_ID" > $ISO_ROOT/kdos-medium.id' script/phases/70_image/110_iso.sh \
+    || { echo "  the three live entries do not all carry the medium's kdos.medium= id"; exit 1; }
+echo "  the medium scan takes only the medium whose kdos-medium.id matches kdos.medium="
+[ "$(grep -c 'module_path: boot():/boot/initrd.img$' script/phases/70_image/110_iso.sh)" = 3 ] \
+    && grep -q 'cp /kdos/build/initramfs.cpio.gz \$ISO_ROOT/boot/initrd.img$' script/phases/70_image/110_iso.sh \
+    || { echo "  the medium's initramfs is not boot/initrd.img in all three live entries"; exit 1; }
+# THE LIVE-MEDIUM RULE MATCHES BY DEVICE NUMBER. Its two PROGRAMs, run here
+# with / for /mnt/iso: the node of the device mounted there must match, and a
+# path naming the same device another way (Ventoy's swapped partition node)
+# can only match through the number. Skipped where / is not on a block node.
+_rule=fs/etc/udev/rules.d/70-kdos-live-medium.rules
+_p1=$(sed -n 's/.*PROGRAM="\(\/usr\/bin\/mountpoint [^"]*\)", ENV{KDOS_NODE_DEVNO}="\$result".*/\1/p' "$_rule")
+_p2=$(sed -n 's/.*ENV{KDOS_NODE_DEVNO}=="?\*", PROGRAM="\([^"]*\)", ENV{UDISKS_IGNORE}="1".*/\1/p' "$_rule")
+[ "$_p1" = '/usr/bin/mountpoint -x $devnode' ] \
+    && [ "$_p2" = '/usr/bin/findmnt -rn -S $env{KDOS_NODE_DEVNO} -M /mnt/iso' ] \
+    || { echo "  70-kdos-live-medium.rules does not match the medium by device number"; exit 1; }
+_rootdev=$(findmnt -rn -M / -o SOURCE 2>/dev/null)
+if [ -b "$_rootdev" ]; then
+    _n=$(mountpoint -x "$_rootdev") && findmnt -rn -S "$_n" -M / > /dev/null \
+        || { echo "  mountpoint -x and findmnt -S MAJ:MIN do not pair on $_rootdev"; exit 1; }
+    ! findmnt -rn -S 1:3 -M / > /dev/null \
+        || { echo "  findmnt -S MAJ:MIN matches a device that is not mounted there"; exit 1; }
+fi
+unset _sc _l _rule _p1 _p2 _rootdev _n
+echo "  the medium scan narrates each device once, retries only optical drives, and names what it tried"
+
 echo
 echo "==> the shipped console palette is the default scheme"
 # fs/etc/vtrgb IS A GENERATED FILE THAT IS COMMITTED, the way the boot backdrop
@@ -5824,7 +10857,353 @@ for _c in ph:phosphor mo:modern case:modern none:modern missing:modern; do
 done
 spl 2 bad.ppm sepia 2>/dev/null \
     && { echo "  preview took a motion that does not exist"; exit 1; }
+spl 2 bad.ppm modern sepia 2>/dev/null \
+    && { echo "  preview took a scheme that does not exist"; exit 1; }
 echo "  Modern is flat and starts from black, Phosphor has scanlines, the command line chooses"
+
+# A FAILURE DETAIL LINE WIDER THAN THE PANEL ENDS IN AN ELLIPSIS AT A WORD.
+# At 1920 wide the panel holds 67 cells of half-scale text (16 px each) under
+# the rule. The fixture font's glyphs are solid and it has no unicode table,
+# so each detail line is one solid run as wide as its cells, and the marker is
+# "...": the preview's bus-manager line is cut after "bus:" with three cells
+# of dots (62), not mid-word at the room (67) nor at a stored length (68), and
+# every line that fits keeps its own width.
+( cd "$SP" && ./kdos-splash preview 1920x1080 9 why.ppm modern ) \
+    || { echo "  preview at 1920x1080 failed"; exit 1; }
+_why=$(python3 -I - "$SP/why.ppm" <<'EOF'
+import sys
+d = open(sys.argv[1], 'rb').read()
+w, h = 1920, 1080
+px = d[len(b'P6\n1920 1080\n255\n'):]
+at = lambda x, y: px[(y * w + x) * 3:(y * w + x) * 3 + 3]
+# The panel is everything under the last row lit at the rule's left end,
+# `WHY:`'s; the detail lines are indented past it.
+top = max(y for y in range(h) if at(408, y) != at(5, y))
+out, prev = [], -2
+for y in range(top + 1, h):
+    g = at(5, y)
+    if at(430, y) != g or at(440, y) == g:
+        continue
+    x = 440
+    while x < w and at(x, y) == at(440, y):
+        x += 1
+    if y != prev + 1:
+        out.append((x - 440) // 16)
+    prev = y
+print(' '.join(map(str, out)))
+EOF
+)
+[ "$_why" = "33 54 62 58 32 22" ] \
+    || { echo "  detail lines are ${_why:-absent} cells wide, not 33 54 62 58 32 22"; exit 1; }
+unset _why
+echo "  a detail line wider than the panel is cut at a word and ends in an ellipsis"
+
+# THE TAGLINE HOLDS 4.5:1 ON THE GROUND IN EVERY SCHEME, measured with
+# kcol_contrast on the frame itself. 2560x1600 is a screen tall enough to
+# keep the two lines under the wordmark beside the fixture's failure panel.
+# The probe walks kcol_schemes: it names them, and for each it finds the rule
+# under the identity (the scheme's dim across the middle of the frame) and
+# takes the first lit pixel above it in the centre column, the tagline's.
+cat > "$SP/tagprobe.c" <<'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "kcolor.h"
+
+static unsigned char *px;
+static int w, h;
+
+static uint32_t at(int x, int y)
+{
+	const unsigned char *p = px + ((size_t)y * w + x) * 3;
+	return (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
+}
+
+int main(int argc, char **argv)
+{
+	int bad = 0;
+
+	if (argc > 1 && !strcmp(argv[1], "-n")) {
+		for (int i = 0; i < kcol_nscheme; i++)
+			puts(kcol_schemes[i].name);
+		return 0;
+	}
+	for (int i = 0; argc > 1 && i < kcol_nscheme; i++) {
+		const KcolScheme *sc = &kcol_schemes[i];
+		char path[4096];
+		snprintf(path, sizeof(path), "%s/tag-%s.ppm", argv[1], sc->name);
+		FILE *f = fopen(path, "rb");
+		if (!f || fscanf(f, "P6 %d %d 255", &w, &h) != 2 || fgetc(f) < 0) {
+			printf("%s: no preview\n", sc->name);
+			return 1;
+		}
+		px = malloc((size_t)w * h * 3);
+		if (!px || fread(px, 3, (size_t)w * h, f) != (size_t)w * h)
+			return 1;
+		fclose(f);
+		uint32_t ground = at(0, 0), tag = ground;
+		int y;
+		for (y = 0; y < h; y++)
+			if (at(3 * w / 8, y) == sc->dim &&
+			    at(w / 2, y) == sc->dim &&
+			    at(5 * w / 8, y) == sc->dim)
+				break;
+		while (--y > 0 && (tag = at(w / 2 + 2, y)) == ground)
+			;
+		int c = kcol_contrast(tag, ground);
+		printf("%s: tagline %06x on %06x, %d.%02d:1, row %d\n", sc->name,
+		       (unsigned)tag, (unsigned)ground, c / 100, c % 100, y);
+		if (y <= 0 || tag == ground || c < 450)
+			bad = 1;
+		free(px);
+	}
+	return argc > 1 ? bad : 2;
+}
+EOF
+$CC $STD $WARN $INC -o "$SP/tagprobe" "$SP/tagprobe.c" \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c
+for _sc in $("$SP/tagprobe" -n); do
+    ( cd "$SP" && ./kdos-splash preview 2560x1600 9 "tag-$_sc.ppm" modern "$_sc" ) \
+        || { echo "  preview in $_sc failed"; exit 1; }
+done
+"$SP/tagprobe" "$SP" > "$SP/tag.log" \
+    || { echo "  a scheme's tagline is under 4.5:1 on its ground:"; cat "$SP/tag.log"; exit 1; }
+unset _sc
+echo "  the tagline clears 4.5:1 in all $("$SP/tagprobe" -n | wc -l) schemes"
+
+# A STAGE THAT SKIPPED ITSELF READS SKIP IN THE TAGLINE'S DIM TONE, not OK's
+# primary and not FAIL's alarm. The preview's sample boot closes LLAMA-SERVER
+# with `skip`; in each scheme's frame some row under the rule carries the
+# tagline's colour, and no such row carries the primary or the urgent colour.
+cat > "$SP/skipprobe.c" <<'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include "kcolor.h"
+
+int main(int argc, char **argv)
+{
+	for (int i = 0; argc > 1 && i < kcol_nscheme; i++) {
+		const KcolScheme *sc = &kcol_schemes[i];
+		char path[4096];
+		int w, h;
+		snprintf(path, sizeof(path), "%s/tag-%s.ppm", argv[1], sc->name);
+		FILE *f = fopen(path, "rb");
+		if (!f || fscanf(f, "P6 %d %d 255", &w, &h) != 2 || fgetc(f) < 0)
+			return 1;
+		unsigned char *px = malloc((size_t)w * h * 3);
+		if (!px || fread(px, 3, (size_t)w * h, f) != (size_t)w * h)
+			return 1;
+		fclose(f);
+#define AT(x, y) ((uint32_t)px[((size_t)(y) * w + (x)) * 3] << 16 | \
+		  (uint32_t)px[((size_t)(y) * w + (x)) * 3 + 1] << 8 | \
+		  px[((size_t)(y) * w + (x)) * 3 + 2])
+		uint32_t ground = AT(0, 0), tag = ground;
+		int rule, y, rows = 0, bad = 0;
+		for (rule = 0; rule < h; rule++)
+			if (AT(3 * w / 8, rule) == sc->dim && AT(w / 2, rule) == sc->dim &&
+			    AT(5 * w / 8, rule) == sc->dim)
+				break;
+		for (y = rule; --y > 0 && (tag = AT(w / 2 + 2, y)) == ground;)
+			;
+		for (y = rule + 1; y < h; y++) {
+			int has = 0, other = 0;
+			for (int x = 0; x < w; x++) {
+				uint32_t c = AT(x, y);
+				has |= c == tag;
+				other |= c == sc->primary || c == sc->urgent;
+			}
+			rows += has;
+			bad |= has && other;
+		}
+		free(px);
+		if (rule >= h || tag == ground || !rows || bad) {
+			printf("%s: %d rows in the tagline's %06x under the rule, %s\n",
+			       sc->name, rows, (unsigned)tag,
+			       bad ? "beside OK's or FAIL's colour" : "none");
+			return 1;
+		}
+	}
+	return argc > 1 ? 0 : 2;
+}
+EOF
+$CC $STD $WARN $INC -o "$SP/skipprobe" "$SP/skipprobe.c" \
+    src/libs/libkbase/*.c src/libs/libkcolor/*.c
+"$SP/skipprobe" "$SP" \
+    || { echo "  a skipped stage does not read SKIP in the tagline's dim tone"; exit 1; }
+echo "  a stage that skipped itself reads SKIP in the dim tone in every scheme"
+
+# THE SPLASH NAMES THE RELEASE IN /etc/kdos-release's FORM. KDOS_SPLASH_ROOT
+# stands in for the initramfs's root: a record's VERSION and an os-release
+# with VERSION_ID and BUILD_ID and no record draw the same frame, and no file
+# at all draws another (the name alone). A release too wide to ride the
+# name's line at 1920 wide takes its own line under the tagline, in the
+# tagline's colour: the lowest line over the rule is then lower than the
+# tagline of a frame with no release, and it holds 4.5:1 in every scheme.
+mkdir -p "$SP/rel/rec/etc" "$SP/rel/osr/etc" "$SP/rel/none" "$SP/rel/long/etc" \
+    "$SP/rel/own" "$SP/rel/bare"
+printf '# r\nVERSION="0.2.1+047d4b99779b-dirty"\nBUILD_ID="047d4b99779b-dirty"\n' \
+    > "$SP/rel/rec/etc/kdos-release"
+printf 'NAME="KDOS"\nVERSION_ID=0.2.1\nBUILD_ID="047d4b99779b-dirty"\n' \
+    > "$SP/rel/osr/etc/os-release"
+printf 'VERSION="0.2.1+0123456789abcdef0123456789abcdef0123456789"\n' \
+    > "$SP/rel/long/etc/kdos-release"
+for _r in rec osr none; do
+    ( cd "$SP" && KDOS_SPLASH_ROOT="$SP/rel/$_r" ./kdos-splash preview \
+        2560x1600 9 "rel/$_r.ppm" modern ) || { echo "  preview with $_r failed"; exit 1; }
+done
+cmp -s "$SP/rel/rec.ppm" "$SP/rel/osr.ppm" \
+    || { echo "  os-release's VERSION_ID+BUILD_ID is not the record's VERSION"; exit 1; }
+cmp -s "$SP/rel/rec.ppm" "$SP/rel/none.ppm" \
+    && { echo "  the splash draws the same frame with a release and without"; exit 1; }
+_sc=$("$SP/tagprobe" -n | head -n1)
+( cd "$SP" && KDOS_SPLASH_ROOT="$SP/rel/none" ./kdos-splash preview \
+    1920x1600 9 "rel/bare/tag-$_sc.ppm" modern "$_sc" ) \
+    || { echo "  preview with no release failed"; exit 1; }
+for _sc in $("$SP/tagprobe" -n); do
+    ( cd "$SP" && KDOS_SPLASH_ROOT="$SP/rel/long" ./kdos-splash preview \
+        1920x1600 9 "rel/own/tag-$_sc.ppm" modern "$_sc" ) \
+        || { echo "  preview of a long release in $_sc failed"; exit 1; }
+done
+"$SP/tagprobe" "$SP/rel/own" > "$SP/rel/own.log" \
+    || { echo "  a scheme's release line is under 4.5:1 on its ground:"; cat "$SP/rel/own.log"; exit 1; }
+_own=$(sed -n '1s/.*, row //p' "$SP/rel/own.log")
+"$SP/tagprobe" "$SP/rel/bare" > "$SP/rel/bare.log" 2>&1 || true
+_bare=$(sed -n '1s/.*, row //p' "$SP/rel/bare.log")
+[ -n "$_own" ] && [ -n "$_bare" ] && [ "$_own" -gt "$_bare" ] \
+    || { echo "  a long release is not on a line of its own under the tagline (rows ${_own:-?}, ${_bare:-?})"; exit 1; }
+# THE BOOTED ROOT HAS THE LAST WORD: an initramfs built by an older image
+# names an older release, and the release the root mounted at /newroot sends
+# (KDOS_SPLASH_NEWROOT in the preview) replaces it, a root with no record
+# leaving the name alone. 090_initramfs.sh sends it before every switch_root.
+( cd "$SP" && KDOS_SPLASH_ROOT="$SP/rel/none" KDOS_SPLASH_NEWROOT="$SP/rel/rec" \
+    ./kdos-splash preview 2560x1600 9 rel/to-rec.ppm modern ) \
+    || { echo "  preview with a newer root failed"; exit 1; }
+( cd "$SP" && KDOS_SPLASH_ROOT="$SP/rel/long" KDOS_SPLASH_NEWROOT="$SP/rel/none" \
+    ./kdos-splash preview 2560x1600 9 rel/to-none.ppm modern ) \
+    || { echo "  preview with a root with no record failed"; exit 1; }
+cmp -s "$SP/rel/to-rec.ppm" "$SP/rel/rec.ppm" \
+    || { echo "  the splash keeps the initramfs's release over the booted root's"; exit 1; }
+cmp -s "$SP/rel/to-none.ppm" "$SP/rel/none.ppm" \
+    || { echo "  a root with no record does not leave the name alone"; exit 1; }
+_sw=$(grep -c 'exec switch_root /newroot' script/phases/70_image/090_initramfs.sh)
+_nr=$(grep -c '^ *sp_root_release$' script/phases/70_image/090_initramfs.sh)
+[ "$_sw" -gt 0 ] && [ "$_sw" = "$_nr" ] \
+    || { echo "  090_initramfs.sh sends the root's release before $_nr of its $_sw switch_roots"; exit 1; }
+unset _r _sc _own _bare _sw _nr
+echo "  the splash names the booted root's release from the record or os-release, on its own line when it is too wide"
+
+echo
+echo "==> the boot splash's hand-off hold ends on the compositor's pan, and says so"
+# At the greeter a pan refused with EBUSY (a DRM master) makes the hold read
+# the DRM card's CRTC, and the held frame is blanked once that CRTC scans out
+# another framebuffer (the compositor's first frame), so a login uncovers
+# black and not the boot frame; a CRTC that never changes falls back to the
+# margin after EBUSY; with no card, a login inside the margin puts the VT back
+# in text mode, and that exit blanks too, while text mode with no EBUSY
+# (kdos-getty) leaves the framebuffer to the console. The VT descriptor held from the initramfs is
+# hung up by then and answers EIO, so the text-mode exit reopens it. Every
+# way out writes one kernel-log line naming what ended the hold. The shim stands in for /dev
+# (testing/fixtures/splash-hold/shim.c) and runs the clock 20 times faster:
+# the 60 s backstop is 3 s here, and an exit inside 2 s is the margin's.
+_sh="$OUT/splash-hold"
+mkdir -p "$_sh"
+cc -shared -fPIC -o "$_sh/shim.so" testing/fixtures/splash-hold/shim.c -ldl \
+    || { echo "  the splash display shim did not build"; exit 1; }
+printf 'quiet\n' > "$_sh/cmdline"
+# $1 the case; $2 the files that make the display after the hand-off.
+spl_hold() {
+    rm -rf "$_sh/dev"; mkdir -p "$_sh/dev"
+    head -c $((320 * 200 * 4)) /dev/zero > "$_sh/dev/fb0"
+    : > "$_sh/dev/tty0"; : > "$_sh/dev/tty1"; : > "$_sh/dev/kmsg"
+    case " $2 " in *" card "*) mkdir -p "$_sh/dev/dri"; : > "$_sh/dev/dri/card0" ;; esac
+    env LD_PRELOAD="$_sh/shim.so" ASAN_OPTIONS=verify_asan_link_order=0 \
+        SPLASH_DEV="$_sh/dev" SPLASH_FONT="$SP/splash.psf" SPLASH_TIMESCALE=20 \
+        KDOS_SPLASH_CMDLINE="$_sh/cmdline" "$SP/kdos-splash" run &
+    _hp=$!
+    for _i in $(seq 1 100); do [ -p "$_sh/dev/.kdos-splash" ] && break; sleep 0.05; done
+    env LD_PRELOAD="$_sh/shim.so" ASAN_OPTIONS=verify_asan_link_order=0 \
+        SPLASH_DEV="$_sh/dev" "$SP/kdos-splash" handoff
+    # The greeter's session starts: tty1 is hung up, then the display changes.
+    mv "$_sh/dev/tty1" "$_sh/dev/tty1.old"; : > "$_sh/dev/tty1"
+    for _f in $2; do [ "$_f" = card ] || : > "$_sh/dev/$_f"; done
+    _t0=$(date +%s%N)
+    for _i in $(seq 1 100); do kill -0 "$_hp" 2>/dev/null || break; sleep 0.02; done
+    _ms=$(( ($(date +%s%N) - _t0) / 1000000 ))
+    kill "$_hp" 2>/dev/null || true; wait "$_hp" 2>/dev/null || true
+    [ "$_ms" -lt 2000 ] \
+        || { echo "  $1: the hold did not end inside the margin (${_ms} ms): $(cat "$_sh/dev/kmsg")"; exit 1; }
+}
+spl_hold first-frame "card master frame"
+grep -q '^<6>kdos-splash: hold ended by frame after 0\.[0-9]s; VT_PROCESS at [0-9.]*s, EBUSY at [0-9.]*s, last pan ' "$_sh/dev/kmsg" \
+    || { echo "  the compositor's first frame logged: $(cat "$_sh/dev/kmsg")"; exit 1; }
+[ "$(tr -d '\000' < "$_sh/dev/fb0" | wc -c)" = 0 ] \
+    || { echo "  the compositor's first frame left the boot frame in the framebuffer"; exit 1; }
+spl_hold unchanged-crtc "card master"
+grep -q '^<6>kdos-splash: hold ended by margin' "$_sh/dev/kmsg" \
+    || { echo "  a CRTC still on fbdev's buffer logged: $(cat "$_sh/dev/kmsg")"; exit 1; }
+spl_hold greeter master
+grep -q '^<6>kdos-splash: hold ended by margin after .*; VT_PROCESS at [0-9.]*s, EBUSY at [0-9.]*s, last pan ' "$_sh/dev/kmsg" \
+    || { echo "  the greeter's hold logged: $(cat "$_sh/dev/kmsg")"; exit 1; }
+[ "$(tr -d '\000' < "$_sh/dev/fb0" | wc -c)" = 0 ] \
+    || { echo "  the margin left the boot frame in the framebuffer"; exit 1; }
+spl_hold early-login "master text-after-master"
+grep -q '^<6>kdos-splash: hold ended by text after .*; VT_PROCESS at [0-9.]*s, EBUSY at [0-9.]*s, last pan ' "$_sh/dev/kmsg" \
+    || { echo "  a login inside the margin logged: $(cat "$_sh/dev/kmsg")"; exit 1; }
+[ "$(tr -d '\000' < "$_sh/dev/fb0" | wc -c)" = 0 ] \
+    || { echo "  a login inside the margin left the boot frame in the framebuffer"; exit 1; }
+spl_hold getty text
+grep -q '^<6>kdos-splash: hold ended by text after .*; VT_PROCESS at never, EBUSY at never, last pan ok' "$_sh/dev/kmsg" \
+    || { echo "  kdos-getty's text mode logged: $(cat "$_sh/dev/kmsg")"; exit 1; }
+[ "$(tr -d '\000' < "$_sh/dev/fb0" | wc -c)" -gt 0 ] \
+    || { echo "  a VT back in text mode had its framebuffer blanked under the console"; exit 1; }
+unset _sh _hp _i _f _t0 _ms
+echo "  the hold ends by the compositor's first frame, the margin or text mode after EBUSY with the frame blanked, and by text mode before EBUSY untouched, through a hung-up VT"
+
+echo
+echo "==> the session splash's bar starts where the boot splash's handed over"
+# KSplash's bar carries on from draw_bar()'s hold, which genlook.py reads out
+# of kdos-splash.c into mark.js; a bar that started at zero would run
+# backwards at the login. Splash.qml must read the hold, and a kdos-splash.c
+# whose hold genlook cannot find must fail the build rather than fall back.
+mkdir -p "$SP/look/nohold"
+cp src/art/kdos-splash/penguin.h "$SP/look/nohold/"
+grep -v 'p = 99;' src/art/kdos-splash/kdos-splash.c > "$SP/look/nohold/kdos-splash.c"
+python3 -I - "$PWD" "$SP/look/nohold" <<'PYEOF' || exit 1
+import contextlib, importlib.util, io, re, sys
+root, nohold = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("genlook", root + "/src/desktop/kdos-plasma-look/genlook.py")
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+src = open(root + "/src/art/kdos-splash/kdos-splash.c", encoding="utf-8").read()
+hold = int(re.search(r"!finishing && p > \d+\)\s*p = (\d+);", src).group(1))
+m = g.Mark(root + "/src/art/kdos-splash")
+bars = [m.session_bar(s) for s in range(7)]
+if m.handoff_pct != hold or bars[0][0] < hold or bars[0][1] < m.handoff_segs:
+    sys.exit("  the session bar starts at %s, under the boot splash's hold of %d%%" % (bars[0], hold))
+if any(b < a for a, b in zip(bars, bars[1:])) or bars[-1][0] > 99 or bars[-1][1] >= g.BAR_SEGS:
+    sys.exit("  the session bar falls, or reaches full before the session is up: %s" % bars)
+js = m.qml_js()
+if "var handoffPercent = %d;" % hold not in js or "var handoffSegs = %d;" % m.handoff_segs not in js:
+    sys.exit("  mark.js does not carry the boot splash's hold")
+qml = open(root + "/src/desktop/kdos-plasma-look/lookandfeel/contents/splash/Splash.qml", encoding="utf-8").read()
+if not re.search(r"property int percent:.*Mark\.handoffPercent", qml) or \
+        not re.search(r"property int filledSegs:.*Mark\.handoffSegs", qml):
+    sys.exit("  Splash.qml's bar does not start from mark.js's hold")
+# KSplash continues the boot splash's held frame, so it draws that frame at
+# once: an opacity under 1 or an opacity animation puts a dark frame between
+# two matching pictures.
+if re.search(r"OpacityAnimator|property:\s*\"opacity\"|\bopacity:\s*0", qml):
+    sys.exit("  Splash.qml fades its picture in instead of drawing the held frame at once")
+try:
+    with contextlib.redirect_stderr(io.StringIO()):
+        g.Mark(nohold)
+except SystemExit as e:
+    if not e.code:
+        sys.exit("  a kdos-splash.c with no hold passed genlook")
+else:
+    sys.exit("  a kdos-splash.c with no hold passed genlook")
+PYEOF
+echo "  KSplash starts at the boot splash's hold and never falls below it"
 
 echo
 echo "==> kdosbuild reads the build tree correctly"
@@ -6508,6 +11887,44 @@ grep -q '^luks  *= *1' "$OUT/saved.conf" \
     || { echo "  --save lost the luks flag"; exit 1; }
 "$KI" --dump bogus >/dev/null 2>&1 && { echo "  --dump took a bad subject"; exit 1; }
 echo "  no secret reaches a dump or the answer file it writes"
+# ROOT'S PAYLOAD, HANDED ON. A walk as the live account reads less of the
+# tree than root's, so the graphical installer passes its first root probe's
+# figures to every later dump: the dump decides on them and walks nothing.
+# The install never takes them.
+"$KI" --dump probe --json --payload-kb 4963328 --appbox-kb 2048 > "$OUT/pk1.json" \
+    && "$KI" --dump probe --json --payload-kb 4964352 --appbox-kb 2048 > "$OUT/pk2.json" \
+    || { echo "  --dump probe refused --payload-kb"; exit 1; }
+python3 - "$OUT/pk1.json" "$OUT/pk2.json" <<'PYEOF' || { echo "  the dump did not decide on the payload it was given"; exit 1; }
+import json, sys
+a, b = (json.load(open(p)) for p in sys.argv[1:])
+assert (a["payload_kb"], a["appbox_kb"]) == (4963328, 2048), a
+# What the copy writes needs the walk's hard links: a dump given the payload
+# names no figure, and the window keeps root's.
+assert (a["copy_system_bytes"], a["copy_store_bytes"]) == (None, None), a
+assert b["install_bytes"] > a["install_bytes"], (a["install_bytes"], b["install_bytes"])
+# A reused root keeps 2 GiB free past the copy, and a disk the margin too.
+assert a["root_need_bytes"] == a["install_bytes"] + (2048 << 20), a
+assert a["need_bytes"] == a["root_need_bytes"] + (768 << 20), a
+PYEOF
+"$KI" --payload-kb 4963328 >/dev/null 2>&1 \
+    && { echo "  --payload-kb was taken without --dump"; exit 1; }
+"$KI" --dump probe --payload-kb -1 >/dev/null 2>&1 \
+    && { echo "  --payload-kb took a negative size"; exit 1; }
+"$KI" --dump probe --appbox-kb 2048 >/dev/null 2>&1 \
+    && { echo "  --appbox-kb was taken without --payload-kb"; exit 1; }
+echo "  --payload-kb: a dump decides on root's payload, and only a dump takes it"
+# An unprivileged plan that makes the kdos volume group says what it could
+# not check: a group on another disk that is not active is invisible to it.
+printf 'disk = /dev/fixture0\nlvm = 1\n' > "$OUT/vgnote.conf"
+if [ "$(id -u)" != 0 ]; then
+    "$KI" --config "$OUT/vgnote.conf" --dump plan 2>/dev/null \
+        | grep -qx 'not checked   as this user: volume groups on other disks that are not active; the install checks them as root' \
+        || { echo "  an unprivileged LVM plan does not say what it could not check"; exit 1; }
+    printf 'lvm = 0\n' >> "$OUT/vgnote.conf"
+    "$KI" --config "$OUT/vgnote.conf" --dump plan 2>/dev/null | grep -q '^not checked' \
+        && { echo "  a plan with no volume group carries the volume-group note"; exit 1; }
+    echo "  an unprivileged LVM plan names the volume groups it cannot see"
+fi
 
 echo
 echo "==> kinstall-core: the event stream, the Plasma machine's files, A/B"
@@ -6525,6 +11942,53 @@ $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libkcolor \
 grep -n '#include "ktui.h"' src/system/kinstall-core/*.[ch] \
     && { echo "  kinstall-core includes ktui.h"; exit 1; }
 KC="$OUT/kicore"
+# THE BOOTLOADER STEP'S COPY REPORTS EVERY FAILURE, so a missing BOOTX64.EFI
+# or a destination that cannot be written fails the step rather than leaving
+# a Done page over a disk that does not start. A whole copy is byte-equal.
+mkdir -p "$OUT/kcf" && head -c 200000 /dev/urandom > "$OUT/kcf/src"
+"$KC" copyfile "$OUT/kcf/nothing" "$OUT/kcf/dst" \
+    && { echo "  ki_copy_file took a missing source for a copy"; exit 1; }
+"$KC" copyfile "$OUT/kcf/src" "$OUT/kcf/no-such-dir/dst" \
+    && { echo "  ki_copy_file took an uncreatable destination for a copy"; exit 1; }
+"$KC" copyfile "$OUT/kcf/src" "$OUT/kcf/dst" && cmp -s "$OUT/kcf/src" "$OUT/kcf/dst" \
+    || { echo "  ki_copy_file did not copy a file whole"; exit 1; }
+if [ -w /dev/full ]; then
+    "$KC" copyfile "$OUT/kcf/src" /dev/full \
+        && { echo "  ki_copy_file took a full device for a copy"; exit 1; }
+fi
+echo "  kinstall's Bootloader copy fails on a missing source or a failed write"
+# THE BOOTLOADER STEP REPLACES THE KDOS NVRAM ENTRY: from efibootmgr's
+# listing it deletes a `KDOS` entry whose partition is gone (0008) or is the
+# ESP being written (0009), and keeps another disk's live KDOS ESP (000A),
+# kdos-bootctl's `KDOS update trial` (000B), another label (0000), an entry
+# with no GPT path (000C) and a line with no tab after the label (000D); an
+# inactive entry, printed with a space for the `*`, is as stale (000E).
+NV="$OUT/nvram" && rm -rf "$NV" && mkdir -p "$NV/by" && : > "$NV/esp" && : > "$NV/other"
+ln -s ../esp "$NV/by/7f73bdca-0000-4000-8000-000000000001"
+ln -s ../other "$NV/by/aaaaaaaa-0000-4000-8000-000000000002"
+printf '%b\n' 'BootCurrent: 0009' 'BootOrder: 0009,0008,000A' \
+    'Boot0000* UiApp\tFvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)' \
+    'Boot0008* KDOS\tHD(1,GPT,184d34e0-1111-4000-8000-000000000000,0x800,0x100000)/\EFI\BOOT\BOOTX64.EFI' \
+    'Boot0009* KDOS\tHD(1,GPT,7F73BDCA-0000-4000-8000-000000000001,0x800,0x100000)/\EFI\BOOT\BOOTX64.EFI' \
+    'Boot000A* KDOS\tHD(1,GPT,aaaaaaaa-0000-4000-8000-000000000002,0x800,0x100000)/\EFI\BOOT\BOOTX64.EFI' \
+    'Boot000B* KDOS update trial\tHD(1,GPT,184d34e0-1111-4000-8000-000000000000,0x800,0x100000)' \
+    'Boot000C* KDOS\tPciRoot(0x0)/Pci(0x1,0x1)/Ata(0x0)' \
+    'Boot000D* KDOS HD(1,GPT,184d34e0-1111-4000-8000-000000000000,0x800,0x100000)' \
+    'Boot000E  KDOS\tHD(1,GPT,184d34e0-2222-4000-8000-000000000000,0x800,0x100000)/\EFI\BOOT\BOOTX64.EFI' \
+    > "$NV/list"
+got=$("$KC" nvram "$NV/by" "$NV/esp" < "$NV/list" | tr '\n' ' ')
+[ "$got" = "0008 0009 000E " ] \
+    || { echo "  kinstall's Bootloader step drops the KDOS boot entries '$got', not '0008 0009 000E '"; exit 1; }
+echo "  kinstall replaces a stale KDOS boot entry and keeps another disk's"
+# Limine's entry editor draws a comment byte by byte, so a multibyte
+# character in a `comment:` shows as boxes: every comment the installer,
+# kdos-bootctl and the medium write is ASCII.
+if grep -n 'comment:' src/system/kinstall-core/install.c \
+        src/system/kdos-tools/bootctl.c script/phases/70_image/110_iso.sh \
+        | LC_ALL=C grep -n '[^ -~[:space:]]'; then
+    echo "  a Limine menu comment is not ASCII"; exit 1
+fi
+echo "  every Limine menu comment is ASCII"
 # THE STREAM: one JSON object per line, the plan first and the exit last. A
 # dry run as anybody but root stops in Prepare, which is a stream with a
 # failure in it, and answers the rules refuse are refused before the install
@@ -6550,6 +12014,13 @@ titles = [s["title"] for s in lines[0]["steps"]]
 assert titles[0] == "Prepare" and titles[-1] == "Finish", titles
 assert "Slot B" in titles and titles.index("Slot B") < titles.index("Bootloader")
 assert titles.index("Firmware") == titles.index("Packs") + 1, titles
+weights = {s["title"]: s["weight"] for s in lines[0]["steps"]}
+assert all(isinstance(w, int) and w >= 1 for w in weights.values()), weights
+assert weights["Prepare"] == 3 and weights["Format"] == 15 and weights["Copy system"] >= weights["Slot B"], weights
+details = {s["title"]: s["detail"] for s in lines[0]["steps"]}
+assert details["Partition"] == "write the GPT layout: ESP, BIOS boot, LVM volume for the root", details
+# The graphical Summary shows each step on one line of its value column.
+assert all(len(d) <= 80 for d in details.values()), details
 kinds = {l["t"] for l in lines}
 assert kinds <= {"plan", "S", "K", "P", "N", "L", "W", "F", "D", "exit"}, kinds
 for l in lines:
@@ -6559,6 +12030,28 @@ if uid != "0":
     f = [l for l in lines if l["t"] == "F"]
     assert rc == 1 and f and f[0]["step"] == 0 and "root" in f[0]["text"], lines
 PYEOF
+# PACKS WEIGHS ITS DOWNLOAD ONLY WHEN A BINHOST IS NAMED: with none the chosen
+# groups go to groups-pending and the step keeps its short weight; a binhost
+# from the environment or a release named in the TREE beside the groups file
+# adds the groups' ports.
+mkdir -p "$OUT/gtree"
+cp ports/groups "$OUT/gtree/groups"
+printf 'disk = kidisk\npassword = p\ngroups = kde-games\n' > "$OUT/evg.conf"
+packs_w() {
+    (cd "$OUT" && env "$@" KDOS_GROUPS="$OUT/gtree/groups" \
+        KDOS_CATALOGUE="$OUT/cat-none" "$KI" --dry-run --unattended \
+        --events json --config - < evg.conf 2>/dev/null || true) | head -1 \
+        | python3 -c 'import json,sys
+print([s["weight"] for s in json.loads(sys.stdin.readline())["steps"] if s["title"] == "Packs"][0])'
+}
+pw0=$(packs_w KDOS_NET_ROOT="$KINET/up" KDOS_UPDATE_BINHOST=)
+pwe=$(packs_w KDOS_NET_ROOT="$KINET/up" KDOS_UPDATE_BINHOST=/srv/binhost)
+pwn=$(packs_w KDOS_NET_ROOT="$KINET/down" KDOS_UPDATE_BINHOST=/srv/binhost)
+printf 'commit 0123456789abcdef0123456789abcdef01234567\nversion 0.2\n' > "$OUT/gtree/TREE"
+pwt=$(packs_w KDOS_NET_ROOT="$KINET/up" KDOS_UPDATE_BINHOST=)
+test "$pw0" = 20 && test "$pwe" -gt 20 && test "$pwt" = "$pwe" && test "$pwn" = 20 \
+    || { echo "  Packs' weight does not follow the binhost and the network: none $pw0, env $pwe, TREE $pwt, offline $pwn"; exit 1; }
+echo "  Packs weighs the groups' ports only when a binhost is named"
 printf 'disk = kidisk\npassword = p\nautologin = yes\n' > "$OUT/ev2.conf"
 ev2rc=0
 (cd "$OUT" && "$KI" --dry-run --unattended --events json --config ev2.conf \
@@ -6609,8 +12102,25 @@ printf 'disk = /dev/x\npassword = p\ntimezone_label = ../../etc/shadow\n' > "$OU
 printf "disk = /dev/x\npassword = p\ntimezone = UTC';id\n" > "$OUT/kc7.conf"
 "$KC" check "$OUT/kc7.conf" | grep -q 'not a time zone' \
     || { echo "  a TZ string with a quote was accepted"; exit 1; }
+# The Packs and Firmware warnings name a root command the new account can
+# run: sudo for an administrator, su -c and root's password for any other.
+printf 'disk = /dev/x\npassword = p\n' > "$OUT/kc8.conf"
+printf 'disk = /dev/x\npassword = p\nadmin = no\nroot_locked = 0\n' > "$OUT/kc9.conf"
+test "$("$KC" rootcmd "$OUT/kc8.conf" 'kdos firmware sync')" = '`sudo kdos firmware sync`' \
+    && test "$("$KC" rootcmd "$OUT/kc9.conf" 'kdos firmware sync')" = "\`su -c 'kdos firmware sync'\` (root's password)" \
+    || { echo "  the install's warnings name sudo to an account outside wheel"; exit 1; }
 printf 'disk = /dev/x\npassword = p\ntimezone_label = America/Argentina/Buenos_Aires\n' > "$OUT/kc8.conf"
 "$KC" check "$OUT/kc8.conf" | grep -qx ok || { echo "  a real zone was refused"; exit 1; }
+# A name useradd would read as an option, and a host label ending in a dash.
+printf 'disk = /dev/x\npassword = p\nusername = -x\n' > "$OUT/kc9.conf"
+"$KC" check "$OUT/kc9.conf" | grep -q 'cannot be a user name' \
+    || { echo "  a user name starting with - was accepted"; exit 1; }
+printf 'disk = /dev/x\npassword = p\nhostname = kdos-\n' > "$OUT/kc10.conf"
+"$KC" check "$OUT/kc10.conf" | grep -q 'does not start or end with a dash' \
+    || { echo "  a host name ending with - was accepted"; exit 1; }
+printf 'disk = /dev/x\npassword = p\nhostname = müller-pc\n' > "$OUT/kc10.conf"
+"$KC" check "$OUT/kc10.conf" | grep -q 'letters a–z, digits and dashes' \
+    || { echo "  a host name with an accented letter was not refused as letters a–z"; exit 1; }
 echo "  answers on stdin, the look the backend takes, the rules every front end shares"
 
 # THE A/B LAYOUT. Two slots, the swap and a home of their own fit, or slot A
@@ -6629,6 +12139,745 @@ echo "  answers on stdin, the look the backend takes, the rules every front end 
 "$KC" ab 256 12000000 0 4096 0 | grep -q '^ab=0 ' \
     || { echo "  A/B was laid out without LVM"; exit 1; }
 echo "  A/B: two slots, the swap and /home where they fit, one root where not"
+
+# THE SWAP BESIDE ONE ROOT is counted before the disk is erased: a 7748 MiB
+# disk holds a 4847 MiB install with the 768 MiB margin and the 2048 MiB the
+# root keeps free, and not the default 4096 MiB swap file beside them; the
+# 53 MiB left is under the 256 MiB the graphical field starts at, so the
+# refusal says to choose no swap; with no swap it installs.
+printf 'password = p\n' > "$OUT/sw1.conf"
+"$KC" target 7748 4963328 "$OUT/sw1.conf" \
+    | grep -qx 'a 4096 MiB swap does not fit beside the install on /dev/fixture0: choose no swap' \
+    || { echo "  the default swap was accepted beside one root on 7748 MiB"; "$KC" target 7748 4963328 "$OUT/sw1.conf"; exit 1; }
+printf 'password = p\nswap = none\nlvm = 0\n' > "$OUT/sw2.conf"
+"$KC" target 7748 4963328 "$OUT/sw2.conf" | grep -qx ok \
+    || { echo "  no swap on 7748 MiB was refused"; "$KC" target 7748 4963328 "$OUT/sw2.conf"; exit 1; }
+# Off LVM there is no volume metadata to count: 85 MiB fits, 86 does not,
+# and the refusal advises no size below 256 MiB.
+printf 'password = p\nswap = partition\nswap_mb = 85\nlvm = 0\n' > "$OUT/sw3.conf"
+"$KC" target 7748 4963328 "$OUT/sw3.conf" | grep -qx ok \
+    || { echo "  the largest swap that fits was refused"; "$KC" target 7748 4963328 "$OUT/sw3.conf"; exit 1; }
+printf 'password = p\nswap = partition\nswap_mb = 86\nlvm = 0\n' > "$OUT/sw4.conf"
+"$KC" target 7748 4963328 "$OUT/sw4.conf" | grep -q 'on /dev/fixture0: choose no swap$' \
+    || { echo "  a swap one MiB too large was accepted, or given a size under 256 MiB"; "$KC" target 7748 4963328 "$OUT/sw4.conf"; exit 1; }
+# The swap's refusal on its own, which --dump plan gives the Disk page as
+# `swap_problem`: the same words, though answers with no password are
+# refused first by the answers check.
+printf 'disk = kidisk\n' > "$OUT/sw5.conf"
+"$KC" swap 7748 4963328 "$OUT/sw5.conf" \
+    | grep -qx 'a 4096 MiB swap does not fit beside the install on /dev/fixture0: choose no swap' \
+    || { echo "  the swap's own refusal is not the target check's"; "$KC" swap 7748 4963328 "$OUT/sw5.conf"; exit 1; }
+"$KC" swap 7748 4963328 "$OUT/sw2.conf" | grep -qx ok \
+    || { echo "  no swap was given a swap refusal"; exit 1; }
+echo "  a swap that does not fit beside the install is refused before the disk is erased"
+
+# THE ROOT KEEPS 2 GiB FREE. A 5.1 GiB payload (5347738 KiB) needs 8039 MiB
+# of a disk, so 7 GiB is refused; 8 GiB takes it with at most a 121 MiB swap
+# file, which still leaves the root 2303 MiB, though the refusal says to
+# choose no swap there since 121 MiB is under the 256 MiB the graphical
+# field starts at; 10 GiB has 2169 MiB of room and is advised 2048 MiB, the
+# largest multiple of 256 that fits; 12 GiB takes the default
+# 4096 MiB swap file and leaves 2424 MiB, which the Summary warns of. On
+# 20 GiB the root is ample, and on 40 GiB two slots leave nothing to warn of.
+printf 'password = p\nswap = none\nlvm = 0\n' > "$OUT/rf1.conf"
+"$KC" target 7168 5347738 "$OUT/rf1.conf" \
+    | grep -qx '/dev/fixture0 holds 7168 MiB; the install needs at least 8039 MiB' \
+    || { echo "  a disk with no room left after the copy was accepted"; "$KC" target 7168 5347738 "$OUT/rf1.conf"; exit 1; }
+"$KC" target 8192 5347738 "$OUT/rf1.conf" | grep -qx ok \
+    || { echo "  8 GiB was refused a 5.1 GiB install with no swap"; "$KC" target 8192 5347738 "$OUT/rf1.conf"; exit 1; }
+printf 'password = p\n' > "$OUT/rf2.conf"
+"$KC" swap 8192 5347738 "$OUT/rf2.conf" \
+    | grep -qx 'a 4096 MiB swap does not fit beside the install on /dev/fixture0: choose no swap' \
+    || { echo "  8 GiB was offered a swap that eats the root's free room, or one under 256 MiB"; "$KC" swap 8192 5347738 "$OUT/rf2.conf"; exit 1; }
+printf 'password = p\nswap_mb = 121\n' > "$OUT/rf3.conf"
+"$KC" swap 8192 5347738 "$OUT/rf3.conf" | grep -qx ok \
+    || { echo "  the largest swap that fits on 8 GiB was refused"; exit 1; }
+"$KC" swap 10240 5347738 "$OUT/rf2.conf" \
+    | grep -qx 'a 4096 MiB swap does not fit beside the install on /dev/fixture0: make it at most 2048 MiB, or none' \
+    || { echo "  10 GiB was not advised the largest multiple of 256 MiB that fits"; "$KC" swap 10240 5347738 "$OUT/rf2.conf"; exit 1; }
+printf 'password = p\nswap_mb = 2048\n' > "$OUT/rf4.conf"
+"$KC" swap 10240 5347738 "$OUT/rf4.conf" | grep -qx ok \
+    || { echo "  the swap the refusal offers on 10 GiB was refused"; "$KC" swap 10240 5347738 "$OUT/rf4.conf"; exit 1; }
+printf 'password = p\nswap_mb = 2304\n' > "$OUT/rf5.conf"
+"$KC" swap 10240 5347738 "$OUT/rf5.conf" | grep -q 'make it at most 2048 MiB, or none$' \
+    || { echo "  the next step past the offered swap on 10 GiB was accepted"; exit 1; }
+"$KC" rootfree 8192 5347738 "$OUT/rf3.conf" | grep -qx 'free=2303 low=1' \
+    || { echo "  8 GiB with the offered swap does not keep 2 GiB free"; "$KC" rootfree 8192 5347738 "$OUT/rf3.conf"; exit 1; }
+"$KC" swap 12288 5347738 "$OUT/rf2.conf" | grep -qx ok \
+    || { echo "  12 GiB was refused the default swap"; exit 1; }
+"$KC" rootfree 12288 5347738 "$OUT/rf2.conf" | grep -qx 'free=2424 low=1' \
+    || { echo "  12 GiB with a 4 GiB swap file is not reported tight"; "$KC" rootfree 12288 5347738 "$OUT/rf2.conf"; exit 1; }
+"$KC" rootfree 20480 5347738 "$OUT/rf2.conf" | grep -qx 'free=10616 low=0' \
+    || { echo "  an ample one-slot root was reported tight"; "$KC" rootfree 20480 5347738 "$OUT/rf2.conf"; exit 1; }
+"$KC" rootfree 40960 5347738 "$OUT/rf2.conf" | grep -qx 'free=none' \
+    || { echo "  the A/B layout was given a one-root free figure"; exit 1; }
+echo "  the root keeps 2 GiB free after the copy, and a tight one-slot root is reported"
+
+# THE COPY LINE, from a progress2 stream shaped like a live tree's: half the
+# bytes in the first fifth of the time, then a tail of small files at an
+# even rate per file. rsync gives the file counts only on a line that ends a
+# file, so every other line here is a running line without them, as while a
+# large file copies. Until the knee bytes and files move in step and either
+# cost explains the time, and the time left is low by the tail's cost the
+# copy has not shown; it is past its first stretch by then, so it does not
+# rise to the tail when the fit sees it. From eight seconds past the knee on
+# it never rises, is never below a second before the stream's last line, and
+# falls no faster than 0.75 of the clock, a second more for the note's whole
+# seconds, since the estimate stands above it; it reaches 0:00:01 18 s
+# before the stream ends and may stand there 20 s at most. The sizes are in
+# MiB and GiB. A tree whose small files all come after its large ones reads
+# low through its tail; the live tree mixes the two from its first seconds.
+python3 - > "$OUT/copy.stream" <<'PYEOF'
+T, N, END, KNEE = 5153960755, 180000, 73.4, 16.4
+t = 1.0
+while t < END:
+    b = int(T / 2 * t / KNEE) if t < KNEE else int(T / 2 + T / 2 * (t - KNEE) / (END - KNEE))
+    left = N - int(N * t / END)
+    if int(t * 2) % 2:
+        print("%.1f %s  %d%%  99.00MB/s    0:00:01"
+              % (t, format(b, ","), b * 100 // T))
+    else:
+        print("%.1f %s  %d%%  99.00MB/s    0:00:01 (xfr#%d, to-chk=%d/%d)"
+              % (t, format(b, ","), b * 100 // T, N - left, left, N))
+    t += 0.5
+PYEOF
+"$KC" copy 5153960755 < "$OUT/copy.stream" > "$OUT/copy.notes"
+python3 - "$OUT/copy.stream" "$OUT/copy.notes" <<'PYEOF' || { echo "  the copy line's time left does not follow the small-file tail"; exit 1; }
+import re, sys
+ts = [float(l.split()[0]) for l in open(sys.argv[1])]
+notes = open(sys.argv[2]).read().splitlines()
+assert len(ts) == len(notes), (len(ts), len(notes))
+last, step, one = None, None, None
+for t, n in zip(ts, notes):
+    m = re.fullmatch(r"(\d+ MiB|\d+\.\d GiB) of 4\.8 GiB, (\d+ MiB|\d+\.\d GiB)/s, (estimating time left|about (\d+):(\d\d):(\d\d) left)", n)
+    assert m, n
+    if t >= 24:
+        est = int(m[4]) * 3600 + int(m[5]) * 60 + int(m[6])
+        assert est >= 1 and (last is None or est <= last), (t, n, last)
+        last = est
+        step = step or (t, est)
+        assert est >= step[1] - 0.75 * (t - step[0]) - 1, ("falls faster than 0.75 of the clock", step, t, n)
+        one = (one or t) if est == 1 else None
+        assert one is None or t - one <= 20, ("stands at 0:00:01", one, t)
+PYEOF
+echo "  the copy line: MiB and GiB, and a time left that never rises past the copy's first stretch"
+
+# THE COPY LINE ON A RECORDED STREAM: rsync's own progress2 lines from a copy
+# of five /usr trees, at the times they were read (bytes-bound, at a 60 MB/s
+# limit), and the same lines re-timed as three mixes of a listing delay, a
+# cost per byte and a cost per file. From a fifth of each copy on, every time
+# left is within a quarter of the real one (2 s near the end), and of notes
+# five seconds apart none is above the one before.
+python3 - "$KC" testing/fixtures/kinstall/copy-progress.txt <<'PYEOF' || { echo "  the copy line's time left strays on a recorded stream"; exit 1; }
+import re, subprocess, sys
+kc, fix = sys.argv[1], sys.argv[2]
+def check(name, lines, total, end):
+    inp = "".join("%.3f %s\n" % x for x in lines)
+    out = subprocess.run([kc, "copy", str(total)], input=inp, capture_output=True,
+                         text=True, check=True).stdout.splitlines()
+    assert len(out) == len(lines), (name, len(out), len(lines))
+    last = None
+    for (t, _), n in zip(lines, out):
+        m = re.fullmatch(r"(\d+ KiB|\d+ MiB|\d+\.\d GiB) of \d+\.\d GiB, (--|(\d+ KiB|\d+ MiB|\d+\.\d GiB)/s), (estimating time left|about (\d+):(\d\d):(\d\d) left)", n)
+        assert m, (name, n)
+        if t < 0.2 * end:
+            continue
+        assert m[5], (name, t, n)
+        est, real = int(m[5]) * 3600 + int(m[6]) * 60 + int(m[7]), end - t
+        assert abs(est - real) <= max(0.25 * real, 2), (name, t, n, real)
+        if last is None or t - last[0] >= 5:
+            assert last is None or est <= last[1], (name, "rose", last, t, n)
+            last = (t, est)
+rec, end = [], None
+for l in open(fix):
+    if l.startswith("#"):
+        m = re.search(r"Ends ([\d.]+) s in", l)
+        end = float(m[1]) if m else end
+        continue
+    t, rest = l.split(" ", 1)
+    rec.append((float(t), rest.strip()))
+T = int(rec[-1][1].split()[0].replace(",", ""))
+check("recorded", rec, T, end)
+for lag, rate, cpf in ((5, 100e6, 150e-6), (8, 200e6, 300e-6), (3, 60e6, 50e-6)):
+    f, out = 0, []
+    for _, l in rec:
+        m = re.search(r"to-chk=(\d+)/(\d+)", l)
+        f = int(m[2]) - int(m[1]) if m else f
+        out.append((lag + int(l.split()[0].replace(",", "")) / rate + f * cpf, l))
+    check("mix %r" % ((lag, rate, cpf),), out, T, out[-1][0] + 0.05)
+PYEOF
+echo "  the copy line on a recorded stream: within a quarter, and it does not climb"
+
+# THE COPY LINE ON A TREE'S SHAPE, at three mixes of a listing delay, a cost
+# per byte and a cost per file: the live medium's own tree in copy order
+# (testing/fixtures/kinstall/live-shape.txt), and three thousand large files
+# before ninety thousand small ones, and after them. On the live tree every
+# time left from a fifth of the copy on is within a quarter of the real one
+# and none climbs. Its runs marked L are hard-link names, which rsync counts
+# in its percentage and never copies: given their bytes the time left holds,
+# and taken as bytes still to copy it does not. Where one kind of file comes
+# wholly before the other, the cost of the second cannot be known until it
+# starts, and the time shown, past the copy's first stretch by then, does
+# not rise to it: no time left is ever above twice the real one, none
+# climbs, and none is below a second before the last line. It reads low
+# through the second kind, and from five seconds into it, while it reads
+# below the real time, it falls no faster than 0.75 of the clock, a second
+# more for the note's whole seconds; 0:00:01 stands for 45 s at most (40 s
+# on small files before large ones behind a 5 s listing).
+python3 - "$KC" testing/fixtures/kinstall/live-shape.txt <<'PYEOF' || { echo "  the copy line's time left strays on a tree's shape"; exit 1; }
+import re, subprocess, sys
+kc, shape = sys.argv[1], sys.argv[2]
+def stream(runs, lag, rate, cpf):
+    N = sum(r[0] for r in runs); T = sum(r[1] for r in runs)
+    t, b, i, last, out = lag, 0, 0, -1.0, []
+    for n, rb, *link in runs:
+        for k in range(n):
+            if link:
+                i += 1
+                continue
+            s = rb // n + (rb % n if k == n - 1 else 0)
+            d = s / rate
+            for x in range(1, int(d) + 1):
+                out.append((t + x, "%s  %d%%  99.00MB/s    0:00:01" % (format(b + int(rate * x), ","), (b + int(rate * x)) * 100 // T)))
+            t, b, i = t + d + cpf, b + s, i + 1
+            if t - last >= 0.05 or i == N:
+                out.append((t, "%s  %d%%  99.00MB/s    0:00:01 (xfr#%d, to-chk=%d/%d)" % (format(b, ","), b * 100 // T, i, N - i, N)))
+                last = t
+    return out, T, t
+def check(name, runs, lag, rate, cpf, settle, links=None, knee=None):
+    lines, T, end = stream(runs, lag, rate, cpf)
+    L = sum(r[1] for r in runs if len(r) > 2) if links is None else links
+    out = subprocess.run([kc, "copy", str(T), str(L)], input="".join("%.3f %s\n" % x for x in lines),
+                         capture_output=True, text=True, check=True).stdout.splitlines()
+    assert len(out) == len(lines), (name, len(out), len(lines))
+    settle = settle * end if settle is not None else None
+    last, rises, step, one = None, 0, None, None
+    for (t, _), n in zip(lines[:-1], out):
+        m = re.search(r"about (\d+):(\d\d):(\d\d) left", n)
+        if t < 0.2 * end:
+            continue
+        assert m, (name, t, n)
+        est, real = int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3]), end - t
+        assert est <= 2 * real + 2, (name, "far above", t, n, real)
+        assert est >= 1, (name, "below a second before the end", t, n)
+        if knee is not None and t >= knee + 5 and est < real:
+            step = step or (t, est)
+            assert est >= step[1] - 0.75 * (t - step[0]) - 1, (name, "falls faster than 0.75 of the clock", step, t, n)
+        else:
+            step = None
+        one = (one or t) if est == 1 else None
+        assert one is None or t - one <= 45, (name, "stands at 0:00:01", one, t)
+        if settle is not None and t >= settle:
+            assert abs(est - real) <= max(0.25 * real, 2), (name, t, n, real)
+        if last is None or t - last[0] >= 5:
+            rises += last is not None and est > last[1]
+            last = (t, est)
+    assert rises == 0, (name, "rose", rises)
+live = [tuple(int(w) if w.isdigit() else w for w in l.split()) for l in open(shape) if not l.startswith("#")]
+assert any(len(r) > 2 for r in live), "the live shape has no hard-link names"
+big = [(1, (750 + i * 7919 % 2250) * 1000) for i in range(3000)]
+tiny = [(1, 10 + i * 104729 % 1490) for i in range(90000)]
+for lag, rate, cpf in ((2, 150e6, 0.3e-3), (5, 100e6, 0.15e-3), (3, 250e6, 0.2e-3)):
+    check("live", live, lag, rate, cpf, 0.2)
+    try:
+        check("live, links counted as bytes", live, lag, rate, cpf, 0.2, links=0)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("the time left holds without the link discount")
+    for first, then in ((big, tiny), (tiny, big)):
+        knee = lag + sum(r[1] for r in first) / rate + len(first) * cpf
+        check("large then small" if first is big else "small then large", first + then, lag, rate, cpf, None, knee=knee)
+PYEOF
+echo "  the copy line on the live tree's shape and on ordered trees: never far above, and it does not climb"
+
+# THE COPY LINE ON THE LIVE TREE BY KIND OF ENTRY (testing/fixtures/kinstall/
+# live-tree.txt): files, later names, links and directories in rsync's order,
+# copied at the costs fitted to the rig's root copy (2 s listing, 250 MB/s,
+# 0.35 ms a file, 0.1 ms a link or directory), a slower and a faster disk,
+# and slot B's copy between two volumes. Read as every frame five seconds
+# apart (two for slot B) shows it: from a fifth of the copy on, each time
+# left is within a quarter of the real one (2 s near the end), none rises to
+# more than 1.25 times the frame before, and no three frames in a row show
+# one value. Each cost is run twice: with each 1/128 of the list in kind
+# order (directories, files, later names, links) and shuffled, so the test
+# does not lean on where in a run an entry falls. Without the tree, every
+# entry charged a file's cost, the rig's root copy reads its icon themes as
+# up to half again the time left. The costs are fitted to the rig's byte
+# trajectory, not read from a recorded rsync trace.
+python3 - "$KC" testing/fixtures/kinstall/live-tree.txt <<'PYEOF' || { echo "  the copy line's time left strays on the live tree by kind of entry"; exit 1; }
+import random, re, subprocess, sys
+kc, tree = sys.argv[1], sys.argv[2]
+runs = [tuple(int(w) for w in l.split()) for l in open(tree) if not l.startswith("#")]
+def stream(lag, rate, cf, cl, cd, mix=False):
+    rnd = random.Random(7)
+    ents = []
+    for f, h, l, d, fb, hb in runs:
+        n0 = len(ents)
+        ents += [("d", 0)] * d
+        ents += [("f", fb // f + (fb % f if k == f - 1 else 0)) for k in range(f)]
+        ents += [("h", 0)] * h + [("l", 0)] * l
+        if mix:
+            seg = ents[n0:]
+            rnd.shuffle(seg)
+            ents[n0:] = seg
+    N, T = len(ents), sum(r[4] + r[5] for r in runs)
+    t, b, i, last, out = lag, 0, 0, -1.0, []
+    for c, s in ents:
+        if c == "f":
+            for x in range(1, int(s / rate) + 1):
+                out.append((t + x, "%s  %d%%  99.00MB/s    0:00:01" % (format(b + int(rate * x), ","), (b + int(rate * x)) * 100 // T)))
+            t, b = t + s / rate + cf, b + s
+        else:
+            t += cd if c == "d" else cl
+        i += 1
+        if t - last >= 0.05 or i == N:
+            out.append((t, "%s  %d%%  99.00MB/s    0:00:01 (xfr#%d, to-chk=%d/%d)" % (format(b, ","), b * 100 // T, i, N - i, N)))
+            last = t
+    return out, T, t
+def check(name, cost, gap, prof=True, mix=False):
+    lines, T, end = stream(*cost, mix=mix)
+    args = [kc, "copy", str(T), str(sum(r[5] for r in runs))] + ([tree] if prof else [])
+    out = subprocess.run(args, input="".join("%.3f %s\n" % x for x in lines),
+                         capture_output=True, text=True, check=True).stdout.splitlines()
+    assert len(out) == len(lines), (name, len(out), len(lines))
+    frames, k, shown = [], 0, None
+    for (t, _), n in zip(lines, out):
+        while (k + 1) * gap <= t:
+            k += 1
+            if shown is not None:
+                frames.append((k * gap, shown))
+        m = re.search(r"about (\d+):(\d\d):(\d\d) left", n)
+        shown = int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3]) if m else None
+        if t >= 0.2 * end:
+            assert m, (name, t, n)
+            real = end - t
+            assert abs(shown - real) <= max(0.25 * real, 2), (name, t, n, real)
+    frames = [f for f in frames if f[0] >= 0.2 * end]
+    for a, b in zip(frames, frames[1:]):
+        assert b[1] <= max(1.25 * a[1], a[1] + 1), (name, "rose", a, b)
+    for a, b, c in zip(frames, frames[1:], frames[2:]):
+        assert not (a[1] == b[1] == c[1] > 2), (name, "flat", a, b, c)
+root = (2, 250e6, 0.35e-3, 0.1e-3, 0.1e-3)
+for mix in (False, True):
+    for cost in (root, (3, 120e6, 0.3e-3, 0.05e-3, 0.2e-3), (5, 400e6, 0.2e-3, 0.02e-3, 0.1e-3)):
+        check("root %r mix %d" % (cost, mix), cost, 5, mix=mix)
+    check("slot B mix %d" % mix, (1, 400e6, 0.15e-3, 0.05e-3, 0.1e-3), 2, mix=mix)
+try:
+    check("root, every entry a file", root, 5, prof=False)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("the time left holds without the tree's kinds of entry")
+PYEOF
+echo "  the copy line on the live tree by kind of entry: within a quarter, no climb, no stall"
+
+# A KINSTALL_COPY_TRACE FILE REPLAYS AS IT RAN: install.c writes the walk's
+# profile into the trace as a `# prof <per_entry> <at[0]>…<at[128]>` line, and
+# `harness copy` given that line and no tree reads the stream exactly as it
+# does given the tree the profile was built from (here rebuilt from
+# live-tree.txt as ki_copy_profile builds it, every other entry weighed
+# KI_COPY_OTHER_W). The stream is the recorded one re-timed to cost 0.3 ms a
+# file, 5 ns a byte and an 8 s listing, so the files' cost sets the time left;
+# without the line the notes differ, so the check bites.
+python3 - "$KC" testing/fixtures/kinstall/live-tree.txt testing/fixtures/kinstall/copy-progress.txt src/system/kinstall-core/kinstall-core.h <<'PYEOF' || { echo "  a copy trace's profile line does not replay the walk's profile"; exit 1; }
+import re, subprocess, sys
+kc, tree, rec, hdr = sys.argv[1:5]
+ow = float(re.search(r"#define KI_COPY_OTHER_W (\S+)", open(hdr).read())[1])
+runs = [tuple(int(w) for w in l.split()) for l in open(tree) if not l.startswith("#")]
+kind = []
+for f, h, l, d, fb, hb in runs:
+    kind += [ow] * d + [1.0] * f + [ow] * (h + l)
+m, units = len(kind), sum(kind)
+at, u, b = [0.0] * 129, 0.0, 1
+for k, w in enumerate(kind, 1):
+    u += w
+    while b <= 128 and k * 128 >= b * m:
+        at[b] = u / units
+        b += 1
+body, done = [], 0
+for l in open(rec):
+    if l.startswith("#"):
+        continue
+    rest = l.split(" ", 1)[1]
+    chk = re.search(r"to-chk=(\d+)/(\d+)", rest)
+    done = int(chk[2]) - int(chk[1]) if chk else done
+    body.append("%.3f %s" % (8 + int(rest.split()[0].replace(",", "")) / 200e6 + done * 300e-6, rest))
+body = "".join(body)
+T = body.splitlines()[-1].split()[1].replace(",", "")
+run = lambda args, inp: subprocess.run([kc, "copy", T, "0"] + args, input=inp, capture_output=True, text=True, check=True).stdout
+prof = "# prof %.6f %s\n" % (units / m, " ".join("%.6f" % x for x in at))
+with_tree, with_line, bare = run([tree], body), run([], prof + body), run([], body)
+assert with_tree and with_tree == with_line, "the profile line is not the tree's profile"
+assert with_line != bare, "the profile changes nothing on this stream"
+PYEOF
+echo "  a copy trace's profile line replays the walk's profile"
+
+# THE COPY LINE ON THE RIG'S OWN COPIES: the eight KINSTALL_COPY_TRACE files
+# in testing/fixtures/kinstall (two30, two30b, fresh30, fresh30c and
+# e2e10-30, installs onto 30 GiB, each a root copy and then slot B's; one12,
+# fresh12 and e2e10-12, one slot on 12 GiB), replayed by `harness copy` one
+# copy after another, with the ticks kinstall's reader gives when no line
+# comes. Each copy is read the way a front end shows it, as the last note at
+# or before each frame, framed a second apart at twenty phases of the second
+# and two seconds apart, against the real time left to its last line. No
+# note reads `--:--:--`. Until the estimate settles a note reads "estimating
+# time left"; from the first figure on no frame shows no figure, and none
+# shows more than the frame before. From a fifth of the copy on every frame
+# shows a figure, none is above the real time by more than a quarter of it
+# (1.5 s near the end), no three frames in a row show one value above 1 s,
+# and the last note reads 0:00:00. e2e10-30's slot B is held to a third
+# above instead of a quarter: its estimate stands at 1.3 to 1.4 times the
+# real time from 13 s to 17 s of its 28, and the figure reads up to 1.33
+# times the real time there. No frame is below 0.6 of the real time less
+# 1 s, the second for the note's whole seconds: the estimate on slot B's
+# copy of two30 and fresh30c stands at 0.65 to 0.8 of the real time through
+# its first half, and a time shown that never rises keeps that start. No
+# note before the last shows 0:00:01 for more than 4 s.
+#
+# Two re-timed real traces stand for the GUI installs on 12 GiB, whose disks
+# were slower than one12's: one12's root copy with its first seconds moved
+# to the times the GUI's notes give for each amount copied (MiB over the
+# rate each note shows) and the rest shifted after them (the e2e7 run's slow
+# start, whose estimate stands at 1.6 to 1.9 times the real time from 8 s
+# to 25 s), and the same copy re-timed to every note of the e2e8 run, the
+# rest stretched to that run's end at 61.5 s (rsync ran 23:08:31 to
+# 23:09:32). Both keep every bound of a plain replay.
+#
+# Each real copy also runs slowed two, three and five times over, as onto a
+# disk that much slower: every time multiplied, and a running line (the last
+# rates, the bytes in between) put in each second a gap leaves without one,
+# as rsync prints one a second through a large file. Slowed, a frame keeps
+# every bound but the low one, which is 0.58 of the real time less 2 s, and
+# 0:00:01 stands for 6 s at most.
+python3 - "$KC" testing/fixtures/kinstall/two30.trace testing/fixtures/kinstall/one12.trace testing/fixtures/kinstall/two30b.trace testing/fixtures/kinstall/fresh12.trace testing/fixtures/kinstall/fresh30.trace testing/fixtures/kinstall/fresh30c.trace testing/fixtures/kinstall/e2e10-12.trace testing/fixtures/kinstall/e2e10-30.trace <<'PYEOF' || { echo "  the copy line's time left strays on a recorded install"; exit 1; }
+import os, re, subprocess, sys
+kc, fixes = sys.argv[1], sys.argv[2:]
+FLOOR, FLOOR_SLOWED, ONES, ONES_SLOWED = 0.6, 0.58, 4, 6
+def copies(path):
+    out = []
+    for l in open(path):
+        if re.match(r"# \S+ total=\d+ links=\d+$", l):
+            out.append((l.split()[1], []))
+        out[-1][1].append(l)
+    return out
+def secs(n):
+    m = re.search(r"about (\d+):(\d\d):(\d\d) left", n)
+    return int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3]) if m else None
+def slowed(lines, by):
+    out, prev = [], None
+    for l in lines:
+        if l.startswith("#"):
+            out.append(l)
+            continue
+        t, rest = float(l.split()[0]) * by, l.split(" ", 1)[1]
+        w = rest.split()
+        b = int(w[0].replace(",", ""))
+        k = 1
+        while prev and prev[0] + k < t - 0.05:
+            pb = prev[1] + (b - prev[1]) * k / (t - prev[0])
+            out.append("%.3f %s  %s %s %s\n" % (prev[0] + k, format(int(pb), ","), *prev[2][1:4]))
+            k += 1
+        out.append("%.3f %s" % (t, rest))
+        prev = (t, b, w)
+    return out
+def retimed(lines, notes, end=None):
+    body = [(float(l.split()[0]), l.split(" ", 1)[1]) for l in lines if not l.startswith("#")]
+    pts, k = [(0.0, 0.0)], 0
+    for t, rest in body:
+        while k < len(notes) and int(rest.split()[0].replace(",", "")) >> 20 >= notes[k][0]:
+            pts.append((t, notes[k][1]))
+            k += 1
+    if end is not None:
+        pts.append((body[-1][0], end))
+    def at(t):
+        for (a, x), (b, y) in zip(pts, pts[1:]):
+            if t <= b:
+                return x + (y - x) * (t - a) / (b - a) if b > a else y
+        return t + pts[-1][1] - pts[-1][0]
+    return [l for l in lines if l.startswith("#")] + ["%.3f %s" % (at(t), r) for t, r in body]
+def check(name, what, lines, slow=False, high=0.25):
+    body = [l for l in lines if not l.startswith("#")]
+    ts = iter(float(l.split()[0]) for l in body)
+    out = subprocess.run([kc, "copy", "0", "0"], input="".join(lines), capture_output=True,
+                         text=True, check=True, env=dict(os.environ, KI_HARNESS_TICKS="1")).stdout.splitlines()
+    assert out[0] == "# " + what, (name, out[0])
+    notes = [(float(n[1:].split()[0]), n) if n.startswith("@") else (next(ts), n) for n in out[1:]]
+    assert next(ts, None) is None, (name, "a line has no note")
+    for t, n in notes:
+        assert "--:--:--" not in n, (name, "a placeholder for the time left", t, n)
+        assert secs(n) is not None or n.endswith(", estimating time left"), (name, t, n)
+    end = notes[-1][0]
+    assert secs(notes[-1][1]) == 0, (name, "does not reach 0", notes[-1])
+    floor, allow, ones = (FLOOR_SLOWED, 2, ONES_SLOWED) if slow else (FLOOR, 1, ONES)
+    one = None
+    for t, n in notes[:-1]:
+        one = (one if one is not None else t) if secs(n) == 1 else None
+        assert one is None or t - one <= ones, (name, "stands at 0:00:01", one, t)
+    for gap, phase in [(1, k / 20) for k in range(20)] + [(2, 0)]:
+        frames, k, shown = [], 0, None
+        for t, n in notes:
+            while k * gap + phase < t:
+                frames.append((k * gap + phase, shown))
+                k += 1
+            shown = secs(n)
+        frames.append((end, secs(notes[-1][1])))
+        for f, s in frames:
+            if f >= 0.2 * end:
+                assert s is not None, (name, gap, "no figure past a fifth", f)
+                assert s - (end - f) <= max(high * (end - f), 1.5), (name, gap, "high", f, s, end - f)
+                assert s >= floor * (end - f) - allow, (name, gap, "low", f, s, end - f)
+        shown = [f for f in frames if f[1] is not None]
+        assert shown and all(f[1] is not None for f in frames[frames.index(shown[0]):]), (name, gap, "a figure gone")
+        for a, b in zip(shown, shown[1:]):
+            assert b[1] <= a[1], (name, gap, "rose", a, b)
+        late = [f for f in frames if f[0] >= 0.2 * end]
+        for run in zip(late, late[1:], late[2:]):
+            assert not (len(set(s for f, s in run)) == 1 and run[0][1] > 1), (name, gap, "flat", run)
+# The copy whose estimate stands highest above the real time.
+HIGH = {("e2e10-30.trace", "slot-b"): 1 / 3}
+for f in fixes:
+    for what, lines in copies(f):
+        high = HIGH.get((f.split("/")[-1], what), 0.25)
+        check("%s %s" % (f.split("/")[-1], what), what, lines, high=high)
+        for by in (2, 3, 5):
+            check("%s %s slowed %dx" % (f.split("/")[-1], what, by), what, slowed(lines, by), slow=True, high=high)
+# The GUI installs' notes on 12 GiB: MiB copied, and the seconds in as MiB
+# over the rate each note gives.
+E2E7 = ((92, 3.68), (98, 5.76), (178, 7.74), (322, 9.76), (533, 11.84), (824, 13.73), (1229, 16.17))
+E2E8 = ((94, 3.13), (197, 5.18), (570, 7.13), (1024, 8.98), (1536, 11.38), (1946, 13.33),
+        (2253, 15.02), (2560, 16.84), (2765, 18.81), (2867, 20.78), (2970, 23.2), (3072, 25.6),
+        (3174, 29.1), (3277, 31.5), (3482, 33.2), (3686, 35.8), (3789, 37.5), (3891, 38.9))
+what, lines = copies(next(f for f in fixes if f.endswith("/one12.trace")))[0]
+check("one12.trace root, re-timed to the e2e7 GUI's slow start", what, retimed(lines, E2E7))
+check("one12.trace root, re-timed to the e2e8 GUI's notes", what, retimed(lines, E2E8, 61.5))
+PYEOF
+echo "  the copy line on the rig's recorded installs: estimating until it settles, never placeholder digits, no climb once shown; from a fifth on within a quarter or 1.5 s above (a third on e2e10-30's slot B), 0.6 below (0.58 slowed), no stall, 0 at the end"
+
+# A DISK WITH NO PARTITIONS IS NOT ALWAYS EMPTY: a physical volume pvcreate
+# wrote on the whole device is named as one, which the Disk page says.
+python3 -c 'import sys
+b = bytearray(1 << 20)
+b[512:520] = b"LABELONE"; b[536:544] = b"LVM2 001"
+open(sys.argv[1], "wb").write(b)' "$OUT/pvdisk"
+truncate -s 1M "$OUT/blankdisk"
+# Named relative to $OUT: a disk path is held in 63 bytes.
+(cd "$OUT" && "$KC" disksig pvdisk) | grep -qx 'fstype=LVM2_member vg=' \
+    || { echo "  a whole-disk physical volume was not named"; exit 1; }
+(cd "$OUT" && "$KC" disksig blankdisk) | grep -qx 'fstype= vg=' \
+    || { echo "  a blank disk was given a signature"; exit 1; }
+echo "  a whole-disk physical volume is named, a blank disk is not"
+
+# A WRITTEN STICK HOLDS ITS IMAGE, NOT EMPTY PARTITIONS: the ISO 9660
+# descriptor at 32 KiB names the whole device with its volume id and size,
+# the MBR entry typed 0xef is the EFI system partition, and the probe's CPU
+# line counts threads.
+python3 -c 'import sys, struct
+b = bytearray(4 << 20)
+for i, (t, s, n) in enumerate(((0xef, 64, 4032), (0x83, 4096, 4096))):
+    b[446 + 16 * i + 4] = t
+    b[446 + 16 * i + 8:446 + 16 * i + 16] = struct.pack("<II", s, n)
+b[510:512] = b"\x55\xaa"
+v = 0x8000
+b[v:v + 7] = b"\x01CD001\x01"
+b[v + 40:v + 72] = b"KDOS_LIVE".ljust(32)
+b[v + 80:v + 88] = struct.pack("<I", 2048) + struct.pack(">I", 2048)
+b[v + 128:v + 132] = struct.pack("<H", 2048) + struct.pack(">H", 2048)
+open(sys.argv[1], "wb").write(b)' "$OUT/isostick"
+KS=$(cd "$OUT" && "$KC" stick isostick)
+grep -qx 'contents=ISO 9660 image “KDOS_LIVE” on the whole disk, 4.0M' <<<"$KS" \
+    || { echo "  a written stick is not named as its ISO 9660 image"; exit 1; }
+grep -qx '    whole disk: iso9660 KDOS_LIVE' <<<"$KS" \
+    || { echo "  the probe does not show a partitioned disk's whole-device ISO 9660"; exit 1; }
+grep -qE '^    /dev/fixture0p1 .* ESP$' <<<"$KS" \
+    || { echo "  an MBR partition typed 0xef is not an ESP"; exit 1; }
+grep -qx 'cpu           Fixture CPU (8 threads)' <<<"$KS" \
+    || { echo "  the probe's CPU line does not count threads"; exit 1; }
+echo "  a written stick reads as its ISO 9660 image, its 0xef partition as the ESP, the CPU in threads"
+
+# A STICK REPARTITIONED OVER ITS IMAGE NAMES ITS PARTITIONS: a new table
+# leaves the descriptor at 32 KiB in place, so the whole device still reads
+# as iso9660, but a partition past the image's end or holding a filesystem
+# no hybrid window holds is what an erase destroys.
+python3 -c 'import sys
+b = bytearray(open(sys.argv[1], "rb").read()) + bytearray(4 << 20)
+b[446:510] = bytes(64)
+b[446 + 4] = 0x83
+b[446 + 8:446 + 16] = (2048).to_bytes(4, "little") + (14336).to_bytes(4, "little")
+open(sys.argv[2], "wb").write(b)' "$OUT/isostick" "$OUT/restick"
+KS=$(cd "$OUT" && "$KC" stick restick)
+grep -qx 'contents=empty 7.0M' <<<"$KS" \
+    || { echo "  a partition past a stale ISO 9660 image is not named"; exit 1; }
+KS=$(cd "$OUT" && "$KC" stick isostick ext4)
+grep -qx 'contents=EFI system 2.0M, empty 2.0M' <<<"$KS" \
+    || { echo "  an ext4 partition inside a stale ISO 9660 image is not named"; exit 1; }
+grep -qx '    whole disk: iso9660 KDOS_LIVE' <<<"$KS" \
+    || { echo "  a repartitioned stick lost its whole-device signature"; exit 1; }
+echo "  a stick repartitioned over its image names its partitions, not the stale image"
+
+# A PARTITION WHOSE NODE POINTS AT ANOTHER DEVICE IS READ THROUGH ITS DISK.
+# Ventoy's hook gives its boot partition's node the ISO mapping's device
+# number; read through the node, the 0xef partition is the image's iso9660
+# ESP, and udev's record for the partition's own number, probed through the
+# same node, says so too. The disk's bytes at the partition's offset hold
+# VTOYEFI's FAT boot sector, and the partition is named as Ventoy's.
+python3 -c 'import sys, struct
+b = bytearray(open(sys.argv[1], "rb").read())
+o = 64 * 512
+b[o:o + 512] = bytes(512)
+b[o:o + 3] = b"\xeb\x58\x90"
+b[o + 3:o + 11] = b"MSWIN4.1"
+b[o + 0x43:o + 0x47] = bytes((0xcd, 0xab, 0x34, 0x12))
+b[o + 0x47:o + 0x52] = b"VTOYEFI    "
+b[o + 0x52:o + 0x5a] = b"FAT32   "
+b[o + 510:o + 512] = b"\x55\xaa"
+open(sys.argv[2], "wb").write(b)' "$OUT/isostick" "$OUT/vtoystick"
+KV="$OUT/kvroot"
+# The harness stores the image's name in a partition's device-path field,
+# which holds a /dev name; each image is named from $OUT, relative, so a long
+# TMPDIR cannot cut it.
+_kcremap() { (cd "$OUT" && "$KC" remap "$@"); }
+rm -rf "$KV" && mkdir -p "$KV/sys/dev/block" "$KV/sys/class/block/dm-0/dm" \
+    "$KV/sys/class/block/dm-1/dm" "$KV/run/udev/data"
+ln -s ../../devices/virtual/block/dm-0 "$KV/sys/dev/block/253:0"
+ln -s ../../devices/virtual/block/dm-1 "$KV/sys/dev/block/253:1"
+echo ventoy > "$KV/sys/class/block/dm-0/dm/name"
+echo isodata > "$KV/sys/class/block/dm-1/dm/name"
+printf 'E:ID_FS_TYPE=iso9660\nE:ID_FS_LABEL=KDOS_LIVE\n' > "$KV/run/udev/data/b8:2"
+KS=$(_kcremap "vtoystick" "$KV" 253:0 8:2)
+grep -qx 'remap=ventoy fstype=vfat label=VTOYEFI' <<<"$KS" \
+    || { echo "  a remapped Ventoy node is not read from its disk at its offset:"; echo "$KS"; exit 1; }
+grep -qx "contents=Ventoy's boot partition 2.0M, empty 2.0M" <<<"$KS" \
+    || { echo "  a Ventoy boot partition is not named as one:"; echo "$KS"; exit 1; }
+grep -qE '^    vtoystick +1 MB  vfat +VTOYEFI +remap ventoy$' <<<"$KS" \
+    || { echo "  the probe's dump does not mark the remapped node, or calls it an ESP:"; echo "$KS"; exit 1; }
+grep -q 'iso9660\|KDOS_LIVE' <<<"$KS" \
+    && { echo "  a remapped node's partition reads as the ISO behind it:"; echo "$KS"; exit 1; }
+_kcremap "vtoystick" "$KV" 253:1 8:2 | grep -qx 'contents=mapped to isodata 2.0M, empty 2.0M' \
+    || { echo "  a partition remapped to another dm device is not named for it"; exit 1; }
+_kcremap "isostick" "$KV" 8:2 8:2 | grep -qx 'contents=EFI system “KDOS_LIVE” 2.0M, empty 2.0M' \
+    || { echo "  a node that is its partition is not read through"; exit 1; }
+# The reuse plan refuses a remapped partition as either choice: its node is
+# the device behind it, which the ESP's mkfs or the root's copy would write.
+printf 'plan = reuse\nesp = isostick\nroot = /dev/fixture0p2\n' > "$OUT/remap-esp.conf"
+printf 'plan = reuse\nesp = /dev/fixture0p2\nroot = isostick\n' > "$OUT/remap-root.conf"
+_kcremap "isostick" "$KV" 253:0 8:2 "$OUT/remap-esp.conf" \
+    | grep -qx "isostick is mapped to ventoy — it cannot be written" \
+    || { echo "  a reuse plan takes Ventoy's boot partition as its ESP:"; _kcremap "isostick" "$KV" 253:0 8:2 "$OUT/remap-esp.conf"; exit 1; }
+_kcremap "isostick" "$KV" 253:1 8:2 "$OUT/remap-root.conf" \
+    | grep -qx "isostick is mapped to isodata — it cannot be written" \
+    || { echo "  a reuse plan takes a remapped partition as its root:"; _kcremap "isostick" "$KV" 253:1 8:2 "$OUT/remap-root.conf"; exit 1; }
+_kcremap "isostick" "$KV" 8:2 8:2 "$OUT/remap-esp.conf" \
+    | grep -q 'mapped to' \
+    && { echo "  a node that is its partition is refused as remapped"; exit 1; }
+echo "  a partition whose node is remapped (Ventoy's) is read from its disk at its offset and named from sysfs"
+
+# AN exFAT VOLUME IS NAMED, ITS LABEL udev's: the label is a root-directory
+# entry, not a boot-sector field. A filesystem no signature matches takes
+# udev's type, label and uuid; a remapped node never takes udev's record.
+python3 -c 'import sys, struct
+b = bytearray(4 << 20)
+b[0:3] = b"\xeb\x76\x90"
+b[3:11] = b"EXFAT   "
+b[446 + 4] = 0x07
+b[446 + 8:446 + 16] = struct.pack("<II", 2048, 6144)
+b[510:512] = b"\x55\xaa"
+open(sys.argv[1], "wb").write(b)' "$OUT/exfatstick"
+printf 'E:ID_FS_TYPE=exfat\nE:ID_FS_LABEL=Ventoy\nE:ID_FS_UUID=4E21-0000\n' > "$KV/run/udev/data/b8:1"
+_kcremap "exfatstick" "$KV" 8:1 8:1 | grep -qx 'remap= fstype=exfat label=Ventoy' \
+    || { echo "  an exFAT partition is not named exfat with udev's label:"; _kcremap "exfatstick" "$KV" 8:1 8:1; exit 1; }
+_kcremap "exfatstick" "$KV" 8:9 8:9 | grep -qx 'remap= fstype=exfat label=' \
+    || { echo "  an exFAT partition with no udev record is not named exfat"; exit 1; }
+printf 'E:ID_FS_TYPE=zfs_member\nE:ID_FS_LABEL=tank\n' > "$KV/run/udev/data/b8:3"
+truncate -s 4M "$OUT/plainstick"
+python3 -c 'import sys, struct
+b = bytearray(open(sys.argv[1], "rb").read())
+b[446 + 4] = 0x83
+b[446 + 8:446 + 16] = struct.pack("<II", 2048, 6144)
+b[510:512] = b"\x55\xaa"
+open(sys.argv[1], "wb").write(b)' "$OUT/plainstick"
+_kcremap "plainstick" "$KV" 8:3 8:3 | grep -qx 'remap= fstype=zfs_member label=tank' \
+    || { echo "  a filesystem no signature matches does not take udev's record"; exit 1; }
+_kcremap "plainstick" "$KV" 253:0 8:3 | grep -qx 'remap=ventoy fstype= label=' \
+    || { echo "  a remapped node takes udev's record for its number"; exit 1; }
+echo "  an exFAT volume is named with udev's label, an unknown filesystem by udev, a remapped node never"
+
+# EVERY COPY OF THE RUNNING MEDIUM IS REFUSED: two copies of one build carry
+# its id in the Volume Set Identifier, the initramfs mounts whichever answers
+# first, and nothing tells which one the firmware started. A disk whose image
+# carries another id is refused for nothing but what it is.
+python3 -c 'import sys
+b = bytearray(open(sys.argv[1], "rb").read())
+b[0x8000 + 190:0x8000 + 318] = sys.argv[3].encode().ljust(128)
+open(sys.argv[2], "wb").write(b)' "$OUT/isostick" "$OUT/medA" 9adacf95e5031fd4
+cp "$OUT/medA" "$OUT/medB"
+python3 -c 'import sys
+b = bytearray(open(sys.argv[1], "rb").read())
+b[0x8000 + 190:0x8000 + 318] = sys.argv[3].encode().ljust(128)
+open(sys.argv[2], "wb").write(b)' "$OUT/isostick" "$OUT/medC" aaaaaaaaaaaaaaaa
+KS=$(cd "$OUT" && "$KC" medium 'root=/dev/ram0 rw quiet kdos.medium=9adacf95e5031fd4' medA medB)
+grep -qx 'medB holds a copy of the medium this runs from' <<<"$KS" \
+    || { echo "  a copy of the running medium is not refused:"; echo "$KS"; exit 1; }
+grep -qE '^  medB .*  BOOT MEDIA \(copy\)$' <<<"$KS" \
+    || { echo "  the probe's dump does not mark the copy:"; echo "$KS"; exit 1; }
+grep -qE '^  medA .*  BOOT MEDIA$' <<<"$KS" \
+    || { echo "  the mounted medium lost its mark:"; echo "$KS"; exit 1; }
+grep -q '"boot_media": false, "boot_copy": true' <<<"$KS" \
+    || { echo "  the probe's JSON does not carry boot_copy"; exit 1; }
+(cd "$OUT" && "$KC" medium 'root=/dev/ram0 rw kdos.medium=9adacf95e5031fd4' medA medC) | grep -qx ok \
+    || { echo "  a medium of another build is refused as a copy"; exit 1; }
+(cd "$OUT" && "$KC" medium 'root=/dev/ram0 rw quiet' medA medB) | grep -qx ok \
+    || { echo "  a boot with no medium id refuses a copy"; exit 1; }
+(cd "$OUT" && "$KC" medium 'root=/dev/ram0 xkdos.medium=9adacf95e5031fd4' medA medB) | grep -qx ok \
+    || { echo "  a parameter ending in kdos.medium= is read as the id"; exit 1; }
+# A probe that cannot open the copy (the graphical installer's, as the
+# session's user) reads the id from udev's record for the disk, where
+# 110_iso.sh's Publisher Identifier lands upper-cased.
+KMR="$OUT/kmroot"
+rm -rf "$KMR" && mkdir -p "$KMR/sys/block/fixture1" "$KMR/run/udev/data"
+echo 8:16 > "$KMR/sys/block/fixture1/dev"
+printf 'E:ID_FS_TYPE=iso9660\nE:ID_FS_PUBLISHER_ID=9ADACF95E5031FD4\n' > "$KMR/run/udev/data/b8:16"
+KS=$(cd "$OUT" && "$KC" medium 'root=/dev/ram0 rw kdos.medium=9adacf95e5031fd4' medA no-such-copy "$KMR")
+grep -qx 'no-such-copy holds a copy of the medium this runs from' <<<"$KS" \
+    || { echo "  a copy this probe cannot open is not refused:"; echo "$KS"; exit 1; }
+(cd "$OUT" && "$KC" medium 'root=/dev/ram0 rw kdos.medium=aaaaaaaaaaaaaaaa' medA no-such-copy "$KMR") | grep -qx ok \
+    || { echo "  an unopened disk of another build is refused as a copy"; exit 1; }
+rm -f "$KMR/run/udev/data/b8:16"
+(cd "$OUT" && "$KC" medium 'root=/dev/ram0 rw kdos.medium=9adacf95e5031fd4' medA no-such-copy "$KMR") | grep -qx ok \
+    || { echo "  an unopened disk with no udev record is refused as a copy"; exit 1; }
+echo "  every copy of the running medium is refused, a medium of another build is not"
+
+# A DISK'S NAME IS udev's WHERE sysfs CUTS IT. libata's SCSI model is the 16
+# bytes of an INQUIRY reply; udev's ID_MODEL_ENC holds the whole ATA name,
+# which replaces it only when it starts with it.
+UD=testing/fixtures/kinstall/udev
+test "$("$KC" udevmodel "$UD/kingston" Kingston-SA400S3)" = Kingston-SA400S37 \
+    || { echo "  a SATA disk's model stays cut at 16 bytes"; exit 1; }
+test "$("$KC" udevmodel "$UD/wdc" 'WDC WD10EZEX-00B')" = 'WDC WD10EZEX-00BN5A0' \
+    || { echo "  udev's \\x20 escapes are not decoded"; exit 1; }
+test "$("$KC" udevmodel "$UD/qemu" 'Another Disk')" = 'Another Disk' \
+    || { echo "  a udev model that does not extend sysfs's replaced it"; exit 1; }
+test "$("$KC" udevmodel "$OUT/no-udev-data" 'QEMU HARDDISK')" = 'QEMU HARDDISK' \
+    || { echo "  a disk with no udev record lost its sysfs model"; exit 1; }
+echo "  a disk's model is udev's full name where sysfs cuts it, sysfs's otherwise"
+
+# WHAT AN ERASE DESTROYS, BY NAME: a two-slot install's disk lists its ESP
+# by label and its physical volume by group, and the probe hands the group
+# to the graphical Disk page per partition.
+"$KC" reinstall > "$OUT/reinstall.out"
+grep -qx 'contents=EFI system “KDOS_EFI” 512M, BIOS boot 1.0M, LVM physical volume (volume group kdos) 29G' "$OUT/reinstall.out" \
+    || { echo "  the Summary does not name what the erase destroys"; cat "$OUT/reinstall.out"; exit 1; }
+# A list held to a count, or to its buffer, names whole entries and counts
+# the rest, never ending inside a label.
+"$KC" reinstall 2 | grep -qx 'contents=EFI system “KDOS_EFI” 512M, BIOS boot 1.0M, and 1 more partition' \
+    || { echo "  an erase's list held to 2 does not count the rest"; exit 1; }
+"$KC" reinstall 0 80 | grep -qx 'contents=EFI system “KDOS_EFI” 512M, and 2 more partitions' \
+    || { echo "  an erase's list cut by its buffer ends inside an entry"; exit 1; }
+sed 1d "$OUT/reinstall.out" | python3 -c 'import json, sys
+p = json.load(sys.stdin)["disks"][0]["partitions"]
+assert [x["vg"] for x in p] == ["", "", "kdos"], p' \
+    || { echo "  the probe does not give a partition's volume group"; exit 1; }
+echo "  an erase names each partition, a physical volume by its group, and the probe dumps the group"
 
 # THE WRITERS, into a copy of the target's files. Each edits the image's file
 # in place: the key it owns replaced, every other line kept.
@@ -6653,6 +12902,28 @@ grep -qx 'krohnkiteEnabled=true' "$KR/etc/xdg/kwinrc" \
 test "$(cat "$KR/etc/kdos/accent")" = amber || { echo "  /etc/kdos/accent is not the accent"; exit 1; }
 test "$(wc -l < "$KR/etc/vtrgb")" = 3 || { echo "  /etc/vtrgb is not three palette rows"; exit 1; }
 test "$(cat "$KR/etc/keymap")" = de-latin1 || { echo "  the console keymap is not the one nearest de"; exit 1; }
+# kbd's bare de, dk, sg and fr_CH are the 7-bit ISO-646 maps and its bare pt
+# is the OLPC laptop's: with both installed, the -latin1 map is the answer.
+KX="$OUT/kixkb/keymaps/i386"
+rm -rf "$OUT/kixkb" && mkdir -p "$KX/qwertz" "$KX/qwerty" "$KX/olpc"
+for _m in qwerty/us qwertz/de qwertz/de-latin1 qwertz/sg qwertz/sg-latin1 \
+          qwertz/fr_CH qwertz/fr_CH-latin1 qwerty/dk qwerty/dk-latin1 \
+          qwerty/pt-latin1 olpc/pt; do
+    : > "$KX/$_m.map.gz"
+done
+for _c in "de::de-latin1" "dk::dk-latin1" "pt::pt-latin1" "ch::sg-latin1" \
+          "ch:fr:fr_CH-latin1" "it::us"; do
+    _l=${_c%%:*}; _v=${_c#*:}; _v=${_v%%:*}
+    test "$("$KC" xkb "$OUT/kixkb" "$_l" "$_v")" = "${_c##*:}" \
+        || { echo "  the console map nearest $_l($_v) is not ${_c##*:}: $("$KC" xkb "$OUT/kixkb" "$_l" "$_v")"; exit 1; }
+done
+unset _m _c _l _v KX
+# And the name the ESP's EFI/kdos/keymap may hold: a map name, never a path
+# or an option, for the initramfs hands it to loadkeys.
+"$KC" keyname de-latin1 && "$KC" keyname fr_CH-latin1 \
+    && ! "$KC" keyname ../x && ! "$KC" keyname -C && ! "$KC" keyname "de latin1" \
+    && ! "$KC" keyname "" && ! "$KC" keyname .x && ! "$KC" keyname a/b \
+    || { echo "  the ESP keymap name rule passes a path or an option, or refuses a map"; exit 1; }
 grep -qx 'XKBLAYOUT=de' "$KR/etc/kdos/xkb.conf" && grep -qx 'XKBVARIANT=nodeadkeys' "$KR/etc/kdos/xkb.conf" \
     && grep -q 'kdos-settingsd serves these four values' "$KR/etc/kdos/xkb.conf" \
     || { echo "  xkb.conf lost its explanation or its layout"; exit 1; }
@@ -6682,6 +12953,63 @@ printf 'oem = 1\n' > "$OUT/kw3.conf"
 "$KC" write "$OUT/kw3.conf" "$KR" >/dev/null || exit 1
 test ! -e "$KR/etc/plasma-setup-done" || { echo "  an OEM install did not arm plasma-setup"; exit 1; }
 echo "  login, look and keyboard files: in place, per answer, OEM armed"
+
+# THE ACCOUNT'S HALF: the Theme step's runs of `kdos theme --account` into
+# /etc/skel and the account's home, both holding the image's bone seeds as
+# the image's skel and the renamed live home do. The accent file and the
+# terminal programs' files take the answer's accent, and the runs are outside
+# any session even when the installer's own environment is inside one:
+# KDE_FULL_SESSION would apply the theme to the live desktop. The home's three
+# trees go to the numbers the TARGET's passwd gives the account, skel stays
+# whose it was, and an OEM install, which has no account yet, writes skel
+# alone. No kwriteconfig6 is on the run's PATH here, so its exit is not
+# asserted; the files written around that step are.
+KS="$OUT/kiseed"
+kseed_fixture() {
+    rm -rf "$KS" && mkdir -p "$KS/etc/skel/.config/kdos" "$KS/etc/xdg" \
+        "$KS/home/ann/.config/kdos" "$KS/home/ann/.cache"
+    printf 'bone\n' > "$KS/etc/skel/.config/kdos/accent"
+    printf 'bone\n' > "$KS/home/ann/.config/kdos/accent"
+    printf 'ann:x:4242:4343:Ann:/home/ann:/bin/bash\n' > "$KS/etc/passwd"
+}
+kseed_fixture
+printf 'username = ann\npassword = p\ntheme = phosphor\n' > "$OUT/ks.conf"
+KDE_FULL_SESSION=true "$KC" seed "$OUT/ks.conf" "$KS" "$OUT/kdos" > "$OUT/ks.log" 2>&1
+grep -q '^failed=' "$OUT/ks.log" || { echo "  the seed runs did not run"; cat "$OUT/ks.log"; exit 1; }
+test "$(cat "$KS/etc/skel/.config/kdos/accent")" = phosphor \
+    || { echo "  the Theme step left skel's accent at the image's"; cat "$OUT/ks.log"; exit 1; }
+test "$(cat "$KS/home/ann/.config/kdos/accent")" = phosphor \
+    || { echo "  the Theme step left the account's accent at the image's"; cat "$OUT/ks.log"; exit 1; }
+for h in etc/skel home/ann; do
+    test -s "$KS/$h/.config/kdos/ls-colors" && test -s "$KS/$h/.config/kdos/fzf-colors" \
+        || { echo "  the Theme step did not write $h's terminal colours"; ls -R "$KS/$h"; exit 1; }
+done
+test "$(grep -c 'next login' "$OUT/ks.log")" = 2 \
+    || { echo "  the Theme step's runs saw the installer's session"; cat "$OUT/ks.log"; exit 1; }
+if [ "$(id -u)" = 0 ]; then
+    for f in .config .config/kdos/accent .cache; do
+        test "$(stat -c %u:%g "$KS/home/ann/$f")" = 4242:4343 \
+            || { echo "  the account's $f is not handed to it by number"; exit 1; }
+    done
+else
+    for t in .config .cache; do
+        grep -qF "cannot hand $KS/home/ann/$t to ann (4242:4343)" "$OUT/ks.log" \
+            || { echo "  the account's $t was not handed to the passwd's numbers"; cat "$OUT/ks.log"; exit 1; }
+    done
+fi
+grep -qF "cannot hand $KS/etc/skel" "$OUT/ks.log" \
+    && { echo "  the Theme step handed skel to the account"; exit 1; }
+test "$(stat -c %u "$KS/etc/skel/.config/kdos/accent")" = "$(id -u)" \
+    || { echo "  skel's accent changed hands"; exit 1; }
+kseed_fixture
+printf 'username = ann\noem = 1\ntheme = phosphor\n' > "$OUT/ks2.conf"
+"$KC" seed "$OUT/ks2.conf" "$KS" "$OUT/kdos" > "$OUT/ks.log" 2>&1
+test "$(grep -c '^run HOME=' "$OUT/ks.log")" = 1 \
+    && test "$(cat "$KS/etc/skel/.config/kdos/accent")" = phosphor \
+    && test "$(cat "$KS/home/ann/.config/kdos/accent")" = bone \
+    || { echo "  an OEM install's Theme step did not write skel alone"; cat "$OUT/ks.log"; exit 1; }
+rm -rf "$KS"
+echo "  the Theme step seeds skel and the account's home in the chosen accent, by number, outside the installer's session; OEM skel alone"
 
 # ── the Applications page reads the CATALOGUE ───────────────────────────────
 # kinstall links libkbase, libktui and libkcolor and nothing else, which is what
@@ -6898,7 +13226,7 @@ _rc=0
 # answered and the three changes are refused. Built without the bus, or with
 # no polkit to ask, refusal is the only answer the socket may give them.
 if [ "$(id -u)" -ne 0 ] && ! id -nG | tr ' ' '\n' | grep -qx wheel; then
-    TRW="$OUT/tierwork"
+    TRW="$SOCKD/tierwork"
     rm -rf "$TRW"
     mkdir -p "$TRW/etc/nftables.d"
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$TRW/no-bus" \
@@ -6939,7 +13267,7 @@ fi
 #
 # A toggle is root's or wheel's on the socket, so both ends run as root in a
 # user namespace; without one, and not root, the block is skipped.
-FWW="$OUT/fwwork"
+FWW="$SOCKD/fwwork"
 rm -rf "$FWW"
 mkdir -p "$FWW/etc/nftables.d"
 cat > "$FWW/run.sh" <<'FWEOF'
@@ -7179,7 +13507,7 @@ acfull splash "phosphor; reboot" "err not a splash motion (phosphor or modern)" 
 # this script runs on a bare host, and basu is a KDOS port.
 if [ -n "$TRAY_SDBUS" ] && command -v dbus-daemon >/dev/null 2>&1 &&
    command -v busctl >/dev/null 2>&1; then
-    PB="$OUT/powerbus"
+    PB="$SOCKD/powerbus"
     rm -rf "$PB"
     mkdir -p "$PB/etc/nftables.d"
     $CC $STD $WARN -o "$PB/pkstub" testing/fixtures/polkit/pkstub.c \
@@ -7535,28 +13863,34 @@ KDOS_ENERGYD_SOCKET="$OUT/nothing.sock" "$OUT/kdos-energy" 2>&1 \
 echo "  the fixture replays: nesting, the wrap, the roll-up and the residue"
 
 echo
-echo "==> kdos-ports-helper takes one verb and one port name, and only as root"
-# The root side of Discover's Install button for host software, run through
-# pkexec. Everything it would do needs root and a binhost, so what is checked
-# here is the door: a second verb, a name that could be read as an option or
-# a path, and an unprivileged caller are each refused before anything runs.
+echo "==> kdos-ports-helper takes one of its verbs and one port name, and only as root"
+# The root side of Discover's Install and Remove buttons for host software,
+# run through pkexec. Everything it would do needs root and a binhost, so
+# what is checked here is the door: a verb it does not take, a name that
+# could be read as an option or a path, and an unprivileged caller are each
+# refused before anything runs. The helper takes install and remove; the
+# builder install alone.
 $CC $STD $WARN $INC -o "$OUT/kdos-ports-helper" \
     src/desktop/kdos-discover/helper/kdos-ports-helper.c src/libs/libkbase/*.c
 echo "  kdos-ports-helper"
 # Each refusal is told by its message: run as anybody but root, a name the
 # check let through would still exit 2, at the privilege test, and pass.
-for bad in "" "remove kate" "install" "install kate extra"; do
+for bad in "" "purge kate" "remove" "install" "install kate extra" "remove kate extra"; do
     # shellcheck disable=SC2086
-    "$OUT/kdos-ports-helper" $bad 2>&1 | grep -q '^usage: kdos-ports-helper install' \
+    "$OUT/kdos-ports-helper" $bad 2>&1 | grep -q '^usage: kdos-ports-helper install|remove' \
         || { echo "  kdos-ports-helper did not refuse '$bad' as usage"; exit 1; }
 done
 for bad in -rf ../x a/b .hidden 'a b' 'k;rm'; do
-    "$OUT/kdos-ports-helper" install "$bad" 2>&1 | grep -q 'is not a port name' \
-        || { echo "  kdos-ports-helper took '$bad' for a port name"; exit 1; }
+    for verb in install remove; do
+        "$OUT/kdos-ports-helper" $verb "$bad" 2>&1 | grep -q 'is not a port name' \
+            || { echo "  kdos-ports-helper $verb took '$bad' for a port name"; exit 1; }
+    done
 done
 if [ "$(id -u)" != 0 ]; then
-    "$OUT/kdos-ports-helper" install kate 2>&1 | grep -q 'run through pkexec' \
-        || { echo "  kdos-ports-helper ran for an unprivileged caller"; exit 1; }
+    for verb in install remove; do
+        "$OUT/kdos-ports-helper" $verb kate 2>&1 | grep -q 'run through pkexec' \
+            || { echo "  kdos-ports-helper $verb ran for an unprivileged caller"; exit 1; }
+    done
 fi
 # The builder is the same door under its own grant, with one more word it
 # takes: --build-deps with one of its two values, and only before the name.
@@ -7576,6 +13910,22 @@ if [ "$(id -u)" != 0 ]; then
         || { echo "  kdos-ports-builder ran for an unprivileged caller"; exit 1; }
 fi
 echo "  usage, unsafe names and an unprivileged caller are refused, by both"
+
+echo
+echo "==> kdos-mdnsd answers .local A and AAAA from Avahi and refuses the rest"
+# The daemon is the only resolver a `.local` name has on musl, and its input
+# is a packet from the network stack, so the parser is driven with the broken
+# packets a resolver must refuse as well as the good ones, and the event loop
+# with one name that Avahi never answers beside one it does: the second must
+# not wait for the first, and a name's A question after its AAAA miss must
+# not wait again. testing/fixtures/mdnsd/drive.py says what each case
+# holds. Under CC="cc -fsanitize=..." the same cases run instrumented.
+$CC $STD $WARN $INC -o "$OUT/kdos-mdnsd" \
+    src/daemons/kdos-mdnsd/main.c src/libs/libkbase/*.c
+echo "  kdos-mdnsd"
+mkdir -p "$SOCKD/mdnsd"
+python3 -I testing/fixtures/mdnsd/drive.py "$OUT/kdos-mdnsd" "$SOCKD/mdnsd" \
+    || { echo "  kdos-mdnsd answered a question wrongly"; exit 1; }
 
 echo
 echo "==> kdos-oomd picks the victim the desktop can afford to lose"
@@ -7958,7 +14308,7 @@ echo "==> a launch hands the box only its own sockets, or does not start"
 # whose container was made over the session's runtime directory (tagged), and
 # a tagged socket that cannot be had (the launch is refused, never started
 # untagged).
-LX="$OUT/launch"
+LX="$SOCKD/launch"
 rm -rf "$LX"; mkdir -p "$LX/bin" "$LX/home/.config/kdos/boxes" "$LX/log"
 mkdir -m 0700 "$LX/run"
 printf 'base=pack:app.one\nwayland=yes\naudio=yes\nx11=no\n' > "$LX/home/.config/kdos/boxes/app.one.conf"
@@ -7974,6 +14324,7 @@ if [ "$1" = inspect ]; then
         *Mounts*) printf '/run/user/%s\t%s\n' "$(id -u)" "$FAKE_MOUNT" ;;
         *ConmonPid*) echo "running $FAKE_CONMON" ;;
         *CgroupParent*) echo "" ;;
+        *State.Running*) echo "true 1767225600 0 -62135596800 0" ;;
         *) echo running ;;
     esac
     exit 0
@@ -8025,7 +14376,10 @@ lrun() {  # <boxsock mode> <mount source> — runs one launch of app.one
 LST="$LX/run/kdos/boxes/app.one.state"
 LPV="$LX/run/kdos/box/app.one"
 UIDN=$(id -u)
+LT0=$(date +%s%N)
 lrun ok "$LPV" || { echo "  FAIL  a confined launch ran"; cat "$LX/log/stderr"; kill $FAKE_CONMON; exit 1; }
+LT=$(( ($(date +%s%N) - LT0) / 1000000 ))
+[ "$LT" -lt 10000 ] || { echo "  FAIL  a launch of a ready box waits for no readiness ($LT ms)"; kill $FAKE_CONMON; exit 1; }
 grep -qx 'confinement = confined' "$LST" \
     && grep -qx 'engine      = io.kdos.appbox+private' "$LST" \
     && grep -qx 'runtime     = private' "$LST" \
@@ -8078,13 +14432,407 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$LST" ] || break; sleep 0.3; done
 test ! -e "$LST" && test ! -e "$LPV/dbus-proxy" \
     || { echo "  FAIL  the keeper clears the box's state when the box stops"; exit 1; }
 echo "  ok    and the keeper clears it all when the box stops"
+# SESSION RESTORE NEVER REMOVES A BOX WITH NO PROFILE. A distrobox somebody
+# made (kdos-fetch-app's kdos-debian) has no profile and shares the session's
+# runtime directory; restoring it is a plain `podman start`, never the
+# `podman rm` a `pack:` box over that directory is given before it is made
+# again. The fake engine proves the decision only: the `podman ps` and
+# `podman inspect` templates kdos-appbox passes are proven by the rig alone,
+# because a fake podman accepts any format string.
+RS="$SOCKD/restore-noprofile"
+rm -rf "$RS"; mkdir -p "$RS/bin" "$RS/home/.config/kdos/boxes" "$RS/state/kdos" "$RS/log"
+mkdir -m 0700 "$RS/run"
+printf 'box\tdeb\nbox\tpk\n' > "$RS/state/kdos/session-boxes"
+printf 'base=pack:app.pk\n' > "$RS/home/.config/kdos/boxes/pk.conf"
+cat > "$RS/bin/podman" <<'FAKE'
+#!/bin/bash
+echo "$*" >> "$FAKE_LOG/podman.calls"
+case "$1 $2" in
+    "container exists") exit 0 ;;
+esac
+if [ "$1" = inspect ]; then
+    case "$*" in
+        *Mounts*) printf '/run/user/%s\t%s\n' "$FAKE_UID" "$XDG_RUNTIME_DIR" ;;
+        *State.Status*) echo exited ;;
+        *) echo "" ;;
+    esac
+fi
+exit 0
+FAKE
+chmod +x "$RS/bin/podman"
+env -i PATH="$RS/bin" HOME="$RS/home" XDG_RUNTIME_DIR="$RS/run" \
+    XDG_STATE_HOME="$RS/state" XDG_CONFIG_HOME="$RS/home/.config" \
+    KDOS_PACKD_SOCKET="$RS/nopackd" FAKE_LOG="$RS/log" FAKE_UID="$(id -u)" \
+    LANG=C.UTF-8 "$OUT/kdos-appbox" session restore > "$RS/log/out" 2>&1
+grep -qx 'start deb' "$RS/log/podman.calls" \
+    && ! grep -q '^rm .*deb$' "$RS/log/podman.calls" \
+    || { echo "  FAIL  a restored box with no profile is started and never removed"; cat "$RS/log/podman.calls" "$RS/log/out"; exit 1; }
+grep -qx 'rm -f -t 0 pk' "$RS/log/podman.calls" \
+    || { echo "  FAIL  a restored pack: box over the session's runtime directory is made again"; cat "$RS/log/podman.calls" "$RS/log/out"; exit 1; }
+echo "  ok    session restore starts a box with no profile as it is, and remakes only a pack: box"
+# A FAILED `podman ps` IS AN ERROR, NOT AN EMPTY MACHINE: the rows printed
+# before the failure are listed with their real state, the row cut short is
+# not — here cut inside its last column, the shape a template error leaves —
+# and the exit status and the last line say the list is incomplete.
+cat > "$RS/bin/podman" <<'FAKE'
+#!/bin/bash
+echo "$*" >> "$FAKE_LOG/podman.calls"
+if [ "$1" = ps ]; then
+    printf 't4\trunning\t1700000000\t\nhalf\texited\t1700000001\t'
+    echo "Error: template: ps:1:53: executing \"ps\"" >&2
+    exit 125
+fi
+exit 1
+FAKE
+printf 'base=image:docker.io/library/alpine:latest\n' > "$RS/home/.config/kdos/boxes/t4.conf"
+: > "$RS/log/podman.calls"
+if env -i PATH="$RS/bin" HOME="$RS/home" XDG_RUNTIME_DIR="$RS/run" \
+    XDG_CONFIG_HOME="$RS/home/.config" FAKE_LOG="$RS/log" LANG=C.UTF-8 \
+    "$OUT/kdos-box" list --json > "$RS/log/list" 2>"$RS/log/list.err"; then
+    echo "  FAIL  a failed podman ps fails the listing"; cat "$RS/log/list" "$RS/log/list.err"; exit 1
+fi
+grep -q '"name":"t4","base":"image:docker.io/library/alpine:latest","state":"running"' "$RS/log/list" \
+    && ! grep -q '"name":"half"' "$RS/log/list" \
+    && grep -q 'Error: template' "$RS/log/list.err" \
+    && tail -n 1 "$RS/log/list.err" | grep -q 'this list is incomplete' \
+    && grep -qF '{{.Label "manager"}}' "$RS/log/podman.calls" \
+    || { echo "  FAIL  a failed podman ps keeps its rows and says the list is incomplete"; cat "$RS/log/list" "$RS/log/list.err" "$RS/log/podman.calls"; exit 1; }
+echo "  ok    a failed podman ps keeps the rows before it and says the list is incomplete"
+# A STOP REACHES AN EXEC SESSION NOBODY HERE STARTED: a `distrobox enter`
+# runs under an exec conmon (`-c <full id> … -e`), carries no KDOS_BOX and is
+# no descendant of the init, which is gone. `kdos-box stop` must end the
+# exec's process and its conmon. The stand-in conmon is a script named
+# `conmon`, so its comm and command line are what a real one shows.
+cat > "$RS/bin/podman" <<'FAKE'
+#!/bin/bash
+case "$*" in
+    *State.Pid*) echo "0 4f1c0ffee4f1c0ffee" ;;
+    *State.Status*) echo exited ;;
+esac
+exit 0
+FAKE
+cat > "$RS/bin/conmon" <<'FAKE'
+#!/bin/bash
+sleep 400 &
+echo $! > "$FAKE_LOG/exec.pid"
+wait
+FAKE
+chmod +x "$RS/bin/conmon"
+rm -f "$RS/log/exec.pid"
+FAKE_LOG="$RS/log" "$RS/bin/conmon" --api-version 1 -c 4f1c0ffee4f1c0ffee -u sess -e --exec-attach 2>/dev/null &
+RSC=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$RS/log/exec.pid" ] && break; sleep 0.2; done
+RSE=$(cat "$RS/log/exec.pid")
+env -i PATH="$RS/bin:/usr/bin:/bin" HOME="$RS/home" XDG_RUNTIME_DIR="$RS/run" \
+    LANG=C.UTF-8 "$OUT/kdos-box" stop deb > "$RS/log/stop" 2>&1 && RSRC=0 || RSRC=$?
+sleep 0.3
+if kill -0 "$RSE" 2>/dev/null || kill -0 "$RSC" 2>/dev/null || [ "$RSRC" != 0 ]; then
+    echo "  FAIL  kdos-box stop ends a foreign exec session and its conmon (rc $RSRC)"
+    cat "$RS/log/stop"; kill "$RSE" "$RSC" 2>/dev/null; exit 1
+fi
+wait "$RSC" 2>/dev/null || true
+echo "  ok    kdos-box stop ends an exec session it did not start, conmon and all"
+# A STOP REACHES WHAT THE DEAD INIT LEFT UNDER THE MAIN CONMON AND NEVER
+# SIGNALS THAT CONMON: distrobox's `sleep 15` outlives a killed init as the
+# main conmon's child, and holds the box's storage busy; the conmon waits
+# for every child before it exits, and a SIGKILLed one runs no cleanup.
+# `kdos-box stop` must end the orphan, leave the conmon, its exit command and
+# its runtime (argv[0] its `--exit-command` or first `-r`) alone, return only
+# after the conmon has gone, and then clean a box left `stopped`. The fake
+# proves the parent-chain matching alone; that a real conmon's cleanup and
+# the orphans' end release the storage is proven by the rig.
+cat > "$RS/bin/podman" <<'FAKE'
+#!/bin/bash
+echo "$*" >> "$FAKE_LOG/podman.calls"
+case "$*" in
+    *State.Pid*) echo "0 4f1c0ffee4f1c0ffee" ;;
+    *State.Status*) echo stopped ;;
+esac
+exit 0
+FAKE
+cat > "$RS/bin/conmon" <<'FAKE'
+#!/bin/bash
+case " $* " in
+*" -e "*)
+    bash -c 'trap "" TERM; sleep 402 & wait' &
+    echo $! > "$FAKE_LOG/shell.pid"
+    wait ;;
+*)
+    if [ -n "$FAKE_NS" ]; then
+        unshare -rm bash -c 'bash -c "trap \"\" TERM; exec sleep 404" &
+            echo $! > "$FAKE_LOG/grandchild.pid"; wait' &
+    else
+        sleep 400 &
+    fi
+    o=$!
+    ( exec -a /usr/bin/podman sleep 401 ) &
+    echo $! > "$FAKE_LOG/helper.pid"
+    ( exec -a /usr/bin/crun sleep 403 ) &
+    echo $! > "$FAKE_LOG/runtime.pid"
+    echo $o > "$FAKE_LOG/orphan.pid"
+    wait $o
+    echo done > "$FAKE_LOG/conmon.done" ;;
+esac
+FAKE
+chmod +x "$RS/bin/podman" "$RS/bin/conmon"
+# The exit command's own arguments carry podman's `--runtime crun` after
+# conmon's `-r /usr/bin/crun`; a value is never read as an option, so the
+# runtime child (argv[0] /usr/bin/crun) is left alone too.
+rsmain() {
+    rm -f "$RS/log/orphan.pid" "$RS/log/helper.pid" "$RS/log/runtime.pid" \
+        "$RS/log/grandchild.pid" "$RS/log/conmon.done"
+    : > "$RS/log/podman.calls"
+    FAKE_NS="$1" FAKE_LOG="$RS/log" "$RS/bin/conmon" --api-version 1 -c 4f1c0ffee4f1c0ffee -u main \
+        -r /usr/bin/crun --exit-command /usr/bin/podman --exit-command-arg --runtime \
+        --exit-command-arg crun --exit-command-arg cleanup &
+    RSC=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$RS/log/orphan.pid" ] && break; sleep 0.2; done
+    RSO=$(cat "$RS/log/orphan.pid"); RSH=$(cat "$RS/log/helper.pid"); RSR=$(cat "$RS/log/runtime.pid")
+    env -i PATH="$RS/bin:/usr/bin:/bin" HOME="$RS/home" XDG_RUNTIME_DIR="$RS/run" \
+        FAKE_LOG="$RS/log" LANG=C.UTF-8 "$OUT/kdos-box" stop deb > "$RS/log/stop" 2>&1 && RSRC=0 || RSRC=$?
+}
+rsmain ""
+if kill -0 "$RSO" 2>/dev/null || kill -0 "$RSC" 2>/dev/null || [ "$RSRC" != 0 ] \
+    || ! grep -qx done "$RS/log/conmon.done" 2>/dev/null || ! kill -0 "$RSH" 2>/dev/null \
+    || ! kill -0 "$RSR" 2>/dev/null || ! grep -qx 'container cleanup deb' "$RS/log/podman.calls"; then
+    echo "  FAIL  kdos-box stop ends the dead init's orphan and waits out the main conmon (rc $RSRC)"
+    cat "$RS/log/stop" "$RS/log/podman.calls"; kill "$RSO" "$RSH" "$RSR" "$RSC" 2>/dev/null; exit 1
+fi
+kill "$RSH" "$RSR" 2>/dev/null; wait "$RSC" 2>/dev/null || true
+echo "  ok    kdos-box stop ends the dead init's orphan, waits out the main conmon and cleans the box"
+# AN ORPHAN'S CHILD REPARENTED PAST THE CONMON IS STILL THE BOX'S: the
+# orphan here runs in a mount namespace of its own and its child ignores
+# SIGTERM, so once the orphan dies the child's chain reaches no conmon. The
+# stop must remember the namespace from its first pass and end the child.
+# Needs an unprivileged user namespace.
+if unshare -rm true 2>/dev/null; then
+    rsmain 1
+    RSG=$(cat "$RS/log/grandchild.pid" 2>/dev/null)
+    if [ -z "$RSG" ] || kill -0 "$RSG" 2>/dev/null || kill -0 "$RSC" 2>/dev/null || [ "$RSRC" != 0 ]; then
+        echo "  FAIL  kdos-box stop ends an orphan's child reparented past the main conmon (rc $RSRC)"
+        cat "$RS/log/stop"; kill -9 "$RSG" "$RSO" "$RSC" 2>/dev/null; kill "$RSH" "$RSR" 2>/dev/null; exit 1
+    fi
+    kill "$RSH" "$RSR" 2>/dev/null; wait "$RSC" 2>/dev/null || true
+    echo "  ok    kdos-box stop ends an orphan's child reparented past the main conmon"
+else
+    echo "  skip  kdos-box stop and a reparented orphan's child: no unprivileged user namespace here"
+fi
+# A HANG-UP COMES FIRST TO AN EXEC SESSION: an interactive shell, here one
+# that ignores SIGTERM as `kdos-box enter`'s does, ends on the SIGHUP a
+# closed terminal sends, so the stop takes no grace period.
+rm -f "$RS/log/shell.pid"
+FAKE_LOG="$RS/log" "$RS/bin/conmon" --api-version 1 -c 4f1c0ffee4f1c0ffee -u sess -e --exec-attach 2>/dev/null &
+RSC=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$RS/log/shell.pid" ] && break; sleep 0.2; done
+RSE=$(cat "$RS/log/shell.pid")
+RST=$(date +%s%N)
+env -i PATH="$RS/bin:/usr/bin:/bin" HOME="$RS/home" XDG_RUNTIME_DIR="$RS/run" \
+    FAKE_LOG="$RS/log" LANG=C.UTF-8 "$OUT/kdos-box" stop deb > "$RS/log/stop" 2>&1 && RSRC=0 || RSRC=$?
+RST=$(( ($(date +%s%N) - RST) / 1000000 ))
+if kill -0 "$RSE" 2>/dev/null || kill -0 "$RSC" 2>/dev/null || [ "$RSRC" != 0 ] || [ "$RST" -ge 3000 ]; then
+    echo "  FAIL  kdos-box stop hangs up an exec shell that ignores SIGTERM (rc $RSRC, $RST ms)"
+    cat "$RS/log/stop"; kill -9 "$RSE" "$RSC" 2>/dev/null; exit 1
+fi
+wait "$RSC" 2>/dev/null || true
+echo "  ok    kdos-box stop hangs up an exec shell that ignores SIGTERM, in $RST ms"
+# AN ORPHAN THE INIT LEAVES AS IT DIES IS ENDED IN THE WAIT, NOT WAITED OUT:
+# the init lives through the first SIGTERM pass, dies on `podman kill`, and
+# only then does a new child appear under the main conmon, as distrobox's
+# `sleep 15` does on a box stopped while its entrypoint is still at work.
+# The stop must end it within a waiting pass, well before the grace is out,
+# and leave the exit command and the runtime alone.
+cat > "$RS/bin/podman" <<'FAKE'
+#!/bin/bash
+echo "$*" >> "$FAKE_LOG/podman.calls"
+i=$(cat "$FAKE_LOG/init.pid" 2>/dev/null)
+case "$*" in
+    *State.Pid*) if kill -0 "$i" 2>/dev/null; then echo "$i 4f1c0ffee4f1c0ffee"; else echo "0 4f1c0ffee4f1c0ffee"; fi ;;
+    *State.Status*) if kill -0 "$i" 2>/dev/null; then echo running; else echo stopped; fi ;;
+    "kill --signal TERM deb") kill -TERM "$i" ;;
+    "kill --signal KILL deb") kill -KILL "$i" ;;
+esac
+exit 0
+FAKE
+cat > "$RS/bin/conmon" <<'FAKE'
+#!/bin/bash
+bash -c 'trap "exit 0" TERM; while :; do sleep 0.1; done' &
+i=$!
+echo $i > "$FAKE_LOG/init.pid"
+( exec -a /usr/bin/podman sleep 401 ) &
+echo $! > "$FAKE_LOG/helper.pid"
+( exec -a /usr/bin/crun sleep 403 ) &
+echo $! > "$FAKE_LOG/runtime.pid"
+wait $i
+sleep 405 &
+echo $! > "$FAKE_LOG/orphan.pid"
+wait $!
+echo done > "$FAKE_LOG/conmon.done"
+FAKE
+chmod +x "$RS/bin/podman" "$RS/bin/conmon"
+rm -f "$RS/log/init.pid" "$RS/log/orphan.pid" "$RS/log/helper.pid" "$RS/log/runtime.pid" "$RS/log/conmon.done"
+: > "$RS/log/podman.calls"
+FAKE_LOG="$RS/log" "$RS/bin/conmon" --api-version 1 -c 4f1c0ffee4f1c0ffee -u main \
+    -r /usr/bin/crun --exit-command /usr/bin/podman --exit-command-arg cleanup 2>/dev/null &
+RSC=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$RS/log/runtime.pid" ] && break; sleep 0.2; done
+RSH=$(cat "$RS/log/helper.pid"); RSR=$(cat "$RS/log/runtime.pid")
+RST=$(date +%s%N)
+env -i PATH="$RS/bin:/usr/bin:/bin" HOME="$RS/home" XDG_RUNTIME_DIR="$RS/run" \
+    FAKE_LOG="$RS/log" LANG=C.UTF-8 "$OUT/kdos-box" stop deb > "$RS/log/stop" 2>&1 && RSRC=0 || RSRC=$?
+RST=$(( ($(date +%s%N) - RST) / 1000000 ))
+RSO=$(cat "$RS/log/orphan.pid" 2>/dev/null)
+if [ -z "$RSO" ] || kill -0 "$RSO" 2>/dev/null || kill -0 "$RSC" 2>/dev/null || [ "$RSRC" != 0 ] \
+    || [ "$RST" -ge 3000 ] || ! kill -0 "$RSH" 2>/dev/null || ! kill -0 "$RSR" 2>/dev/null; then
+    echo "  FAIL  kdos-box stop ends an orphan the init leaves as it dies, in the wait (rc $RSRC, $RST ms)"
+    cat "$RS/log/stop" "$RS/log/podman.calls"; kill -9 "$RSO" "$RSC" 2>/dev/null; kill "$RSH" "$RSR" 2>/dev/null; exit 1
+fi
+kill "$RSH" "$RSR" 2>/dev/null; wait "$RSC" 2>/dev/null || true
+echo "  ok    kdos-box stop ends an orphan the init leaves as it dies, in $RST ms"
+# ENTER IN PLACE AS A TERMINAL'S OWN PROGRAM: `konsole -e kdos-box enter t4`
+# makes kdos-box the leader of the terminal's session, and the enter runs
+# there under a `<box> — KDOS box` title instead of opening a second window.
+# Typed at a shell in a terminal (not its session's leader) it opens the
+# accent's Konsole; `--window` opens it with no terminal at all. `script`
+# gives each its pty and session; `exec` makes the command that session's
+# leader whatever shell `script` runs.
+if command -v script >/dev/null 2>&1; then
+    RE="$SOCKD/enter-own"
+    rm -rf "$RE"; mkdir -p "$RE/bin" "$RE/home" "$RE/log"; mkdir -m 0700 "$RE/run"
+    cat > "$RE/bin/podman" <<'FAKE'
+#!/bin/bash
+echo "$*" >> "$FAKE_LOG/podman.calls"
+case "$*" in
+    *State.Status*) echo running ;;
+    *State.Running*) echo "true 1767225600 0 -62135596800 0" ;;
+    "logs "*" t4") echo container_setup_done ;;
+    "exec "*" test -e "*) exit 1 ;;
+    exec*) echo "$*" > "$FAKE_LOG/exec" ;;
+esac
+exit 0
+FAKE
+    printf '#!/bin/bash\necho "$*" > "$FAKE_LOG/konsole"\necho konsole-stdout-line\necho konsole-stderr-line >&2\n' > "$RE/bin/konsole"
+    chmod +x "$RE/bin/podman" "$RE/bin/konsole"
+    reenter() {
+        rm -f "$RE/log/exec" "$RE/log/konsole"
+        env -i PATH="$RE/bin:/usr/bin:/bin" HOME="$RE/home" XDG_RUNTIME_DIR="$RE/run" \
+            FAKE_LOG="$RE/log" LANG=C.UTF-8 SHELL=/bin/sh \
+            script -qec "$1" /dev/null < /dev/null > "$RE/log/tty" 2>&1
+    }
+    ln -sf "$OUT/kdos-box" "$RE/bin/kdos-box"
+    reenter 'exec kdos-box enter t4'
+    grep -q -- '--tty .*--env=KDOS_BOX=t4 t4 /bin/bash -l$' "$RE/log/exec" 2>/dev/null \
+        && test ! -e "$RE/log/konsole" \
+        && grep -qF "$(printf '\033]30;t4 — KDOS box\007\033]0;t4 — KDOS box\007')" "$RE/log/tty" \
+        || { echo "  FAIL  enter as a terminal's own program runs in place under the box's title"; cat "$RE/log/tty" "$RE/log/exec" "$RE/log/konsole" 2>/dev/null; exit 1; }
+    reenter 'kdos-box enter t4; true'
+    grep -q -- '--separate .*LocalTabTitleFormat=t4 — KDOS box -e kdos-box enter t4 --shell$' "$RE/log/konsole" 2>/dev/null \
+        && test ! -e "$RE/log/exec" \
+        || { echo "  FAIL  enter typed at a terminal's shell opens the accent's window"; cat "$RE/log/tty" "$RE/log/konsole" 2>/dev/null; exit 1; }
+    # The window's Konsole writes to its own window, never the caller's.
+    ! grep -q 'konsole-std' "$RE/log/tty" \
+        || { echo "  FAIL  the box window's Konsole writes into the calling terminal"; cat "$RE/log/tty"; exit 1; }
+    mkdir -p "$RE/nok"; ln -sf "$RE/bin/podman" "$RE/nok/podman"; ln -sf "$OUT/kdos-box" "$RE/nok/kdos-box"
+    reenter "PATH=$RE/nok kdos-box enter t4; true"
+    grep -q 'konsole: not found' "$RE/log/tty" \
+        || { echo "  FAIL  enter with no konsole says so in the calling terminal"; cat "$RE/log/tty"; exit 1; }
+    rm -f "$RE/log/exec" "$RE/log/konsole"
+    env -i PATH="$RE/bin:/usr/bin:/bin" HOME="$RE/home" XDG_RUNTIME_DIR="$RE/run" \
+        FAKE_LOG="$RE/log" LANG=C.UTF-8 setsid "$OUT/kdos-box" enter t4 --window < /dev/null > "$RE/log/tty" 2>&1
+    grep -q -- '-e kdos-box enter t4 --shell$' "$RE/log/konsole" 2>/dev/null && test ! -e "$RE/log/exec" \
+        || { echo "  FAIL  enter --window opens the accent's window with no terminal"; cat "$RE/log/tty" 2>/dev/null; exit 1; }
+    echo "  ok    enter runs in place as a terminal's own program, and opens the accent's window from a shell or --window, whose output stays out of the caller's terminal"
+    # A box not yet set up (t6: its logs never say container_setup_done)
+    # gets its window at once: the window case asks podman nothing about its
+    # setup, which the window's own --shell re-entry waits for.
+    rm -f "$RE/log/podman.calls"
+    WT0=$(date +%s%N)
+    reenter 'kdos-box enter t6; true'
+    WT=$(( ($(date +%s%N) - WT0) / 1000000 ))
+    grep -q -- '-e kdos-box enter t6 --shell$' "$RE/log/konsole" 2>/dev/null \
+        && ! grep -q '^logs t6' "$RE/log/podman.calls" && [ "$WT" -lt 1000 ] \
+        || { echo "  FAIL  enter on a box not set up opens its window at once ($WT ms)"; cat "$RE/log/tty" "$RE/log/podman.calls" 2>/dev/null; exit 1; }
+    rm -f "$RE/log/podman.calls" "$RE/log/konsole"
+    env -i PATH="$RE/bin:/usr/bin:/bin" HOME="$RE/home" XDG_RUNTIME_DIR="$RE/run" \
+        FAKE_LOG="$RE/log" LANG=C.UTF-8 setsid "$OUT/kdos-box" enter t6 --window < /dev/null > "$RE/log/tty" 2>&1
+    grep -q -- '-e kdos-box enter t6 --shell$' "$RE/log/konsole" 2>/dev/null \
+        && ! grep -q '^logs t6' "$RE/log/podman.calls" \
+        || { echo "  FAIL  enter --window on a box not set up opens its window without waiting"; cat "$RE/log/tty" "$RE/log/podman.calls" 2>/dev/null; exit 1; }
+    # The window's re-entry is where the wait happens; one the time runs out
+    # on holds the window until Enter, so its line is read before it closes.
+    rm -f "$RE/log/exec"
+    WT0=$(date +%s%N)
+    env -i PATH="$RE/bin:/usr/bin:/bin" HOME="$RE/home" XDG_RUNTIME_DIR="$RE/run" \
+        FAKE_LOG="$RE/log" LANG=C.UTF-8 SHELL=/bin/sh KDOS_BOX_SETUP_WAIT=1 \
+        script -qec 'kdos-box enter t6 --shell' /dev/null < <(sleep 3; echo) > "$RE/log/tty" 2>&1 || true
+    WT=$(( ($(date +%s%N) - WT0) / 1000000 ))
+    [ "$WT" -ge 2500 ] && grep -q 'kdos-box: setting up t6 for its first use' "$RE/log/tty" \
+        && grep -q 'kdos-box: t6 did not finish setting up in 1 s' "$RE/log/tty" \
+        && grep -q 'press Enter to close' "$RE/log/tty" && test ! -e "$RE/log/exec" \
+        || { echo "  FAIL  the window's re-entry waits, and holds the window on a wait that runs out ($WT ms)"; cat "$RE/log/tty"; exit 1; }
+    echo "  ok    enter on a box not set up opens its window at once, and the window waits and holds on a timeout"
+else
+    echo "  skip  enter and its terminal: no script(1) here"
+fi
+# A STOP ENDS THE LAUNCHES STILL WAITING FOR THE BOX: a `kdos-box run` and a
+# launcher's `kdos-appbox -b <box> run` whose box never says it is ready sit
+# in the readiness wait, in this program's own mount namespace, each holding
+# its wait mark, and `kdos-box stop` must end both within the stop rather
+# than leave them to launch after the next start. A third launch that finds
+# the box `stopping` runs box_unstick, which must not end the other two.
+SW="$SOCKD/stopwrap"
+SWB="sw"
+rm -rf "$SW"; mkdir -p "$SW/bin" "$SW/home/.config/kdos/boxes" "$SW/log"
+mkdir -m 0700 "$SW/run"
+printf 'base=image:docker.io/library/alpine:latest\n' > "$SW/home/.config/kdos/boxes/$SWB.conf"
+echo running > "$SW/log/state"
+cat > "$SW/bin/podman" <<'FAKE'
+#!/bin/bash
+case "$1 $2" in
+    "container exists") exit 0 ;;
+    "logs "*) exit 0 ;;
+    "kill "*) echo exited > "$FAKE_LOG/state"; exit 0 ;;
+esac
+if [ "$1" = inspect ]; then
+    case "$*" in
+        *State.Pid*) echo 0 ;;
+        *) cat "$FAKE_LOG/state" ;;
+    esac
+fi
+exit 0
+FAKE
+chmod +x "$SW/bin/podman"
+ln -sf "$OUT/kdos-box" "$SW/bin/kdos-box"
+ln -sf "$OUT/kdos-appbox" "$SW/bin/kdos-appbox"
+swenv() { env -i PATH="$SW/bin:/usr/bin:/bin" HOME="$SW/home" XDG_RUNTIME_DIR="$SW/run" \
+    KDOS_PACKD_SOCKET="$SW/nopackd" FAKE_LOG="$SW/log" LANG=C.UTF-8 "$@"; }
+swalive() { kill -0 "$1" 2>/dev/null && [ "$(awk '{print $3}' /proc/"$1"/stat 2>/dev/null)" != Z ]; }
+swenv kdos-box run "$SWB" sleep 333 >/dev/null 2>&1 & SWP=$!
+swenv kdos-appbox -b "$SWB" -l "$SWB" run sleep 333 >/dev/null 2>&1 & SWL=$!
+sleep 1
+swalive $SWP && swalive $SWL \
+    || { echo "  FAIL  a run over a box that is not ready waits for it"; kill $SWP $SWL 2>/dev/null; exit 1; }
+echo stopping > "$SW/log/state"
+swenv kdos-box run "$SWB" sleep 334 >/dev/null 2>&1 & SWU=$!
+for _ in $(seq 50); do [ "$(cat "$SW/log/state")" = exited ] && break; sleep 0.1; done
+sleep 1
+swalive $SWP && swalive $SWL \
+    || { echo "  FAIL  a launch unsticking the box leaves the other launches waiting"; kill $SWP $SWL $SWU 2>/dev/null; exit 1; }
+swenv kdos-box stop "$SWB" > "$SW/log/stop" 2>&1 \
+    || { echo "  FAIL  kdos-box stop of a box with waiting launches"; cat "$SW/log/stop"; kill $SWP $SWL $SWU 2>/dev/null; exit 1; }
+for swp in $SWP $SWL $SWU; do
+    if swalive $swp; then
+        echo "  FAIL  kdos-box stop ends every launch still waiting for the box"; kill $SWP $SWL $SWU 2>/dev/null; exit 1
+    fi
+done
+wait $SWP $SWL $SWU 2>/dev/null || true
+echo "  ok    a stop ends the launches still waiting for the box, and an unstick does not"
 
 echo
 echo "==> a throwaway box gets one file, no network and nothing of the host, then goes"
 # The same fakes, and a kdos-packd stand-in that composes anything: what is
 # checked is the container kdos-appbox asks for (plan 7.3.5) and that every
 # trace of it is gone once the application exits.
-TW="$OUT/tw"
+TW="$SOCKD/tw"
 rm -rf "$TW"; mkdir -p "$TW/bin" "$TW/home/.config/kdos/boxes" "$TW/log" \
     "$TW/home/.local/share/applications" "$TW/docs"
 mkdir -m 0700 "$TW/run"
@@ -8119,6 +14867,7 @@ case "$1" in
             *Mounts*) printf '/run/user/%s\t%s\n' "$(id -u)" "$XDG_RUNTIME_DIR/kdos/box/$last" ;;
             *ConmonPid*) echo "running $FAKE_CONMON" ;;
             *CgroupParent*) echo "" ;;
+            *State.Running*) echo "true 1767225600 0 -62135596800 0" ;;
             *) echo running ;;
         esac
         exit 0 ;;
@@ -8350,7 +15099,7 @@ echo "==> kdos hey and kdos appid read KWin's window list, and say when there is
 # an entry by file ID — a NoDisplay entry is a match, because the Task
 # Manager resolves a window to it all the same, and Hidden=true is a deleted
 # entry that matches nothing.
-_ah="$OUT/appid-home"
+_ah="$SOCKD/appid-home"
 rm -rf "$_ah"
 mkdir -p "$_ah/share/applications" "$_ah/run"
 ln -sf kdos-tools "$OUT/kdos"
@@ -8532,6 +15281,61 @@ if [ "$_have_kit" = 1 ]; then
 fi
 echo "  an edit, a deletion, a missing installed file and a failed floor all caught"
 rm -rf "$AH"
+
+echo "==> kdos theme --from-plasma --account brings the account alone into step"
+# kded-kdos's first-login run: the account's accent is written and the
+# machine's half — kdos-power accent, which writes /etc/kdos/accent, the
+# greeter, the boot menu and the splash — is never called; the same run
+# without --account calls it. No session bus is reachable here, so both runs
+# report that and exit 1; the steps around it still run. The home starts as
+# /etc/skel's does, with the image's accent file already in it, so kded-kdos
+# cannot take a first login from that file: it takes it from a marker under
+# $XDG_STATE_HOME, which the skeleton's own `kdos theme` must not write.
+FA="$OUT/account-home"
+rm -rf "$FA"
+mkdir -p "$FA/.config/kdos" "$FA/bin" "$FA/root/etc/kdos"
+echo amber > "$FA/root/etc/kdos/accent"
+printf bone > "$FA/.config/kdos/accent"
+cp testing/fixtures/kdos-command/kwriteconfig6 "$FA/bin/"
+printf '#!/bin/sh\n[ "$1" = accent ] && echo "$2" > "$KDOS_FAKE_ROOT/etc/kdos/accent"\n' > "$FA/bin/kdos-power"
+chmod +x "$FA/bin/kdos-power"
+fa_run() {
+    env -i PATH="$FA/bin:$OUT:/usr/bin:/bin" HOME="$FA" XDG_CONFIG_HOME="$FA/.config" \
+        XDG_DATA_HOME="$FA/.local/share" XDG_CACHE_HOME="$FA/.cache" XDG_CONFIG_DIRS="$FA/xdg" \
+        XDG_DATA_DIRS="$FA/share" XDG_RUNTIME_DIR="$FA/none" TMPDIR="$OUT" \
+        XDG_STATE_HOME="$FA/.local/state" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$FA/none/bus" KDOS_FAKE_ROOT="$FA/root" \
+        "$OUT/kdos" theme "$@" > "$FA/out" 2>&1 || return $?
+}
+fa_run bone || true
+[ -e "$FA/.local/state/kdos/accent-synced" ] \
+    && { echo "  kdos theme wrote kded-kdos's first-login marker; /etc/skel would carry it"; exit 1; }
+echo amber > "$FA/root/etc/kdos/accent"
+fa_run --from-plasma --account phosphor || true
+[ "$(cat "$FA/.config/kdos/accent" 2>/dev/null)" = phosphor ] \
+    || { echo "  --account did not write the account's accent: $(cat "$FA/out")"; exit 1; }
+[ "$(cat "$FA/root/etc/kdos/accent")" = amber ] \
+    || { echo "  --account changed the machine's accent"; exit 1; }
+grep -q 'boot menu' "$FA/out" && { echo "  --account spoke of the machine's half: $(cat "$FA/out")"; exit 1; }
+fa_run --from-plasma phosphor || true
+[ "$(cat "$FA/root/etc/kdos/accent")" = phosphor ] \
+    || { echo "  --from-plasma without --account did not reach the machine's half"; exit 1; }
+_rc=0; fa_run --from-plasma --account || _rc=$?
+[ "$_rc" = 2 ] || { echo "  --account with no accent exited $_rc, not 2"; exit 1; }
+# The installer's form: `--account` alone, outside a session. The home's
+# half and the next login's global theme; the machine's half never.
+echo amber > "$FA/root/etc/kdos/accent"
+fa_run --account ice || { echo "  --account outside a session failed: $(cat "$FA/out")"; exit 1; }
+[ "$(cat "$FA/.config/kdos/accent")" = ice ] \
+    || { echo "  --account did not write the account's accent"; exit 1; }
+grep -q '^LookAndFeelPackage=org.kdos.ice.desktop$' "$FA/.config/kdeglobals" \
+    || { echo "  --account outside a session did not name the next login's theme"; exit 1; }
+[ "$(cat "$FA/root/etc/kdos/accent")" = amber ] \
+    || { echo "  --account outside a session changed the machine's accent"; exit 1; }
+_rc=0; fa_run --account || _rc=$?
+[ "$_rc" = 2 ] || { echo "  --account with no accent exited $_rc, not 2"; exit 1; }
+rm -rf "$FA"
+echo "  the account's accent written, the machine's left; without --account both"
 
 echo
 echo "==> kdos theme in a session moves only what is KDOS's, and phosphor puts every key back"
@@ -8716,8 +15520,16 @@ assert d["desk"] == "dock" and d["undo"] and d["panels_edited"] is False, d' || 
 [ "$(kdos desk)" = kdos ] || fail "undo did not give the earlier desk back"
 _rc=0; kdos desk undo 2>"$SH/err" || _rc=$?
 [ "$_rc" = 1 ] && grep -qx 'nothing to undo' "$SH/err" || fail "a second undo exited $_rc"
+printf '[Desk]\nLaidOut=1\n' > .config/kdosrc
+printf 'bottom|left|org.kde.plasma.kickoff=/\nlost\n' > "$SH/panels"
+kdos desk status --json | python3 -c '
+import json, sys; assert json.load(sys.stdin)["panels_edited"] is True' || fail "a desk that lost its settings reads as untouched"
+grep -q '^LaidOutPanels=' .config/kdosrc && fail "a lost desk was recorded as laid out"
+rm -f "$SH/panels"
 kdos notify "build done" "it took long" || fail "notify failed"
 grep -qx 'Notify build done | it took long' "$KDOS_FAKE_LOG" || fail "the notification was not sent"
+grep -qx 'NotifyAppname kdos' "$KDOS_FAKE_LOG" || fail "notify names no notifyrc, so Plasma keeps it out of the history"
+grep -qx 'NotifySender KDOS Tools' "$KDOS_FAKE_LOG" || fail "notify's sender is not kdos.notifyrc's name, so the history splits into two groups"
 _rc=0; kdos notify --dismiss 2>/dev/null || _rc=$?; [ "$_rc" = 2 ] || fail "a dropped notify verb exited $_rc"
 kdos menu summon setup.network && grep -qx 'querySingleRunner kdos route:setup.network' "$KDOS_FAKE_LOG" \
     || fail "the route did not reach KRunner"
@@ -8730,6 +15542,10 @@ kdos toggle night-light on > /dev/null && grep -qx 'Active=true' .config/kwinrc 
     grep -qx 'Mode=Constant' .config/kwinrc || fail "night light on did not write Active and Mode"
 grep -q invokeShortcut "$KDOS_FAKE_LOG" && fail "night light on pressed KWin's suspend key"
 kdos toggle | grep -q '^night-light  *on' || fail "night light does not read back on"
+if command -v gdbus >/dev/null 2>&1; then
+    for _i in $(seq 50); do grep -q '^Notify Night Light on |' "$KDOS_FAKE_LOG" && break; sleep 0.1; done
+    grep -q '^Notify Night Light on |' "$KDOS_FAKE_LOG" || fail "the toggle's notification is not titled with its label"
+fi
 kdos toggle night-light on > /dev/null && grep -qx 'Active=true' .config/kwinrc || fail "a second on"
 python3 -c 'import dbus; dbus.SessionBus().get_object("org.kde.kglobalaccel", "/component/kwin").invokeShortcut("Toggle Night Color", dbus_interface="org.kde.kglobalaccel.Component")'
 kdos toggle | grep -q '^night-light  *off' || fail "a suspended night light reads as on"
@@ -8738,6 +15554,15 @@ kdos toggle night-light on > /dev/null && grep -qx 'invokeShortcut Toggle Night 
     kdos toggle | grep -q '^night-light  *on' || fail "night light on did not lift the suspension"
 kdos toggle night-light off > /dev/null && grep -qx 'Active=false' .config/kwinrc || fail "night light off"
 kdos toggle | grep -q '^night-light  *off' || fail "night light does not read back off"
+if command -v gdbus >/dev/null 2>&1; then
+    # The body says what the new state does, so the off toast never repeats
+    # the on one's text.
+    for _i in $(seq 50); do grep -q '^Notify Night Light off |' "$KDOS_FAKE_LOG" && break; sleep 0.1; done
+    grep -qx 'Notify Night Light on | the screen is warmed now and all day' "$KDOS_FAKE_LOG" \
+        || fail "the night light on toast does not say what on does"
+    grep -qx 'Notify Night Light off | the screen is back to its normal colours' "$KDOS_FAKE_LOG" \
+        || fail "the night light off toast does not say what off does"
+fi
 kdos toggle night-light > /dev/null && grep -qx 'Active=true' .config/kwinrc || fail "the night light flip"
 kdos toggle night-light off > /dev/null
 export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
@@ -8757,12 +15582,34 @@ SHEOF
     env -i PATH="$SH/bin:$OUT:/usr/bin:/bin" HOME="$SH" XDG_CONFIG_HOME="$SH/.config" \
         XDG_DATA_HOME="$SH/.local/share" XDG_CACHE_HOME="$SH/.cache" \
         XDG_CONFIG_DIRS="$SH/xdg" XDG_RUNTIME_DIR="$SH/run" \
-        KDOS_FAKE_LOG="$SH/log" KDOS_FAKE_READY="$SH/ready" \
+        KDOS_FAKE_LOG="$SH/log" KDOS_FAKE_READY="$SH/ready" FAKE_PANELS="$SH/panels" \
         SH="$SH" FIX="$PWD/testing/fixtures/kdos-command" \
         dbus-run-session -- bash "$SH/run.sh" || exit 1
     rm -rf "$SH"
     echo "  tiling, desks and undo, notify, KRunner, the panel, the toggles, and the zone, name, locale and keymap"
 fi
+
+echo
+echo "==> every kdos verb answers --help with its usage on stdout and 0"
+# The verbs are read out of kdos_main()'s dispatch, so a new one is asked too:
+# one whose --help acts instead of printing (`why` looking up a port named
+# --help) belongs in kdos.c's USAGE table.
+_hh="$OUT/help-home"
+rm -rf "$_hh"; mkdir -p "$_hh"
+for _v in $(grep -o '!strcmp(cmd, "[a-z-]*")' src/system/kdos-tools/kdos.c |
+            cut -d'"' -f2 | sort -u); do
+    case $_v in help|-h|--help) continue ;; esac
+    for _h in --help -h; do
+        _rc=0
+        _out=$(env -i HOME="$_hh" PATH=/usr/bin:/bin timeout 10 "$OUT/kdos" "$_v" "$_h" 2>/dev/null </dev/null) || _rc=$?
+        [ "$_rc" = 0 ] && printf '%s\n' "$_out" | grep -q '^usage:' ||
+            { echo "  kdos $_v $_h exited $_rc, stdout: ${_out%%$'\n'*}"; exit 1; }
+    done
+done
+_rc=0; _out=$(env -i HOME="$_hh" PATH=/usr/bin:/bin "$OUT/kdos" nosuchverb --help 2>/dev/null) || _rc=$?
+[ "$_rc" = 1 ] && [ -z "$_out" ] || { echo "  an unknown verb with --help exited $_rc"; exit 1; }
+rm -rf "$_hh"
+echo "  each verb's usage, and an unknown verb is still an error"
 
 echo
 echo "==> kdos backup run hands restic the configuration as written, and refuses a readable password"
@@ -8827,36 +15674,46 @@ echo
 echo "==> kdos privacy names who holds the microphone, the camera and the screen"
 # testing/fixtures/kdos-command/pw-dump is PipeWire's dump, faked: a muted
 # microphone stream named by its client, a camera and a screen cast each read
-# by one stream, KWin's screencast output stream read by Spectacle, another
-# program's video output stream read by OBS, which is no screen cast, and an
-# idle stream that is no capture at all.
+# by one stream, KWin's screencast output stream read by Spectacle, by the
+# shell, whose task thumbnail is no screen capture, and by a stream that only
+# calls itself plasmashell, which is one; another program's video output
+# stream read by OBS, which is no screen cast, and an idle stream that is no
+# capture at all. The shell is a live sleep standing in for its binary: the
+# fixture's pipewire.sec.pid 4646 becomes the sleep, and the impostor's 4747
+# this shell.
 PH="$OUT/privacy"
 rm -rf "$PH"; mkdir -p "$PH/bin"
 for _p in pw-cli wpctl; do
     printf '#!/bin/sh\necho "%s $*" >> "$KDOS_FAKE_LOG"\n' "$_p" > "$PH/bin/$_p"
     chmod +x "$PH/bin/$_p"
 done
-pv() { env KDOS_FAKE_LOG="$PH/log" PATH="$PH/bin:$PWD/testing/fixtures/kdos-command:$PATH" "$OUT/kdos" privacy "$@"; }
+sleep 60 >/dev/null 2>&1 & _shell=$!
+sed -e "s/\"pipewire.sec.pid\": 4646/\"pipewire.sec.pid\": $_shell/" \
+    -e "s/\"pipewire.sec.pid\": 4747/\"pipewire.sec.pid\": $$/" \
+    testing/fixtures/kdos-command/pw-dump.json > "$PH/pw.json"
+pv() { env KDOS_FAKE_LOG="$PH/log" KDOS_FAKE_PW="$PH/pw.json" KDOS_PRIVACY_SHELL="/proc/$_shell/exe" \
+    PATH="$PH/bin:$PWD/testing/fixtures/kdos-command:$PATH" "$OUT/kdos" privacy "$@"; }
 pv --json | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 assert d["version"] == 1, d
 assert [(e["id"], e["app"], e["muted"], e["mutable"]) for e in d["mic"]] == [("pw:40", "Firefox", True, True)], d["mic"]
 assert [(e["id"], e["app"], e["stoppable"]) for e in d["camera"]] == [("pw:50:52", "OBS Studio", True)], d["camera"]
-assert [(e["id"], e["app"]) for e in d["screen"]] == [("pw:60:61", "OBS Studio"), ("pw:70:72", "spectacle")], d["screen"]
-assert [e["stoppable"] for e in d["screen"]] == [True, True], d["screen"]' \
+assert [(e["id"], e["app"]) for e in d["screen"]] == [("pw:60:61", "OBS Studio"), ("pw:70:72", "spectacle"), ("pw:70:79", "plasmashell")], d["screen"]
+assert [e["stoppable"] for e in d["screen"]] == [True, True, True], d["screen"]' \
     || { echo "  the three lists are not what PipeWire holds"; exit 1; }
 # --watch says the state at once, then again at each change the monitor
 # sends: here the camera's link going away a second in.
-timeout 3 env KDOS_FAKE_LOG="$PH/log" PATH="$PH/bin:$PWD/testing/fixtures/kdos-command:$PATH" \
+timeout 3 env KDOS_FAKE_LOG="$PH/log" KDOS_FAKE_PW="$PH/pw.json" KDOS_PRIVACY_SHELL="/proc/$_shell/exe" \
+    PATH="$PH/bin:$PWD/testing/fixtures/kdos-command:$PATH" \
     "$OUT/kdos" privacy --watch --json > "$PH/watch" || true
 python3 -c '
 import json, sys
 L = [json.loads(l) for l in open(sys.argv[1])]
 assert len(L) == 3, L
 assert L[0]["camera"] == [] and L[0]["screen"] == [], L[0]
-assert [e["id"] for e in L[1]["camera"]] == ["pw:50:52"] and len(L[1]["screen"]) == 2, L[1]
-assert L[2]["camera"] == [] and len(L[2]["screen"]) == 2, L[2]' "$PH/watch" \
+assert [e["id"] for e in L[1]["camera"]] == ["pw:50:52"] and len(L[1]["screen"]) == 3, L[1]
+assert L[2]["camera"] == [] and len(L[2]["screen"]) == 3, L[2]' "$PH/watch" \
     || { echo "  --watch did not follow the monitor"; cat "$PH/watch"; exit 1; }
 pv unmute pw:40 && pv stop pw:50:52 || { echo "  an action failed"; exit 1; }
 grep -qx 'wpctl set-mute 40 0' "$PH/log" && grep -qx 'pw-cli destroy 52' "$PH/log" \
@@ -8865,8 +15722,9 @@ _rc=0; pv stop pw:40 2>/dev/null || _rc=$?
 [ "$_rc" = 1 ] || { echo "  stopping a microphone stream exited $_rc"; exit 1; }
 _rc=0; pv stop -x 2>/dev/null || _rc=$?
 [ "$_rc" = 2 ] || { echo "  an id starting with - exited $_rc"; exit 1; }
+kill "$_shell" 2>/dev/null; wait "$_shell" 2>/dev/null || true
 rm -rf "$PH"
-echo "  named by client, KWin's casts as the screen, followed by --watch, muted and stopped through PipeWire's own tools"
+echo "  named by client, KWin's casts as the screen but the shell's thumbnail, followed by --watch, muted and stopped through PipeWire's own tools"
 
 echo
 echo "==> kdos places adds to KDE's Places file, and never makes one"
@@ -8951,13 +15809,28 @@ assert opt(d["device"]) and opt(d["type"]) and opt(d["medium"]), d
 assert isinstance(d["writable"], bool), d
 assert isinstance(d["candidates"], list) and all(isinstance(c, str) for c in d["candidates"]), d' \
     || { echo "  persist --json is not the contract"; exit 1; }
-# Klipper's Read Aloud action exists exactly while a voice does, and the
+# Klipper's Read Aloud action exists exactly while piper and a voice both do, and the
 # person's own action is kept, byte for byte, through an add and a remove.
 mkdir -p "$CH/.local/share/piper/voices"
 : > "$CH/.local/share/piper/voices/v.onnx"; : > "$CH/.local/share/piper/voices/v.onnx.json"
 printf '[Action_0]\nAutomatic=true\nDescription=Mine\nNumber of commands=1\nRegexp=^x\n\n[Action_0/Command_0]\nCommandline=echo %%s\nDescription=Echo\nEnabled=true\nIcon=\nOutput=0\n\n[General]\nNumber of Actions=1\n' \
     > "$CH/.config/klipperrc"
 cp "$CH/.config/klipperrc" "$CH/klipperrc.0"
+# Without piper a voice is not enough: no Read Aloud, and `say` names the port.
+if ! PATH="$CH/bin:$OUT:$PATH" command -v piper >/dev/null; then
+    ck speech sync >/dev/null && cmp -s "$CH/klipperrc.0" "$CH/.config/klipperrc" \
+        || { echo "  Read Aloud was added with no piper to speak"; exit 1; }
+    _rc=0; ck speech say hello 2> "$CH/say.err" || _rc=$?
+    [ "$_rc" = 1 ] && grep -q 'piper is not installed — sudo kdos update install piper' "$CH/say.err" \
+        || { echo "  say without piper exited $_rc: $(cat "$CH/say.err")"; exit 1; }
+fi
+# Without whisper-cli `get` fetches nothing and names the port.
+if ! PATH="$CH/bin:$OUT:$PATH" command -v whisper-cli >/dev/null; then
+    _rc=0; ck speech get base.en > /dev/null 2> "$CH/get.err" || _rc=$?
+    [ "$_rc" = 1 ] && grep -q 'whisper.cpp is not installed — sudo kdos update install whisper.cpp' "$CH/get.err" \
+        || { echo "  get without whisper-cli exited $_rc: $(cat "$CH/get.err")"; exit 1; }
+fi
+printf '#!/bin/sh\nexit 0\n' > "$CH/bin/piper"; chmod +x "$CH/bin/piper"
 ck speech sync >/dev/null && grep -qx 'Commandline=kdos speech say -- %s' "$CH/.config/klipperrc" &&
     grep -qx 'Number of Actions=2' "$CH/.config/klipperrc" \
     || { echo "  Read Aloud was not added beside the person's action"; exit 1; }
@@ -8967,7 +15840,76 @@ rm "$CH/.local/share/piper/voices/v.onnx"
 ck speech sync >/dev/null && cmp -s "$CH/klipperrc.0" "$CH/.config/klipperrc" \
     || { echo "  removing the action did not give back the person's klipperrc"; exit 1; }
 rm -rf "$CH"
-echo "  the checklist and its dismissals, the live store, and Read Aloud with a voice only"
+echo "  the checklist and its dismissals, the live store, and Read Aloud only with piper and a voice"
+
+echo
+echo "==> kdos version answers as --version and -V, and kdos help lists it"
+for _o in version --version -V; do
+    "$OUT/kdos" $_o 2>&1 | grep -q '^KDOS.* — Kool Desktop Operating System$' \
+        || { echo "  kdos $_o did not print the version"; exit 1; }
+done
+"$OUT/kdos" help 2>&1 | grep -q '^  kdos version .*--version' \
+    || { echo "  kdos help has no kdos version row naming --version"; exit 1; }
+echo "  three spellings, one answer, and a row in the help"
+
+echo
+echo "==> kdos help offers sudo kinstall on the live medium only"
+KHM="$OUT/khelp-mounts"
+printf '/dev/vda2 / ext4 rw 0 0\n' > "$KHM.inst"
+printf 'overlay / overlay rw 0 0\n' > "$KHM.live"
+! KDOS_MOUNTS="$KHM.inst" "$OUT/kdos" help 2>&1 | grep -q 'sudo kinstall' \
+    || { echo "  kdos help offers sudo kinstall on an installed root"; exit 1; }
+KDOS_MOUNTS="$KHM.live" "$OUT/kdos" help 2>&1 | grep -q '^  sudo kinstall  ' \
+    || { echo "  kdos help has no sudo kinstall row on the live medium"; exit 1; }
+rm -f "$KHM.inst" "$KHM.live"
+echo "  an installed root is not offered an install of itself"
+
+echo
+echo "==> kdos-banner fits a short screen from the top and shows no oracle"
+KBN="$OUT/kbanner"
+rm -rf "$KBN"; mkdir -p "$KBN/bin" "$KBN/reasons"
+ln -sf "$OUT/kdos-tools" "$KBN/bin/kdos-banner"
+printf '#!/bin/sh\nfor i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17; do echo "fetch line $i %s"; done\n' \
+    "$(printf '%070d' 0)" \
+    > "$KBN/bin/fastfetch"; chmod +x "$KBN/bin/fastfetch"
+printf 'L1\nL2\nL3\nL4\nL5\nL6\n' > "$KBN/logo"
+kbn() { env PATH="$KBN/bin:$PATH" KDOS_BANNER_LOGO="$KBN/logo" COLUMNS=80 "$@" kdos-banner --plain; }
+# 6 logo rows, a blank and 17 fetch rows, stacked at 80 columns, and a prompt.
+kbn LINES=25 | grep -qx '  L1' \
+    || { echo "  kdos-banner dropped the logo on a 25-row screen it fits"; exit 1; }
+kbn LINES=24 > "$KBN/out24"
+! grep -q 'L1' "$KBN/out24" && head -1 "$KBN/out24" | grep -q '^fetch line 1 ' \
+    && [ "$(wc -l < "$KBN/out24")" = 17 ] \
+    || { echo "  kdos-banner overflows a 24-row screen:"; cat "$KBN/out24"; exit 1; }
+# Redirected with no height known, nothing is dropped.
+env PATH="$KBN/bin:$PATH" KDOS_BANNER_LOGO="$KBN/logo" COLUMNS=80 LINES= \
+    kdos-banner --plain < /dev/null | grep -qx '  L1' \
+    || { echo "  kdos-banner dropped the logo with no screen to fit"; exit 1; }
+printf 'title: keep the aphorism\ncite: store.c BOXENV\n\nbody\n' > "$KBN/reasons/one.txt"
+KDOS_REASONS="$KBN/reasons" "$OUT/kdos" oracle --plain | grep -qx 'keep the aphorism · store.c BOXENV' \
+    || { echo "  kdos oracle lost its attribution"; exit 1; }
+! grep -q 'oracle' src/system/kdos-tools/banner.c \
+    || { echo "  the login banner calls the oracle"; exit 1; }
+# A fetch taller than the screen on its own: sections of 10, 9, 6 and 2 rows
+# with a blank between each, 30 in all. On 25 rows the head is kept up to the
+# last break that leaves a prompt row, which is after the second section.
+{
+    printf '#!/bin/sh\n'
+    printf 'for i in 1 2 3 4 5 6 7 8 9 10; do echo "sys $i %s"; done; echo\n' "$(printf '%070d' 0)"
+    printf 'for i in 1 2 3 4 5 6 7 8 9; do echo "desk $i"; done; echo\n'
+    printf 'for i in 1 2 3 4 5 6; do echo "soft $i"; done; echo\n'
+    printf 'echo "hw 1"; echo "hw 2"\n'
+} > "$KBN/bin/fastfetch"
+kbn LINES=25 > "$KBN/out25"
+[ "$(wc -l < "$KBN/out25")" -le 24 ] && head -1 "$KBN/out25" | grep -q '^sys 1 ' \
+    && tail -1 "$KBN/out25" | grep -qx 'desk 9' && ! grep -q '^soft ' "$KBN/out25" \
+    || { echo "  kdos-banner overflows a 25-row screen with a 30-row fetch:"; cat "$KBN/out25"; exit 1; }
+# No break that fits: cut one row short of the screen.
+kbn LINES=8 > "$KBN/out8"
+[ "$(wc -l < "$KBN/out8")" = 7 ] && tail -1 "$KBN/out8" | grep -q '^sys 7 ' \
+    || { echo "  kdos-banner overflows an 8-row screen:"; cat "$KBN/out8"; exit 1; }
+rm -rf "$KBN"
+echo "  the logo goes first, then whole fetch sections from the end, and the login calls no oracle"
 
 echo
 echo "==> kdos help --keys groups the shortcuts in force as the key card does"
@@ -8992,8 +15934,38 @@ grep -q 'tAlt\|Meta+Qt' "$KH/out" && { echo "  the tab between two chords was re
 grep -q 'Meta+PgUp .*Maximize, Window$' "$KH/out" \
     || { echo "  an escaped comma in a friendly name was not kept"; cat "$KH/out"; exit 1; }
 grep -q 'Opposite' "$KH/out" && { echo "  [kwin][\$InverseAction] was read as shortcuts"; cat "$KH/out"; exit 1; }
+# A chord list wider than the 28-column key field takes its line alone, the
+# description indented to column 31 under it; a launch entry reads `Start
+# <Name>` and carries no desktop id.
+printf '[Desktop Entry]\nType=Application\nName=Spectacle\nX-KDE-Shortcuts=Print\n\n[Desktop Action RecordRegion]\nName=Start/Stop Region Recording\nX-KDE-Shortcuts=Alt+Print,Meta+R,Meta+Shift+R\n' \
+    > "$KH/share/kglobalaccel/org.kde.spectacle.desktop"
+# Launch keys bound in System Settings for programs with no kglobalaccel
+# entry: one is named by its applications/ entry, the other has none and
+# reads as its id without .desktop.
+printf '\n[services][org.kde.kate.desktop]\n_launch=Meta+K\n\n[services][org.example.nameless.desktop]\n_launch=Meta+J\n' \
+    >> "$KH/.config/kglobalshortcutsrc"
+mkdir -p "$KH/share/applications"
+printf '[Desktop Entry]\nType=Application\nName=Kate\nExec=kate\n' > "$KH/share/applications/org.kde.kate.desktop"
+env HOME="$KH" XDG_CONFIG_HOME="$KH/.config" XDG_CONFIG_DIRS="$KH/xdg" \
+    XDG_DATA_DIRS="$KH/share" \
+    KDOS_KEYCARD_GROUPS="$PWD/src/desktop/kwin-effect-kdos-keys/groups.conf" \
+    "$OUT/kdos" help --keys > "$KH/out"
+grep -A1 -x '  Alt+Print / Meta+R / Meta+Shift+R' "$KH/out" | tail -n 1 \
+    | grep -qx '                               Start/Stop Region Recording' \
+    || { echo "  a long chord list ran into its description"; cat "$KH/out"; exit 1; }
+grep -qx '  Print                        Start Spectacle' "$KH/out" \
+    || { echo "  a launch key did not read Start <Name>"; cat "$KH/out"; exit 1; }
+grep -q 'org.kde.spectacle.desktop' "$KH/out" && { echo "  a placed launch key printed its desktop id"; cat "$KH/out"; exit 1; }
+grep -q 'Meta+K .*Start Kate$' "$KH/out" \
+    || { echo "  a System Settings launch key was not named from its applications entry"; cat "$KH/out"; exit 1; }
+grep -q 'Meta+J .*Start org.example.nameless$' "$KH/out" \
+    || { echo "  a nameless launch key kept its .desktop"; cat "$KH/out"; exit 1; }
+grep -q '\.desktop' "$KH/out" && { echo "  a launch key printed a raw desktop id"; cat "$KH/out"; exit 1; }
+grep -q 'Meta+Shift+T .*Toggle Auto-Tiling$' "$KH/out" \
+    || { echo "  a KDOS entry's action name was rewritten"; cat "$KH/out"; exit 1; }
 rm -rf "$KH"
 echo "  the person's rebinding, a KDOS service key, no unbound action and no KConfig bookkeeping"
+echo "  a long chord list wraps, and a launch key names the program it starts"
 
 echo
 echo "==> kdos-mpctl mpris answers for mpd on the session bus, and lets go when mpd does"
@@ -9006,7 +15978,7 @@ if ! command -v dbus-run-session >/dev/null 2>&1 || ! command -v gdbus >/dev/nul
    ! { [ -e /usr/lib/libbasu.so.0 ] || ldconfig -p 2>/dev/null | grep -q 'libsystemd.so.0\|libbasu.so.0'; }; then
     echo "  (skipped — no dbus-run-session, gdbus or sd-bus library on this host)"
 else
-    MP="$OUT/mpris"
+    MP="$SOCKD/mpris"
     rm -rf "$MP"; mkdir -p -m700 "$MP"
     ln -sf kdos-tools "$OUT/kdos-mpctl"
     cat > "$MP/run.sh" <<'MPEOF'
@@ -9053,6 +16025,86 @@ MPEOF
     rm -rf "$MP"
     echo "  owned while mpd runs, mpd's state and verbs, PropertiesChanged on idle, released when mpd goes"
 fi
+
+echo
+echo "==> a login shell, service list and a restored session, as an ordinary user"
+# `nft list ruleset` prints nothing to a caller that is not root, which the
+# status line must not report as a firewall that is off.
+if [ "$(id -u)" -ne 0 ] && [ -x /usr/sbin/nft ]; then
+    _rc=0
+    _st=$(bash fs/etc/init.d/25_nftables.sh status 2>/dev/null) || _rc=$?
+    [ "$_st" = "nftables: needs root to read the ruleset" ] && [ "$_rc" -eq 0 ] \
+        || { echo "  nftables status as uid $(id -u) said '$_st' (exit $_rc)"; exit 1; }
+    echo "  nftables status says it needs root rather than guessing the ruleset"
+else
+    echo "  nftables status as an ordinary user skipped (root, or no /usr/sbin/nft here)"
+fi
+# xdg-utils compares KDE_SESSION_VERSION as a number whenever the desktop is
+# KDE, so a console shell that names the desktop names its release too, and a
+# value the session carried in is kept.
+_kv=$(env -i HOME=/nonexistent PATH=/usr/bin:/bin \
+    bash --noprofile --norc -c '. fs/etc/profile.d/10-wayland.sh >/dev/null 2>&1
+        printf "%s %s" "$XDG_CURRENT_DESKTOP" "$KDE_SESSION_VERSION"
+        [ "$KDE_SESSION_VERSION" -lt 6 ] 2>&1 || true')
+[ "$_kv" = "KDE 6" ] || { echo "  a console login shell sets '$_kv', not 'KDE 6' with no test error"; exit 1; }
+_kv=$(env -i HOME=/nonexistent PATH=/usr/bin:/bin KDE_SESSION_VERSION=7 \
+    bash --noprofile --norc -c '. fs/etc/profile.d/10-wayland.sh >/dev/null 2>&1; printf %s "$KDE_SESSION_VERSION"')
+[ "$_kv" = 7 ] || { echo "  a login shell replaced KDE_SESSION_VERSION=7 with '$_kv'"; exit 1; }
+echo "  a console login shell names KDE 6, and keeps a version it inherits"
+# plasma-fallback-session-save matches excludeApps against the window's
+# storage id exactly, suffix included; Welcome must never be recorded.
+_ex=$(awk '/^\[/ { g = $0; next } g == "[General]" && /^excludeApps=/ { sub(/^excludeApps=/, ""); print }' \
+    fs/usr/share/kdos/xdg/ksmserverrc 2>/dev/null | tr ',:' '\n\n')
+printf '%s\n' "$_ex" | grep -qx 'org.kde.plasma-welcome.desktop' \
+    || { echo "  ksmserverrc [General] excludeApps does not name org.kde.plasma-welcome.desktop"; exit 1; }
+echo "  a restored session leaves Welcome out"
+# Thunderbird is not on the base, so a mailto: link opens the entry under
+# fs/ that claims the scheme. KIO hands a URL to an entry only through %u or
+# %U; with neither it runs kioexec, which reads the link as a file and fails.
+_nm=fs/usr/share/applications/kdos-nomail.desktop
+grep -qx 'MimeType=x-scheme-handler/mailto;' "$_nm" 2>/dev/null \
+    || { echo "  no entry under fs/ claims x-scheme-handler/mailto"; exit 1; }
+_nx=$(sed -n 's/^Exec=//p' "$_nm")
+case "$_nx" in *' %u') ;; *) echo "  $_nm runs '$_nx', which takes no %u"; exit 1 ;; esac
+grep -v '^#' ports/base | tr ' ' '\n' | grep -qx "${_nx%% *}" \
+    || { echo "  $_nm runs ${_nx%% *}, which ports/base does not carry"; exit 1; }
+# kdialog takes its window and task icon from --icon alone; without it the
+# note shows a generic glyph whatever the entry's Icon= says.
+case "$_nx" in *" --icon $(sed -n 's/^Icon=//p' "$_nm") "*) ;;
+    *) echo "  $_nm runs '$_nx', whose --icon is not the entry's Icon="; exit 1 ;; esac
+echo "  a mailto: link with no mail program opens a note a base program shows"
+# GLib honours a removed association only for the type it names and walks on
+# to the parent application/zip, which Ark claims; an entry that claims each
+# office type itself outranks that parent claim in GLib and KService alike.
+# Named as a default it would outrank LibreOffice's row in kde-mimeapps.list.
+_no=fs/usr/share/applications/kdos-nooffice.desktop
+_nt=$(sed -n 's/^MimeType=//p' "$_no" 2>/dev/null | tr ';' '\n')
+_nr=$(sed -n '/^\[Removed Associations\]/,/^\[/p' fs/etc/xdg/mimeapps.list |
+    grep '=.*org\.kde\.ark\.desktop' | cut -d= -f1)
+[ -n "$_nr" ] || { echo "  mimeapps.list removes Ark from no office type"; exit 1; }
+for _t in $_nr; do
+    printf '%s\n' "$_nt" | grep -qxF "$_t" \
+        || { echo "  $_no does not claim $_t, which GLib would open in Ark"; exit 1; }
+done
+_nx=$(sed -n 's/^Exec=//p' "$_no")
+case "$_nx" in *' %f') ;; *) echo "  $_no runs '$_nx', which takes no %f"; exit 1 ;; esac
+case "$_nx" in *" --icon $(sed -n 's/^Icon=//p' "$_no") "*) ;;
+    *) echo "  $_no runs '$_nx', whose --icon is not the entry's Icon="; exit 1 ;; esac
+grep -v '^#' ports/base | tr ' ' '\n' | grep -qx "${_nx%% *}" \
+    || { echo "  $_no runs ${_nx%% *}, which ports/base does not carry"; exit 1; }
+grep -qx 'NoDisplay=true' "$_no" \
+    || { echo "  $_no is not NoDisplay=true, so it is a row in the launcher"; exit 1; }
+if grep -hv '^#' fs/etc/xdg/mimeapps.list fs/usr/share/kdos/xdg/kde-mimeapps.list | grep -q 'kdos-nooffice\.desktop'; then
+    echo "  a mimeapps list names kdos-nooffice.desktop, which would outrank LibreOffice"; exit 1
+fi
+# GLib ignores InitialPreference, so a type kdos-nooffice claims with no named
+# default may open the note even once LibreOffice claims that type too.
+_nd=$(grep -v '^#' fs/usr/share/kdos/xdg/kde-mimeapps.list | cut -s -d= -f1)
+for _t in $_nt; do
+    printf '%s\n' "$_nd" | grep -qxF "$_t" \
+        || { echo "  kde-mimeapps.list names no default for $_t, which kdos-nooffice claims"; exit 1; }
+done
+echo "  an office document with no office program opens a note, not Ark"
 
 echo
 echo "==> the KDOS shortcut layer reaches a person once, and never twice"
@@ -9110,6 +16162,57 @@ rm -rf "$OUT/sc-home" "$OUT/sc-etc" "$OUT/sc-first"
 echo "  seeded once, a reset stays reset, a person's chord and /etc/xdg win"
 
 echo
+echo "==> the speech server a session spawned ends at its last logout, and nothing else does"
+# A spawned speech-dispatcher outlives its clients and the runtime directory
+# it listens in; kdos-speech.sh ends the one its pid file names, only when no
+# other login of the user is open, and never a PID whose comm is not the
+# server's. The fake loginctl lists sessions as a real login does: the
+# graphical one beside turnstiled's service-manager session (c5), which is no
+# login. The server is a script named so that its comm is the same
+# 15-character cut.
+SPS=fs/usr/share/kdos/xdg/plasma-workspace/shutdown/kdos-speech.sh
+SPD="$OUT/sp"
+mkdir -p "$SPD/run/speech-dispatcher/pid" "$SPD/bin"
+printf '#!/bin/sh\nwhile :; do sleep 0.1; done\n' > "$SPD/bin/speech-dispatcher"
+cat > "$SPD/bin/loginctl" <<'SPEOF'
+#!/bin/sh
+case $1 in
+show-user) echo "$SP_SESSIONS" ;;
+show-session) case $2 in c5) echo turnstiled ;; c7) echo login ;; *) echo sddm ;; esac ;;
+esac
+SPEOF
+chmod +x "$SPD/bin/loginctl" "$SPD/bin/speech-dispatcher"
+sp_run() {
+    env -i PATH="$SPD/bin:/usr/bin:/bin" XDG_RUNTIME_DIR="$SPD/run" SP_SESSIONS="$1" \
+        sh "$PWD/$SPS" 2>/dev/null
+    sleep 0.3
+}
+# A child the test has not reaped answers kill -0 as a zombie.
+sp_alive() { [ -r "/proc/$1/stat" ] && ! awk '{exit $3 != "Z"}' "/proc/$1/stat"; }
+_spf=""
+"$SPD/bin/speech-dispatcher" & _sp=$!
+sleep 60 & _so=$!
+echo "$_sp" > "$SPD/run/speech-dispatcher/pid/speech-dispatcher.pid"
+sp_run "c5 c6 c7"
+sp_alive "$_sp" || _spf="$_spf ended-with-another-session-open"
+echo "$_so" > "$SPD/run/speech-dispatcher/pid/speech-dispatcher.pid"
+sp_run "c5 c6"
+sp_alive "$_so" || _spf="$_spf ended-a-foreign-pid"
+echo "$_sp" > "$SPD/run/speech-dispatcher/pid/speech-dispatcher.pid"
+sp_run "c5 c6"
+sp_alive "$_sp" && _spf="$_spf server-left-running"
+rm -f "$SPD/run/speech-dispatcher/pid/speech-dispatcher.pid"
+sp_run "c5 c6"
+kill "$_sp" "$_so" 2>/dev/null
+wait "$_sp" "$_so" 2>/dev/null || true
+rm -rf "$SPD"
+if [ -n "$_spf" ]; then
+    echo "  KDOS-SPEECH.SH ENDS THE WRONG PROCESS:$_spf"
+    exit 1
+fi
+echo "  the server ends at the last logout beside turnstiled's session; another login's and a reused PID are left"
+
+echo
 echo "==> the firewall prompt asks once, about a known program, on one network"
 # kdos-fwask's decisions with no bus in them: the knock-counter arithmetic,
 # the process scan under a fake /proc, the answers file and the escaping of a
@@ -9148,6 +16251,33 @@ $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libkxdg -Isrc/libs/libkcolor \
     $KRU_SQL $KRU_BUS || { echo "  FAIL  kdos-runner's matcher does not build"; exit 1; }
 bash "$KRU/tests/run.sh" "$OUT/kr-run" "$OUT/kr-matchtest" ||
     { echo "  kdos-runner's matcher broke its contract"; exit 1; }
+rm -rf "$OUT/kr-chapters"
+"$OUT/kr-matchtest" chapters "$OUT/kr-chapters" ||
+    { echo "  FAIL  a heading two chapters share reads the same in both library rows"; exit 1; }
+# The palette's rows in the words and order KRunner shows them, against
+# run.sh's fixture home and root.
+kru_q() { HOME="$OUT/kr-run/home" KDOS_RUNNER_ROOT="$OUT/kr-run/root" "$OUT/kr-matchtest" query "$1"; }
+kru_q "install kdos" | grep -q "Discover" ||
+    { echo "  FAIL  without the installer's entry, 'install kdos' does not search Discover"; exit 1; }
+: > "$OUT/kr-run/root/usr/share/applications/kdos-installer.desktop"
+for _t in "install kdos" "install KDOS" "install kd"; do
+    ! kru_q "$_t" | grep -q "Discover" ||
+        { echo "  FAIL  '$_t' offers Discover over the installer's own entry"; exit 1; }
+done
+rm -f "$OUT/kr-run/root/usr/share/applications/kdos-installer.desktop"
+kru_q "install gimp" | grep -q "^  icon plasmadiscover$" ||
+    { echo "  FAIL  the Discover row's icon is not plasmadiscover"; exit 1; }
+[ "$(kru_q accent | grep '^Switch the accent to' | head -6 | tr '\n' '|')" = \
+  "Switch the accent to the next one|Switch the accent to the previous one|Switch the accent to Phosphor|Switch the accent to Amber|Switch the accent to Ice|Switch the accent to Bone|" ] ||
+    { echo "  FAIL  accent does not list next, previous, then the accents in the boot menu's order"; exit 1; }
+[ "$(kru_q desk | grep '^Lay the desktop' | tr '\n' '|')" = \
+  "Lay the desktop out as the KDOS desk|Lay the desktop out as the Dock desk|Lay the desktop out as the Tiling desk|" ] ||
+    { echo "  FAIL  desk does not name the desks as the desk picker does"; exit 1; }
+_r=$(env -u XDG_DATA_DIRS -u XDG_DATA_HOME HOME="$OUT/kr-run/home" KDOS_RUNNER_ROOT="$OUT/kr-run/root" \
+    "$OUT/kr-matchtest" library "KDOS Lo" 250)
+printf '%s\n' "$_r" | grep -qx "KDOS Look in KDOS book" && ! printf '%s\n' "$_r" | grep -qix "KDOS Look" ||
+    { echo "  FAIL  'KDOS Lo' leaves a library row titled as the KDOS Look page: $(printf '%s' "$_r" | head -3)"; exit 1; }
+echo "  ok    kdos-runner: install kdos left to the installer, accent and desk rows in order and named, a library row never titled as a settings page, a book heading under its chapter"
 if [ -n "$TRAY_SDBUS" ] && command -v dbus-run-session >/dev/null 2>&1 &&
    command -v dbus-send >/dev/null 2>&1 && command -v dbus-monitor >/dev/null 2>&1; then
     $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libkxdg -Isrc/libs/libkcolor \
@@ -9259,6 +16389,9 @@ $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libkxdg -I"$KNO" \
     src/libs/libkxdg/*.c || { echo "  FAIL  kdos-notice's decisions do not build"; exit 1; }
 bash "$KNO/tests/run.sh" "$OUT/kn-run" "$OUT/kn-decidetest" ||
     { echo "  kdos-notice's decisions broke their contract"; exit 1; }
+rm -rf "$OUT/kn-pending" && mkdir -p "$OUT/kn-pending" &&
+    "$OUT/kn-decidetest" pending-cases "$OUT/kn-pending" ||
+    { echo "  kdos-notice's pending notice misread apps-pending or groups-pending"; exit 1; }
 if [ -n "$TRAY_SDBUS" ] && command -v dbus-run-session >/dev/null 2>&1 &&
    command -v dbus-send >/dev/null 2>&1 && command -v dbus-monitor >/dev/null 2>&1; then
     $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libkxdg \
@@ -9341,6 +16474,256 @@ if python3 -c 'import fontTools' 2>/dev/null; then
 else
     echo "  monofont gates (skipped — no fontTools on this host)"
 fi
+
+echo
+echo "==> a manual page's NAME line fits what apropos prints, and its body reads as a page"
+# makewhatis stores 150 bytes of a NAME description's roff, so mkbook.py ends
+# a longer one at a clause, or a word, within them. Every row of the command
+# index fits uncut, so no shipped page relies on the cut.
+python3 -B -I - "$PWD/src/system/kdos-doc" "$PWD/docs" <<'EOS' || exit 1
+import sys
+sys.path.insert(0, sys.argv[1])
+import mkbook
+fail = []
+def w(d):
+    return mkbook.whatis(d)
+long = ("A/B root slot selection, trial and confirmation, each slot's kernel "
+        "on the ESP, the boot entries, the splash's motion, and the colours "
+        "of the boot menu and text consoles")
+if w(long) != ("A/B root slot selection, trial and confirmation, each slot's "
+               "kernel on the ESP, the boot entries, the splash's motion"):
+    fail.append("clause-cut: " + w(long))
+words = "word " * 40
+if not long.startswith(w(long)) or w(words) != ("word " * 30).rstrip():
+    fail.append("word-cut: " + repr(w(words)))
+if w("a (" + words + ")") != "a":
+    fail.append("open-bracket: " + repr(w("a (" + words + ")")))
+if mkbook.roff_len(w('"' * 200)) > mkbook.WHATIS_MAX or w("x" * 200) != "x" * 150:
+    fail.append("escape-count")
+if w("short, and whole") != "short, and whole":
+    fail.append("short-changed")
+# A manual page is a page: the book's "this chapter" is not carried into it.
+mb = mkbook.man_body("This chapter is the reference; see this chapter's end. chapters stay.")
+if mb != "This page is the reference; see this page's end. chapters stay.":
+    fail.append("chapter-wording: " + mb)
+# A man reader has nothing to click: a link to another page of the book is
+# printed as the kdos-doc command that opens it, a same-page fragment and a
+# file outside the book as their text, a URL as a link.
+import os, tempfile, unicodedata
+with tempfile.TemporaryDirectory() as tmp:
+    page = os.path.join(tmp, "kdos", "04-programs", "x.md")
+    os.makedirs(os.path.dirname(page))
+    with open(page, "w") as f:
+        f.write("# X\n\nread [Installation](../02-user-guide/installation.md)"
+                " and [A/B](../03-architecture/boot-and-init.md#ab-slot-selection),"
+                " [here](#x), [src](../../../src/a.c), [web](https://e.org/)\n")
+    got = mkbook.section_text(page, "").strip()
+    want = ("read Installation (kdos-doc 02-user-guide/installation) and "
+            "A/B (kdos-doc 03-architecture/boot-and-init#ab-slot-selection),"
+            " here, src, [web](https://e.org/)")
+    if got != want or mkbook.section_text(page, "", os.path.join(tmp, "kdos")).strip() != want:
+        fail.append("book-link: " + got)
+# man prints a preformatted block 7 columns in and never wraps it, so a line
+# past 72 cells breaks mid-word on an 80-column console.
+def cells(s):
+    return sum(0 if unicodedata.combining(c) else
+               2 if unicodedata.east_asian_width(c) in "WF" else 1
+               for c in s.expandtabs())
+for name, desc, page, frag, _ in mkbook.commands(sys.argv[2]):
+    body, fence = mkbook.section_text(page, frag) or "", False
+    for line in body.split("\n"):
+        if mkbook.FENCE_RE.match(line):
+            fence = not fence
+        elif fence and cells(line) > 72:
+            fail.append(f"{name}: {cells(line)} cells in "
+                        f"{os.path.relpath(page, sys.argv[2])}: {line.strip()[:40]}")
+for name, desc, *_ in mkbook.commands(sys.argv[2]):
+    a = "".join(mkbook.ASCII_OF.get(c, c) for c in desc)
+    if w(a) != a:
+        fail.append(f"{name}: {mkbook.roff_len(a)} bytes, over "
+                    f"{mkbook.WHATIS_MAX}")
+if fail:
+    print("  A MANUAL PAGE THAT DOES NOT READ AS ONE:\n    " + "\n    ".join(fail))
+    sys.exit(1)
+print("  long descriptions end at a clause or a word; the index needs no cut;"
+      " book links name kdos-doc; no preformatted line past 72 cells")
+EOS
+
+echo
+echo "==> kdos-doc picks its viewer by session: display, terminal, or a path"
+# The viewers are stubs on PATH that record their arguments; a pty stands in
+# for a text console. KHelpCenter on a console has no display to open, and a
+# pipe must still get the path rather than a text browser waiting for keys.
+_kd=$(mktemp -d)
+mkdir -p "$_kd/doc/02-user-guide" "$_kd/bin" "$_kd/con"
+: > "$_kd/doc/02-user-guide/installation.html"
+$CC -std=gnu11 -Wall -Wextra -Werror -DDOCROOT="\"$_kd/doc\"" \
+	-o "$_kd/kdos-doc" src/system/kdos-doc/kdos-doc.c || exit 1
+for v in khelpcenter xdg-open lynx; do
+	printf '#!/bin/sh\necho %s "$@" > "%s/ran"\n' "$v" "$_kd" > "$_kd/bin/$v"
+	chmod +x "$_kd/bin/$v"
+done
+cp "$_kd/bin/khelpcenter" "$_kd/con/khelpcenter"
+python3 -B -I - "$_kd" <<'EOS' || exit 1
+import os, pty, subprocess, sys
+d = sys.argv[1]
+f = d + "/doc/02-user-guide/installation.html"
+fail = []
+def run(path, disp, tty, arg="02-user-guide/installation#disks"):
+    try: os.unlink(d + "/ran")
+    except FileNotFoundError: pass
+    env = {"PATH": path}
+    if disp: env["WAYLAND_DISPLAY"] = "wayland-0"
+    argv = [d + "/kdos-doc", arg]
+    if tty:
+        m, s = pty.openpty()
+        p = subprocess.run(argv, env=env, stdin=s, stdout=s, stderr=s)
+        os.close(s); os.close(m)
+        out = ""
+    else:
+        out = subprocess.run(argv, env=env, stdin=subprocess.DEVNULL,
+                             capture_output=True, text=True).stdout
+    try: ran = open(d + "/ran").read().strip()
+    except FileNotFoundError: ran = ""
+    return ran, out.strip()
+url = "file://" + f + "#disks"
+cases = [
+    ("console runs lynx at the heading", run(d + "/bin", False, True), ("lynx " + url, "")),
+    ("console without a text browser skips khelpcenter", run(d + "/con", False, True), ("", "")),
+    ("a pipe gets the path", run(d + "/bin", False, False), ("", f)),
+    ("a session gets the Help Center", run(d + "/bin", True, False), ("khelpcenter " + url, "")),
+]
+for name, got, want in cases:
+    if got != want:
+        fail.append(f"{name}: got {got!r}, want {want!r}")
+if fail:
+    print("  KDOS-DOC CHOSE THE WRONG VIEWER:\n    " + "\n    ".join(fail))
+    sys.exit(1)
+print("  a session opens the Help Center, a console lynx, a pipe the path")
+EOS
+rm -rf "$_kd"
+
+echo
+echo "==> unowned.py subtracts KDOS's licence text and the links to it, and nothing else"
+# 105_ports.sh installs usr/share/licenses/kdos/LICENSE and links
+# usr/share/licenses/<name>/LICENSE to ../kdos/LICENSE for a package of our
+# own. Both belong to no package; a LICENSE link pointing anywhere else is an
+# unowned file like any other.
+_lu="$OUT/unowned-licence"
+mkdir -p "$_lu/root/var/lib/kpkg/db" "$_lu/root/usr/bin" "$_lu/fs" \
+    "$_lu/root/usr/share/licenses/kdos" "$_lu/root/usr/share/licenses/ours" \
+    "$_lu/root/usr/share/licenses/stray"
+printf '1 1\n./\n./usr/\n./usr/bin/\n./usr/bin/ours\n' > "$_lu/root/var/lib/kpkg/db/ours"
+: > "$_lu/root/usr/bin/ours"
+cp LICENSE "$_lu/root/usr/share/licenses/kdos/LICENSE"
+ln -s ../kdos/LICENSE "$_lu/root/usr/share/licenses/ours/LICENSE"
+ln -s ../../../bin/ours "$_lu/root/usr/share/licenses/stray/LICENSE"
+_lurc=0
+python3 -B testing/unowned.py --root "$_lu/root" --fs "$_lu/fs" --all > "$_lu/out" 2>&1 || _lurc=$?
+[ "$_lurc" = 1 ] && grep -qx '    usr/share/licenses/stray/LICENSE' "$_lu/out" \
+    && grep -q '^unowned: 1 paths' "$_lu/out" \
+    || { echo "  unowned.py did not report exactly the stray licence link"; cat "$_lu/out"; exit 1; }
+echo "  the MIT text and its links are subtracted; a link elsewhere is reported"
+
+echo
+echo "==> the greeter shows no Hibernate button while elogind refuses hibernation"
+# sleep.conf.d turns hibernation off, so sddm.canHibernate is false; Breeze's
+# Hibernate ActionButton only binds `enabled` to it and would be drawn dimmed
+# unless the theme's patch binds `visible` to it as well.
+python3 -I - src/art/kdos-sddm-theme/kdos-sddm.patch fs/etc/elogind/sleep.conf.d/50-kdos.conf <<'EOS'
+import re, sys
+patch, conf = (open(p).read() for p in sys.argv[1:3])
+if not re.search(r"(?m)^AllowHibernation=no$", conf):
+    print("  hibernation is allowed; this case no longer applies"); sys.exit(0)
+m = re.search(r"(?s)onClicked: sddm\.hibernate\(\)\n(.*?)\n [ ]*\},", patch)
+if not m or not re.search(r"(?m)^\+\s*visible: sddm\.canHibernate$", m.group(1)):
+    print("  kdos-sddm.patch leaves the Hibernate button visible where it cannot act")
+    sys.exit(1)
+print("  the Hibernate button is hidden where elogind answers CanHibernate=no")
+EOS
+
+echo
+echo "==> bash completion offers KDOS's verbs, then its service, package and slot names"
+# bash-completion's own `service` completion is SysV's `service <name> <verb>`
+# and skips every *.sh; ksvc's file replaces it. The tables are pointed at
+# fixtures so the answer does not depend on the host's /etc/init.d.
+_cp="$OUT/comp"
+mkdir -p "$_cp/init.d" "$_cp/user" "$_cp/db/.files" "$_cp/usr/bin"
+: > "$_cp/init.d/70_sshd.sh"; : > "$_cp/init.d/80_cups.sh"
+: > "$_cp/init.d/rcS"; : > "$_cp/init.d/killprocs"; : > "$_cp/init.d/service_helper"
+: > "$_cp/user/20_pipewire.sh"
+: > "$_cp/db/bash"; : > "$_cp/db/bash-completion"; : > "$_cp/db/.lock"
+mkdir -p "$_cp/home/.config/kdos/boxes"; : > "$_cp/home/.config/kdos/boxes/dev.conf"
+bash --norc --noprofile -c '
+C=fs/usr/share/bash-completion/completions
+for f in ksvc kpkg kdos-box kdos-appbox kdos-bootctl kinstall kdos; do
+    bash -n "$C/$f" || { echo "  $f does not parse"; exit 1; }
+    . "$C/$f"
+done
+_kdos_ksvc_init=$1/init.d _kdos_ksvc_user=$1/user _kdos_kpkg_db=$1/db
+t() {
+    local fn=$1 want=$2 not=$3; shift 3
+    COMP_WORDS=("$@"); COMP_CWORD=$((${#COMP_WORDS[@]} - 1)); COMPREPLY=()
+    $fn
+    local got=" ${COMPREPLY[*]} " w
+    for w in $want; do
+        case "$got" in *" $w "*) ;; *) echo "  [$*] lacks $w: $got"; exit 1 ;; esac
+    done
+    for w in $not; do
+        case "$got" in *" $w "*) echo "  [$*] offers $w: $got"; exit 1 ;; esac
+    done
+}
+t _kdos_ksvc "list status start stop restart enable disable --user" "rcS killprocs sshd supervise" service ""
+t _kdos_ksvc "sshd cups" "rcS killprocs service_helper 70_sshd.sh" service start ""
+t _kdos_ksvc "pipewire" "sshd" service --user restart ""
+t _kdos_ksvc "supervise check" "" ksvc ""
+t _kdos_kpkg "install remove list info check binhost" "" kpkg ""
+t _kdos_kpkg "bash bash-completion" ".lock .files" kpkg remove ""
+t _kdos_box "create enter run list remove profile gc" "" kdos-box ""
+HOME=$1/home t _kdos_box "dev" "-l" kdos-box run -l id ""
+t _kdos_bootctl "short pretty off" "" kdos-bootctl list --json "="
+t _kdos_bootctl "short" "pretty" kdos-bootctl list --json = s
+t _kdos_appbox "run open install uninstall catalogue" "" kdos-appbox ""
+t _kdos_bootctl "status try deploy theme" "" kdos-bootctl ""
+t _kdos_bootctl "a b" "" kdos-bootctl try ""
+t _kdos_kinstall "probe plan apps look" "" kinstall --dump ""
+t _kdos "$1/usr/bin" "" kdos why "$1/usr/b"
+t _kdos "bash bash-completion" "" kdos why bas
+(cd "$1" && t _kdos "bash" "usr init.d db" kdos why "")
+grep -q "completions/ksvc" fs/usr/share/bash-completion/startup/ksvc.bash \
+    || { echo "  startup/ksvc.bash does not load ksvc"; exit 1; }
+' _ "$_cp" || exit 1
+echo "  service, kpkg, kdos-box, kdos-appbox, kdos-bootctl, kinstall and kdos why complete"
+
+echo "==> ports/publish release notes state RELEASE's sentences once"
+_rn=$(mktemp -d)
+awk '/^human\(\) \{/,/^\}/ { print } /^gib\(\) |^gib_round\(\) / { print }
+     /^release_notes\(\) \{/,/^\}/ { print }' ports/publish > "$_rn/fns.sh"
+printf 'KDOS test carries the base; the rest installs from packages.\n\n## What it needs\n\n- 4 GB.\n\nThe live session logs in as `kdos`.\n' > "$_rn/RELEASE"
+bash -c '
+D=$1
+. "$D/fns.sh"
+KDOS_REPO=o/r tag=v9 commit=c REPO_ROOT=/x nparts=1 iso_name=k.iso iso_size=1781471232
+need_ab=25088 need_noswap=20992 need_swap=4096 need_one=10000 UNSIGNED=1
+git() { [ "$3" = cat-file ] && return 0; cat "$D/RELEASE"; }
+release_notes > "$D/with.md"
+git() { return 1; }
+release_notes > "$D/without.md"
+' _ "$_rn" || { echo "  release_notes failed"; exit 1; }
+_dl() { sed -n '/^## Download/,/^## Check/p' "$1"; }
+_dl "$_rn/with.md" | grep -qF 'The image carries the base system' \
+    && { echo "  notes with RELEASE repeat what the image carries"; exit 1; }
+_dl "$_rn/with.md" | grep -qF 'logged in as' \
+    && { echo "  notes with RELEASE repeat the live account"; exit 1; }
+_dl "$_rn/with.md" | grep -qF 'from the medium and installs KDOS from there.' \
+    && _dl "$_rn/with.md" | grep -qxF 'Write it to a USB stick or a DVD of at least 1.66 GiB.' \
+    || { echo "  notes with RELEASE lost the ISO or the medium line:"; _dl "$_rn/with.md"; exit 1; }
+grep -qF 'The image carries the base system;' "$_rn/without.md" \
+    && grep -qF 'logged in as `kdos` (password `kdos`, also root'"'"'s), and installs' "$_rn/without.md" \
+    && grep -qF '## What it needs' "$_rn/without.md" \
+    || { echo "  notes without RELEASE lost a sentence:"; cat "$_rn/without.md"; exit 1; }
+rm -rf "$_rn"
+echo "  with RELEASE the Download section keeps only the ISO and the medium"
 
 echo
 echo "all good"

@@ -54,6 +54,9 @@ cmake -S . -B build -G Ninja \
 	-DENABLE_BACK_FORWARD_LIST_SWIFT=OFF
 cmake --build build
 DESTDIR=$PKG cmake --install build
+for f in LICENSE-LGPL-2 LICENSE-LGPL-2.1 LICENSE-APPLE; do
+	install -Dm644 "Source/WebCore/$f" "$PKG/usr/share/licenses/$name/$f"
+done
 
 test -f "$PKG/usr/lib/pkgconfig/webkit2gtk-4.1.pc"
 test -f "$PKG/usr/lib/pkgconfig/webkit2gtk-web-extension-4.1.pc"

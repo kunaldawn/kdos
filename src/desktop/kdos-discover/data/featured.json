@@ -1,10 +1,9 @@
 [
-    "kdos-backend://set/essential",
-    "kdos-backend://catalogue/app.scribus",
-    "kdos-backend://catalogue/app.hugin",
-    "kdos-backend://catalogue/app.xournalpp",
     "kdos-backend://catalogue/app.kstars",
-    "kdos-backend://catalogue/app.meshlab",
-    "kdos-backend://catalogue/app.vscodium",
+    "kdos-backend://catalogue/app.xournalpp",
+    "kdos-backend://catalogue/app.pspp",
+    "kdos-backend://catalogue/app.okteta",
+    "kdos-backend://catalogue/app.hexchat",
+    "kdos-backend://catalogue/app.meld",
     "kdos-backend://catalogue/app.gnome-chess"
 ]

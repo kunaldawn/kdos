@@ -8,7 +8,8 @@
  *   DonePage — how it ended, and what next
  *
  * A finished install offers the restart; the warnings, things the installed
- * system will lack though it installed, are listed with it. A failed one
+ * system will lack though it installed, are listed with it as WarningList
+ * sets them out, the same list the Install page shows. A failed one
  * says why in kinstall's words, shows the last of the log where kinstall
  * sent any, and goes back to the summary, where the answers can be changed
  * and the install run again. The log file is named, and offered, only when
@@ -34,21 +35,22 @@ WizardPage {
     Kirigami.PlaceholderMessage {
         Layout.fillWidth: true
         icon.name: page.ok ? "data-success" : "data-error"
-        text: page.ok ? i18n("Remove the install medium, then restart into KDOS.") : page.events.failure
+        text: page.ok ? i18n("Restart into KDOS, and take the install medium out when the screen goes dark.") : page.events.failure
         explanation: page.ok
             ? (Backend.answers.oem
                ? i18n("The first start runs the setup wizard, which makes the account.")
                : Backend.answers.autologin && Backend.answers.luks
-                 ? i18n("After the disk passphrase, the session starts by itself.")
+                 ? (Backend.answers.autologinLock
+                    ? i18n("After the disk passphrase, the session starts locked; your password unlocks it.")
+                    : i18n("After the disk passphrase, the session starts by itself."))
                  : i18n("Log in with the account you made."))
             : page.events.started ? i18n("The full log is %1 on this live system.", Backend.logPath) : ""
     }
 
-    Kirigami.InlineMessage {
+    WarningList {
         Layout.fillWidth: true
-        type: Kirigami.MessageType.Warning
-        visible: page.events.warnings.length > 0
-        text: i18n("Installed, with these exceptions:\n%1", page.events.warnings.join("\n"))
+        source: page.events.warnings
+        lead: i18n("Installed, with these exceptions:")
     }
 
     RowLayout {

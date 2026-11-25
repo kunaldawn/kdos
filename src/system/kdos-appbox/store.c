@@ -396,7 +396,7 @@ static int extract_entries(const char *id, const char *root)
  * regeneration from either source alone deletes the other's launchers. With
  * no catalogue or no podman answer it is the pack walk alone.
  */
-int store_launchers(void)
+int store_launchers(int verbose)
 {
 	char boxes[1 << 16] = "";
 	char root[MAX_LINE];
@@ -406,7 +406,7 @@ int store_launchers(void)
 	int n = 0;
 
 	if (!cat_count() && cat_load(NULL, err, sizeof(err)) != 0) {
-		cmd_genlaunchers(NULL, NULL, 1, 0);
+		cmd_genlaunchers(NULL, NULL, 1, 0, verbose);
 		return 0;
 	}
 
@@ -417,7 +417,7 @@ int store_launchers(void)
 	kb_argv_add(&a, "{{.Names}}");
 	kb_argv_end(&a);
 	if (kb_run_capture(&a, boxes, sizeof(boxes)) != 0) {
-		cmd_genlaunchers(NULL, NULL, 1, 0);
+		cmd_genlaunchers(NULL, NULL, 1, 0, verbose);
 		return 0;
 	}
 
@@ -464,9 +464,9 @@ int store_launchers(void)
 		}
 	}
 	if (n)
-		cmd_genlaunchers(root, NULL, 1, 1);
+		cmd_genlaunchers(root, NULL, 1, 1, verbose);
 	else
-		cmd_genlaunchers(NULL, NULL, 1, 0);
+		cmd_genlaunchers(NULL, NULL, 1, 0, verbose);
 
 	{
 		KbArgv rm = {0};
@@ -586,7 +586,7 @@ int store_install(const char *id, int dry)
 		}
 	}
 
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s installed\n", id);
 	fflush(stdout);
 	return 0;
@@ -622,7 +622,9 @@ int store_install_many(const char *const *ids, int n, int dry)
  * A RUNTIME IMAGE IS KEPT WHILE ANY REMAINING BOX'S CHAIN NAMES IT, and that
  * question is asked of the CATALOGUE rather than of podman: a dangling-image
  * sweep cannot tell a runtime nothing uses yet from one whose only application
- * is mid-install.
+ * is mid-install. A `deb.<P>` box has no catalogue row and is built on the
+ * `base` row, so it is asked about as that row's chain: without it, a Debian
+ * box would leave the base looking unused.
  */
 static int still_wanted(const char *img_id, const char *dropped)
 {
@@ -646,7 +648,9 @@ static int still_wanted(const char *img_id, const char *dropped)
 
 		if (!strcmp(line, dropped))
 			continue;
-		n = cat_chain(line, chain);
+		n = cat_chain(strncmp(line, STORE_DEB_PREFIX,
+				      sizeof(STORE_DEB_PREFIX) - 1)
+				      ? line : "base", chain);
 		for (int i = 0; i < n; i++)
 			if (!strcmp(chain[i]->id, img_id))
 				return 1;
@@ -661,10 +665,12 @@ static int still_wanted(const char *img_id, const char *dropped)
  * A box outlives its application's last window — it stops on its own later —
  * and `kdos-box remove` refuses a running one, so the stop sequence runs
  * first, and an uninstall right after quitting the app goes through. A box
- * installed and never started has a profile and no container; `kdos-box
- * remove` deletes that profile, without which `kdos-box list` keeps listing
- * the box as `not created` after its app is gone. Returns 0 when the box is
- * gone; otherwise it has said why, and the uninstall stops.
+ * installed and never started, or one an earlier `kdos-box remove` took the
+ * container of, has a profile and no container; `kdos-box remove --purge`
+ * deletes that profile, kept or not, without which `kdos-box list` keeps
+ * listing the box as `not created` after its app is gone. A box with a
+ * container keeps its profile, as `kdos-box remove` does. Returns 0 when the
+ * box is gone; otherwise it has said why, and the uninstall stops.
  */
 static int drop_box(const char *box, int exists)
 {
@@ -684,8 +690,54 @@ static int drop_box(const char *box, int exists)
 	kb_argv_add(&a, "kdos-box");
 	kb_argv_add(&a, "remove");
 	kb_argv_add(&a, box);
+	if (exists == 1)
+		kb_argv_add(&a, "--purge");
 	kb_argv_end(&a);
 	return kb_run_tty(&a) != 0;
+}
+
+/*
+ * THE KEPT BASE IS SAID AT REMOVE TIME. The base image and the image it is
+ * built FROM stay when the last box over them goes: they are every chain's
+ * floor, and the next install would otherwise build them again. The one line
+ * names both and the command that gives the space back, so the space a
+ * removal leaves taken is not a surprise in `podman images`. Said only when
+ * the base image is there; its size is podman's for the base, which counts
+ * the layers of the image below it, and is left out when podman cannot say.
+ */
+static void say_kept_base(const CatPack *base)
+{
+	char img[CAT_ID_MAX + sizeof(STORE_IMG_PREFIX)];
+	char sz[64] = "", about[96] = "";
+	const char *from = base->image[0] ? base->image : STORE_BASE_IMAGE;
+	KbArgv a = {0};
+
+	snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, base->id);
+	if (!image_exists(img))
+		return;
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "image");
+	kb_argv_add(&a, "inspect");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Size}}");
+	kb_argv_add(&a, img);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, sz, sizeof(sz)) == 0) {
+		char *end;
+		unsigned long long b = strtoull(sz, &end, 10);
+
+		if (end != sz && b > 0) {
+			if (b >= 1000000000ULL)
+				snprintf(about, sizeof(about), " (about %.1f GB "
+					 "together)", b / 1e9);
+			else
+				snprintf(about, sizeof(about), " (about %llu MB "
+					 "together)", (b + 500000) / 1000000);
+		}
+	}
+	printf("    kept %s and the %s it is built on%s, the floor of every "
+	       "store application; `podman rmi %s %s` gives the space back\n",
+	       img, from, about, img, from);
 }
 
 int store_uninstall(const char *id)
@@ -711,6 +763,24 @@ int store_uninstall(const char *id)
 			"%s was not uninstalled\n", id, rc, id);
 		return rc;
 	}
+	/* Nothing to remove is said as such: no container and no image of the
+	 * application's own is an id that is not installed, and "removed"
+	 * there would report work that was never done. The profile does not
+	 * count: `kdos-box remove` keeps it on purpose, so an application
+	 * removed once still has one, and a second removal would otherwise
+	 * delete that kept profile and report the application removed again.
+	 * The profile is left as it is. It is not a failure: a group's removal
+	 * names every member, installed or not, and the outcome asked for —
+	 * the application absent — holds. */
+	if (rc == 1) {
+		char img[CAT_ID_MAX + sizeof(STORE_IMG_PREFIX)];
+
+		snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, id);
+		if (!image_exists(img)) {
+			printf("==> %s is not installed\n", id);
+			return 0;
+		}
+	}
 	if (drop_box(id, rc) != 0) {
 		fprintf(stderr, "kdos-appbox: %s was not uninstalled\n", id);
 		return 1;
@@ -719,12 +789,20 @@ int store_uninstall(const char *id)
 	n = cat_chain(id, chain);
 	/* The application's own image first, then any runtime above the base
 	 * that nothing else needs. The base itself is never removed: it is
-	 * every chain's floor and about 550 MB. */
+	 * every chain's floor and about 550 MB, and the next install would
+	 * build it again. When no remaining box stands on it, the uninstall
+	 * says it was kept and how to give it back. The application's image
+	 * is gone already when the `kdos-box remove --purge` above released
+	 * it, and the runtimes are still looked at then. */
 	for (int i = n - 1; i >= 1; i--) {
 		KbArgv r = {0};
+		char img[CAT_ID_MAX + sizeof(STORE_IMG_PREFIX)];
 
 		if (i < n - 1 && still_wanted(chain[i]->id, id))
 			break;
+		snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, chain[i]->id);
+		if (i == n - 1 && !image_exists(img))
+			continue;
 		kb_argv_add(&r, "podman");
 		kb_argv_add(&r, "rmi");
 		kb_argv_addf(&r, "%s%s", STORE_IMG_PREFIX, chain[i]->id);
@@ -733,10 +811,12 @@ int store_uninstall(const char *id)
 			break;
 		printf("    removed %s%s\n", STORE_IMG_PREFIX, chain[i]->id);
 	}
+	if (n > 0 && !still_wanted(chain[0]->id, id))
+		say_kept_base(chain[0]);
 
 	/* The table, the mime cache and the shims are written whole, so this
 	 * regenerates from what REMAINS rather than removing one entry. */
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s removed\n", id);
 	return 0;
 }
@@ -857,7 +937,7 @@ int store_deb_install(const char *spec, int dry)
 			return 1;
 		}
 	}
-	store_launchers();
+	store_launchers(0);
 	printf("==> %s installed\n", spec);
 	fflush(stdout);
 	return 0;
@@ -885,6 +965,17 @@ int store_deb_uninstall(const char *spec)
 			"has a container; %s was not uninstalled\n", box, spec);
 		return 1;
 	}
+	/* Installed is a container or the package's own image, never the kept
+	 * profile, as in store_uninstall. */
+	if (rc == 1) {
+		char img[sizeof(box) + sizeof(STORE_IMG_PREFIX)];
+
+		snprintf(img, sizeof(img), "%s%s", STORE_IMG_PREFIX, box);
+		if (!image_exists(img)) {
+			printf("==> %s is not installed\n", spec);
+			return 0;
+		}
+	}
 	if (drop_box(box, rc) != 0) {
 		fprintf(stderr, "kdos-appbox: %s was not uninstalled\n", spec);
 		return 1;
@@ -895,7 +986,15 @@ int store_deb_uninstall(const char *spec)
 	kb_argv_end(&r);
 	if (kb_run(&r) == 0)
 		printf("    removed %s%s\n", STORE_IMG_PREFIX, box);
-	store_launchers();
+	/* A Debian box is built on the base row, so the last box over the
+	 * base going says it was kept, as in store_uninstall. */
+	{
+		const CatPack *base = cat_find("base");
+
+		if (base && !still_wanted("base", box))
+			say_kept_base(base);
+	}
+	store_launchers(0);
 	printf("==> %s removed\n", spec);
 	return 0;
 }
@@ -1540,7 +1639,7 @@ int store_import(const char *archive, const char *const *ids, int n)
 		unstage_index();
 
 	if (done)
-		store_launchers();
+		store_launchers(0);
 	{
 		KbArgv rm = {0};
 		kb_argv_add(&rm, "rm");

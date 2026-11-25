@@ -22,3 +22,5 @@ make
 make DESTDIR="$PKG" install
 
 rm -f "$PKG"/usr/lib/*.a "$PKG"/usr/bin/compile-et.pl "$PKG"/usr/bin/prerr.properties
+
+install -Dm644 "$SRC/nspr/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"

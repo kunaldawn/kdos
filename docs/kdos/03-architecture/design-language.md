@@ -82,6 +82,10 @@ accent and `paper`: the distribution's `kdeglobals` names `org.kdos.bone.desktop
 and feel and `org.kdos.paper.desktop` as the light one, with automatic switching off, and `kdos
 theme` moves the dark half to whichever dark accent is chosen. The Konsole scheme and profile,
 the Qt 5 palette and the wallpaper of an accent are all named `KDOS-<Title>`.
+The desktop draws its icon labels white with a black shadow whatever the scheme; under a light
+accent, whose wallpaper is light, `plasma-desktop`'s `desktop-label-light.patch` puts each label
+on a rounded black backing at 0.6 opacity, so the white text holds at least 4.5:1 on any
+wallpaper. The backing follows a change of accent at run time, with no plasmashell restart.
 
 ### The role mapping
 
@@ -128,11 +132,22 @@ Selection. Text in the accent reads `ForegroundLink` (`Kirigami.Theme.linkColor`
 the accent held to the 4.5:1 text floor; focus colour on text holds only 3:1 on an accent that
 misses 4.5:1. The accent swatches of the Look page, the installer and Welcome Center, the
 splash's mark and bar, the meters' sparklines and scanlines, the key card's plate and focus
-frame and the Plasma style's rules, outlines and underlines are drawn in the focus colour; the
-key card's section headings, the splash's percentage and the Phosphor clock's colon in the link
-colour. A translucent fill under text, like a task's focus tint, stays the selection, the colour
-text is solved to read on. The window decoration's outline reads the palette's link colour, the
-one QPalette role that holds the accent.
+frame, the Plasma style's rules, outlines and underlines, its slider, progress-bar and switch
+fills and its radio and check marks are drawn in the focus colour; the key card's section
+headings, the splash's percentage and the Phosphor clock's colon in the link colour. A
+translucent fill under text, like a task's focus tint, stays the selection, the colour text is
+solved to read on. The window decoration's outline reads the palette's link colour, the one
+QPalette role that holds the accent.
+
+**Keyboard focus is the focus colour, hover the selection.** A Breeze-style push button, tool
+button, drop-down button or combo box with keyboard focus is outlined in `DecorationFocus`, the
+accent, through the `breeze` port's `button-focus-outline.patch`; hovered and pressed buttons keep
+Breeze's `Highlight` outline. Stock Breeze draws focus in `Highlight` too, which on a dark accent's
+darkened selection measures about 1.6:1 against the resting frame, so a focused button barely
+changes. When focus leaves a button its ring fades from the accent to the resting frame over the
+style's animation; a Qt Quick page on `qqc2-desktop-style` gets the same colour with no fade, and
+its check boxes and radio buttons show Breeze's focus underline whenever they have focus. Plasma
+style buttons are drawn by the Plasma style, not by Breeze, and are not covered by the patch.
 
 **The window ground is `deep` moved towards grey.** A colour scheme carries no Light, Mid, Dark
 or Shadow: KColorScheme derives them from the Window background, and LibreOffice paints its
@@ -240,7 +255,15 @@ not captured, so they are exact for every accent with no session to photograph.
 `/usr/share/plasma/desktoptheme/kdos` draws the panel, popups, tooltips, buttons, the task
 manager and the pager: square frames, opaque, with a one-pixel rule in the accent. The pager's
 cells are never filled, because their labels are drawn in the text colour: the current desktop is
-an accent outline with a two-pixel accent rule along its bottom. It falls back to Breeze for
+an accent outline with a two-pixel accent rule along its bottom. It also draws the slider, the
+progress bar (the volume and brightness OSD's among them), the radio and check marks and the
+switch, filled with the accent (`ColorScheme-ButtonFocus`) over a hollow track. Breeze fills
+them with `ColorScheme-Highlight`, the darkened selection, which on a dark accent parts from its
+groove at about 1.4:1, and its radio from the ground at about 1.1:1. The track is a faint
+text-coloured outline around the ground itself, so the fill meets the ground at the focus
+colour's 3:1 floor. The switch's groove and its square handle are outlined in the radio's ring,
+at least 4.4:1 against the ground on every accent, where Breeze's switch parts from a dark ground
+at about 1.5:1. A popup's margins are 8 pixels and its insets 4. It falls back to Breeze for
 everything else and ships no colour file of its own, so it follows whichever scheme is in force.
 Blur, background contrast and adaptive transparency are off; with no adaptive transparency, Panel
 Settings shows no Opacity choice, which `plasma-desktop`'s `panel-opacity.patch` hides. Each frame is installed at its own path
@@ -275,7 +298,8 @@ The copies draw the glyph in the colour the shape is solved against instead, the
 on a positive, neutral or negative shape and the selection's text on an accent one, and are made
 from an installed Breeze Dark by `genstatus.py` on a development host. Every other icon is inherited
 from `breeze-dark` or `breeze`, then Adwaita, for the GTK symbolic names only Adwaita draws, then
-`hicolor`. The marks themselves are in `hicolor`:
+`hicolor`. Adwaita (`adwaita-icon-theme`) is a seed of `ports/base` rather than a `depends =` of
+`kdos-icons`, which builds in an earlier phase than GTK and Adwaita do. The marks themselves are in `hicolor`:
 `start-here-kdos` for the launcher, `distributor-logo-kdos` and `kdos` for the About page and
 `/etc/os-release`; `start-here-kdos` is in both themes too, because KIconLoader tries a name's
 dash-stripped forms in each theme before the next, and Adwaita's legacy `start-here`, GNOME's
@@ -286,6 +310,9 @@ so the copy of the shorter name does not answer it. Both themes set
 `FollowsColorScheme=true`, which is what makes Breeze's monochrome icons take the accent: KIconLoader recolours an inherited icon only when the top theme
 asks for it. GTK and other non-KDE toolkits do no such recolouring and draw those icons in Breeze's
 own blue. The marks are raster, the one part of the icon themes that does not follow the accent.
+GTK 4 reads the same chain; in a Plasma session Celluloid finds three symbolic names in it as
+missing, which [Known gaps](../06-reference/known-gaps.md#celluloid-draws-three-of-its-buttons-as-missing-icons)
+describes.
 
 ### The cursor
 
@@ -349,25 +376,32 @@ the accent chosen at installation as `/etc/xdg/kdeglobals` `LookAndFeelPackage`,
 `/etc/xdg/kdosrc`, and for the Tiling desk `/etc/xdg/kwinrc [Plugins] krohnkiteEnabled=true`, because
 KWin loads its scripts before the first login's layout script runs. `/etc/skel` ships no panel layout or Plasma defaults file, because one
 copied into a new home would bypass the global theme and be rewritten at the first login anyway;
-its `kdeglobals` holds only the `DefaultDarkLookAndFeel` pairing that `kdos theme` writes. A virtual machine gets one more directory in front, `/usr/share/kdos/xdg-vm`, which
+its `kdeglobals` holds only the `[KDE] LookAndFeelPackage` and `DefaultDarkLookAndFeel` pair that `kdos theme` writes outside a session, in the seeded accent. The image seeds `/etc/skel` with the default accent, and the installer seeds it again, with `kdos theme --account <accent>`, together with the new account's home, so the accent file, the terminal programs' colours and qt5ct that a text console or an SSH login reads are the chosen accent's from the first boot, and every account made later starts in it. A virtual machine gets one more directory in front, `/usr/share/kdos/xdg-vm`, which
 turns off the timed lock, idle dimming, screen blanking, and idle and lid suspend, and the live medium gets `/usr/share/kdos/xdg-live`.
 The full list of files is in [Configuration](../06-reference/configuration.md).
 
 ## One look from power-on to the lock screen
 
 The screens a person sees before the desktop are drawn by six different programs, and they are
-made to read as one sequence: the same ground, the same mark in the same place, the same accent,
-and full black between each and the next, so a change of display mode always falls inside a black
-frame.
+made to read as one sequence: the same ground, the same mark in the same place, the same accent.
+The boot splash holds its settled frame until the compositor's first mode set, and KSplash's
+first frame carries the settled frame's mark and bar at full opacity, on the same pixels while
+the release shares the name's line (a release on a line of its own leaves with the line, and the
+rule and the bar move up two lines); it leaves out the stage rows and the release, adds KDE's credit, and draws the wordmark's lower half
+from the colour scheme's roles, so that shade can change across the handover. The login screen
+fades in out of black and back to black on a login. Between the compositor's mode set and
+KSplash's first frame the pointer shows on black while `ksplashqml` starts: under two seconds on
+a live boot, and up to about four after the first greeter login of a boot
+([the known gap](../06-reference/known-gaps.md#the-screen-is-black-with-the-pointer-before-ksplash)).
 
 | Stage | Drawn by | What it shows |
 |---|---|---|
-| Boot menu | Limine | The menu in the accent's palette, over the KDOS artwork |
-| Boot progress | `kdos-splash`, on the framebuffer | The mark fading in out of black, then the boot stages under a segmented bar; at the end of `rcS` it fades to black and lets go of the screen |
-| Login screen | SDDM, with the `kdos` theme on its own KWin | Breeze's login layout with the KDOS mark, the clock in the fixed face, the footer "KDOS · Plasma by KDE", over the accent's dark wallpaper, fading in out of black and back to black on a login |
-| Session start | KSplash, the global theme's own | `kdos-splash`'s last frame again, at the same pixels: the mark and the wordmark, then a segmented bar driven by the session's start-up stages |
+| Boot menu | Limine | The menu's text in the accent's palette, on a plate that is the KDOS artwork's neutral floor under every accent (Paper's dark text cannot be read on it, so Paper draws Bone's menu) |
+| Boot progress | `kdos-splash`, on the framebuffer | The mark fading in out of black, the name and release under it ("Kool Desktop Operating System 0.2.1"), then the boot stages under a segmented bar; at the end of `rcS` it holds its last frame until the login screen's compositor replaces it |
+| Login screen | SDDM, with the `kdos` theme on its own KWin | Breeze's login layout with the KDOS mark, the clock in the fixed face, the footer "KDOS 0.2.1 · Plasma by KDE" naming the release as `kdos version` does, over the accent's dark wallpaper dimmed toward the scheme's ground, its tint kept, until the greeter's text holds 4.5:1 on the picture's brightest pixel, fading in out of black and back to black on a login |
+| Session start | KSplash, the global theme's own | `kdos-splash`'s last frame without its stage rows, at the same pixels (but for the rule and the bar, which move up two lines when the release had a line of its own): the mark and the wordmark, its lower half shaded from the scheme's roles, the two lines under them in Terminus's scalable face (the name without the release), then the segmented bar carried on from where the boot splash's stood at the handover: 99% and one segment short, its leading segment pulsing until the desktop is up, so it never moves backwards |
 | Desktop | Plasma | The KDOS desk in the accent |
-| Lock screen | `kscreenlocker`, with Plasma's lock screen as `plasma-desktop`'s patch draws it | Breeze's layout in the accent's colours and wallpaper, the clock in the fixed face in the band above the mark |
+| Lock screen | `kscreenlocker`, with Plasma's lock screen as `plasma-desktop`'s patch draws it | Breeze's layout in the accent's colours and wallpaper, the clock in the fixed face in the band above the mark. The wallpaper is the accent's package, not dimmed, so the name and "Unlocking failed" over the penguin's pale belly hold about 3:1 |
 | Logout | Plasma's logout screen, stock Breeze | Breeze's own layout in the accent's colours, wallpaper and fonts |
 
 The login screen and the lock screen are drawn by the same Breeze components, and both show the
@@ -384,7 +418,21 @@ the machine's accent, or for `paper` its dark partner. The accent reaches the sc
 login through `kdos-powerd`, because they are root's files: `/etc/kdos/accent` for the splash,
 `/etc/vtrgb` for the text console, the boot menu's palette, and the `sddm` account's
 `kdeglobals`, `plasmarc` and `kcminputrc`, copied from `/usr/share/kdos/greeter/<accent>/` together
-with that set's `background.png` as `/var/lib/sddm/kdos-background.png`. How `kdos theme` reaches
+with that set's `background.png` as `/var/lib/sddm/kdos-background.png`.
+
+**The greeter's text has a floor.** SDDM draws the user's name, "Login Failed" and the clock in the
+Complementary set's text straight over its picture, and the dark wallpaper's penguin has a nearly
+white belly behind the name. `kdos-theme greeter-globals --sddm` therefore writes `background.png`
+as the accent's dark picture with every channel above the scheme's ground taken toward that
+ground by one factor in linear light, and every channel at or below it kept, so the picture keeps
+the ground's tint and the penguin's black stays black. The factor is solved so the brightest pixel
+holds 4.5:1 against that text, then measured on the written pixels and stepped down until they
+clear it.
+Holding the brightest pixel bounds every crop a screen's aspect takes and the blur Breeze lays
+under the login, because a blur never brightens past what it averages. The greeter's environment
+names `QT_QPA_PLATFORMTHEME=kde`, the session's platform theme, which its KWin hands on to the
+on-screen keyboard it starts, so `plasma-keyboard` draws its keys from the `sddm` account's
+`kdeglobals` rather than Qt's built-in light palette. How `kdos theme` reaches
 each of them is in [kdos theme](../04-programs/kdos-command.md#kdos-theme); the splash and the
 handover are in [The splash](boot-and-init.md#the-splash).
 
@@ -396,7 +444,9 @@ switch for reduced motion: the Welcome tour's accessibility and look pages offer
 Settings' animation speed slider sets it, and every KDOS motion reads it too.
 
 KDOS Modern adds no motion of its own past that. KWin's own effects run as KDE ships them, and the
-login screen and KSplash fade in out of black rather than move. Phosphor mode adds the motion of a
+login screen fades in and out of black rather than moving, and KSplash's first frame carries the
+boot splash's settled mark and bar at full opacity, after the pointer has shown on black while
+`ksplashqml` starts. Phosphor mode adds the motion of a
 CRT, every duration below scaled by the factor:
 
 | What moves | Effect | Duration |
@@ -493,7 +543,10 @@ them. They draw with `libktui`, KDOS's cell toolkit, and follow the same palette
 
 There are eight slots and no more because the console font has 512 glyphs: the Linux console uses
 the foreground intensity bit as the ninth glyph bit, so colours 8 to 15 cannot be a foreground.
-Designing for eight means a text console and a terminal window show the same picture. Three rules
+Designing for eight means a text console and a terminal window show the same picture. Where a
+program does reach bright black (colour 8: SGR 90, or bold 30), the console palette `/etc/vtrgb`
+and the terminal palettes give it `kcol_muted()`, never `dim`, so de-emphasised text in `htop`,
+`ls` or `vim` holds 4.5:1 on the ground; the login banner's penguin body is drawn in it. Three rules
 follow from the measured contrasts:
 
 - **`KT_DIM` is a fill, never a label.** As a foreground it measures 1.42:1 to 2.12:1 against the

@@ -1,0 +1,80 @@
+# bash completion for ksvc and service, one program under two names.
+#
+# KDOS's syntax is `service [--user] <verb> <name>`, the reverse of the SysV
+# `service <name> <verb>` bash-completion's own `service` completion assumes;
+# that one also skips every *.sh, which is every KDOS service. The startup
+# file /usr/share/bash-completion/startup/ksvc.bash, which bash_completion
+# runs after it registers its own completions, sources this file, so this
+# definition replaces it for `service`; `ksvc` loads it on demand by name.
+
+# The tables ksvc reads: the system one, and the one --user selects.
+_kdos_ksvc_init=/etc/init.d
+_kdos_ksvc_user=/etc/kdos/user-services
+
+# A service's name is its script's, NN_<name>.sh, without the number and the
+# .sh, which is how ksvc matches the name it is given.
+_kdos_ksvc_names() {
+    local f n
+    for f in "$1"/[0-9][0-9]_*.sh; do
+        [ -f "$f" ] || continue
+        n=${f##*/}
+        n=${n#??_}
+        printf '%s\n' "${n%.sh}"
+    done
+}
+
+_kdos_ksvc() {
+    local cur prev verbs dir at=1
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    dir=$_kdos_ksvc_init
+    verbs="list status start stop restart enable disable help"
+    # supervise, stop-supervised and check are the verbs the init scripts
+    # call through service_helper; they are offered under ksvc's own name.
+    [ "${COMP_WORDS[0]##*/}" = ksvc ] && verbs="$verbs supervise stop-supervised check"
+
+    if [ "${COMP_WORDS[1]}" = --user ] && [ "$COMP_CWORD" -gt 1 ]; then
+        at=2
+        dir=$_kdos_ksvc_user
+    fi
+
+    if [ "$COMP_CWORD" -eq "$at" ]; then
+        if [ "$at" -eq 1 ]; then
+            COMPREPLY=($(compgen -W "$verbs --user" -- "$cur"))
+        else
+            COMPREPLY=($(compgen -W "$verbs" -- "$cur"))
+        fi
+        return
+    fi
+
+    case "${COMP_WORDS[at]}" in
+        status|start|stop|restart|enable|disable|check|stop-supervised)
+            [ "$COMP_CWORD" -eq $((at + 1)) ] &&
+                COMPREPLY=($(compgen -W "$(_kdos_ksvc_names "$dir")" -- "$cur")) ;;
+        supervise)
+            # ksvc supervise [options] <name> <command> [args...]: the
+            # options, then a service name, then a command.
+            local i words=0
+            for ((i = at + 1; i < COMP_CWORD; i++)); do
+                case "${COMP_WORDS[i]}" in
+                    --final-exit|--facility|--stop-grace|--restart-with) ((i++)) ;;
+                    -*) ;;
+                    *) ((words++)) ;;
+                esac
+            done
+            case "$prev" in
+                --restart-with) COMPREPLY=($(compgen -W "$(_kdos_ksvc_names "$dir")" -- "$cur")) ;;
+                --final-exit|--facility|--stop-grace) COMPREPLY=() ;;
+                *)
+                    if [ "$words" -eq 0 ]; then
+                        COMPREPLY=($(compgen -W "--final-exit --facility --stop-grace --restart-with $(_kdos_ksvc_names "$dir")" -- "$cur"))
+                    elif [ "$words" -eq 1 ]; then
+                        COMPREPLY=($(compgen -c -- "$cur"))
+                    else
+                        COMPREPLY=($(compgen -f -- "$cur"))
+                    fi ;;
+            esac ;;
+        *) COMPREPLY=() ;;
+    esac
+}
+complete -F _kdos_ksvc ksvc service

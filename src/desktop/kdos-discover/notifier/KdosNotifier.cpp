@@ -17,7 +17,9 @@
 #include <KUiServerV2JobTracker>
 
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QDBusMetaType>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusVariant>
@@ -112,6 +114,7 @@ KdosNotifier::KdosNotifier(QObject *parent)
     });
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, m_settle, qOverload<>(&QTimer::start));
 
+    qDBusRegisterMetaType<QList<QVariantMap>>();
     slotsBus().connect(SlotsService,
                        SlotsPath,
                        u"org.freedesktop.DBus.Properties"_s,
@@ -202,7 +205,7 @@ void KdosNotifier::readSlots()
         w->deleteLater();
         const QDBusPendingReply<QDBusVariant> reply = *w;
         if (!reply.isError()) {
-            applySlots(readSlotsState(qdbus_cast<QVariantMap>(reply.value().variant())));
+            applySlots(readSlotsState(qdbus_cast<QVariantMap>(reply.value().variant())), true);
             return;
         }
         qCDebug(KDOS_NOTIFIER_LOG) << "io.kdos.Slots1:" << reply.error().message() << "- asking kdos-bootctl";
@@ -213,7 +216,7 @@ void KdosNotifier::readSlots()
 void KdosNotifier::readBootctl()
 {
     runTool(u"kdos-bootctl"_s, {u"status"_s, u"--json"_s}, [this](const QByteArray &out, bool) {
-        applySlots(readSlotsState(QJsonDocument::fromJson(out).object().toVariantMap()));
+        applySlots(readSlotsState(QJsonDocument::fromJson(out).object().toVariantMap()), false);
     });
 }
 
@@ -222,23 +225,51 @@ void KdosNotifier::slotsPropertiesChanged(const QString &interface, const QVaria
     if (interface != SlotsInterface)
         return;
     if (changed.contains(u"State"_s))
-        applySlots(readSlotsState(qdbus_cast<QVariantMap>(changed.value(u"State"_s))));
+        applySlots(readSlotsState(qdbus_cast<QVariantMap>(changed.value(u"State"_s))), true);
     else if (invalidated.contains(u"State"_s))
         readSlots();
 }
 
-void KdosNotifier::applySlots(const SlotsState &state)
+// State names no slot's version. The last ListSlots answer stands in until
+// the next one arrives, so an armed update stays pending across a State
+// change instead of flickering out and posting its notification again.
+void KdosNotifier::applySlots(const SlotsState &state, bool fromDaemon)
 {
+    const QString runningVersion = m_slots.runningVersion;
+    const QString otherVersion = m_slots.otherVersion;
     m_slots = state;
+    if (fromDaemon) {
+        m_slots.runningVersion = runningVersion;
+        m_slots.otherVersion = otherVersion;
+    }
     trackJob(state);
     recompute();
+    if (fromDaemon && state.rebootRequired)
+        readSlotList();
+}
+
+void KdosNotifier::readSlotList()
+{
+    QDBusMessage list = QDBusMessage::createMethodCall(SlotsService, SlotsPath, SlotsInterface, u"ListSlots"_s);
+    auto *w = new QDBusPendingCallWatcher(slotsBus().asyncCall(list), this);
+    connect(w, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusPendingReply<QList<QVariantMap>> reply = *w;
+        if (reply.isError()) {
+            qCDebug(KDOS_NOTIFIER_LOG) << "io.kdos.Slots1.ListSlots:" << reply.error().message();
+            return;
+        }
+        Kdos::readSlotList(reply.value(), &m_slots);
+        recompute();
+    });
 }
 
 void KdosNotifier::recompute()
 {
     const bool updates = m_slots.offerKnown ? !m_slots.offer.isEmpty() : updateOffer(m_updateDocument, m_slots);
     const bool security = updates && securityFixes(m_updateDocument, m_cveDocument) > 0;
-    qCDebug(KDOS_NOTIFIER_LOG) << "updates" << updates << "security" << security << "reboot" << m_slots.rebootRequired;
+    const bool reboot = stagedUpdate(m_slots);
+    qCDebug(KDOS_NOTIFIER_LOG) << "updates" << updates << "security" << security << "reboot" << reboot;
 
     if (updates != m_hasUpdates || security != m_hasSecurity) {
         m_hasUpdates = updates;
@@ -246,15 +277,28 @@ void KdosNotifier::recompute()
         Q_EMIT foundUpdates();
     }
 
-    // Discover's tray turns "Restart to update" on at this signal and keeps
-    // it for the session, which is right: an armed slot stays armed until the
-    // restart, and a trial cancelled from System Versions is rare enough to
-    // be told by the next login.
-    if (m_slots.rebootRequired != m_needsReboot) {
-        m_needsReboot = m_slots.rebootRequired;
-        if (m_needsReboot)
-            Q_EMIT needsRebootChanged();
+    // Emitted on both transitions: Discover's tray reads needsReboot() at
+    // this signal, and a trial cancelled from System Versions disarms the
+    // slot with the session still running, so "Restart to update" has to go
+    // as well as come.
+    if (reboot != m_needsReboot) {
+        m_needsReboot = reboot;
+        Q_EMIT needsRebootChanged();
     }
+}
+
+// Set on the notifier while Discover was running when the job in State
+// began: Discover's own transaction reports that job, and a second one here
+// would leave two entries for one update in the notification history. State
+// does not name the client that started a job, so one another sysupdate1
+// client starts while a Discover window is open is taken for Discover's and
+// has no entry.
+static const char DiscoverOwnsJob[] = "kdosDiscoverOwnsJob";
+
+static bool discoverRunning()
+{
+    const QDBusConnectionInterface *bus = QDBusConnection::sessionBus().interface();
+    return bus && bus->isServiceRegistered(u"org.kde.discover"_s).value();
 }
 
 void KdosNotifier::trackJob(const SlotsState &state)
@@ -264,8 +308,15 @@ void KdosNotifier::trackJob(const SlotsState &state)
         if (m_job)
             m_job->end();
         m_job = nullptr;
+        setProperty(DiscoverOwnsJob, QVariant());
         return;
     }
+    // Decided when the job is first seen and kept for its length, so one
+    // job's entry is never posted twice.
+    if (!m_job && !property(DiscoverOwnsJob).isValid())
+        setProperty(DiscoverOwnsJob, discoverRunning());
+    if (property(DiscoverOwnsJob).toBool())
+        return;
     if (!m_job) {
         m_job = new UpdateJob(this);
         auto *tracker = new KUiServerV2JobTracker(m_job);

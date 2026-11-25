@@ -46,17 +46,15 @@ ColumnLayout {
         color: Kirigami.Theme.disabledTextColor
     }
 
-    Repeater {
-        model: notes.lines
-
-        delegate: Kirigami.InlineMessage {
-            required property string modelData
-
-            Layout.fillWidth: true
-            visible: true
-            type: Kirigami.MessageType.Warning
-            /* `kcm` is gone before a delegate is when the page closes. */
-            text: kcm?.profile.noteMarkup(modelData) ?? ""
-        }
+    /* One message for every line, not a Repeater of them: a delegate the
+     * Repeater destroys when Apply reloads the report is still in this
+     * layout's item list while the form reads its size hint, and System
+     * Settings crashes on the freed item. */
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        visible: notes.lines.length > 0
+        type: Kirigami.MessageType.Warning
+        /* `kcm` is gone before this item is when the page closes. */
+        text: notes.lines.map(line => kcm?.profile.noteMarkup(line) ?? "").join("<br>")
     }
 }

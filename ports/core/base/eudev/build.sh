@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/watch-reread-changed-table.patch"
+
 autoreconf -f -i -s
 ./configure --enable-manpages \
 	--prefix=/usr \

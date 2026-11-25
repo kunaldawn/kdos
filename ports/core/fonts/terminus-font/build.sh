@@ -27,3 +27,4 @@ for sz in 16 32; do
 		> "$PKG/usr/share/consolefonts/ter-kdos${sz}n.psf.gz"
 done
 install -Dm644 75-yes-terminus.conf "$PKG/etc/fonts/conf.d/75-yes-terminus.conf"
+install -Dm644 OFL.TXT "$PKG/usr/share/licenses/$name/OFL.TXT"

@@ -1,0 +1,22 @@
+Subject: notifier: label the "Restart is required" actions "Restart" and "Shut Down"
+
+The notification is shown when a backend reports needsReboot, after its
+updates are installed and wait only for the restart. Its two actions
+open the logout prompt's reboot and shut-down pages (promptReboot,
+promptShutDown) and start no update, so "Update and Restart" and
+"Update and Shut Down" offer an update that is already done. Label
+them for what they do.
+
+--- a/notifier/DiscoverNotifier.cpp
++++ b/notifier/DiscoverNotifier.cpp
+@@ -424,8 +424,8 @@ void DiscoverNotifier::showRebootNotification()
+     notification->setText(i18n("The system needs to be restarted for the updates to take effect."));
+     notification->setIconName(QStringLiteral("system-software-update"));
+ 
+-    auto restartAction = notification->addAction(i18nc("@action:button", "Update and Restart"));
+-    auto shutdownAction = notification->addAction(i18nc("@action:button", "Update and Shut Down"));
++    auto restartAction = notification->addAction(i18nc("@action:button", "Restart"));
++    auto shutdownAction = notification->addAction(i18nc("@action:button", "Shut Down"));
+     connect(restartAction, &KNotificationAction::activated, this, &DiscoverNotifier::rebootPrompt);
+     connect(shutdownAction, &KNotificationAction::activated, this, &DiscoverNotifier::shutdownPrompt);
+ 

@@ -10,3 +10,4 @@
 # ---------------------------------
 
 install -Dm644 ggml-base.en-$version.bin "$PKG/usr/share/whisper.cpp/models/ggml-base.en.bin"
+install -Dm644 "$PORT_SRC/LICENSE" "$PKG/usr/share/licenses/$name/LICENSE"

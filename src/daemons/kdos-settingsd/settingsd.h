@@ -134,6 +134,13 @@ int ks_set_ntp_marker(bool enabled);
 /* `NAME=value` with NAME one of the variables locale1 carries. `key` gets
  * the index of NAME in the canonical order; `empty` is set for `NAME=`. */
 bool ks_locale_assign_ok(const char *a, int *key, bool *empty);
+/* `v`, the value of variable `key`, is C, C.UTF-8, POSIX or
+ * `ll[_CC][.UTF-8|.utf8][@modifier]` whose language has a definition under
+ * <share>/i18n/locales/musl or catalogues under <share>/locale; LANGUAGE's
+ * elements take the same shape without a codeset. The shape check above
+ * stays apart: it also reads the existing file, where a hand-written value
+ * must not cost the others. */
+bool ks_locale_known(int key, const char *v);
 /* The assignments /etc/locale.conf holds, canonical order. */
 int ks_locale_get(char out[KS_LOCALE_KEYS][KS_ASSIGN_MAX]);
 /* Values indexed by key; "" leaves the variable out. Every key empty removes
@@ -153,7 +160,12 @@ typedef struct {
 bool ks_keymap_name_ok(const char *s);
 bool ks_keymap_installed(const char *name);
 void ks_keymap(char *out, size_t n);		/* /etc/keymap, "" when unset */
-int ks_set_keymap(const char *name);		/* "" removes /etc/keymap */
+/* "" removes /etc/keymap. Either way the ESP's copy follows: <esp>/EFI/kdos/
+ * keymap, the map the initramfs loads for the disk passphrase, where <esp>
+ * is $KDOS_SETTINGSD_ESP, or /boot/efi when no test tree is set. */
+int ks_set_keymap(const char *name);
+/* The ESP's copy rewritten from /etc/keymap where it differs; at start. */
+void ks_esp_keymap_sync(void);
 
 /* What /etc/kdos/xkb.conf holds, as written. */
 void ks_xkb_stored(KsXkb *x);
@@ -161,6 +173,9 @@ void ks_xkb_stored(KsXkb *x);
  * filled in from the console keymap through the conversion table. */
 void ks_xkb_effective(KsXkb *x);
 int ks_set_xkb(const KsXkb *x);
+/* /etc/xdg/kxkbrc from the stored fields, written whole; an empty layout
+ * removes it. The session reads it before xkb.conf's environment. */
+int ks_set_kxkbrc(const KsXkb *x);
 /* NULL when the four fields are acceptable, else why not. Checked against
  * xkeyboard-config's rules list where it is installed. */
 const char *ks_xkb_check(const KsXkb *x);

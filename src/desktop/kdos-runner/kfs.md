@@ -19,7 +19,9 @@ after ten minutes without a call.
   `lib <words>`, which opens KRunner again with the library alone, and `ask <question>`, answered
   by the language model llama-server serves on 127.0.0.1:8082, with an answer Enter copies.
 - `kdos-library.desktop` (runner id `kdos-library`, object `/library`) is the offline library:
-  headings of the KDOS and KFS books under `/usr/share/doc`, `kdos*` manual pages, entries of every
+  headings of the KDOS and KFS books under `/usr/share/doc`, each subtitled `<page> · <book>`
+  with its page's first heading (*The firewall* reads *Administration · KDOS book* in one chapter
+  and *Security model · KDOS book* in another) and a page's own title with the book alone, `kdos*` manual pages, entries of every
   Zeal docset, a typed coordinate as a `geo:` link, title suggestions from every ZIM file that
   kiwix-serve serves on 127.0.0.1:8080, and resources from Kolibri on 127.0.0.1:8081. Its rows
   rank below everything else.
@@ -30,11 +32,28 @@ One program serves both, so the library has no port of its own.
 categories KRunner sorts above every other whatever a row's relevance; without it Applications and
 System Settings lead and `night light` + Enter starts an application. Because the ranking is per
 runner, a medium pack answers only after `install`, or `gimp` would rank the pack above the
-installed GIMP. KDOS's System Settings pages are left to System Settings' own runner, which finds
-them by the `X-KDE-Keywords` of their metadata; a palette row for each would be the same page
-twice. `lib <words>` is a `querySingleRunner` call naming `kdos-library`, KRunner's own
-single-runner mode: a `?` prefix cannot exclude other runners, and KRunner reads it as its help
-trigger.
+installed GIMP; and on the live medium, where the installer's entry `kdos-installer.desktop` is
+installed, `install kdos`, or any prefix of `kdos` after `install`, answers nothing, or Enter on
+*Install KDOS* would search Discover instead of starting the installer. A verb's values are ranked
+a step apart by their place among the rows shown, in their own order, since KRunner keeps no
+order among rows of one relevance and shows only a runner's first eight: `accent` lists `next`
+and `prev` first, or they would be its ninth and tenth rows and never on screen, then the accents
+as the boot menu does, and `desk` names the desks as the desk picker does (*KDOS*, *Dock*,
+*Tiling*). KDOS's System Settings pages are left to System Settings' own runner, which finds them
+by their names and the `X-KDE-Keywords` of their metadata, except for a page's whole title (the
+`Name` of its `kcm_kdos_*.desktop`): krunnerrc ranks Applications above System Settings, and the
+Applications runner allows a letter wrong in each word, so `KDOS Look` + Enter would open *The KDOS
+Book*. The palette answers the whole title with the page, as *Open KDOS Look* over *System
+Settings*, since System Settings lists the page under its bare name too; the library ranks its rows
+for that title at most 0.42, by the one test of a title that both share. Whatever the query,
+`KDOS Lo` as much as `KDOS Look`, a library row that reads a page's name is retitled `<name> in <source>`, its subtitle up to the
+` · ` (*KDOS Look in KDOS book* for a chapter titled *KDOS Look*), since System Settings' runner lists the page under its bare name for a part of the
+title too. Any other title two library rows of one answer share is retitled the same way (*The
+firewall in Administration*, *The firewall in The security model*), since KRunner shows a subtitle
+on the selected row alone, so no two rows of different sources share a title; two headings of one
+name in one chapter both read `<heading> in <chapter>`. `lib <words>` is a `querySingleRunner` call
+naming `kdos-library`, KRunner's own single-runner mode: a `?` prefix cannot exclude other runners,
+and KRunner reads it as its help trigger.
 
 ## Notes
 
@@ -57,7 +76,8 @@ tests hold every palette match under 50 ms. The library's two servers are asked 
 without blocking, and that Match is answered when both have answered or 250 ms have passed,
 whichever is first, so a slow server delays the library's rows and never the palette's. The book
 index is built once per install of `kdos-doc` or `kdos-kfs`, which the identity of their entries
-in the package database records, and is kept in `~/.cache/kdos/runner-books`. The runner builds it
+in the package database records, and is kept in `~/.cache/kdos/runner-books`, whose first line
+names its line format, so a cache in another format is rebuilt rather than read. The runner builds it
 in a child process, since the two books are thousands of pages and the palette answers from the
 same loop; until the file is written the library answers without the books.
 

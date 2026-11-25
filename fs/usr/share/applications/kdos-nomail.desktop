@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=No Mail Program
+Comment=Say that no mail program is installed, and how to install one
+Exec=kdialog --icon mail-client --desktopfile kdos-nomail --title "No mail program" --detailedsorry "No mail program is installed. Thunderbird is in the internet group: install it from Discover, or with sudo kdos update install internet." %u
+Icon=mail-client
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/mailto;
+Categories=Utility;

@@ -8,10 +8,12 @@
  * ---------------------------------
  *   Splash.qml — KSplash for every KDOS global theme
  *
- * The session's splash continues the boot splash: it draws kdos-splash's
- * settled frame — the penguin and the block wordmark, the two lines under
- * them, the rule and the segmented bar — at the positions kdos-splash puts
- * them, and the bar fills with KSplash's six stages.
+ * The session's splash continues the boot splash: it draws the mark of
+ * kdos-splash's settled frame — the penguin and the block wordmark, the two
+ * lines under them, the rule and the segmented bar — at the positions
+ * kdos-splash puts them when the release shares the name's line, and the bar carries on from where the boot splash's
+ * stood when it handed the screen over, so it never moves backwards across
+ * the handover. It draws no stage rows.
  *
  * THE LAYOUT IS kdos-splash.c's layout(), TERM FOR TERM, IN DEVICE PIXELS.
  * kdos-splash measures the framebuffer and stacks everything in whole pixels
@@ -27,16 +29,27 @@
  * only others are the mascot's own two and the black of a screen with
  * nothing on it, which mark.js carries from the same sources.
  *
- * THE MOTION IS KDOS MODERN'S: the picture fades in out of black, flat, as
- * kdos-splash's Modern power-on does. Phosphor mode needs nothing here: its
- * CRT pass is KWin's, over the whole screen this splash included, so the
- * bleed and the scanlines land on this frame as they did on the boot
- * splash's, and its kdos_login effect unfolds the desktop when KSplash
- * closes. One file, one motion, no mode to read.
+ * THERE IS NO ENTRANCE: KSplash continues the boot splash's held frame, so
+ * its first mapped frame carries that frame's mark, rule and bar at full
+ * opacity and the bar at its hold. The mark lands on the same pixels; the
+ * rule and the bar do while the release shares the name's line, and on a
+ * screen too narrow for that they move up two lines, because ruleY counts
+ * no release line. It also differs in four places: the release leaves the
+ * name line and the name re-centres, the stage rows are gone, KDE's credit is added, and the wordmark's lower half
+ * is the scheme's focus role mixed towards its hover role, where
+ * kdos-splash mixes the accent towards libkcolor's dim slot, which no KDE
+ * colour role carries, so on some accents (Bone) its shade differs. A fade
+ * in would put a dark frame between the two pictures and add its dark half
+ * to the black before KSplash. The only motion is the bar's pulsing
+ * leading segment. Phosphor mode needs nothing here: its CRT pass is
+ * KWin's, over the whole screen this splash included, so the bleed and the
+ * scanlines land on this frame as they did on the boot splash's, and its
+ * kdos_login effect unfolds the desktop when KSplash closes. One file, no
+ * mode to read.
  *
  * KSplash gives the root item `stage`, 1 to 6, and loads nothing but QtQuick
  * and Kirigami; the process exits on stage 6. Reduced motion (an animation
- * factor of 0) shows the settled frame at once.
+ * factor of 0) holds the leading segment still.
  * ---------------------------------
  */
 
@@ -50,10 +63,9 @@ import "mark.js" as Mark
 Rectangle {
     id: root
 
-    // Every handover of KDOS's power-on starts and ends on full black, so a
-    // mode set falls inside a black frame and the picture rises out of it.
-    // KSplash's window is transparent, so without this the desktop starting
-    // underneath would show through the fade.
+    // KSplash's window is transparent: the black root is what shows behind
+    // any transparency in the picture, so the desktop starting underneath
+    // never shows through the splash.
     color: Mark.screenOff
 
     property int stage
@@ -74,11 +86,15 @@ Rectangle {
         return Math.trunc(a / b);
     }
 
-    // kdos-splash draws with an 8x16 PSF font.
+    // kdos-splash draws with an 8x16 PSF font, Terminus's ter-v16n. Its
+    // text here is set in Terminus's scalable face, so the two splashes'
+    // lines are one typeface; an image without it falls back to the scheme's
+    // fixed-width font, which still keeps the 8-pixel column.
     readonly property int glyphW: 8
     readonly property int glyphH: 16
     readonly property int lineCols: 40
-    readonly property int barSegs: 26
+    readonly property int barSegs: Mark.barSegs
+    readonly property string face: Qt.fontFamilies().indexOf("Terminus (TTF)") >= 0 ? "Terminus (TTF)" : Kirigami.Theme.fixedWidthFont.family
 
     readonly property int bodyScale: Math.max(1, Math.min(3, cdiv(fbw, 640)))
     readonly property int cell: glyphH * bodyScale
@@ -117,7 +133,7 @@ Rectangle {
     // is not its cell, and sizing by it would widen every line.
     FontMetrics {
         id: probe
-        font.family: Kirigami.Theme.fixedWidthFont.family
+        font.family: root.face
         font.pixelSize: 100
     }
     readonly property real textPx: {
@@ -204,8 +220,14 @@ Rectangle {
 
     // ── the bar ─────────────────────────────────────────────────────────
 
-    readonly property int filledSegs: Math.min(barSegs, cdiv(stage * barSegs, 6))
-    readonly property int percent: Math.min(99, cdiv(stage * 100, 6))
+    // The bar starts where the boot splash's stood when it handed over
+    // (mark.js reads that from kdos-splash.c) and never passes the boot
+    // splash's own hold, 99% and one segment short; the stages share out
+    // whatever lies between the two. kdos-splash hands over at that hold, so
+    // the bar stands at 99% with its leading segment pulsing until the desktop
+    // is up. Starting it at zero would run the bar backwards at the handover.
+    readonly property int filledSegs: Math.min(barSegs - 1, Mark.handoffSegs + cdiv(stage * (barSegs - 1 - Mark.handoffSegs), 6))
+    readonly property int percent: Math.min(99, Mark.handoffPercent + cdiv(stage * (99 - Mark.handoffPercent), 6))
     property bool pulse: false
 
     Timer {
@@ -221,7 +243,6 @@ Rectangle {
         id: picture
 
         anchors.fill: parent
-        opacity: 0
 
         Rectangle {
             anchors.fill: parent
@@ -280,7 +301,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Mark.subtitle
             color: root.ink
-            font.family: Kirigami.Theme.fixedWidthFont.family
+            font.family: root.face
             font.pixelSize: root.textPx
             textFormat: Text.PlainText
             Accessible.name: text
@@ -291,7 +312,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Mark.tagline
             color: root.quiet
-            font.family: Kirigami.Theme.fixedWidthFont.family
+            font.family: root.face
             font.pixelSize: root.textPx
             textFormat: Text.PlainText
             Accessible.name: text
@@ -327,7 +348,7 @@ Rectangle {
                 y: root.px(root.barY)
                 text: "["
                 color: root.ink
-                font.family: Kirigami.Theme.fixedWidthFont.family
+                font.family: root.face
                 font.pixelSize: root.textPx
             }
 
@@ -336,7 +357,7 @@ Rectangle {
                 y: root.px(root.barY)
                 text: "]"
                 color: root.ink
-                font.family: Kirigami.Theme.fixedWidthFont.family
+                font.family: root.face
                 font.pixelSize: root.textPx
             }
 
@@ -367,7 +388,7 @@ Rectangle {
                 y: root.px(root.barY)
                 text: i18ndc("kdos-plasma-look", "progress readout, a number and a percent sign, four columns wide", "%1%", String(root.percent).padStart(3, " "))
                 color: root.accentText
-                font.family: Kirigami.Theme.fixedWidthFont.family
+                font.family: root.face
                 font.pixelSize: root.textPx
                 textFormat: Text.PlainText
             }
@@ -386,24 +407,6 @@ Rectangle {
             font: Kirigami.Theme.smallFont
             textFormat: Text.PlainText
             Accessible.name: text
-        }
-    }
-
-    OpacityAnimator {
-        id: fadeIn
-
-        target: picture
-        from: 0
-        to: 1
-        duration: Kirigami.Units.veryLongDuration * 2
-        easing.type: Easing.InOutQuad
-    }
-
-    Component.onCompleted: {
-        if (motion) {
-            fadeIn.start();
-        } else {
-            picture.opacity = 1;
         }
     }
 }

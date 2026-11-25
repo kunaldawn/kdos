@@ -37,4 +37,8 @@ falls back to compiling its bundled copy stops the build.
 `/usr/libexec/bat/man-pager` strips the bold and underline that `man` writes as escape sequences
 and overstrikes, and hands the plain page to `bat -l man -p`, which highlights it. It is a script
 rather than a pipeline in `MANPAGER` because mandoc's `man` splits `MANPAGER` on spaces and runs
-it with no shell.
+it with no shell. mandoc hands the pager one argument, the rendered page as a temp file
+(`/tmp/man.XXXXXXXXXX`), and sets no variable naming the page, so there is no page name to give
+`bat --file-name`; the script feeds bat the page on standard input, and the pager bat starts shows
+no file name. Without bat, `/etc/bash.bashrc` gives `less` a prompt of the position alone, for the
+same temp file.

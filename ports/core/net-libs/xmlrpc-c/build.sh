@@ -24,3 +24,4 @@ make -j1
 make -j1 -C tools
 make -j1 DESTDIR=$PKG install
 make -j1 -C tools DESTDIR=$PKG install
+install -Dm644 doc/COPYING "$PKG/usr/share/licenses/$name/COPYING"

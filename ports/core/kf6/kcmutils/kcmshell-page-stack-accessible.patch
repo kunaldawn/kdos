@@ -1,0 +1,57 @@
+Subject: kcmshell6: KPageView's page stack is reported as a plain container, not an unnamed layered pane
+
+kcmshell6 shows its module in a KCMultiDialog, whose KPageView holds
+the page in a KPageStackedWidget. The stack has no name and takes Qt's
+default role for a stacked widget, a layered pane, so Orca speaks
+"layered pane 0 items" after the window title when kcmshell6 opens and
+before the first control on every Tab or Shift+Tab into the page. As a
+plain container (QAccessible::Client, AT-SPI filler) it is passed over.
+
+An accessibility factory installed before the dialog is built answers
+for KPageStackedWidget alone. Installed factories are asked before Qt's
+plugins at each level of the class chain, so every other stacked widget
+keeps its role, and the stack's children are still its pages.
+
+--- a/src/kcmshell/main.cpp
++++ b/src/kcmshell/main.cpp
+@@ -8,6 +8,8 @@
+ 
+ */
+ 
++#include <QAccessible>
++#include <QAccessibleWidget>
+ #include <QApplication>
+ #include <QCommandLineOption>
+ #include <QCommandLineParser>
+@@ -87,6 +89,22 @@
+     }
+ };
+ 
++// KPageView's page stack holds the open settings page and has no name of its
++// own. Reported as a layered pane, a screen reader speaks it as an unnamed
++// ancestor when the window opens and on every Tab or Shift+Tab into the page;
++// reported as a plain container it is passed over. Only KPageStackedWidget is
++// matched, so every other stacked widget in a module keeps its role.
++static QAccessibleInterface *pageStackAccessibleFactory(const QString &classname, QObject *object)
++{
++    if (!object || !object->isWidgetType()) {
++        return nullptr;
++    }
++    if (classname == QLatin1String("KPageStackedWidget")) {
++        return new QAccessibleWidget(static_cast<QWidget *>(object), QAccessible::Client);
++    }
++    return nullptr;
++}
++
+ int main(int argc, char *argv[])
+ {
+     const bool qpaVariable = qEnvironmentVariableIsSet("QT_QPA_PLATFORM");
+@@ -205,6 +223,8 @@
+     app.setProperty("__qmlEngine", QVariant::fromValue(&engine));
+     const bool multipleKCMs = metaDataList.size() > 1;
+     KPageDialog::FaceType ftype = multipleKCMs ? KPageDialog::List : KPageDialog::Plain;
++    QAccessible::installFactory(pageStackAccessibleFactory);
++
+     auto dlg = new KCMShellMultiDialog(ftype);
+     dlg->setAttribute(Qt::WA_DeleteOnClose);
+ 

@@ -17,7 +17,7 @@ up in advance: a root password, for single-user and emergency mode.
 |---|---|---|
 | The recovery console, a plain login on `tty2` | `fs/etc/inittab`, [`agetty`]{.idx} from [util-linux](#port-util-linux) | `Ctrl+Alt+F2` from the desktop, `Alt+F2` from a text console |
 | The rescue shell | The initramfs `init` (`script/phases/70_image/090_initramfs.sh`) | By itself, when the initramfs cannot find, unlock or mount the root |
-| Single-user mode | [sysvinit](#port-sysvinit) and [`sulogin`]{.idx} from util-linux | The `KDOS (single user)` menu entry |
+| Single-user mode | [sysvinit](#port-sysvinit) and [`sulogin`]{.idx} from util-linux | The `KDOS <version> (single user)` menu entry |
 | Emergency mode | The same | `emergency` added to an entry in Limine's editor |
 | The live medium | The KDOS stick the machine was installed from, or any later one | The firmware's boot menu |
 | A memory test | [memtest86plus](#port-memtest86plus) | The `Memory Test (memtest86+)` menu entry, UEFI only |
@@ -29,7 +29,7 @@ The live medium carries every tool the procedures below use: `cryptsetup`, `lvm`
 
 The consoles and single-user mode are entries of `/etc/inittab`, shipped from `fs/etc/inittab`:
 
-<!-- kfs:include fs/etc/inittab lines=11-51 pin=e55835f339dc -->
+<!-- kfs:include fs/etc/inittab lines=11-52 pin=e75ab6d29d9d -->
 
 `sulogin` asks for **root's** password. The installer locks root unless it was asked to set a root
 password (`root_locked` in an answer file, see
@@ -45,7 +45,7 @@ sudo passwd root
 The service scripts are run by this loop in `rcS`, which writes each script's output to a log and
 skips any script with a marker under `/etc/service.disabled/`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=147-186 pin=403936cc08ac -->
+<!-- kfs:include fs/etc/init.d/rcS lines=173-213 pin=5e326058e8e1 -->
 
 ## Usage
 
@@ -102,7 +102,7 @@ after `rcS` finishes.
 
 ### Single-user mode
 
-1. Stop the boot menu's countdown and choose `KDOS (single user)`.
+1. Stop the boot menu's countdown and choose `KDOS <version> (single user)`.
 2. `rcS` runs as on every boot, so every enabled service starts and every mount in `/etc/fstab`,
    the ESP included, is made.
 3. `sulogin` asks for root's password on the console:
@@ -186,7 +186,8 @@ variable. It refuses, and writes nothing, when the ESP has no room for both file
 initramfs carries no modules for the kernel.
 
 When the boot state itself is gone, the same variable recreates it: `kdos-bootctl status` reports
-`no boot state at …` and exits 1, and `set-slot a <filesystem-uuid>` writes a fresh state with
+`no boot state at …` and exits 1 (`the ESP is not mounted at …` when the target's ESP is not
+mounted, which is mounted first), and `set-slot a <filesystem-uuid>` writes a fresh state with
 slot A active (`set-slot b <uuid>` then records a second slot). Both procedures have been run
 from the live medium against an installed virtual machine whose `limine.conf` and boot state had
 been lost, and the machine booted again afterwards.
@@ -238,7 +239,7 @@ kernel on SeaBIOS.
 ### After an update
 
 An A/B update that does not finish booting rolls itself back. To leave it sooner, pick the
-confirmed slot's `KDOS (slot <x>)` entry; see [A/B slots and rollback](ab-slots-and-rollback.md).
+confirmed slot's `KDOS <version> (slot <x>)` entry; see [A/B slots and rollback](ab-slots-and-rollback.md).
 An update applied with `--in-place` has no second slot to fall back to: boot the live medium and
 repair the root as above.
 
@@ -273,7 +274,7 @@ sudo umount /mnt/target/dev
 whose root had been locked with `passwd -l root`, and root could log in on that machine
 afterwards.
 
-**The `KDOS (single user)` entry boots straight to the normal system.** `sulogin` gave up for the
+**The `KDOS <version> (single user)` entry boots straight to the normal system.** `sulogin` gave up for the
 reason above, and after Enter init printed `INIT: Entering runlevel: 3` and carried on.
 
 **The machine powers on, and the firmware says there is no bootable device.** On UEFI, check that

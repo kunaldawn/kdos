@@ -35,9 +35,16 @@ else
     exit 1
 fi
 
+# THE MEDIUM'S INITRAMFS IS boot/initrd.img, A NAME VENTOY KNOWS. Ventoy
+# boots an ISO without parsing limine.conf and adds its hook, which maps the
+# ISO file on its exFAT partition to /dev/mapper/ventoy, only to an initrd at a
+# path it recognises; /boot/initrd.img is one. Under any other name the kernel
+# starts from a Ventoy stick with no device holding the medium and the scan
+# ends at the rescue shell. The copy in the root's /boot keeps the name
+# initramfs.cpio.gz, which kinstall and kdos-bootctl read, and goes into
+# system.sfs so an installed system carries it.
 if [ -f /kdos/build/initramfs.cpio.gz ]; then
-    cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/boot/initramfs.cpio.gz
-    # Also copy to /boot so it is included in system.sfs (and thus installed)
+    cp /kdos/build/initramfs.cpio.gz $ISO_ROOT/boot/initrd.img
     cp /kdos/build/initramfs.cpio.gz /boot/initramfs.cpio.gz
     # The image's initramfs is the one for the image's kernel. One a `linux`
     # postinstall built in this tree for an earlier kernel would be preferred
@@ -331,7 +338,48 @@ fi
 # kdos-splash draws nothing on a command line without it — a splash there
 # would cover the text this entry exists to show. `loglevel=7` holds for the
 # whole boot: 20_dmesg.sh leaves a level the command line set alone.
+#
+# Every entry names the serial console's speed: a bare `console=ttyS0` runs it
+# at 9600 baud, and the kernel writes each message to the UART at that rate,
+# which holds the verbose boot's screen black for half a minute.
 BOOT_THEME=$(kdos-bootctl theme --print "$KDOS_ACCENT")
+
+# The first entry names the release, read from the root's os-release, so the
+# menu says which KDOS the medium starts. A root without VERSION_ID is fatal:
+# an image that cannot say its version is not one to ship.
+LIVE_VERSION=$(. /etc/os-release && printf '%s' "$VERSION_ID")
+if [ -z "$LIVE_VERSION" ]; then
+    echo "FATAL: /etc/os-release has no VERSION_ID" >&2
+    exit 1
+fi
+
+# EVERY LIVE ENTRY NAMES ITS MEDIUM. The initramfs scans every block device for
+# an ISO 9660 filesystem holding system.sfs, and a machine with two KDOS media
+# attached answers on both; without a name it takes the first to respond, which
+# pairs this kernel and its modules with another release's system.sfs and
+# makes the installer mark the wrong device as the boot medium. The id is the
+# first 16 hex digits of system.sfs's sha256, written beside it as
+# kdos-medium.id and passed as kdos.medium=; the scan takes only the medium
+# whose file matches. A Ventoy stick in normal mode and a `kdos clone` copy
+# carry the same file and this same limine.conf, so they match themselves.
+# The id is also the image's Volume Set Identifier (-volset, at 32 KiB + 190
+# in the primary volume descriptor), where the installer reads it off every
+# whole disk: two copies of one build answer to one id, the scan mounts the
+# first, and nothing tells which the firmware started, so the installer
+# refuses every disk that carries it. And it is the Publisher Identifier
+# (-publisher, at 32 KiB + 318, upper-cased by xorriso as ISO 9660 asks),
+# which udev's blkid exports as ID_FS_PUBLISHER_ID where it exports no volume
+# set: the graphical installer's probes run as a user who cannot open a disk,
+# and read it there.
+# Computed after the last write to system.sfs: the /ports append changes it.
+MEDIUM_ID=$(sha256sum $ISO_ROOT/system.sfs | cut -c1-16)
+case "$MEDIUM_ID" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+    *) echo "FATAL: cannot hash $ISO_ROOT/system.sfs for the medium id" >&2
+       exit 1 ;;
+esac
+printf '%s\n' "$MEDIUM_ID" > $ISO_ROOT/kdos-medium.id
+echo "Medium id: $MEDIUM_ID"
 
 cat > $ISO_ROOT/boot/limine/limine.conf <<EOF
 timeout: 10
@@ -342,25 +390,25 @@ $WALLPAPER
 $FONT_LINES
 
 /KDOS Live
-    comment: Start KDOS from this medium
+    comment: Start KDOS $LIVE_VERSION from this medium
     protocol: linux
     path: boot():/boot/vmlinuz
-    module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3
+    module_path: boot():/boot/initrd.img
+    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0,115200n8 quiet loglevel=3 kdos.medium=$MEDIUM_ID
 
 /KDOS Live (clean session)
     comment: Ignore the persistence store and start fresh
     protocol: linux
     path: boot():/boot/vmlinuz
-    module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3 nopersist
+    module_path: boot():/boot/initrd.img
+    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0,115200n8 quiet loglevel=3 nopersist kdos.medium=$MEDIUM_ID
 
 /KDOS Live (verbose)
     comment: Every kernel and boot message on the screen, no splash
     protocol: linux
     path: boot():/boot/vmlinuz
-    module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=ttyS0 console=tty0 loglevel=7
+    module_path: boot():/boot/initrd.img
+    cmdline: root=/dev/ram0 rw console=ttyS0,115200n8 console=tty0 loglevel=7 kdos.medium=$MEDIUM_ID
 EOF
 
 # 3b. memtest86+, and it is a MENU ENTRY rather than a program because bad RAM
@@ -382,7 +430,7 @@ if [ -f "$MEMTEST" ]; then
     cat >> $ISO_ROOT/boot/limine/limine.conf <<EOF
 
 /Memory Test (memtest86+)
-    comment: Test this machine's RAM — UEFI only
+    comment: Test this machine's RAM (UEFI only)
     protocol: efi
     if_fw_type: UEFI
     path: boot():/boot/memtest.efi
@@ -406,6 +454,13 @@ fi
 #   --protective-msdos-label            an MBR for the firmware that wants one
 #   limine bios-install                 the BIOS boot code in that MBR
 #
+# THE VOLUME ID NAMES THE RELEASE, KDOS_0_2_1 for 0.2.1, so a file manager,
+# blkid and a stick tool say which KDOS a medium holds. ISO 9660 allows only
+# A-Z, 0-9 and `_` there, at most 32 of them, so the release is upper-cased,
+# every other character becomes `_` and the id is cut at 32. Nothing finds
+# the medium by it: the initramfs scans for system.sfs, the udev rule that
+# hides the medium matches its mount, and the installer prints it.
+#
 # THE ESP IS THE EL TORITO IMAGE ITSELF, not a partition appended after the
 # ISO. Nothing is added past the ISO9660 volume, so the volume descriptor still
 # describes the whole file and `kdos clone` copies a complete medium from it.
@@ -414,6 +469,10 @@ fi
 # the medium by mounting each whole-disk node `-t iso9660`, which on a written
 # stick is /dev/sda itself. A partition offset for the ISO would move the
 # filesystem off sector 0 and that scan would find nothing.
+LIVE_VOLID="KDOS_${LIVE_VERSION^^}"
+LIVE_VOLID="${LIVE_VOLID//[^A-Z0-9_]/_}"
+LIVE_VOLID="${LIVE_VOLID:0:32}"
+
 echo "Generating ISO..."
 ISO_BUILD=/kdos/build/iso-build
 mkdir -p $ISO_BUILD
@@ -422,7 +481,9 @@ rm -f $ISO_BUILD/efiboot.img
 xorriso -as mkisofs \
     -iso-level 3 \
     -full-iso9660-filenames \
-    -volid "KDOS_LIVE" \
+    -volid "$LIVE_VOLID" \
+    -volset "$MEDIUM_ID" \
+    -publisher "$MEDIUM_ID" \
     -b boot/limine/limine-bios-cd.bin \
     -no-emul-boot -boot-load-size 4 -boot-info-table \
     --efi-boot boot/limine/limine-uefi-cd.bin \
@@ -474,6 +535,23 @@ if [ -z "$(dd if=$ISO_BUILD/kdos.iso bs=440 count=1 2>/dev/null \
            | od -An -tx1 -v | tr -d ' \n0')" ]; then
     echo "FATAL: the MBR boot code area is empty — limine bios-install did" >&2
     echo "       not run, so BIOS would not boot from a stick" >&2
+    iso_fail=1
+fi
+# And the medium id reaches every live entry: an entry without it, or with
+# another build's, boots a kernel that refuses this medium's system.sfs.
+if [ "$(grep -c "^    cmdline: root=/dev/ram0 rw .* kdos.medium=$(cat $ISO_ROOT/kdos-medium.id)\$" \
+          $ISO_ROOT/boot/limine/limine.conf)" != 3 ]; then
+    echo "FATAL: the three live entries do not all name kdos.medium=$(cat $ISO_ROOT/kdos-medium.id)" >&2
+    iso_fail=1
+fi
+# And the installer's copies of it: the Volume Set and Publisher Identifiers,
+# without which every copy of this medium is offered as an erase target.
+if [ "$(dd if=$ISO_BUILD/kdos.iso bs=1 skip=$((0x8000 + 190)) count=16 2>/dev/null)" != "$MEDIUM_ID" ]; then
+    echo "FATAL: the image's Volume Set Identifier is not the medium id $MEDIUM_ID" >&2
+    iso_fail=1
+fi
+if [ "$(dd if=$ISO_BUILD/kdos.iso bs=1 skip=$((0x8000 + 318)) count=16 2>/dev/null)" != "${MEDIUM_ID^^}" ]; then
+    echo "FATAL: the image's Publisher Identifier is not the medium id $MEDIUM_ID" >&2
     iso_fail=1
 fi
 [ "$iso_fail" = 0 ] || exit 1

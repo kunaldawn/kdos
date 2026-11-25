@@ -1,0 +1,685 @@
+Subject: Layout list A to Z until a search and best match first during one, plain layout first among its variants, and both lists highlight the applied layout after every re-sort; landing wallpaper and headline from plasmasetuprc, headline on a scrim; keyboard subtitle without language; account avatar a plain Avatar in the accent colour; time page preselects only a zone on the map; variant list follows the applied variant after a click; no Ctrl+F hover tooltip on the keyboard search
+
+--- a/files/plasmasetuprc
++++ b/files/plasmasetuprc
+@@ -11,6 +11,19 @@
+ # Distributions and administrators can edit it to customize various aspects of
+ # how Plasma Setup works.
+ 
++[Appearance]
++# The wallpaper package under share/wallpapers/ whose sharpest image for the
++# screen's orientation fills the landing page. The default is "Next".
++#
++# KDOS: the wallpaper of the default accent.
++Wallpaper=KDOS-Bone
++
++# The landing page's headline; it may hold rich text such as <br/> and <b>.
++# Leaving this key empty shows "Welcome to Plasma Desktop".
++#
++# KDOS: the distribution's name.
++Welcome=Welcome to<br/><b>KDOS</b>
++
+ [Accounts]
+ # Additional groups (comma-separated) that the user created by Plasma
+ # Setup should join. The default is "wheel" so the user has administrative
+--- a/modules/keyboard/contents/ui/main.qml
++++ b/modules/keyboard/contents/ui/main.qml
+@@ -25,18 +25,40 @@
+     available: !Kirigami.Settings.isMobile
+ 
+     function onPageActivated(): void {
+-        // Temporarily disable the highlight move duration so the correct
+-        // layout is preselected when the page is activated.
++        followAppliedLayout();
++        searchField.forceActiveFocus();
++    }
++
++    // Highlights the layout and variant in use, or no row when the lists do not show them.
++    function followAppliedLayout(): void {
++        // Temporarily disable the highlight move duration so the highlight
++        // lands on the applied layout without sweeping across the list.
+         layoutsView.highlightMoveDuration = 0;
+         variantView.highlightMoveDuration = 0;
+-        // Set the initial current item to the system's current layout.
+-        layoutsView.currentIndex = layoutsProxy.findCurrentLayoutIndex();
+-        // Set the initial current variant to the system's current variant.
+-        variantView.currentIndex = variantProxy.findCurrentVariantIndex();
++        // The system's current layout; a changed index refilters the variant list.
++        const layoutIndex = layoutsProxy.findCurrentLayoutIndex();
++        layoutsView.currentIndex = layoutIndex;
++        if (layoutIndex >= 0) {
++            layoutsView.positionViewAtIndex(layoutIndex, ListView.Contain);
++        }
+         // Reset the highlight move duration to the default value.
+         layoutsView.highlightMoveDuration = -1;
++        followAppliedVariant();
++    }
++
++    // Highlights the variant in use while the left list highlights the layout in use, else no row:
++    // the plain row of a layout reached with the arrow keys is not the applied one.
++    function followAppliedVariant(): void {
++        variantView.highlightMoveDuration = 0;
++        const appliedLayout = KeyboardUtil.layoutName.split(",").pop().trim();
++        const showsApplied = layoutsView.currentItem !== null && layoutsView.currentItem.shortName === appliedLayout;
++        // The system's current variant, among the variants of that layout.
++        const variantIndex = showsApplied ? variantProxy.findCurrentVariantIndex() : -1;
++        variantView.currentIndex = variantIndex;
++        if (variantIndex >= 0) {
++            variantView.positionViewAtIndex(variantIndex, ListView.Contain);
++        }
+         variantView.highlightMoveDuration = -1;
+-        searchField.forceActiveFocus();
+     }
+ 
+     KCMKeyboard.LayoutSearchModel {
+@@ -46,10 +68,8 @@
+     }
+ 
+     KItemModels.KSortFilterProxyModel {
+-        id: layoutsProxy
++        id: layoutsFilter
+         sourceModel: layoutSearchProxy
+-        sortRoleName: "searchScore"
+-        sortOrder: Qt.AscendingOrder
+ 
+         filterRowCallback: function (row, parent) {
+             const modelIndex = sourceModel.index(row, 0, parent);
+@@ -81,6 +101,14 @@
+ 
+             return true;
+         }
++    }
++
++    // Best match first during a search, else A to Z by description.
++    LayoutVariantSortModel {
++        id: layoutsProxy
++        sourceModel: layoutsFilter
++        plainFirst: false
++        searching: layoutSearchProxy.searchString.length > 0
+ 
+         // Returns the index matching the system's current keyboard layout, or -1 if not found.
+         function findCurrentLayoutIndex(): int {
+@@ -106,11 +134,49 @@
+         }
+     }
+ 
++    // After every re-sort or re-filter of either list, and after a click, the highlighted rows are
++    // the applied layout and variant, since a ListView keeps its row number across both and would
++    // highlight whichever row moved into that row number. A search that hides the applied layout
++    // leaves no row highlighted and the variant list empty until a click; arrow keys move the
++    // highlight without applying a layout, and the variants of a layout reached that way show no
++    // highlight.
++    Connections {
++        target: layoutsProxy
++
++        function onLayoutChanged() {
++            Qt.callLater(root.followAppliedLayout);
++        }
++        function onModelReset() {
++            Qt.callLater(root.followAppliedLayout);
++        }
++        function onRowsInserted() {
++            Qt.callLater(root.followAppliedLayout);
++        }
++        function onRowsRemoved() {
++            Qt.callLater(root.followAppliedLayout);
++        }
++    }
++
++    Connections {
++        target: variantProxy
++
++        function onLayoutChanged() {
++            Qt.callLater(root.followAppliedVariant);
++        }
++        function onModelReset() {
++            Qt.callLater(root.followAppliedVariant);
++        }
++        function onRowsInserted() {
++            Qt.callLater(root.followAppliedVariant);
++        }
++        function onRowsRemoved() {
++            Qt.callLater(root.followAppliedVariant);
++        }
++    }
++
+     KItemModels.KSortFilterProxyModel {
+-        id: variantProxy
++        id: variantFilter
+         sourceModel: layoutSearchProxy
+-        sortRoleName: "searchScore"
+-        sortOrder: Qt.AscendingOrder
+ 
+         filterRowCallback: function (row, parent) {
+             if (!layoutsView.currentItem) {
+@@ -132,6 +198,13 @@
+ 
+             return true;
+         }
++    }
++
++    // The plain layout first, then its variants: by match score during a search, else by description.
++    LayoutVariantSortModel {
++        id: variantProxy
++        sourceModel: variantFilter
++        searching: layoutSearchProxy.searchString.length > 0
+ 
+         // Returns the index matching the system's current keyboard layout variant, or -1 if not found.
+         function findCurrentVariantIndex(): int {
+@@ -185,12 +258,14 @@
+ 
+                 wrapMode: Text.Wrap
+                 horizontalAlignment: Text.AlignHCenter
+-                text: i18n("Select your keyboard layout and language.")
++                text: i18n("Select your keyboard layout.")
+             }
+ 
+             Kirigami.SearchField {
+                 id: searchField
+                 Layout.fillWidth: true
++                // The page focuses the field itself, and the Ctrl+F hint would open over the subtitle.
++                ToolTip.visible: false
+                 onAccepted: {
+                     layoutSearchProxy.searchString = searchField.text.trim();
+                 }
+@@ -220,7 +295,7 @@
+                         activeFocusOnTab: true
+ 
+                         onCurrentIndexChanged: {
+-                            variantProxy.invalidateFilter();
++                            variantFilter.invalidateFilter();
+                         }
+                     }
+                 }
+@@ -243,6 +318,8 @@
+                         delegate: LayoutDelegate {}
+                         keyNavigationEnabled: true
+                         activeFocusOnTab: true
++
++                        onModelChanged: Qt.callLater(root.followAppliedVariant)
+                     }
+                 }
+             }
+@@ -265,6 +342,8 @@
+             KeyboardUtil.layoutName = shortName;
+             KeyboardUtil.layoutVariant = variantName;
+             KeyboardUtil.applyLayout();
++            // Once the click's re-filter has settled, both lists show the applied pair.
++            Qt.callLater(root.followAppliedLayout);
+         }
+ 
+         Accessible.name: delegate.description
+--- a/modules/account/contents/ui/main.qml
++++ b/modules/account/contents/ui/main.qml
+@@ -75,22 +75,20 @@
+                 Layout.fillWidth: true
+                 Layout.maximumWidth: root.cardWidth
+ 
+-                KirigamiComponents.AvatarButton {
++                // A display element, not a button: its accent resolves in the page's enabled colour set.
++                KirigamiComponents.Avatar {
+                     id: avatar
+ 
+                     Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+ 
+-                    // Square button
+                     implicitWidth: Kirigami.Units.gridUnit * 5
+                     implicitHeight: implicitWidth
+ 
+                     name: fullNameField.text
++                    // The colour scheme's accent, not a colour hashed from the name.
++                    color: Kirigami.Theme.highlightColor
+ 
+-                    // Disabled so it doesn't act like a button, instead we use it
+-                    // as a simple avatar with user initial for now.
+-                    //
+                     // TODO: Implement avatar selection
+-                    enabled: false
+                 }
+ 
+                 // Padding around the text
+--- a/modules/time/contents/ui/main.qml
++++ b/modules/time/contents/ui/main.qml
+@@ -53,7 +53,15 @@
+                     //
+                     // We do this in Component.onCompleted instead of in the property
+                     // binding directly because otherwise the combobox is empty.
+-                    selectedTimeZone = Time.TimeUtil.currentTimeZone
++                    //
++                    // Only a zone the map shows. For one with no place on it, such as UTC, the
++                    // selector raises its "not available for visualization" banner and its
++                    // location box looks up a region it has no entry for. Left unset, the region
++                    // box reads "Choose…" and the machine keeps its zone until one is picked.
++                    const zone = Time.TimeUtil.currentTimeZone;
++                    if (tzSelector.availableMapTimeZones.includes(zone)) {
++                        selectedTimeZone = zone;
++                    }
+                 }
+                 onSelectedTimeZoneChanged: Time.TimeUtil.currentTimeZone = selectedTimeZone
+             }
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -27,6 +27,8 @@
+     initialstartutil.h
+     keyboardutil.cpp
+     keyboardutil.h
++    layoutvariantsortmodel.cpp
++    layoutvariantsortmodel.h
+     ${plasmasetup_DBUS_SRCS}
+     ${logging_SRCS}
+ )
+--- a/src/initialstartutil.cpp
++++ b/src/initialstartutil.cpp
+@@ -4,14 +4,60 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include "initialstartutil.h"
++#include "config-plasma-setup.h"
+ #include "displayutil.h"
+ #include "plasmasetup_debug.h"
+ 
+ #include <KAuth/Action>
+ #include <KAuth/ExecuteJob>
++#include <KConfig>
++#include <KConfigGroup>
+ #include <KLocalizedString>
+ 
+ #include <QApplication>
++#include <QDir>
++#include <QStandardPaths>
++
++using namespace Qt::StringLiterals;
++
++namespace
++{
++KConfigGroup appearanceGroup(const KConfig &config)
++{
++    return config.group(u"Appearance"_s);
++}
++
++// The image named "WxH.ext" in dir, in landscape's orientation, with the longest short side
++// (then the largest area), or an empty string. The short side decides so that an ultrawide
++// image, which a 16:9 screen crops to a strip, loses to a 16:9 one of the same height.
++QString largestImage(const QString &dir, bool landscape)
++{
++    QString best;
++    qint64 bestShort = 0;
++    qint64 bestArea = 0;
++    const auto entries = QDir(dir).entryInfoList({u"*.png"_s, u"*.jpg"_s, u"*.jpeg"_s, u"*.webp"_s}, QDir::Files);
++    for (const QFileInfo &entry : entries) {
++        const QStringList size = entry.completeBaseName().split(u'x');
++        if (size.size() != 2) {
++            continue;
++        }
++        bool widthOk = false;
++        bool heightOk = false;
++        const qint64 width = size.at(0).toLongLong(&widthOk);
++        const qint64 height = size.at(1).toLongLong(&heightOk);
++        if (!widthOk || !heightOk || width <= 0 || height <= 0 || (width >= height) != landscape) {
++            continue;
++        }
++        const qint64 shortSide = qMin(width, height);
++        if (shortSide > bestShort || (shortSide == bestShort && width * height > bestArea)) {
++            bestShort = shortSide;
++            bestArea = width * height;
++            best = entry.absoluteFilePath();
++        }
++    }
++    return best;
++}
++}
+ 
+ InitialStartUtil::InitialStartUtil(QObject *parent)
+     : QObject{parent}
+@@ -27,6 +73,39 @@
+     return m_osrelease.name();
+ }
+ 
++QString InitialStartUtil::welcomeText() const
++{
++    const KConfig config(QString::fromUtf8(PLASMA_SETUP_CONFIG_PATH), KConfig::SimpleConfig);
++    return appearanceGroup(config).readEntry("Welcome", QString());
++}
++
++QUrl InitialStartUtil::wallpaperImage(bool landscape, bool dark) const
++{
++    const KConfig config(QString::fromUtf8(PLASMA_SETUP_CONFIG_PATH), KConfig::SimpleConfig);
++    const QString name = appearanceGroup(config).readEntry("Wallpaper", u"Next"_s);
++    const QString contents = u"wallpapers/"_s + name + u"/contents/"_s;
++
++    QStringList folders;
++    if (dark) {
++        folders << contents + u"images_dark"_s;
++    }
++    folders << contents + u"images"_s;
++
++    for (const bool orientation : {landscape, !landscape}) {
++        for (const QString &folder : std::as_const(folders)) {
++            const QString dir = QStandardPaths::locate(QStandardPaths::GenericDataLocation, folder, QStandardPaths::LocateDirectory);
++            if (dir.isEmpty()) {
++                continue;
++            }
++            const QString image = largestImage(dir, orientation);
++            if (!image.isEmpty()) {
++                return QUrl::fromLocalFile(image);
++            }
++        }
++    }
++    return QUrl();
++}
++
+ void InitialStartUtil::finish()
+ {
+     doUserCreationSteps();
+--- a/src/initialstartutil.h
++++ b/src/initialstartutil.h
+@@ -6,6 +6,7 @@
+ #pragma once
+ 
+ #include <QObject>
++#include <QUrl>
+ #include <QWindow>
+ #include <qqmlintegration.h>
+ 
+@@ -20,6 +21,7 @@
+     QML_ELEMENT
+     QML_SINGLETON
+     Q_PROPERTY(QString distroName READ distroName CONSTANT);
++    Q_PROPERTY(QString welcomeText READ welcomeText CONSTANT);
+ 
+ public:
+     InitialStartUtil(QObject *parent = nullptr);
+@@ -27,6 +29,23 @@
+     QString distroName() const;
+ 
+     /**
++     * The landing page's headline from the [Appearance] Welcome key of the Plasma Setup
++     * configuration file, or an empty string when the key is unset.
++     */
++    QString welcomeText() const;
++
++    /**
++     * The landing page's background image, as a file URL.
++     *
++     * The wallpaper package is named by the [Appearance] Wallpaper key of the Plasma Setup
++     * configuration file (default "Next"). Its images are named by their size ("WxH.ext");
++     * the one in the requested orientation with the longest short side wins, looking in
++     * images_dark first when @p dark is set, then in the other orientation. Returns an empty
++     * URL when the package holds no image.
++     */
++    Q_INVOKABLE QUrl wallpaperImage(bool landscape, bool dark) const;
++
++    /**
+      * Completes the initial setup process.
+      */
+     Q_INVOKABLE void finish();
+--- a/src/layoutvariantsortmodel.cpp
++++ b/src/layoutvariantsortmodel.cpp
+@@ -0,0 +1,75 @@
++// SPDX-FileCopyrightText: 2026 KDOS
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include "layoutvariantsortmodel.h"
++
++LayoutVariantSortModel::LayoutVariantSortModel(QObject *parent)
++    : QSortFilterProxyModel(parent)
++{
++    setDynamicSortFilter(true);
++    connect(this, &QAbstractProxyModel::sourceModelChanged, this, [this]() {
++        sort(0);
++    });
++}
++
++bool LayoutVariantSortModel::searching() const
++{
++    return m_searching;
++}
++
++void LayoutVariantSortModel::setSearching(bool searching)
++{
++    if (m_searching == searching) {
++        return;
++    }
++    m_searching = searching;
++    invalidate();
++    Q_EMIT searchingChanged();
++}
++
++bool LayoutVariantSortModel::plainFirst() const
++{
++    return m_plainFirst;
++}
++
++void LayoutVariantSortModel::setPlainFirst(bool plainFirst)
++{
++    if (m_plainFirst == plainFirst) {
++        return;
++    }
++    m_plainFirst = plainFirst;
++    invalidate();
++    Q_EMIT plainFirstChanged();
++}
++
++bool LayoutVariantSortModel::lessThan(const QModelIndex &left, const QModelIndex &right) const
++{
++    // Looked up on every call: the source's roles appear only once its own source is set.
++    const auto roles = sourceModel()->roleNames();
++    const int variantNameRole = roles.key(QByteArrayLiteral("variantName"), -1);
++    const int descriptionRole = roles.key(QByteArrayLiteral("description"), -1);
++    if (variantNameRole < 0 || descriptionRole < 0) {
++        return left.row() < right.row();
++    }
++
++    if (m_plainFirst) {
++        const bool leftPlain = left.data(variantNameRole).toString().isEmpty();
++        const bool rightPlain = right.data(variantNameRole).toString().isEmpty();
++        if (leftPlain != rightPlain) {
++            return leftPlain;
++        }
++    }
++
++    const int searchScoreRole = roles.key(QByteArrayLiteral("searchScore"), -1);
++    if (m_searching && searchScoreRole >= 0) {
++        const int leftScore = left.data(searchScoreRole).toInt();
++        const int rightScore = right.data(searchScoreRole).toInt();
++        if (leftScore != rightScore) {
++            return leftScore > rightScore;
++        }
++    }
++
++    return QString::localeAwareCompare(left.data(descriptionRole).toString(), right.data(descriptionRole).toString()) < 0;
++}
++
++#include "moc_layoutvariantsortmodel.cpp"
+--- a/src/layoutvariantsortmodel.h
++++ b/src/layoutvariantsortmodel.h
+@@ -0,0 +1,46 @@
++// SPDX-FileCopyrightText: 2026 KDOS
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <QSortFilterProxyModel>
++#include <qqmlintegration.h>
++
++/**
++ * Orders the keyboard page's layout list and the variant list of one layout.
++ *
++ * While searching is set the rows follow their "searchScore", best match first. With
++ * plainFirst set (the variant list) the row without a variant, the plain layout such as
++ * "German", comes before every variant; plainFirst is unset for the layout list. Rows are
++ * otherwise, and between equal scores, in the locale-aware order of their descriptions:
++ * the source model's own order is the XKB rules files' and is not alphabetical, and every
++ * score is 0 before a search. The source model must provide the "variantName",
++ * "description" and "searchScore" roles of the keyboard KCM's LayoutSearchModel.
++ */
++class LayoutVariantSortModel : public QSortFilterProxyModel
++{
++    Q_OBJECT
++    QML_ELEMENT
++    Q_PROPERTY(bool searching READ searching WRITE setSearching NOTIFY searchingChanged)
++    Q_PROPERTY(bool plainFirst READ plainFirst WRITE setPlainFirst NOTIFY plainFirstChanged)
++
++public:
++    explicit LayoutVariantSortModel(QObject *parent = nullptr);
++
++    bool searching() const;
++    void setSearching(bool searching);
++
++    bool plainFirst() const;
++    void setPlainFirst(bool plainFirst);
++
++Q_SIGNALS:
++    void searchingChanged();
++    void plainFirstChanged();
++
++protected:
++    bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
++
++private:
++    bool m_searching = false;
++    bool m_plainFirst = true;
++};
+--- a/src/qml/LandingComponent.qml
++++ b/src/qml/LandingComponent.qml
+@@ -4,13 +4,11 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ 
+-import QtCore
+ import QtQuick
+ import QtQuick.Controls
+ import QtQuick.Layouts
+ 
+ import org.kde.kirigami as Kirigami
+-import org.kde.plasmasetup.prepareutil as Prepare
+ import org.kde.plasmasetup
+ 
+ Item {
+@@ -49,24 +47,8 @@
+ 
+         readonly property bool isLandscape: width >= height
+ 
+-        source: {
+-            const landscapeFile = "5120x2880.png";
+-            const portraitFile  = "1440x2960.png";
+-
+-            const lightFolder = "wallpapers/Next/contents/images/";
+-            const darkFolder  = "wallpapers/Next/contents/images_dark/";
+-            const themedFolder = Prepare.PrepareUtil.usingDarkTheme ? darkFolder : lightFolder;
+-
+-            function locate(file) {
+-                return StandardPaths.locate(StandardPaths.GenericDataLocation, themedFolder + file)
+-                    || StandardPaths.locate(StandardPaths.GenericDataLocation, lightFolder + file);
+-            }
+-
+-            const primary = isLandscape ? landscapeFile : portraitFile;
+-            const secondary = isLandscape ? portraitFile : landscapeFile;
+-
+-            return locate(primary) || locate(secondary) || "";
+-        }
++        // Dark by the active colour scheme's window background, whatever the scheme is named.
++        source: InitialStartUtil.wallpaperImage(isLandscape, Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.backgroundColor) === Kirigami.ColorUtils.Dark)
+         fillMode: Image.PreserveAspectCrop
+ 
+         opacity: 0
+@@ -118,47 +100,69 @@
+             Layout.preferredHeight: root.isTight ? Kirigami.Units.largeSpacing : 0
+         }
+ 
+-        ColumnLayout {
+-            id: centerBlock
+-
+-            enabled: root.landingActive
++        // The headline and button on a scrim, so the text reads over any part of the wallpaper.
++        Item {
++            id: scrimBlock
+ 
+-            opacity: root.contentOpacity
++            readonly property real padding: Kirigami.Units.largeSpacing * 2
+ 
+-            Layout.fillWidth: true
+             Layout.alignment: Qt.AlignHCenter
+-            spacing: Kirigami.Units.largeSpacing
+-
+-            Label {
+-                Layout.fillWidth: true
+-                text: Kirigami.Settings.isMobile
+-                    ? i18n("Welcome to<br/><b>Plasma Mobile</b>")
+-                    : i18n("Welcome to<br/><b>Plasma Desktop</b>")
++            Layout.maximumWidth: parent.width
++            implicitWidth: centerBlock.implicitWidth + padding * 2
++            implicitHeight: centerBlock.implicitHeight + padding * 2
++
++            Rectangle {
++                anchors.fill: parent
++                color: Kirigami.Theme.backgroundColor
++                radius: Kirigami.Units.cornerRadius
++                opacity: 0.85 * root.contentOpacity
++            }
+ 
+-                horizontalAlignment: Text.AlignHCenter
+-                wrapMode: Text.Wrap
++            ColumnLayout {
++                id: centerBlock
+ 
+-                font.pointSize: 18
+-                color: "white"
+-            }
++                anchors.fill: parent
++                anchors.margins: scrimBlock.padding
+ 
+-            Button {
+-                id: button
+-                Layout.alignment: Qt.AlignHCenter
++                enabled: root.landingActive
+ 
+                 opacity: root.contentOpacity
+-                text: i18n("Begin Setup")
+-                icon.name: "plasma-symbolic"
+ 
+-                onClicked: {
+-                    backgroundImage.scale = scaleSteps;
+-                    contentOpacityAnim.to = 0;
+-                    contentOpacityAnim.restart();
+-                    root.requestNextPage()
++                spacing: Kirigami.Units.largeSpacing
++
++                Label {
++                    Layout.fillWidth: true
++                    text: InitialStartUtil.welcomeText !== ""
++                        ? InitialStartUtil.welcomeText
++                        : Kirigami.Settings.isMobile
++                            ? i18n("Welcome to<br/><b>Plasma Mobile</b>")
++                            : i18n("Welcome to<br/><b>Plasma Desktop</b>")
++
++                    horizontalAlignment: Text.AlignHCenter
++                    wrapMode: Text.Wrap
++
++                    font.pointSize: 18
++                    color: Kirigami.Theme.textColor
+                 }
+ 
+-                Keys.onEnterPressed: clicked()
+-                Keys.onReturnPressed: clicked()
++                Button {
++                    id: button
++                    Layout.alignment: Qt.AlignHCenter
++
++                    opacity: root.contentOpacity
++                    text: i18n("Begin Setup")
++                    icon.name: "plasma-symbolic"
++
++                    onClicked: {
++                        backgroundImage.scale = scaleSteps;
++                        contentOpacityAnim.to = 0;
++                        contentOpacityAnim.restart();
++                        root.requestNextPage()
++                    }
++
++                    Keys.onEnterPressed: clicked()
++                    Keys.onReturnPressed: clicked()
++                }
+             }
+         }
+ 

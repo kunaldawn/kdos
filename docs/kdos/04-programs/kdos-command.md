@@ -24,9 +24,13 @@ kdos version
 ```
 
 `kdos` with no subcommand is `kdos help`. `-h` and `--help` are accepted as spellings of `help`,
-and `-V` of `version`. An unknown subcommand prints `unknown command '<name>' — try: kdos help`
-and exits 1. Colour is used only when standard output is a terminal, so output piped into another
-program is plain text.
+and `--version` and `-V` of `version`. `kdos <subcommand> -h` and `kdos <subcommand> --help` print that
+subcommand's usage on standard output and exit 0, for every subcommand: asking for help is not a
+usage error, so a script can test a subcommand's presence by its status. Only the first argument
+after the subcommand is looked at, so `--help` further along the line is an ordinary argument. An
+unknown subcommand, with or without `--help`, prints `kdos: unknown command '<name>' — try: kdos
+help` on standard error and exits 1. Colour is used only when standard output is a terminal, so
+output piped into another program is plain text.
 
 Most subcommands follow one exit-status convention, so a script can test the answer without
 parsing text:
@@ -35,7 +39,7 @@ parsing text:
 |---|---|
 | 0 | Nothing to report: clean, up to date, done |
 | 1 | Something was found (a warning, a stale process, a vulnerable package), or the action failed |
-| 2 | The command was used wrongly, or could not run at all |
+| 2 | The command was used wrongly, or could not run at all; never for `-h` or `--help`, which exit 0 |
 | 127 | The program this subcommand hands over to is not installed |
 
 Where a subcommand differs, its section says so.
@@ -92,25 +96,49 @@ rules, and the settings page that shows the value would show something else.
 | [`trash`](#kdos-trash) | The desktop's trash, from a prompt |
 | [`update`](#kdos-update) | Check for and apply system updates across the A/B slots |
 | [`verify`](#kdos-verify) | Check a file against its checksum files and its KDOS signature |
-| [`version`](#kdos-version) | Release, kernel, C library, userland, session and accent |
+| [`version`](#kdos-version) | Release and build, kernel, C library, userland, session and accent; also `--version` and `-V` |
 | [`why`](#kdos-why-and-kdos-explain) | What provides a path or a port, and why it is that way |
 
 The other names on the binary (the service supervisor, the boot-slot tool, the screenshot tool
 and the rest) are covered in [The other names on this binary](#the-other-names-on-this-binary).
 
 Tab completion in bash comes from `/usr/share/bash-completion/completions/kdos`. For the first word
-it offers `help`, `theme`, `phosphor`, `desk`, `tiling`, `status`, `doctor`, `version`, `app`,
-`share`, `remind`, `notify`, `toggle`, `settings`, `menu`, `panel`, `places`, `trash`, `thumb`,
-`verify`, `hey`, `appid`, `privacy`, `checklist`, `backup`, `speech`, `timezone`, `hostname`, `locale`,
-`keymap`, `in-vm`, `update`, `firmware`, `cve`, `why`, `explain`, `persist` and `restarts`, and
-after the first word it completes each one's verbs and options: the accents after `theme`, the presets after
+it offers all 44 subcommands: `help`, `theme`, `phosphor`, `desk`, `tiling`, `status`, `doctor`,
+`version`, `app`, `share`, `remind`, `notify`, `toggle`, `settings`, `menu`, `panel`, `places`,
+`trash`, `thumb`, `verify`, `hey`, `appid`, `privacy`, `checklist`, `backup`, `speech`,
+`timezone`, `hostname`, `locale`, `keymap`, `in-vm`, `update`, `image`, `firmware`, `cve`, `why`,
+`explain`, `persist`, `restarts`, `sandbox`, `march`, `rebuild`, `clone` and `oracle`. After the
+first word it completes each one's verbs and options: the accents after `theme`, the presets after
 `phosphor preset`, the desks after `desk`, the toggles, the window actions after `hey run`, the
 checklist items after `checklist dismiss`, the zone names under `/usr/share/zoneinfo` after
-`timezone`, and the page words after `settings`. The same file completes the first word of
+`timezone`, and the page words after `settings`; `check`, `fetch`, `apply`, `install`, `groups`,
+`notes` and `theme` after `update`; `list`, `search`, `info`, `groups`, `install`, `launch`,
+`remove`, `export`, `import` and `tui` after `app`, with `--all` after `app list`, `--dry-run` and
+`--pending` after `app install`, `add`, `rm` and `ls` after `app tui`, and file names after `app
+export` and `app import`; `make`, `verify`, `unpack` and `carry` after `image`, then
+directories; and after `why`, the installed packages (the files of `/var/lib/kpkg/db`), or absolute
+paths once the word starts with `/`, since `kdos why` looks any other word up as a port. The same file completes the first word of
 [`kdos-shot`](#kdos-shot) from its five modes and completes `kdos-share` with file names plus its
 `--clipboard` flag. `bash-completion` loads a completion file on demand, by the name of the command
 being completed, and there is no file named `kdos-shot` or `kdos-share`: those two complete only
 after `kdos` has been completed once in the same shell.
+
+The other KDOS commands have a file each beside it, every one completing the verbs and options of
+the program's own usage text and then the names a verb takes:
+
+| File | Completes |
+|---|---|
+| `ksvc` | `ksvc` and `service`: the verbs (`list`, `status`, `start`, `stop`, `restart`, `enable`, `disable`, `help`) and `--user`, plus `supervise`, `stop-supervised` and `check` under the name `ksvc`; then the service names, `/etc/init.d/NN_<name>.sh` without the number and the `.sh` (`/etc/kdos/user-services` after `--user`); after `supervise`, its options, a name, then a command |
+| `kpkg` | The commands and the options before them; installed packages after `remove`, `info`, `check`, `facets` and `needs`; ports (the `kpkgbuild` directories under `/ports`, where the trees are, and the installed packages) after `install`, `fetch`, `meta`, `verify` and `binhost`; directories after `--root`, `index`, `verify-index` and `store gc`; files after `sign`, `verify-pkg`, `delta` and `apply-delta` |
+| `kdos-box` | The verbs; box names (the profiles under `~/.config/kdos/boxes` and the containers `podman ps --all` lists, which is where `kdos-box list` reads them) after the verbs that take one; the profile keys as `key=` after `create <name>` and `profile <name>`; `--window`, `--force` and `--purge`, `--dry-run` and `--session-end` where those verbs take them |
+| `kdos-appbox` | The commands and `--box`, `--launcher`, `--verbose`; the commands `kdos-appbox apps` lists after `run`; store ids and groups from `kdos-appbox catalogue` after `install`, `export` and `import`, the installed ones after `uninstall`; files after `open` and `throwaway`; box names after `--box` |
+| `kdos-bootctl` | The commands; `a` and `b` after `select`, `set-slot`, `try`, `unfill` and `deploy <root>`; `short`, `pretty` and `off` after `list --json=`; the accents after `palette` and `theme`; `phosphor` and `modern` after `splash` |
+| `kinstall` | Its options; `probe`, `plan`, `apps` and `look` after `--dump`, the accents after `--theme`, files after `--config` and `--save` |
+
+`bash_completion` defines its own `service` completion as it loads, a SysV one that takes the name
+before the verb and skips every `*.sh` script, so the startup file
+`/usr/share/bash-completion/startup/ksvc.bash`, which bash_completion runs after its own
+completions, sources the `ksvc` file and `service` gets KDOS's verbs and names; the others load on demand by name.
 
 Keys reach these commands through kglobalaccel like every other shortcut on the desktop. KDOS's own
 is `Meta+Shift+T`, which runs `kdos tiling toggle` from
@@ -133,19 +161,28 @@ kdos help --keys     # the global shortcuts alone
 
 The sheet has three blocks:
 
-- **WHERE THINGS LIVE** names the three places software lives: `kpkg` for the host system
-  (compiled from source against musl), `kdos app` for applications (a box over a pack, offline,
-  or built on this machine over a network), and `kdos-box` for environments. Most questions of the form "how do I install X" start with which of the three X
+- **WHERE THINGS LIVE** names the three places software lives: `kdos update install` for the
+  host system (a prebuilt package from the binhost, or built here), `kdos app` for applications
+  (a box over a pack, offline, or built on this machine over a network), and `kdos-box` for
+  environments. Most questions of the form "how do I install X" start with which of the three X
   belongs to.
 - **COMMANDS** lists the everyday verbs, each as it is typed, including those that belong to
-  other programs (`kdos-power`, `kdos-energy`, `kdos-doc`, `kinstall`). Every line fits 80
-  columns.
+  other programs (`kdos-power`, `kdos-energy`, `kdos-doc`, and `sudo kinstall` on the live
+  medium only, whose root is an overlay; an installed machine has no live image to install).
+  Every line fits 80 columns.
 - **KEYS** lists the global shortcuts, read from the files kglobalaccel reads:
   `kglobalshortcutsrc` along the configuration cascade, where every component that ever
   registered left its actions with the chord in force, and the desktop entries under
   `kglobalaccel/` along `$XDG_DATA_DIRS`, which declare a program's launch key before anything has
   run. A shortcut you rebound in System Settings is in your own file and wins, so the sheet says
-  what the keyboard does on this login. An action's several keys print joined by ` / `, and a
+  what the keyboard does on this login. An action's several keys print joined by ` / `; a list
+  wider than the 28-column key field takes its line alone, with the description on the next line
+  under the description column. A program's launch key reads `Start <Name>` (`Print`, `Start
+  Spectacle`); a launch key bound in System Settings for a program with no `kglobalaccel/` entry
+  takes its Name from the program's entry under `applications/`, or else its desktop id without
+  `.desktop`. KDOS's own entries read as the action they take (`Toggle Auto-Tiling`). Only a key,
+  other than a launch key, that the table places in no group names its component in brackets,
+  under `other`. A
   `$`-named subgroup such as `[kwin][$InverseAction]`, which pairs an action with its opposite and
   holds no keys, is skipped. The keys are grouped by the key card's own table,
   `/usr/share/kdos/keycard-groups.conf`, so `Meta+F1` and this sheet put each key under the same
@@ -162,8 +199,9 @@ runs `kdos help --pager` in a terminal.
 
 ### Manual pages and the book
 
-This book is on every image, as HTML under `/usr/share/doc/kdos`, and it is the first entry in the
-Help Center. `kdos-doc` opens it at a page:
+This book is on every image, as HTML under `/usr/share/doc/kdos`. The Help Center lists it first
+where KHelpCenter is installed (it comes with the `kde-system` group, not with the base image).
+`kdos-doc` opens it at a page:
 
 ```sh
 kdos-doc                                    # the title page
@@ -172,9 +210,11 @@ kdos-doc 04-programs/kdos-command#kdos-theme
 ```
 
 A page is named as the book's own links name it, with or without `.md` or `.html`. `kdos-doc`
-hands KHelpCenter that page's file URL where it is installed; without it, as on the installation
-medium, it opens the desktop's browser through `xdg-open`, and on a console with neither it prints the file's path, which `lynx`
-or `w3m` can open. The name is checked before it is used, letters, digits and `._-/` for the page
+hands KHelpCenter that page's file URL where it is installed; without it, as on the base image, it opens the desktop's browser through `xdg-open`. On a text console it opens the page in `lynx`, or
+`w3m` where `lynx` is absent, at the anchor's heading, and it prints the file's path only when its
+output is not a terminal or no text browser is installed, so `kdos-doc page | cat` and a script
+get the path. The Help Center and the browser are tried only in a graphical session
+(`WAYLAND_DISPLAY` or `DISPLAY` set). The name is checked before it is used, letters, digits and `._-/` for the page
 and the anchor and no `..`, so it can only name a page under the book's directory. It exits 1 when
 the page is not in the book, 2 on bad usage, and otherwise with the viewer's status.
 
@@ -182,15 +222,20 @@ the page is not in the book, 2 on bad usage, and otherwise with the viewer's sta
 page, `man kdos-appbox` for example, and so do the commands of ours without the prefix: `kpkg` and
 its four other names, `ksvc` and `service` (section 8), `kinstall` and `xdg-terminal-exec`. Each
 page's description is the section of the book that documents the command, so the page and the book
-cannot disagree, and its one-line summary is the command's row in the
-[command index](../06-reference/command-index.md); `apropos kdos` lists the `kdos-*` pages. The
+cannot disagree, and its one-line summary, which `whatis` and `apropos` print, is the description
+cell of the command's row in the [command index](../06-reference/command-index.md), as plain ASCII
+with `--json` and `$XDG_RUNTIME_DIR` as typed, ended at a clause within the 150 bytes of roff that
+`makewhatis` stores, so `apropos` prints it whole ([A page's one-line
+description](../../kfs/15-image/080-whatis.md#a-pages-one-line-description)); `apropos kdos` lists the `kdos-*` pages. A link
+in the section to another page of the book reads, in the manual page, as its text and the command
+that opens that page, `Installation (kdos-doc 02-user-guide/installation)`. The
 `kdos-doc` port writes all of it from `docs/kdos` at build time; see
 [Developing](../05-developer/developing.md#rebuilding-one-thing).
 
 The second book, *KDOS from Scratch*, which builds KDOS phase by phase and package by package, is
-on the image too: it is the Help Center's second entry, `/usr/share/doc/kfs/index.html`, or the
-whole of it as `/usr/share/doc/kfs/kfs.pdf`. The `kdos-kfs` port writes both from `docs/kfs` and
-the recipes.
+not on the image: `sudo kdos update install kdos-kfs` installs it, as
+`/usr/share/doc/kfs/index.html` and the whole of it as `/usr/share/doc/kfs/kfs.pdf`, and the Help
+Center then lists it second. The `kdos-kfs` port writes both from `docs/kfs` and the recipes.
 
 ### kdos status
 
@@ -221,12 +266,13 @@ answers on a machine where no box has ever been created.
 
 ```sh
 kdos version
+kdos --version
 kdos -V
 ```
 
 ```
 KDOS — Kool Desktop Operating System
-  release  0.2.14
+  release  0.2.1+4dc1f7f826a3
   kernel   7.2.11
   libc     musl
   userland GNU
@@ -234,8 +280,12 @@ KDOS — Kool Desktop Operating System
   accent   bone
 ```
 
-The release is `VERSION_ID` in `/etc/os-release`, the version the update machinery compares, and
-the line is left out when there is none. The session line is the same answer `kdos status` gives.
+The release is `VERSION` in `/etc/kdos-release`, the form the boot menu, the splash, the
+installer, the greeter and What's New give: `0.2.1` on a release build and `0.2.1+<BUILD_ID>` on
+any other, so a `-dirty` development image and the release it is not print different lines. A root
+with no record gives `/etc/os-release`'s `VERSION_ID`, with `+<BUILD_ID>` when the image was
+stamped with its commit; the line is left out when neither names a release.
+`KDOS_UPDATE_SYSROOT` stands in for the root, as it does for `kdos update notes`. The session line is the same answer `kdos status` gives.
 The figures above are an example of the shape.
 
 ### kdos doctor
@@ -262,7 +312,7 @@ Each check reports one of three levels:
 | Hardware | The wireless regulatory database, its signature and the regulatory domain; SOF audio firmware and topologies; NVIDIA GSP firmware when `nouveau` is bound, naming `sudo kdos firmware sync` when it is absent; whether the calling user can open each attached serial, camera and instrument device (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), naming the owning group of any it cannot; and, on a live session, whether the boot medium is reachable at `/mnt/iso` |
 | Boxes | Whether erofs is available to the kernel, whether `kdos-packd` answers and by which mount route, whether the user is uid 1000 (packs are built for it), whether the home directory's filesystem can hold a container's writable layer, whether every mounted pack still has a file behind it; then the box plumbing (`kdos-boxsock`, `kdos-boxinit`, `xdg-dbus-proxy`) and each box's confinement as its last launch recorded it |
 | Boot | Whether `rcS` finished, whether this boot is confirmed or still a trial nobody blessed, and whether SDDM has been restarting (three restarts after the first start and `kdos-dm` gives tty1 to a console login instead) |
-| Session | Whether the Wayland socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, turnstile and the supervised session bus, elogind and whether this session is the active one on its seat, and whether `kwin_wayland`, `plasmashell` and the polkit agent are running and the KDE portal, the session manager (`ksmserver`) and the secret service own their bus names; a wallet switched off (`kwalletrc` `[Wallet] Enabled=false`, as the live medium ships it) makes the secret-service line a skip |
+| Session | Whether the Wayland socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, turnstile and the supervised session bus, whether `DBUS_SESSION_BUS_ADDRESS` names its socket `$XDG_RUNTIME_DIR/bus` (only the `unix:path=` value is compared, so the `,guid=…` dbus-daemon appends for the services it activates, KRunner among them, is the same bus), elogind and whether this session is the active one on its seat, and whether `kwin_wayland`, `plasmashell` and the polkit agent are running and the KDE portal, the session manager (`ksmserver`) and the secret service own their bus names; a wallet switched off (`kwalletrc` `[Wallet] Enabled=false`, as the live medium ships it) makes the secret-service line a skip |
 | Services | `kdos-powerd`'s socket and `io.kdos.Power1`, `kdos-settingsd`, udisks2, `tlp-pd` when it is installed, `kdos-sysupdated` and the last update check's problem, `kdos-energyd` (a `skip` on a machine with no RAPL energy counter, most virtual machines among them), `kdos-oomd` and the protected names it lists that are not running |
 | Containers | That the mount-namespace root is `/`, the `/etc/subuid` and `/etc/subgid` entries rootless containers need, and, when podman is installed, that `podman info` opens this account's store: `ok` with the store's path, or a warning with podman's own first line of complaint; run as root, a warning instead |
 | Desktop | The accent and its global theme `org.kdos.<accent>.desktop`, Xwayland (its socket when `DISPLAY` is set; otherwise the binary, and `/tmp/.X11-unix` root-owned and mode 1777, without which KWin cannot start it), the lock screen's PAM stack and setuid `unix_chkpwd`, the setuid helpers (below), `fcitx5` when installed, and `~/.local/bin` on `PATH` |
@@ -273,9 +323,13 @@ every shell that inherited it. A doctor that reported that as fine would send yo
 everywhere but at the dead compositor. A name on a bus is asked, not a process listed, wherever
 there is a name: a daemon that is running and owns nothing answers nobody.
 
-On a live session the box check reports that the home directory is on an overlay, so a box's
-writes go to memory and end with the session. To keep them, create a persistence store with
-[`kdos persist`](#kdos-persist).
+On a live session the box check is a skip, `[skip] $HOME is on overlayfs (a live session): a box's
+writes end with the session, and an installed system keeps them`, in `--json` too. That is the live
+medium working as made, so it does not make doctor exit 1, and the Health page shows it as a grey
+skipped row. Nothing in the session keeps a pack box's writes: `kdos-packd` puts its writable
+layer in the runtime directory's memory, so only an installed system keeps them.
+[`kdos persist`](#kdos-persist) keeps the podman storage of store and development boxes, not a
+pack box's layer.
 
 Losing a setuid bit is silent, and each of these fails differently:
 
@@ -312,7 +366,8 @@ kdos theme <name>             # phosphor amber ice bone norton borland perfect p
 kdos theme list | next | prev
 kdos theme style <file>
 kdos theme --audit [accent]   # also: audit
-kdos theme --from-plasma <accent>
+kdos theme --account <accent>
+kdos theme --from-plasma [--account] <accent>
 ```
 
 KDOS has eight accents, compiled into `libkcolor`. `bone` is the default: a machine with no
@@ -367,7 +422,16 @@ not reached. It exits 0 when the session wears the accent, even when the machine
 and 1 when a session step failed, with the reason as the last line.
 
 `--from-plasma <accent>` is what `kded-kdos` runs after the Global Theme page applied a KDOS theme:
-every step but the second, which Plasma has just done.
+every step but the second, which Plasma has just done. `--account` also leaves out step 8 and says
+nothing of it: `kded-kdos` passes it on an account's first login (no
+`$XDG_STATE_HOME/kdos/accent-synced` yet), so a new account's default
+scheme brings that account into step and leaves `/etc/kdos/accent`, the greeter, the boot menu and
+the splash on the machine's accent.
+
+`--account <accent>` is `kdos theme <accent>` without step 8: the home's half alone. The installer
+runs it, with a cleared environment and the home's `HOME` and XDG directories, into the target's
+`/etc/skel` and the new account's home, so a text console or an SSH login before any Plasma login
+already wears the chosen accent ([kinstall](kinstall.md)).
 
 #### Style files
 
@@ -499,10 +563,16 @@ off. Outside a session the name is recorded and the command prints
 `nothing to undo`, and after a restore the undo set is emptied.
 
 `status --json` prints `{"desk", "panels_edited", "undo"}`: the desk in force, whether the panels
-were changed by hand since it was laid out (a panel, its applets or their order differ from the
-digest in `[Desk] LaidOutPanels`; always `false` outside a session), and the undo set's path or
-`null`. `undo` puts back the digest of the desk it restores. The welcome tour
-asks it before offering a desk.
+were changed by hand since it was laid out, and the undo set's path or `null`. `panels_edited` is
+`true` when the panels differ from the digest in `[Desk] LaidOutPanels`; it is always `false`
+outside a session. The digest covers each panel, where it sits, its applets in their order, and
+the settings every desk writes into them: Start's icon and label, the task manager's pinned
+launchers and each meter's face. Each of those is a value its applet writes back unchanged when it
+loads, which is why the digest can be taken straight after the template runs, before the applets
+have loaded. A desk that has lost those settings (a Start with no icon, a task manager with no
+launchers, a meter with no face) reads as edited, so `kdos desk <name>` is the repair it points
+to. `undo` puts back the digest of the desk it restores. The welcome tour asks it before offering
+a desk.
 
 ### kdos tiling
 
@@ -541,9 +611,14 @@ command set, and a click there undoes it here:
 | `reduced-motion` | `kdeglobals [KDE] AnimationDurationFactor=0` in your own file, which stops every animation KWin, Plasma and Phosphor mode draw; off deletes the key, so the shipped factor applies again |
 
 The list prints each name, `on` or `off`, and what it is. An unknown name, or a second argument
-other than `on` or `off`, exits 2. Typed at a prompt, the new state is printed. Run from a key
-binding or a menu, where standard output is not a terminal, it is shown as a notification instead,
-because a silent keystroke cannot be told from a broken one.
+other than `on` or `off`, exits 2. Typed at a prompt, the new state is printed (`night-light
+on`). Run from a key binding or a menu, where standard output is not a terminal, it is shown as a
+notification instead, because a silent keystroke cannot be told from a broken one. The
+notification is titled with the switch's name, `Stay Awake`, `Night Light`, `Do Not Disturb` or
+`Reduced Motion`, then `on` or `off` (`Night Light on`), and its body says what the new state
+does: `the screen is warmed now and all day` for Night Light on, `the screen is back to its normal
+colours` for off, and the like for the other three.
+It is raised through `kb_notify()`, so it stays in the history like the others below.
 
 ### kdos notify
 
@@ -564,6 +639,15 @@ the moment it takes and says so when no notification server answered. It carries
 it, unless Do Not Disturb is on or the Notifications page has sounds off. A program that must
 never wait (a terminal's OSC 9 notification, a screenshot's) uses the same call fire-and-forget
 through `kb_notify()` in `libkbase`, with no sound.
+
+Both carry the hint `x-kde-appname=kdos`, which names `/usr/share/knotifications6/kdos.notifyrc`,
+installed by `kdos-tools`. Plasma then draws the notification with the KDOS mark and a Configure
+button, keeps it in the history after the popup closes, and lists the sender as **KDOS Tools** on
+System Settings' Notifications page, where its popups, history and Do Not Disturb behaviour are
+set. A notification with no notifyrc behind it would be filed under "other applications", which
+Plasma keeps out of the history, so a reminder that fired while nobody looked would be lost. The
+same hint is sent by `kdos remind`, the toggles, `kdos verify --notify`, `kdos speech`,
+`kdos-shot`, `kdos-share`, every `kdos-notice` notice and a failed verb started from KRunner.
 
 `--time` and `--battery` compute their text, which a shortcut cannot do: a shortcut runs a fixed
 command.
@@ -610,12 +694,15 @@ Your user services read the timer table when they start, so a reminder set now w
 next start. `kdos remind` therefore starts its own `snooze` as well, and the next start runs another
 from the same file. Only one delivers, because `kdos remind fire` removes the file before it returns
 and the other then finds nothing: the file is the reminder. With no session bus when the time comes,
-nothing is delivered and the file stays.
+nothing is delivered and the file stays. A delivered reminder is filed under **KDOS Tools**
+([above](#kdos-notify)), so one that fired while you were away waits in the notification history.
 
 The text is a comment line in the file, because both timer parsers split a row into words with no
 quoting, so `"make tea"` would arrive as two broken words; `ls` reads the text back from there,
-and prints each reminder's id, the time it was set (the file's modification time, not the time it
-is due) and its text.
+and prints each reminder's id, the time it is due (`due Wed 18 Nov 04:00`, the first moment at or
+after the file's modification time that its row names) and its text, soonest first. A row `kdos
+remind` did not write is listed by the time its file was written instead, as `set <time>`, after
+every row with a due time.
 `snooze -t` counts from the file's modification time, the moment the reminder was set, with a day
 of slack, so a reminder due while the machine was off fires when it comes back.
 
@@ -626,7 +713,8 @@ file and delivers nothing, by the same test `fire` applies.
 argument, because a shortcut runs one command with no shell.
 
 `ls` (when there is at least one reminder) and `clear` answer with a notification when standard
-output is not a terminal, because the shortcuts that run them have nowhere to print. With no
+output is not a terminal, because the shortcuts that run them have nowhere to print; the `ls`
+notification shows the four that are due soonest, in the same order. With no
 reminders, `ls` prints `no reminders` to standard output wherever it goes.
 
 ### kdos panel
@@ -916,13 +1004,13 @@ guide is [Applications](../02-user-guide/applications.md), the program that does
 | Verb | Does |
 |---|---|
 | `list` | What is installed: the catalogue's installed rows, then each `deb.<package>` box Discover's Debian lane built (category `Debian`, from `kdos-box list --json`; a box described and not yet created is left out). `--all` lists the whole catalogue: 72 entries, the 70 applications and 2 datasets, which would bury the handful you have, and the Debian boxes after it |
-| `search` | Entries whose id, name, category or tagline contain the text, ignoring case; exit 1 when none do |
-| `info` | One entry: name, category, state, the row it is built on, and its size labelled an estimate |
+| `search` | Entries whose id, name, category or tagline contain the text, ignoring case; exit 1 when none do, with the line ``a port by that name: `kdos update install --dry-run <text>` shows what installing it takes``, because a native program is a port and not in this catalogue |
+| `info` | One entry: name, category, state, the row it is built on, and its size labelled an estimate. For an application not installed, the size also gives the total with the base and runtime rows its install would build first, and names them: `8.6M (an estimate), 595M with rt-gtk and base, which this computer has not built`. An unknown id gets the same port line as `search` |
 | `groups` | The catalogue's named groups, which `install`, `remove` and `export` accept in place of an id |
 | `install` | Builds the application on this machine, which needs a network. `--dry-run` shows what would be built. Installing an application that is already installed rebuilds nothing: each image in its chain prints `kdos/<id> is already here`, the box create is refused because the box exists, and the command reports `<id>: the image built and the box did not` and exits non-zero. To take a newer build, `remove` the application and `install` it again, which rebuilds its own image and any runtime image no remaining box uses. There is no update verb |
 | `install --pending` | Installs what the installer was asked for and could not install itself, listed in `/var/lib/kdos/apps-pending`. The command deletes the file after a clean run, but the installer writes it as root and `kdos app` runs as the user, so the deletion fails and the file stays; a second run builds the whole list again |
 | `launch` | Installs the application if needed, then runs its launcher from `~/.local/bin` |
-| `remove` | Uninstalls |
+| `remove` | Uninstalls. An id with no box, no profile and no image prints `==> <id> is not installed` and exits 0, and a group's members that are not installed are skipped the same way |
 | `export` | Writes the named applications into one `.ktar` set for another machine |
 | `import` | Installs from a `.ktar` set, offline, verified by kdos-packd as it installs each pack; name ids to take only some |
 
@@ -1081,9 +1169,8 @@ kdos oracle [--plain]
 Prints one reason from the same corpus as `title · citation`. The choice is keyed on the day
 combined with the boot's identifier, so the line stays the same all day and changes after a
 reboot. On a terminal it is printed in the accent's secondary colour; `--plain` prints it without
-colour, which is also what happens when the output is not a terminal. The animated
-[login banner](#kdos-banner-and-kdos-getty) shows the same line when the terminal has room for
-it. Exit 1 when no reasons are installed.
+colour, which is also what happens when the output is not a terminal. Exit 1 when no reasons are
+installed.
 
 ### kdos restarts
 
@@ -1107,8 +1194,14 @@ After an upgrade, a process that had the old shared library mapped keeps running
 restarts. That is what makes upgrading a running system safe, and it also means a security fix is
 not in effect for that process yet. This command joins two exact sources: `/proc/<pid>/maps`,
 where the kernel marks a mapping whose file was deleted, and `kpkg`'s file manifest, which says
-which package owned it. Only mappings under `/usr`, `/lib*`, `/bin`, `/sbin` and `/opt` are
-considered, because a deleted shared-memory mapping is normal. A mapping no installed package owns
+which package owned it. Only an executable mapping (its permissions contain `x`, such as
+`r-xp`) of a deleted file under `/usr`, `/lib*`, `/bin`, `/sbin` and `/opt` is considered. A
+deleted shared-memory mapping (a memfd, `/SYSV`, `/dev/zero`) is normal, and a cache or data file
+mapped for reading (`icon-theme.cache`, the MIME and font caches, a locale archive) is not code:
+every install's index triggers rewrite those files under every running program. So installing an
+application lists nothing, while a replaced library or program, which always maps its text
+executable, is still reported, and `kdos-notice` raises its log-out notice only for that. A
+mapping no installed package owns
 is reported as `no installed package owns it` rather than guessed at, and a process whose maps
 cannot be read (another user's, or one that exited during the scan) is skipped.
 
@@ -1138,7 +1231,7 @@ kernel's for a camera opened without it:
 |---|---|
 | Microphone | A running `Stream/Input/Audio` node exists, named by the process that owns it |
 | Camera | A camera source (`v4l2` or `libcamera`) has an active link, named by the stream at the other end; or a process holds a `/dev/video*` open itself, which PipeWire never sees |
-| Screen | A KWin screencast stream (a `Stream/Output/Video` node owned by `kwin_wayland`), whether Spectacle or the desktop portal asked for it, or any other non-camera video source, has an active link, named by the stream that reads it. Another program's video output stream is not listed |
+| Screen | A KWin screencast stream (a `Stream/Output/Video` node whose application, by binary or name on the node or its client, is `kwin_wayland`) has an active link, one entry per link, named by the stream that reads it, whether Spectacle, OBS or the desktop portal asked for it; or any other video source has an active link. A KWin stream read by the Plasma shell itself, the task manager's hover thumbnail, is left out (below). Another program's video output stream is not listed |
 
 Each user is named with the box it runs in, from its cgroup, because "Firefox has the microphone"
 is a different sentence when Firefox is a box kept for one website. `--watch` follows
@@ -1148,6 +1241,17 @@ again a quarter second later for an opener whose descriptor was not yet listed. 
 cannot be set up the scan runs every half second instead. With no `/dev/video*` node the scan
 returns at once, so a machine with no camera never walks `/proc`. The tray's privacy lamps read it
 (see [Privacy lamps](plasma-shell.md#privacy-lamps)).
+
+The task manager's window thumbnails are KWin streams read by `plasmashell`, and they are not a
+screen capture, so hovering a task does not light the screen lamp and `stop` cannot target one.
+The reader is taken to be the shell only on values the PipeWire server sets, never on what a
+client says about itself: its node's `client.id` must name a PipeWire client whose
+`pipewire.sec.pid` (from the socket's peer credentials) runs the same file, by device and inode, as
+`/usr/bin/plasmashell`, in no box. A program that only names itself plasmashell
+(`application.name`, `application.process.binary`, `PIPEWIRE_PROPS`), a box's own plasmashell, and
+a reader whose pid or executable cannot be read are all listed as screen captures under the name
+they give. Other video sources, KWin's screencast source and cameras among them, are listed
+whoever reads them, the shell included.
 
 `stop` ends a screen capture by destroying KWin's stream node for it: KWin closes the screencast,
 so the program that asked is told — Spectacle stops and reports that the stream closed, and a
@@ -1213,7 +1317,9 @@ kdos update apply [--image | --binhost | --source] [--acquire | --arm] [--mount]
 kdos update install [--dry-run] [--prebuilt | --source] [--build-deps=prebuilt|source]
                     [--root DIR] <port|group>
 kdos update install [--dry-run] [--prebuilt | --source] --pending
-kdos update install [--dry-run] --dev [--root DIR] <port|group>...
+kdos update install [--dry-run] --dev [--deps] [--root DIR] <port|group>...
+kdos update remove [--dry-run] <port>
+kdos update removable [--json]
 kdos update groups [--json]
 kdos update notes [--json]
 kdos update theme
@@ -1221,8 +1327,9 @@ kdos update theme
 
 Updates the system. A recipe pins its version, so what is newer arrives with the **ports tree** and
 nowhere else: every image carries the recipe-only tree at `/ports` (each recipe, patch and program
-of our own, `shelves`, `sources.idx`, the two books under `docs/` and their renderer under
-`script/book`, and no source tarball). An update is two steps:
+of our own, `shelves`, `sources.idx`, `groups` (the groups `kdos update install` and the installer
+offer), the two books under `docs/` and their renderer under `script/book`, the stamp `TREE` and the release notes `RELEASE`, and no source tarball). An update
+is two steps:
 
 - **`fetch`**: a newer tree arrives as one signed tarball, is verified against `/etc/kdos/keys/tree`
   and replaces `/ports` whole. The release's signed
@@ -1237,7 +1344,13 @@ of our own, `shelves`, `sources.idx`, the two books under `docs/` and their rend
   the [binary host](../03-architecture/packaging.md#the-binary-host) index names for every package
   whose recipe now pins something newer; the **source** lane, only with `--source`, builds them on
   this machine. The image lane comes first, because a slot image is the release as it was built and
-  tested, written whole; `--image`, `--binhost` and `--source` pick a lane by name.
+  tested, written whole; `--image`, `--binhost` and `--source` pick a lane by name. A machine with
+  one root, or the live medium, never takes the image lane, and `check` offers no image there. On an
+  install with one root, a disk too small for two slots, `apply` prints `a slot image is on offer,
+  but this machine has one slot; installing from the binhost` and installs into the running root
+  from the binary host. On the live medium `apply` is refused unless `--in-place` is given, and with
+  it, as with `--in-place` anywhere, it prints `a slot image is on offer, but --in-place updates the
+  running root; installing from the binhost`.
 
 Discover drives the same two steps through [`kdos-sysupdated`](daemons.md#kdos-sysupdated), and
 [Discover](discover.md#system-updates) is the graphical side.
@@ -1251,12 +1364,14 @@ counts.
 
 | Verb | Does |
 |---|---|
-| `check` (the default when no argument is given; name it to pass an option) | Lists each installed package whose version, then release, is older than its recipe's and whether the binary host covers it, counts packages with no recipe here, names the tree's commit, says what is offered and from which lane, and reports the recorded problem. A package newer than its recipe, such as a local rebuild with a higher release, is not listed. `--json` prints the same as one document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first. Exit 0 up to date, 1 something behind or an image offered, 2 nothing could be surveyed |
-| `fetch` | Downloads the newest published tree, checks its signature, installs it as `/ports`, and fetches the release index and, through it, the binary-host index and the slot image manifest. `--binhost-only` fetches only the release index and binary-host index of the tree in place, neither a newer tree nor the image manifest, because a newer tree's packages are built against a newer base than this one runs; the live medium and the installer fetch this way. Each part checks its key before the network: with no key in `/etc/kdos/keys/tree` the tree is not downloaded and `fetch` records `no-key`, and with none in `/etc/kdos/keys` neither the binary-host index nor the image manifest is, and each records `no-key` on its own line. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
-| `apply` | Fills the inactive slot (the acquire) and makes it the next boot's candidate (the arm). See below |
-| `install <port\|group>` | One port and every package it lacks into the running root, by one of two routes. `--prebuilt` takes them from the release binary host `fetch` keeps; a machine that has no index yet, a fresh install or the live medium, fetches its release's first, as `fetch --binhost-only` does, and a dry run, which changes nothing, names that command instead. A package the signed index does not cover refuses the whole install, naming `kdos update install --source <port>`. `--source` builds the port here (below). An install never rebuilds an installed package, and a port installed by the other route is installed again, alone, by the one asked for. A dependency already installed and older than its recipe refuses the install, because the new package is built against the newer one and the system update comes first. A group name installs each of its members in turn as the port it is ([below](#install-routes-and-groups)). `--root DIR` installs into a root that is not running, prebuilt only. `--pending` installs what the installer recorded and could not install. `--dev` installs installed ports again whole, bringing back the development and documentation files the image's `FACETS=run` left out ([below](#development-files)). Discover's ports helpers run it through `pkexec`. Exit 0 installed or already was, 1 refused or failed, 2 usage |
-| `groups` | Every group of the tree's `groups` file: whether all of it is installed, how many of its members are not, how many packages installing it would add, and, with the signed binary-host index in place and every one of those packages prebuilt, their download size. `--json` prints an array of `{"id", "title", "ports", "installed", "missing", "packages", "size"}`, `size` `null` when no size can be given. Exit 0 |
-| `notes` | The release notes of the slot this boot runs. `--json` prints `{"version", "previous", "notes"}`: the version running, the version the other slot holds (`""` when none is recorded), and the `RELEASE` file of the tree this slot carries, as Markdown. Exit 1 with no document when the slot carries no notes. The welcome tour's What's New page reads it |
+| `check` (the default when no argument is given; name it to pass an option) | Lists each installed package whose version, then release, is older than its recipe's and whether the binary host covers it, counts packages with no recipe here, names the tree (`tree <commit> (<version>), <date> at <root>` for a tree that names its release, `tree <commit>, <date> at <root>` for one that does not), says what is offered and from which lane, and reports the recorded problem. `check` asks no server and reads what the last fetch left, so with no `fetch` line in `update.state`, as on a machine that has never fetched, it says so before the counts: ``no fetch is recorded yet: `sudo kdos update fetch` (or `sudo kdos update check --fetch`) asks the release server``. With no binary-host index on the machine its `binhost:` line says what to do: `kdos update apply --source` builds what is behind, when something is and this is not the live medium, after the keys step below when the keys are why there is no index; otherwise, when `update.conf` or `$KDOS_UPDATE_BINHOST` names an `http://` binhost, ``` `binhost =` in /etc/kdos/update.conf or $KDOS_UPDATE_BINHOST names an http:// URL, which kdos update refuses (curl --proto =https,file); name an https:// URL or a directory ```, because the fetch would be refused the same way; otherwise, when the last fetch of the base named now found no binhost there, ``the last fetch found no binhost published at <base>; publish one there or name another with `binhost =` in /etc/kdos/update.conf``, because the fetch would find none again; otherwise, when the keys are why there is no index (`/etc/kdos/keys` holds no key, the last fetch of the base named now was refused over a signature, or the index in place does not verify against the ring; a `no-key` refusal once the ring holds keys again is left to the fetch), ``the keys in /etc/kdos/keys verify no signed index of this release; put this release's public keys there (kdos-release.pub, on the release page, and kdos-binhost.pub; /etc/kdos/keys on its ISO holds both), then `sudo kdos update fetch --binhost-only` ``, because the fetch alone would be refused the same way; otherwise `sudo kdos update fetch --binhost-only` takes the release's signed index, when `update.conf`, `$KDOS_UPDATE_BINHOST` or the tree names a binhost; otherwise the tree names no release and `sudo kdos update fetch` takes a published tree that does, unless the last fetch refused the published tree as older than this machine's, when the line names only `binhost =` in `update.conf`. A recorded problem that is a refusal over the keys ends with the same step: a tree fetch refused for want of a key or over its signature with ``the keys in /etc/kdos/keys/tree verify no tree of this release; put this release's public key there (kdos-release.pub, on the release page and in /etc/kdos/keys/tree on its ISO), then `sudo kdos update fetch` ``, and a `binhost-no-key` or `binhost-unverified` one over a signature, when an index is in place and the `binhost:` line has not named it, with the binary-host keys step above, or with `sudo kdos update fetch --binhost-only` when the ring now holds keys and the refusal was `no-key`. With an index in place that another base gave (its `ORIGIN` is not the base named now, as after `binhost =` changes and the fetch of the new base found nothing), a warning line says so: `binhost: the index in place is from <origin>, not <base> that <update.conf, $KDOS_UPDATE_BINHOST or this tree's release> names; the last fetch of <base>: <detail>; installs still read the index in place` (`the last fetch of <base> found no binhost there` when that fetch found none, `no fetch of <base> is recorded` when none is). The index is kept and `install` and `apply` keep reading it: it is signed by a trusted key, and each package is still checked against this tree's recipe hashes. A package newer than its recipe, such as a local rebuild with a higher release, is not listed. `--json` prints the same as one document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first. A machine with no inactive slot is offered no image: its `image:` line reads `slot image <version> is on offer, but this machine has one slot` (`but this is the live medium` on the live medium), and the document's `offer`, `lane` and `image` describe the binary host alone. Exit 0 up to date, 1 something behind or an image offered to this machine, 2 nothing could be surveyed |
+| `fetch` | Downloads the newest published tree, checks its signature, installs it as `/ports`, and fetches the release index and, through it, the binary-host index and the slot image manifest. `--binhost-only` fetches only the release index and binary-host index of the tree in place, neither a newer tree nor the image manifest, because a newer tree's packages are built against a newer base than this one runs; the live medium and the installer fetch this way. When no binary host is named, or none is published at the address, `--binhost-only` exits 1 and says why on standard error: ``kdos update: no binhost is named: <root>/TREE names no release and /etc/kdos/update.conf has no `binhost =` line; `sudo kdos update fetch` takes a published tree that names its release``, or `kdos update: no binhost is published at <base>`; when the published tree was just refused as older than this machine's, the fetch would be refused again, and the line is ``kdos update: no binhost is named: <root>/TREE names no release, and the published tree is older than this machine's; name one with `binhost =` in /etc/kdos/update.conf``. A full `fetch` prints the same line, with its own exit status. A release index or binary-host index that cannot be taken exits 1 and says why on standard error as it happens, with the same text `check` reports on its `binhost-<code>` line: `kdos update: the release index at <base> could not be downloaded` (`fetch-failed`), `kdos update: the server at <host:port> did not answer` (`fetch-failed`: the connection was refused or timed out on a machine with a default route), `kdos update: the network could not be reached for the release index at <base>` (`no-network`: a name that did not resolve, or a refusal or timeout with no default route in `/proc/net/route` or `/proc/net/ipv6_route`), the reason followed by ` — it was not kept` for an index that does not verify (`unverified`), and `kdos update: no trusted key in /etc/kdos/keys can verify a release index` (`no-key`). An `http://` base is refused by curl before any connection, because curl runs with `--proto =https,file`, and is followed by `kdos update: binhost takes an https:// URL or a directory; curl runs with --proto =https,file`; the state line `check` reports carries the reason followed by `; binhost takes an https:// URL or a directory`, the reason cut short where the two would pass 255 bytes. Each part checks its key before the network: with no key in `/etc/kdos/keys/tree` the tree is not downloaded and `fetch` records `no-key`, and with none in `/etc/kdos/keys` neither the binary-host index nor the image manifest is, and each records `no-key` on its own line. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
+| `apply` | Fills the inactive slot (the acquire) and makes it the next boot's candidate (the arm). A prebuilt apply (the binhost lane, and the world step after a slot image) carries what the world packages run with, not what they were built with: their dependencies are cut by the index's `N:` lines from every package it installs at once, as a prebuilt `install` cuts one port's, keeping every edge of a package built here; `--source` keeps every edge. See below |
+| `install <port\|group>` | One port and every package it lacks into the running root, by one of two routes. `--prebuilt` takes them from the release binary host `fetch` keeps; a machine that has no index yet, a fresh install or the live medium, fetches its release's first, as `fetch --binhost-only` does, and a dry run, which changes nothing, names that command instead. With still no index the install is refused with `kdos update: no signed binhost index is on this machine` and a second line: the no-binhost-named line above when the last fetch found none named or fetched from another base and none is named now, ``<base> names a binhost the last fetch did not see; `sudo kdos update fetch --binhost-only` takes its signed index`` when `update.conf` or `$KDOS_UPDATE_BINHOST` has named one since or names another than the last fetch's, and otherwise ``kdos update: `sudo kdos update fetch --binhost-only` fetches the release's signed index``. For an `http://` binhost each of the last two names the `https://` rule `check`'s `binhost:` line does in place of the fetch. The last is left out when the install's own fetch of the index was just refused, since that fetch has said why on the line before and running it again would meet the same refusal. When the keys are why there is no index, as for `check`'s `binhost:` line, the second line is `kdos update: ` and the keys step that line names instead, whether or not the install fetched. A package the signed index does not cover refuses the whole install, naming `kdos update install --source <port>`. The prebuilt route can leave out the build-only ports a package was only built with: when the tree carries `buildonly` (`/ports/buildonly`), an edge into a port it lists is followed only where that package's whole-package stanza in the index names the port on an `N:` line, an empty `N:` line drops every such edge, and a stanza with no `N:` line keeps them all; the port asked for always stays. `--source` cuts its order the same way except that the port and every package the run builds follow every edge, so a prebuilt `extra-cmake-modules` comes without Sphinx or the Python build backends, and a build first installs, prebuilt, each port of `/ports/buildheaders` (`xorgproto`, `xcb-proto`, `wayland-protocols`, …) that a package it compiles against names and that is not installed ([Building here](../03-architecture/packaging.md#building-here)). The image's tree and every published tree carry `buildonly` and `buildheaders`, and the published index an `N:` line per package, so a prebuilt `wesnoth` takes `boost`, which its line names, and a prebuilt `kcharselect`, whose line is empty, takes no CMake, Sphinx or pip. Before the first download the bytes to fetch are compared with the free space where the cache is, and an install that does not fit is refused with `kdos update: the packages to download take <size> and <cache> has <size> free; nothing was downloaded`, exit 1; `--dry-run` prints its plan and then the same line without `; nothing was downloaded`, and exits 1 too. A run that builds compares, before its first build, an estimate of the room its builds need in `kpkg`'s work directory (six times the source archives of its largest build, plus each other distinct archive once, plus 512 MiB once a run, an archive not on the machine yet counted at the size `kpkg fetch --size` reads where it would be downloaded; see [Building here](../03-architecture/packaging.md#building-here)) with the free space there, once before anything is fetched and again once every source is, and refuses one that does not fit with `kdos update: building <ports> needs about <size> in /var/cache/kpkg/work and the root has <size> free; nothing was downloaded` (`; nothing was built` at the second check), exit 1; `--dry-run` prints the estimate as `build-space <bytes>` after its total, and the same refusal without the tail; an archive no server gave a size for counts nothing there, and the dry run names it on stderr with `kdos update: the size of <n> source archive(s) (<files>) is not known until they are downloaded; the space is checked again after the download`. Every build it starts runs under `KPKG_CLEAN_FAILED=1`, so a failed one removes its work directory, and the failure line says why: `kdos update: <port> did not install: the root filled up while building it (<size> left), and its work directory was removed` when the work directory's filesystem had 64 MiB or less, or under 1%, left as the build failed (`while building <dep>, which it needs (<size> left), and the work directory of <dep> was removed` when a dependency's build did), `kdos update: <port> did not install: its build failed; the log is above` for another failed build, and `kdos update: <port> did not install; the log is above`, or `: the root is full (<size> left); the log is above` when it is, when the build succeeded and the install after it failed; with `KDOS_UPDATE_LOG` set, as `kdos-ports-builder` sets it to the file it keeps the run's output in, each `the log is above` reads `the build's log is in <file>`. The line is about that port only: what the run installed before it stays installed. A build stopped or killed removes nothing, and `/var/cache/kpkg/work/<port>` stays until it is deleted or the port is built again. On the live medium each package file and its `.sig` are deleted from the cache once the package is installed, because the cache is in the same RAM overlay as the root it was unpacked into. `--source` builds the port here (below). An install never rebuilds an installed package, and a port installed by the other route is installed again, alone, by the one asked for. A dependency already installed and older than its recipe refuses the install, because the new package is built against the newer one and the system update comes first. A port already installed is recorded in the world set all the same; a group name installs each of its members in turn as the port it is and records only the members it adds (when its dependencies come prebuilt, once the index is in place; with none the group is refused once, [below](#install-routes-and-groups)), and `build-tools` ends by restoring the development files a compiler needs ([below](#install-routes-and-groups)). `--root DIR` installs into a root that is not running, prebuilt only. `--pending` installs what the installer recorded and could not install; when dependencies come prebuilt, a refused index fetch, or one that finds no index to take, stops it after the first group and leaves the rest pending ([below](#install-routes-and-groups)). `--dev` installs installed ports again whole, bringing back the development and documentation files the image's `FACETS=run` left out, and `--dev --deps` those of what a build against them compiles against too ([below](#development-files)). Discover's ports helpers run it through `pkexec`. Exit 0 installed or already was, 1 refused or failed, 2 usage |
+| `remove <port>` | One port somebody installed out of the running root, with the packages it brought, each by `kpkg remove`, which also takes it off the world set and the origin record so the next update does not install it again. A package it brought is one with a line in `/var/lib/kdos/origin` (which an install writes), outside the world set, not of the running image, that a package being removed depends on, or one it brought does, and that only packages being removed depend on; the set is the largest that holds, so packages an install brought that depend on each other in a cycle go together when nothing else needs them, and each package is removed before what it depends on. A package of the image is one with no origin line or one whose database entry the root's image record `/var/lib/kdos/image/MANIFEST` names, so a package that keeps an install's origin line after a newer image ships it stays; a slot written by packages has no image record, and its origin lines decide. Refused, before anything changes and with exit 1, for a port that is not installed (`kdos update: refused: <port> is not installed`), one with no line in `/var/lib/kdos/world` that is a package of the image (`… is part of the system: it came with this version of KDOS or with a package that needs it, and leaves with the system version`), and one an installed package depends on (`… is needed by <pkg>, which is installed`); "depends on" is as for `removable` below. After the removals, the package file, `.sig`, cut download and delta of every package that is not installed leave the binhost cache `/var/lib/kdos/binhost`, the removed packages' and any an install cut short or an earlier removal left, except a file the current index names as the base of a delta to an installed package; while `update.state` records a slot acquired by `apply --acquire` and not yet armed, only the files of the packages this removal took go, since that slot's packages are not installed here. `--dry-run` prints `remove <pkg>` for each package the removal takes, the port first, and changes nothing; without it the removal needs root, takes the update lock and decides what it takes again under it. Discover's `kdos-ports-helper remove` runs it through `pkexec`. Exit 0 removed (or would be), 1 refused or failed, 2 usage |
+| `removable` | The installed world packages no installed package depends on, one a line: what `remove` takes. Then, after a `kept, needed by an installed package:` line printed only when there are any, each other installed world package as `<pkg> (needed by <an installed package that depends on it>)`; a package built here keeps its recipe's build dependencies, so after `install --source kcolorchooser` the `cmake` and `ninja` it brought are there as `(needed by kcolorchooser)`. Then, after a `left by removals:` line printed only when there are any, the packages left by removals: each with an origin line, outside the world set and not of the image, that nothing installed outside that list depends on, such as what an install that stopped part way added; `remove` takes each by name, with what it brought. kpkg's database records no dependency edges, so each installed package's recipe in the tree in place gives them, read as the solver reads them and cut as a prebuilt install cuts them: an edge into a port `ports/buildonly` lists is kept only when the package's stanza in the verified binhost index names that port on its `N:` line, carries no `N:` line, or is for another version or release than the one installed, so a package that only compiled against a build-only port does not hold it; a package built here (origin `source`) keeps every edge of its own recipe, since an update builds it here again, so the build dependencies it names stay with it and go with its removal; with no verified index, or a tree without `ports/buildonly`, every recipe edge holds. `--json` prints `{"removable":[...],"needed":{"<pkg>":"<an installed package that depends on it>"},"left":[...]}`, `needed` holding the installed world packages that are not removable and `left` the packages left by removals; Discover's backend reads it at each refresh. Exit 0 |
+| `groups` | Every group of the tree's `groups` file: whether all of it is installed, how many of its members are not, how many packages installing it would add, and, with the signed binary-host index in place and every one of those packages prebuilt, their download size. With no index it first prints `no binhost index here, so no sizes:` and the step `check` names. `--json` prints an array of `{"id", "title", "ports", "installed", "missing", "packages", "binhost", "size"}`, `size` `null` when no size can be given, and `binhost` `false` when no index is in place, nothing names a binary host for the tree (no `binhost =` in `update.conf`, no `$KDOS_UPDATE_BINHOST`, no release-named `TREE`) and no refresh can name one: the `binhost` line of `update.state` says `no binhost is named for this tree`, its `fetch` line says the published tree is older than this machine's, or `kdos-bootctl` says this machine has no second slot (a refresh there is `fetch --binhost-only`, which takes no tree). It is `true` otherwise, a tree a refresh may yet give a name included. Exit 0 |
+| `notes` | The release notes of the slot this boot runs, `/ports/RELEASE`. Every image carries it, copied from `ports/RELEASE` of the checkout it was built from, and every published tree (`kdos-ports.tar.xz`) carries the tag's; the image build and `ports/publish --release` both refuse a missing one or one over 16 KiB, the most `notes` reads. `--json` prints `{"version", "previous", "went_back", "live", "notes"}`: the version running; the version the other slot holds when this boot came from it or went back from it, and `""` when it is neither, which is a fresh install (the installer records both slots alike, so the other slot holds this version or tree), the live medium, and an other slot `armed`, `incomplete` or `empty`; `went_back` `true` when this slot is the older one, because the other slot's last trial ended unconfirmed (`kdos-bootctl status` reports it `failed`, which counts even when its tree is this slot's, as for a release rebuilt from the same commit) or its tree is later than this one's, a newer version left by picking this one by hand; `live` `true` on the live medium, which has no slots; and the notes as Markdown. The plain output's first line is `KDOS <version>`, followed by `, updated from <previous>` or `, went back from <previous>` in those two cases and by nothing on a fresh install. Exit 1 with no document when the slot carries no notes. The welcome tour's What's New page reads it |
 | `theme` | Applies the accent in force again, exactly as `kdos theme <accent>` does, so the copies under `$HOME` are regenerated from artwork an update replaced |
 
 **Where a tree comes from.** `fetch` reads `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` from
@@ -1270,12 +1385,25 @@ before the network with `no trusted tree key in /etc/kdos/keys/tree: this image 
 published tree; `kdos update apply --source` builds from /ports`: the tree the image carries is
 the only one it can use. An image with no key in `/etc/kdos/keys` fetches no release index either,
 so `fetch` there reaches no network at all. Nothing is unpacked before the signature verifies. A tree whose `TREE` stamp is older
-than the installed tree's is refused, and the same commit is reported as current. The signature is
-downloaded first, and one byte for byte the installed tree's (kept as
-`/var/lib/kdos/update.state.sig`) is reported as current without downloading the tree. The old tree
+than the installed tree's is refused, and the same commit is reported as current
+(`the ports tree is current (<commit>)`) unless the installed one names no release and the
+published one does (below). The signature is downloaded first, and one byte for byte the installed
+tree's (kept as `/var/lib/kdos/update.state.sig`) is reported as current without downloading the
+tree, again only once the installed tree names a release. The old tree
 and the new one change places in one rename. On the live ISO `/ports` lies in the overlay's
 read-only lower layer, which cannot be renamed, so there the old entries are removed and the new
 ones moved in one at a time.
+
+**Where the binary host comes from.** The binary-host index and its packages are read from
+`binhost =` in `/etc/kdos/update.conf`, else `$KDOS_UPDATE_BINHOST`, else the release the tree
+names: `/ports/TREE`'s `version <tag>` line gives
+`https://github.com/kunaldawn/kdos/releases/download/<tag>`. An image built from a clean checkout of
+a tagged commit names its release that way, and so does every published tree, so either finds its
+binary host with no configuration. Any other image's `TREE` names only its commit; there prebuilt
+installs need `binhost =` or `$KDOS_UPDATE_BINHOST`, or a `fetch` of a published tree. When the
+published tree is the same commit as an installed one that names no release, `fetch` installs it
+in place of `/ports` (`<root> now holds tree <commit> (signed by key <id>)`), so the next run finds
+the release; a same-commit tree counts as current only once the installed one names a release.
 
 **The update document.** `check --json` prints, and `check --out` writes, one line of JSON: the
 document `kdos-sysupdated` serves Discover from, `kdos-notice` watches and the System Versions page
@@ -1289,7 +1417,8 @@ reads.
 | `covered`, `uncovered`, `size` | How much of `behind` the binary host covers, and the bytes still to download; a package whose origin is `source` counts as covered, since the update builds it here |
 | `builds` | How many of `behind` the update builds here rather than downloads |
 | `offer`, `lane` | The version an update would make this system, and from where: `image` or `binhost` |
-| `signed_by`, `verified`, `binhost`, `image` | The key that signed what is offered, when it was verified, and where the index and the image come from |
+| `signed_by`, `verified`, `binhost`, `image` | The key that signed what is offered, when it was verified, and where the index in place (its `ORIGIN`) and the image come from |
+| `binhost_base` | The binary host named now: `binhost =` in `update.conf`, `$KDOS_UPDATE_BINHOST` or the tree's release; `null` when nothing names one. A `binhost-` problem is about this base, and Discover names it in its warning |
 | `channel`, `notes`, `checked` | The tree source in effect, the tree's release notes, and the time of this check |
 | `problem`, `detail` | The worst recorded problem |
 
@@ -1301,10 +1430,20 @@ half from the binary host and half from a compiler is a slot nobody tested. `che
 tests against the cached index, so what it offers is exactly what `apply` will take.
 
 **What went wrong is recorded.** `fetch` and `apply` write their outcome to
-`/var/lib/kdos/update.state`, and `check` reports the first problem of: `no-tree`, then the last
-fetch's `no-key`, `no-network` or `fetch-failed`, a release index, binary-host index or image
-manifest that no key in `/etc/kdos/keys` could verify (`no-key`), that did not verify, or a file
-other than the one the release index names, then the last apply's `no-network`, `fetch-failed` or `build-failed`; a machine with a tree
+`/var/lib/kdos/update.state`, and `check` reports the first problem of, worst first: `no-tree`;
+the last fetch's `no-key`, `no-network` or `fetch-failed`, which covers a release index that no key
+in `/etc/kdos/keys` could verify (`no-key`), that did not verify, or a file other than the one the
+release index names; the binary host's `binhost-no-key`, `binhost-no-network`,
+`binhost-fetch-failed` or `binhost-unverified`, and `binhost-absent` for a binary host that
+`update.conf` or `$KDOS_UPDATE_BINHOST` names, or that the tree's release names while the index in
+place came from another base, and the last fetch found none published at; the slot image's
+`image-no-key`, `image-no-network`, `image-fetch-failed` or `image-unverified`; the last apply's
+`no-network`, `fetch-failed` or `build-failed`; and last the fetch's `fetch-failed` that refused the
+published tree as older than this machine's. That refusal is no cut-off: the machine is ahead of
+the release, so it ranks below every other problem and never hides a binary-host one. Each
+binary-host result is kept with the base it was fetched from (the `binhost-at` line of
+`update.state`), and one for a base other than the one `update.conf`, `$KDOS_UPDATE_BINHOST` or
+the tree names is not reported, so no problem line names an address that is not configured. A machine with a tree
 and no package database reports `no-database` and exits 2. The nightly timer
 (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check --out
 /var/lib/kdos/update.json`, which reads only what is already on the machine and fetches nothing;
@@ -1318,18 +1457,44 @@ document when they finish.
 - **The acquire** (`--acquire`) does all the long work: it downloads, writes or installs the update
   into the inactive slot, runs [`kpkg check --all --root`](../03-architecture/packaging.md#checking-an-installed-root)
   over it with this machine's pack store bound over its `/var/lib/kdos/packs`, as the slot's own
-  `fstab` binds it at boot, and records the slot as acquired. A slot with a missing file, or a
-  changed one outside `/etc`, is not acquired; edited configuration under `/etc` is reported and
-  does not stop it. A
-  slot an earlier `try` armed is disarmed before its first byte is rewritten.
+  `fstab` binds it at boot, and records the slot as acquired. The check prints its faults and its
+  summary line; every line, each `config` and `unowned` file included, is in
+  `/var/log/kdos-update-check.log`. A slot with a missing file, or a changed one outside `/etc`, is
+  not acquired; edited configuration under `/etc` is counted and does not stop it. A slot an earlier `try` armed is disarmed before its first byte is rewritten,
+  and every lane then runs `kdos-bootctl unfill <slot>`, so a slot the acquire stops writing is
+  marked incomplete: `kdos-bootctl` reports it so, refuses to `try` it and leaves it out of the
+  boot menu until the arm's `deploy` clears the mark. If the mark cannot be written the run fails
+  with `slot <x> could not be marked as being written` and nothing is written.
 - **The arm** (`--arm`) takes only a slot an acquire of this tree or image filled. It carries this
   machine's configuration and state into the slot (a password or a network changed after the
   download is in the slot that boots), copies `/ports` into it unless an image brought its own,
-  records its version, runs `kdos-bootctl deploy` to put that slot's kernel on the EFI system
+  records its version in the slot's `/etc/kdos-release`, runs `kdos-bootctl deploy` to put that slot's kernel on the EFI system
   partition (ESP) every time, and `kdos-bootctl try` to make it the candidate for the next boot.
 
+The version a slot filled from a tree records has the form the image build gives its own
+record, so the two slots read alike in System Versions and on the logout screen: a tree that names
+its release gives that name without its tag's `v` (`0.2.1`), any other the slot's `os-release`
+`VERSION_ID` (the running root's when the slot has none) with `+` and the tree's commit as its
+`TREE` file records it, twelve characters (`0.2.1+4dc1f7f826a3`: an image's own tree carries
+the image build's short hash, so both slots name the commit alike). A slot filled from the running
+root's own tree (the commit its `/etc/kdos-release` names as `TREE`) when that tree names no
+release takes the running root's `VERSION` and `BUILD_ID` as they stand, `-dirty` included, so the
+two slots of one tree read alike; a tree that names a release keeps that name even at the running
+root's commit. A tree records no dirty state of its own, so a slot of any other tree never carries
+`-dirty`. A slot filled from an image records the version the image's manifest
+names.
+
 `apply` with neither runs both, which is what a person types. `--mount` mounts the inactive slot
-itself (`kdos-sysupdated` passes it); without it the slot must already be mounted. On a trial boot
+itself at `/run/kdos/slot-<x>` (`kdos-sysupdated` passes it); without it the slot must already be
+mounted, which on a freshly installed A/B machine it is not, so the command to type there is
+`sudo kdos update apply --mount`. A dry run mounts nothing: `--dry-run --mount` on an unmounted
+slot prints `dry run: slot <x> (<uuid>) is not mounted; without --dry-run, --mount mounts it at
+/run/kdos/slot-<x> and installs the candidate there` and exits 0. An unmounted slot cannot be read,
+but the boot state's `unfilled` mark can: when it names the slot, the line is `dry run: slot <x>
+(<uuid>) is not mounted, and an update stopped while writing it; without --dry-run, --mount mounts
+it at /run/kdos/slot-<x> and finishes it: what it lacks is installed, and a slot that then holds the
+version running is made complete again without a trial`, and the refusal without `--mount` adds
+`; an update stopped while writing it, and --mount finishes it`. On a trial boot
 the inactive slot is the confirmed one, the way back, and nothing is written into it. On the live
 medium, which `kdos-bootctl status --json` reports as `"live": true`, `apply` is refused with
 `this is the live medium: what an update installs here is gone at the next restart unless a
@@ -1340,16 +1505,18 @@ session anyway.
 |---|---|
 | Image | Writes the signed slot image into the slot with [`kdos image unpack`](#kdos-image)'s synchroniser, seeded from the running root, so only what changed is downloaded. A slot image is the base alone, so the world set follows it: every world package and each dependency it lacks goes into the slot from the same release's binary host, or is built there when its origin is `source`. Before the slot is written every world package and its dependencies are walked, and one by the prebuilt route that the binary host does not cover refuses the image lane with `N package(s) of what was installed on purpose is/are not in release X's binhost (…)`, nothing written. What the running root keeps whole follows too: under `FACETS=run`, a package with development or documentation files and no [facet record](#development-files), as `install --dev` or a build here leaves one, is installed whole in the slot, by the world step when it installs the package and again whole after it when the image brought the package stripped, prebuilt or built here again by its origin. One by the prebuilt route the binary host does not cover refuses the lane before the slot is written, with `N package(s) this system keeps whole is/are not in release X's binhost (…)`, and `--dry-run` lists each as `<pkg> kept whole: <file>` or `built here again`. A machine with neither a world set nor a package kept whole has no such step |
 | Binhost | Takes each package by the route its [origin](#install-routes-and-groups) records: a prebuilt one has its file and delta fetched and checked against the signed index and is installed under `KPKG_REQUIRE_SIG`, and a `source` one has its sources fetched and is built with `kpkg install`. Every file and source is fetched before the first install, and all of it is installed inside a chroot of the slot, dependencies first. Into a slot, what the running root keeps whole is installed whole there, as in the image lane. Only the prebuilt packages need the index; one it does not cover refuses the lane |
-| Source | Fetches every source with [`kpkg fetch`](../03-architecture/packaging.md#fetching-sources-on-a-machine), from the `sources-<N>` archive first, then upstream, before it builds anything, then builds and installs each package with `kpkg install -f` in a chroot of the slot (`/proc`, `/sys`, `/dev`, the ports tree, the source cache and `/etc/resolv.conf` bound in), so every package compiles against the slot's own libraries. Hours on a large set |
+| Source | Fetches every source with [`kpkg fetch`](../03-architecture/packaging.md#fetching-sources-on-a-machine), from the `sources-<N>` archive first, then upstream, before it builds anything, then builds and installs each package with `kpkg install -f` in a chroot of the slot (`/proc`, `/sys`, `/dev`, the ports tree, the source cache and `/etc/resolv.conf` bound in, each a slave of the running root's mounts, so unmounting them leaves the running system's `/dev/pts`, `/sys/fs/cgroup` and efivarfs in place), so every package compiles against the slot's own libraries. Hours on a large set |
+
+Every package `apply` builds, in any lane, is built under `KPKG_CLEAN_FAILED=1`, as an [install](#install-routes-and-groups) builds: a failed build removes its work directory and prints the `<port> did not install: …` line that says whether the root filled up. The binhost and source lanes check the room their builds need as an install does, before anything is fetched and again once every source is: a run that does not fit is refused with `kdos update: building <ports> needs about <size> in /var/cache/kpkg/work and the root has <size> free; nothing was downloaded` (`; nothing was built` at the second check, `the slot has` when the builds run in the other slot), exit 3, the slot untouched; after a slot image has been written the same line is a failure, exit 1. `--dry-run` prints `build-space <bytes>` after its plan when the lane builds anything, and the same refusal without the tail.
 
 | Option | Does |
 |---|---|
-| `--image`, `--binhost`, `--source` | Pick the lane |
+| `--image`, `--binhost`, `--source` | Pick the lane. With none of them an image on offer is taken where there is a slot (or a `--root`) to write it into; with one root, or `--in-place`, it is passed over with one line and the binhost lane runs, while `--image` there is refused with ``a slot image is written into the inactive A/B slot, and this run has none; `kdos update apply --binhost` installs into the running root`` |
 | `--acquire`, `--arm` | Run one half |
 | `--mount` | Mount the inactive slot itself |
 | `--dry-run` | List what would be fetched and installed; needs no root |
 | `--root DIR` | Install into `DIR` instead of choosing a slot. Nothing after the installs runs: no `kpkg check`, no copy of `/ports`, no `deploy` or `try` |
-| `--in-place` | Update the running root even on an A/B machine, giving up the rollback, or on the live medium, into the overlay |
+| `--in-place` | Update the running root even on an A/B machine, giving up the rollback, or on the live medium, into the overlay. On a machine with a second slot it prints `--in-place: updating the running root in place, without an A/B rollback`; with one slot, or on the live medium, `no A/B slots — updating the running root in place` |
 | `--progress FD` | Write one line per event to that descriptor, for a program |
 
 `--progress` writes these lines, each as it happens:
@@ -1363,7 +1530,42 @@ session anyway.
 | `acquired <slot> <version>` | The slot is filled and checked |
 | `armed <slot> <version>` | The slot is the next boot's candidate |
 
-`SIGTERM` stops an apply between packages, which is what `kdos-sysupdated`'s `Job.Cancel` sends.
+`SIGTERM` stops an apply between packages, or partway through writing the slot from a slot image,
+which is what `kdos-sysupdated`'s `Job.Cancel` sends; a `SIGINT` or `SIGHUP` sent to the apply alone
+stops it the same way. The message and `update.state` say where it stopped: `stopped between
+packages`, `stopped while writing the slot from the image`, `stopped before anything was
+written`, or `stopped after the slot was written, before it was armed` for a stop that comes after
+the fill: it is read once `kpkg check` returns, before the configuration merge, before and after the
+kernel deploy, and when `kdos-bootctl try` fails during a stop. A stop that arrives during the merge
+or the release write is acted on before the deploy runs; one that arrives during the deploy, once
+the deploy has run, and the run marks the slot `incomplete` again, since the deploy cleared that
+mark. `kdos-bootctl try` is the point of no return: a stop that comes once the slot is the
+candidate cannot be honoured, so the run says `the stop came after slot <x> was armed; the update
+stands`, exits 0, and `update.state`'s `apply ok` line adds `a stop came after it was armed`. A
+group signal that kills the try itself is judged by the boot state: if it names the slot as the
+candidate the run ends that way, and otherwise as `cancelled`. Ctrl-C, a closed terminal and `timeout -s INT` signal the whole process group: during a
+package run the install in flight dies with them and the run ends as a failed install; while the
+slot is written from an image, or before anything was written, the run sees the stop and ends as
+`cancelled` with the matching message. A stopped run unmounts the slot `--mount` mounted and leaves the
+slot `incomplete` once its first byte was written, so it is never tried; an `--in-place` run
+stopped by a group signal leaves the running root with part of the package that was in flight.
+An `apply` that finds nothing behind in the slot while the running root is behind it takes that
+slot as the candidate: it prints `slot <x> already holds every package of <version>`, then checks
+and arms it as any filled slot; `--dry-run` prints that line and stops.
+An `apply` that finds nothing behind, in the slot or the running root, while the boot state marks
+the slot `unfilled` finishes that slot rather than saying `nothing to take`: it prints `slot <x>
+holds every package of <version> but was left incomplete; finishing it`, checks the slot, carries
+the configuration, records the version and runs `kdos-bootctl deploy`, which clears the mark and
+gives the slot its boot menu entry back, then prints `slot <x> is complete again and holds
+<version>, the version running; nothing is tried`, records `apply ok … slot <x> written again`
+and exits 0 with nothing on trial, `--acquire` included. In both lines `<version>` is the version
+the slot records, the name System Versions and `kdos-bootctl status` show
+(`0.2.1+<commit>-dirty` for a slot of the running root's own unnamed tree), while the progress
+line and `update.state` keep the tree's version. On a mounted slot `--dry-run` prints the first
+line and stops; on an unmounted one `--dry-run --mount` prints the `stopped while writing it`
+line above. A fetched slot image the run does not take is named on the way to the binhost lane:
+`the fetched image <version> (tree <commit>) is not newer than this machine's tree <commit>, so
+apply looks for packages`.
 `fetch` and `apply` need root and take one lock, so a tree is never replaced under an install. On an
 installed machine without A/B slots `apply` updates the running root, and a package that fails leaves the
 ones that installed in place. See
@@ -1373,8 +1575,10 @@ ones that installed in place. See
 | Exit | Means |
 |---|---|
 | 0 | Done, or nothing was behind |
-| 1 | A download, a verification, an install or build, the slot's check, the carry, the deploy or `try` failed |
-| 2 | Not attempted: no tree, no package database, not root (without `--dry-run`), another update holds the lock, a bad option, a trial boot, or the inactive slot is not mounted and neither `--mount` nor `--in-place` was given |
+| 1 | A download, a verification, an install or build, the slot's check, the carry, the deploy or `try` failed, or the slot could not be marked as being written |
+| 2 | Not attempted: no tree, no package database (the source lane), not root (without `--dry-run`), another update holds the lock, or a bad option |
+| 3 | Refused before anything was written, with the reason on standard error and in `refused`: a trial boot; the inactive slot not mounted and neither `--mount` nor `--in-place` given; the live medium without `--in-place`; `--acquire` or `--arm` with no A/B slot, or `--arm` of a slot no acquire filled; packages that need a source build; an index or image that did not verify; no slot image on offer for `--image`, or `--image` with no slot to write it into; no package database in the slot (the prebuilt and image lanes); `--mount` could not mount the slot; or a slot that cannot take the update |
+| 4 | Stopped by `SIGTERM` (`Job.Cancel`), `SIGINT` or `SIGHUP` sent to the apply, between packages or while writing the slot from an image; the slot is not booted |
 
 #### Install routes and groups
 
@@ -1405,15 +1609,41 @@ update keeps each route: a package built here is built here again, one taken fro
 is taken from the next release's. The port joins `/var/lib/kdos/world` only after everything
 installed, so an install stopped half way keeps the packages that finished and their origins.
 
-Each package installed prints `==> installing <pkg> (prebuilt)` or `==> installing <pkg> (built
-here)`. `--dry-run` decides everything and touches nothing, so it needs no root, and prints one
+`kpkg remove <pkg>` takes the package out of the running root's `world` and `origin` as well, so
+the next update does not bring it back. That reaches this root only. The other slot is a root of
+its own: once an update has filled it (`apply --acquire`) the package is installed there too, and
+once the update is armed (`apply --arm`) the slot also holds its own copy of `world` and `origin`,
+so it boots with the package installed and listed. Run `kpkg remove` again after booting into
+that slot.
+
+Each package file the cache lacks prints `==> downloading <file> (<size>)` as its download starts,
+and each package installed prints `==> installing <pkg> (prebuilt)` or `==> installing <pkg> (built
+here)`; every download comes before the first install. A download that is cut off keeps the bytes
+that arrived as `<file>.part` in the cache and exits 1 with `kdos update: <cache>/<file> was cut
+off at <n> of <size> bytes (curl exit <rc>); nothing was installed — run the same command again
+to continue the download` (`— pressing Install again continues the download` under
+`KDOS_UPDATE_FRONT=discover`, which Discover's ports helpers set); run again, the same command asks the server for the rest with a Range
+request (`curl -C -`) and checks the joined file against the signed index's hash, and a server that
+cannot serve a range (curl exit 33) has the file downloaded whole. Only the cache's package,
+delta and signature files keep a part, their names carrying their version: the binary host's index
+and the software catalogue start over at each fetch, and their cut is reported as `<path> could
+not be downloaded`. `kdos update apply` keeps and continues its parts the same way, and its words
+name no command to run again, since they reach Discover's banner. `--dry-run` decides everything and touches nothing, so it needs no root, and prints one
 line per package and a total:
 
 ```text
 <pkg> prebuilt <file> <bytes>
 <pkg> source <version>-<release>
 total <prebuilt-count> <bytes> <source-count>
+build-space <bytes>
 ```
+
+The `build-space` line is printed only when something is built here. A package line's bytes are
+its file's size; the total's bytes are what is still to download: nothing for a file the cache
+holds, and for one cut off only the rest its `<file>.part` lacks. That is what a resumed download
+asks for; a server that cannot serve a range, or a delta that fails and takes the part with it,
+sends the whole file, and a delta that applies sends less. The free-space check before the
+downloads measures the same remainder.
 
 A source install first readies the machine to build, as the next section says; those packages
 are listed before the rest, as `<pkg> prebuilt <file> <bytes>` or `<pkg> dev <file> <bytes>`, and
@@ -1424,15 +1654,17 @@ A **group** is a named set of ports in the tree's `groups` file (`/ports/groups`
 <title>` line, then its member ports, any number to a line, until the next group. A member may be
 a meta port, such as `kde-gear-games`, which installs what it names. `install <group>` installs
 each member as the port it is, by the same flags, with a `==> <group>: <port> (N of M)` line
-before each; each member joins the world set by its own name, so a member a later tree drops from
-the group stays installed. A group install works on an installed machine and on the live medium,
+before each; each member the install adds joins the world set by its own name, so a member a later
+tree drops from the group stays installed, and a member already installed is left as it is and not
+recorded, so a program the base image brought is not offered for removal. A port named by itself is
+recorded even when it is already installed. A group install works on an installed machine and on the live medium,
 where it goes into the RAM overlay and is gone at the next restart. The groups the tree names are:
 
 | Group | Members |
 |---|---|
 | `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | The KDE Gear meta port of each |
 | `kde-network` | KTorrent, KRDC, Krfb, kio-gdrive, the online-account providers, Samba sharing |
-| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, ISO Image Writer, KHelpCenter |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, KHelpCenter; the base image already carries Filelight, KFind, KWalletManager and KCharSelect |
 | `kde-artwork` | The KDE wallpaper collection, Oxygen |
 | `office` | LibreOffice, calibre, TeXstudio |
 | `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
@@ -1442,13 +1674,41 @@ where it goes into the RAM overlay and is gone at the next restart. The groups t
 | `science` | Octave, QGIS, Stellarium, FreeCAD, KiCad, OpenSCAD |
 | `development` | Rust, Go, Node.js, Zig, GDB, Valgrind, strace, LLDB |
 | `windows` | Wine |
-| `build-tools` | GCC, binutils, make, CMake, Meson, Ninja, pkgconf, autoconf, automake, libtool, bison, flex |
+| `build-tools` | GCC, binutils, make, CMake, Meson, Ninja, pkgconf, autoconf, automake, libtool, bison, flex, fortify-headers |
 | `lang-zh`, `lang-ja`, `lang-ko` | fcitx5's Chinese addons, Anthy or Hangul, with fcitx5-gtk and Noto CJK |
+
+`build-tools` is a toolchain, not only a set of ports. Every member it adds goes in whole
+(`KPKG_FACETS=all`), and after the last member the install restores, as `--dev` would, the
+development facet of every installed member and of `musl`, `linux` and `gcc` that is left out: the
+image carries `gcc` under `FACETS=run`, which leaves out the `gcc`, `cc` and `g++` drivers with
+the C library's and the kernel's headers. It prints `==> build-tools: development files of <n>
+packages` before the restore's own lines, and `--dry-run` prints the `<pkg> dev <file> <bytes>`
+lines and a `total` line inside the group's plan, `linux`'s headers among them. Afterwards `cc`
+compiles a program that includes `<stdio.h>` and `<linux/limits.h>`. `fortify-headers` is a member
+because `/etc/kdos/chroot.env` compiles every port with `-D_FORTIFY_SOURCE=2 -isystem
+/usr/include/fortify`: without that directory musl's headers ignore the macro, and a port built
+here would be less hardened than the binhost's build of it under the same build-config hash.
 
 `install --pending` installs every id in `/var/lib/kdos/groups-pending`, the groups the
 [installer](kinstall.md) chose and could not install, by the route the flags or `update.conf`
 name; each one that installs leaves the file at once, and the file goes with the last, so a run
 stopped half way picks up where it stopped. With nothing recorded it prints `nothing is pending`.
+A group whose dependencies come prebuilt, named alone or from this list, takes the binhost index
+before its first member: one on the prebuilt route, or built from source with
+`build-deps = prebuilt` (`--build-deps=prebuilt`), the condition under which a single port's install
+refuses without one. It fetches the index as a single port's install does; with still none
+the group is refused once, before any member, with `kdos update: <why>; nothing in <group> was installed` (`<why>` such as
+`no signed binhost index is on this machine`) and the same advice line a single port's refusal
+gives, and exits 1. A run fetches the index at most once: when that fetch fails, or finds no
+index to take because no binhost is named or none is published, every later install in the same
+run is refused at once for the same reason, and `install --pending`, when dependencies come
+prebuilt (the prebuilt route, or `--source` with `build-deps = prebuilt`), stops after the first
+group refused, prints
+``kdos update: <ids> stay pending; run `kdos update install --pending` again once the network is up``
+(after a failed fetch), ``… again once a binhost is named`` (when none is named) or
+``… again once the binhost publishes an index`` (when the named one publishes none),
+naming that group and every one after it, and exits 1 with the file as it was, so an offline
+machine, or one with no binhost, pays one fetch and one refusal however many groups wait.
 
 #### Development files
 
@@ -1463,25 +1723,59 @@ introspection files, man sections 0, 2 and 3 and the manuals under `/usr/share/d
 `source`; a group restores every member that is installed. The package then stays whole across
 updates, and across a [slot image](#applying): an image's base is stripped, so after writing
 the slot the image lane installs again whole every package the running root keeps whole. A port
-that is not installed is named with the command that installs it and skipped,
+that is not installed is named with the command that installs it and skipped (with `--deps`,
+below, only a group member is),
 one installed whole prints `every file of <port> is installed`, and one older than its recipe
-refuses until the system update. Each prints `==> restoring the development files of <pkg>
+refuses until the system update. A prebuilt restore with no binary-host index on the machine
+refuses with `the development files of <pkg> cannot be restored: there is no binhost index here —`
+and the step [`check`](#kdos-update) names. Each prints `==> restoring the development files of <pkg>
 (prebuilt)`; `--dry-run` prints `<pkg> dev <file> <bytes>` (or `<pkg> dev-source
 <version>-<release>`) and the `total` line.
+
+`install --dev --deps <port|group>...` restores, besides each named port, every installed package
+a build against it compiles against whose development facet is left out: its declared closure,
+`musl`, `linux` and `gcc`, the set a source install restores in its step 2 below. A program built
+against Qt Widgets needs it: `--dev qt6-qtbase` alone brings back Qt's CMake files, which then
+look for the OpenGL headers of `libglvnd` and `mesa`, and `--dev --deps qt6-qtbase` brings those
+back too. The closure is the recipe's whole transitive one, limited to what is installed with
+its development facet left out, so it can be large: for Qt it reaches `llvm` and `clang` through
+`mesa`; `--dry-run` prints each `dev` line and the `total` first. With `--deps` a named port that
+is not installed is not skipped: its closure is restored alone, which is what a build of it here
+needs, while a group member that is not installed is still skipped. A closure already whole prints
+`the development files of what <port> builds against are installed`. `--deps` without `--dev` is
+a usage error, exit 2.
 
 A **source install readies the machine first**, before anything is built and printing each step:
 
 1. It installs every member of the `build-tools` group that is not installed, and everything
-   they lack, prebuilt whatever `--build-deps` says (`==> installing <pkg> (prebuilt, for
-   building)`); each member joins the world set. A tree with no `build-tools` group stands for it
-   with `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja` and `pkgconf`.
-2. It restores the development facet of every installed package the build compiles against —
+   they lack at run time, prebuilt whatever `--build-deps` says (`==> installing <pkg> (prebuilt,
+   for building)`); each package it installs records `prebuilt` in `/var/lib/kdos/origin`, and
+   each member joins the world set. Their dependencies are cut by
+   the index's `N:` lines as in any prebuilt install, so the tools' own build-only ports (Sphinx,
+   the Python build backends, Muon, scdoc) stay out. With no binary-host index on the
+   machine it refuses with `<pkg> of the build tools cannot be installed prebuilt: no binhost index
+   here —` and the step [`check`](#kdos-update) names. A tree with no `build-tools` group stands for it
+   with `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja`, `pkgconf` and `fortify-headers` (the
+   `/usr/include/fortify` every build's flags include).
+2. It installs, prebuilt, each port of `/ports/buildheaders` that is not installed and that a
+   package of a built port's declared closure names, when that package is installed or the run
+   installs it prebuilt (as a build tool, a dependency or what another header port needs): the
+   build-only ports whose headers other packages' headers include, as `libX11`'s include
+   `xorgproto`'s ([Building here](../03-architecture/packaging.md#building-here)). Each header
+   port it installs joins the world set and records `prebuilt` in `/var/lib/kdos/origin`, and so
+   does each package it lacks at run time without joining the world set unless that package is a
+   header port too; a header port that a build tool or a dependency brings joins it the same way, so `removable` lists the
+   header port and `remove` takes it with what only it brought. One the index
+   does not cover refuses the install with `<pkg>, whose headers <m>'s headers include, cannot be
+   installed prebuilt: <reason>`, the stanza test that failed, or `<dep>, which <pkg> needs (<m>'s
+   headers include <pkg>'s), …` for what the header port needs at run time.
+3. It restores the development facet of every installed package the build compiles against —
    the declared closure of each port it builds, `musl`, `linux` and the build tools — as `--dev`
    would. A package the binary host does not cover, or one older than its recipe, refuses the
    install before anything is fetched.
 
 Every package such a run installs goes in whole, so what a later build in the run compiles
-against is complete. The same two steps run before the source items of `apply`, in the slot.
+against is complete. The same three steps run before the source items of `apply`, in the slot.
 `kpkg install` run by hand refuses to build against a package without its development files and
 names the `sudo kdos update install --dev <pkg>` that restores it.
 
@@ -1516,12 +1810,25 @@ Nothing in a bundle is trusted: every object, whole or patched, is hashed after 
 kept only when the hash is the one the signed manifest gives, so a tampered bundle costs a download
 and never a file.
 
+The owners are checked as well as the bytes. `make` refuses a root whose `.`, top-level entries
+and everything under `etc/`, `usr/`, `boot/` and `ports/` do not share the root directory's
+owner, and, run as root, one where that owner is not uid 0, because a slot written from it would
+give those files to whatever account has the builder's uid. `verify` refuses such a manifest with
+exit 3, and a slot fill run as root refuses it too.
+
+`carry` keeps a slot's own copy of a configuration file the running root has changed as
+`<file>.kdos-new` beside it, or as `.<file>.kdos-new` inside a `*.d` directory, where a program
+reading every file of the directory would otherwise take the second copy as configuration. It also
+makes every absolute mount point the slot's `/etc/fstab` names that is missing (mode 0755, without
+following a symbolic link), so a slot written from an image mounts `/boot/efi` like the one it
+replaces.
+
 | Exit | Means |
 |---|---|
 | 0 | Done |
 | 1 | A write, a copy or a carry failed |
 | 2 | Bad usage |
-| 3 | The release index or the manifest did not verify, the manifest is not the file or the version the index names, or the image is for another architecture |
+| 3 | The release index or the manifest did not verify, the manifest is not the file or the version the index names, the image is for another architecture, or its owners are mixed |
 
 ### kdos firmware
 
@@ -1589,11 +1896,19 @@ The machine's name, clock and language, through the same services System Setting
 and writes to the files KDOS reads. With no argument each prints the value in force. Setting one asks
 polkit with interaction allowed, so a person outside `wheel` is asked for a password by the polkit
 agent rather than refused outright, and the time zone needs none in the active session. `locale`
-replaces the whole list: every `NAME=value` given, and nothing else. `in-vm` prints nothing and
+replaces the whole list: every `NAME=value` given, and nothing else. Each value must be `C`,
+`C.UTF-8`, `POSIX` or `ll[_CC][.UTF-8|.utf8][@modifier]` whose language `ll` has a musl-locales
+definition or translations under `/usr/share/locale`, and each element of `LANGUAGE` the same
+without a codeset, or `C`, because SDDM hands the file to every session. The territory is not
+checked: `ja_JP.UTF-8`, which plasma-setup's language page sends, is taken although `locale -a`
+does not list it, and selects Japanese translations and formats in KDE programs. A person's own
+formats on System Settings → **Region & Language** are not limited by this rule. `in-vm` prints
+nothing and
 exits 0 inside a virtual machine and 1 otherwise.
 
 Exit 0 done, 1 when the service refused or did not answer (its message is printed:
-`InvalidArgs` means the zone, name or map is not one), 2 on bad usage.
+`InvalidArgs` means the zone, name or map is not one, or the locale names a language this system does not know), 2 on bad
+usage.
 
 ### kdos backup
 
@@ -1801,8 +2116,9 @@ $ kdos persist
 no persistence store
 
   This session's writes are in RAM and go when it is
-  powered off. `kdos persist create` makes a store in
-  the free space after the image on the boot medium.
+  powered off.
+  `kdos persist create` makes a store in the free
+  space after the image on the boot medium.
 
 $ sudo kdos persist create
   disk       /dev/sda  (32G)
@@ -1817,10 +2133,21 @@ partition of the boot medium or of the disk you name. A disk with no partition t
 GPT holding only the store. It asks you to type `yes` unless given `--yes`, and it must run as root
 with `sfdisk`, `mkfs.ext4`, `blkid` and `losetup` installed.
 
+With no store, the report's last lines depend on what the session started from. From a written
+stick it offers the free space after the image on that stick, as above. From a disc it says the
+boot medium (`/dev/sr0`) is a disc and cannot hold a store, and from a Ventoy stick that a Ventoy
+stick cannot take a KDOS store; both name `sudo kdos persist create /dev/sdX` for another USB stick
+or disk. Each of these first says the session's writes are in RAM. An installed system, which
+started from no medium, prints only that it did not start from a live medium and that
+`sudo kdos persist create /dev/sdX` puts a store on the device named.
+
 `create` refuses, before it writes anything, when a store already exists, when no device is named
 and the system did not boot from a medium, when the device is a partition rather than a disk (it
-names the disk), when the device is read-only (an optical boot's `/dev/sr0`: name a USB stick
-instead), and when the whole disk is one filesystem with no partition table (it names the type,
+names the disk), when the device is read-only (an optical boot's `/dev/sr0`), when it is a Ventoy
+stick (the `/dev/mapper/ventoy` mapping a Ventoy boot runs from, which has no partition table of
+its own, the stick partition node a BIOS boot mounts it through, or the physical stick whose
+partition holds that mapping) or another device-mapper device, a device being known by the
+number its node opens rather than by the node's name, and when the whole disk is one filesystem with no partition table (it names the type,
 because there is no free space to take). When `sfdisk` will not add the partition, its own error
 is printed.
 
@@ -1833,8 +2160,9 @@ is printed.
 | `device` | The store's partition, or `null` |
 | `type` | The store's filesystem type, or `null` |
 | `medium` | The boot medium's disk, or `null` |
-| `writable` | Whether the boot medium can hold a store; `false` for a disc |
-| `candidates` | The disks a store could be made on: the medium when it is writable, then each removable or USB disk that is writable and has nothing mounted |
+| `kind` | What the boot medium is: `stick`; `disc` for any read-only medium, a write-protected stick among them; `ventoy`; or `mapped` for another device-mapper disk; `null` with no medium |
+| `writable` | Whether the boot medium can hold a store; `false` for every kind but `stick` |
+| `candidates` | The disks a store could be made on: the medium when it is writable, then each removable or USB disk that is writable, has nothing mounted and is not a Ventoy stick |
 
 The welcome tour's live page reads it, offers the candidates, and runs
 `pkexec kdos persist create --yes` for the medium or `pkexec kdos persist create /dev/<name> --yes`
@@ -1966,6 +2294,20 @@ model file on the disk, and nothing is sent anywhere. Dolphin's **Transcribe** a
 `transcribe` (see [Transcribe](plasma-shell.md#transcribe)), and Klipper's **Read Aloud** action
 runs `say`.
 
+None of the programs or models is on the image. Each is a port:
+
+```sh
+sudo kdos update install whisper.cpp             # whisper-cli, for get and transcribe
+sudo kdos update install whisper-model-base-en   # base.en in /usr/share/whisper.cpp/models
+sudo kdos update install piper                   # for voice get and say
+```
+
+`get` and `transcribe` need `whisper-cli`, and `voice get` and `say` need `piper`. A verb whose
+program is missing prints `kdos speech: <port> is not installed — sudo kdos update install <port>`
+and exits 1, before anything is downloaded; `get` reports an unknown model name first. A
+`transcribe --notify` with no whisper.cpp raises `Transcription failed` / `whisper.cpp is not
+installed` too.
+
 `transcribe` decodes each file with `ffmpeg` to the 16 kHz mono audio whisper reads, into a private
 file in the runtime directory removed on every path out, and writes the text beside the file as
 `FILE.txt`, or `FILE.2.txt` and onward, never over a text you already have. The model is
@@ -1974,13 +2316,13 @@ image's. `--notify` says when each is done.
 
 `say` speaks with a Piper voice, `<name>.onnx` with its `<name>.onnx.json` beside it, from
 `~/.local/share/piper/voices` and then `/usr/share/piper/voices`; `--voice` names one. `sync`
-keeps Klipper's **Read Aloud** action in step with the voices: added while a voice is installed and
-removed, exactly that action, when the last one goes, through `kwriteconfig6` on `klipperrc`. The
+keeps Klipper's **Read Aloud** action in step: it is there exactly while `piper` and a voice are
+both installed, and is removed, exactly that action, when either goes, saying which (`piper is
+not installed` or `no voice is installed`), through `kwriteconfig6` on `klipperrc`. The
 autostart entry `kdos-speech-sync.desktop` runs it at every login, and `voice get` and
 `voice remove` run it when they finish.
 
-The image carries Piper and no voice: a voice is one language and one speaker, so it is fetched
-like a transcription model. `voice get` fetches the `.onnx` and its `.onnx.json` from Piper's
+A voice is one language and one speaker, so it is fetched like a transcription model. `voice get` fetches the `.onnx` and its `.onnx.json` from Piper's
 voice repository at its `v1.0.0` tag into `~/.local/share/piper/voices`, checks each against a
 SHA-256 recorded in the source, and renames both into place only when both match. `say` and Read
 Aloud find a voice only while its `.onnx.json` is beside it, so a half-fetched voice is never
@@ -1994,11 +2336,13 @@ used. `voice list` marks a voice in your directory `installed`.
 | `es_ES-davefx-medium` | 63 MB |
 | `fr_FR-siwis-medium` | 63 MB |
 
-The image carries `whisper-cli` and one model, `base.en`, in `/usr/share/whisper.cpp/models` (the
-`whisper-model-base-en` port). The others range from 32 MB to 3.1 GB, and language and size are a
-personal choice, so they are fetched rather than shipped. `list` marks a model in your own
-directory `installed` and the shipped one `shipped`; `where` prints your directory, then
-`/usr/share/whisper.cpp/models`, each followed by the models in it.
+The `whisper-model-base-en` port puts one model, `base.en`, in `/usr/share/whisper.cpp/models`.
+The others range from 32 MB to 3.1 GB, and language and size are a personal choice, so they are
+fetched rather than packaged. `list` marks a model in your own directory `installed` and one in
+`/usr/share` `packaged`, and `voice list` marks voices the same way; `where` prints your
+directory, then `/usr/share/whisper.cpp/models`, each followed by the models in it. With no model
+anywhere, `transcribe` names both `kdos speech get base.en` and `sudo kdos update install
+whisper-model-base-en`.
 
 | Model | Size |
 |---|---|
@@ -2073,14 +2417,19 @@ name, whether it starts at boot, and the first line the script's `status` printe
 printed more lines gets ` (+N more)` after it, and `service status <name>` prints them all; one that
 printed nothing gets `—`. On a terminal a line too long for the width is cut at its last space that
 keeps at least half of it, or at a character when there is none, and ends in `…`, so that each
-service is one row. `restart` runs the script's `stop`, waits a second and
+service is one row; the ` (+N more)` tail is dropped when it would take more than half the room.
+`lvm`'s line reads `lvm: <A> of <N> logical volumes active`, and `tlp`'s `tlp: <state>, profile
+<profile>, power source <source>`; run as an ordinary user they say `lvm: needs root to list
+volumes` and `tlp: Error: missing root privilege.` `restart` runs the script's `stop`, waits a second and
 runs its `start`.
 
 `disable` creates `/etc/service.disabled/<name>` and `enable` removes it; the boot scripts skip a
 service with that marker (see
 [Configuration](../06-reference/configuration.md#etcservicedisabledname)). The marker is named
 after the argument exactly as typed, while the boot scripts look for the script's own name, so
-give `enable` and `disable` the full name `service list` prints. A name that is not a plain name
+give `enable` and `disable` the full name `service list` prints; `service <Tab>` offers the verbs,
+and `service start <Tab>` (or any verb that takes a name) those full names, from
+[its completion file](#finding-a-subcommand). A name that is not a plain name
 (letters, digits, `_`, `-` and `.`, at most 64 characters) is refused, because a name placed into
 a file pattern could match anything.
 
@@ -2090,13 +2439,17 @@ turnstile's `ksvc` backend starts at your first login and stops at your last, wi
 state and log files in `$XDG_RUNTIME_DIR/ksvc` instead of `/run`. `enable` and `disable` then
 decide whether one starts. Root always gets the system table and refuses `--user`, because a path
 a root tool took from its caller's environment would let that caller name the pid file the next
-`stop` kills. Anyone else reads the system table (`service list`, `ksvc check sshd`) but supervises
-only into their own, whose run directory must be theirs and writable by nobody else.
+`stop` kills. Anyone else reads the system table (`service list`, `service status`, `ksvc check
+sshd`) and gets the same states root sees, because the check reads the pid file, the state file and
+`/proc` and needs no permission to signal a root supervisor; they supervise only into their own
+table, whose run directory must be theirs and writable by nobody else.
 
 The init scripts start their daemons through `ksvc supervise`:
 
 ```sh
-ksvc supervise [--final-exit CODE]... [--facility NAME] [--stop-grace SECS] [--restart-with NAME] <name> <command> [args...]
+ksvc supervise [--final-exit CODE]... [--facility NAME]
+               [--stop-grace SECS] [--restart-with NAME]
+               <name> <command> [args...]
 ```
 
 It forks a supervisor, writes the supervisor's process id to `/run/kdos-svc.<name>.pid`, and runs
@@ -2183,21 +2536,26 @@ Stopping the service, and a final exit, remove the state file with the pid file.
 
 `kdos-bootctl` manages the A/B root slots and each slot's kernel on the EFI system partition. Its
 state is `/boot/efi/EFI/kdos/bootstate`, and it rewrites the `/KDOS` entries of `limine.conf` to
-match. The state file lives on FAT, which has no journal, so every write is a temporary file, a
-`fsync` of the file and of the directory, then a rename; a file that cannot be parsed is treated as
-absent, never as partial.
+match. The state file lives on FAT, which has no journal, so every write is a temporary file, its
+`fsync`, a rename, then an `fsync` of the renamed file and a `syncfs` of the ESP; every other file
+it writes or removes there settles the same way. On Linux's vfat a directory `fsync` does not carry
+a rename onto the disk: the reused directory entry is written through the renamed file's inode, so
+the file's own `fsync` writes it, and the `syncfs` writes the FAT and everything else
+([why](../03-architecture/boot-and-init.md#counting-and-confirming)). A file that cannot be parsed is
+treated as absent, never as partial.
 
 | Verb | Does |
 |---|---|
-| `status [--json]` | The active slot, the candidate, attempts and the `BootNext` trial state, and which version each slot holds (the default verb) |
+| `status [--json]` | The active slot, the candidate, attempts and the `BootNext` trial state, and which version each slot holds (the default verb). A slot marked by `unfill` adds the line ``unfilled <x>: an update stopped while writing this slot. The next update writes it again; to write it at once, run kdos update apply --mount as root``, and a trial set aside by picking the confirmed slot at the boot menu adds `abandoned <x>: set aside at the boot menu` |
 | `list [--json[=short\|pretty\|off]]` | The boot entries, one per slot, in the shape `bootctl list --json` prints |
-| `select [<a\|b>]` | Run at boot by the initramfs: decide which slot's root to use, given the boot-menu entry that was picked, and roll back a candidate whose trial boot was spent |
-| `try <a\|b> [n]` | Mark a slot as the candidate for the next boot. With UEFI variables it arms a one-shot `BootNext` trial; otherwise the menu leads with the candidate for `n` boots (default 3). Refused for the active slot, a slot with no root, or a slot with no kernel on the ESP |
+| `select [<a\|b>]` | Run at boot by the initramfs: decide which slot's root to use, given the boot-menu entry that was picked, and roll back a candidate whose trial boot was spent (recorded in `failed`). Picking the confirmed slot's entry sets the candidate aside, recorded in `abandoned`, which no notice reports as a failure: during a menu-led trial, and from a BootNext trial menu, whose confirmed-slot entries carry `kdos_menu=trial`. A BootNext boot that reaches the confirmed slot without that word is a firmware fallback and is recorded in `failed` |
+| `try <a\|b> [n]` | Mark a slot as the candidate for the next boot. With UEFI variables it arms a one-shot `BootNext` trial; otherwise the menu leads with the candidate for `n` boots (default 3). Refused for the active slot, a slot with no root, a slot with no kernel on the ESP, or an unfilled slot (`bootctl: slot <x> is incomplete — an update stopped while writing it; `kdos update apply` writes it again`), each with exit 1 |
 | `cancel` | Forget a trial that has not booted: the firmware's one-shot first, then the state, so a power cut between the two comes up on the confirmed slot. `no trial is armed` when there is none |
-| `mark-good` | Confirm the running slot after a successful boot, clearing the trial. `kdos-sysupdated` runs it once both bless marks exist; a trial armed earlier in the same boot is left as it is |
+| `mark-good` | Confirm the running slot after a successful boot, clearing the trial. `kdos-sysupdated` runs it once both bless marks exist; a trial armed earlier in the same boot is left as it is. When the kernel command line names a `bootstate=` and the state cannot be read it exits 1 with `bootctl: the command line names a boot state and <path> cannot be read — is the ESP mounted?`; with no `bootstate=` it exits 0 |
+| `unfill <a\|b>` | Record that an update is writing that slot (`unfilled = <x>` in the state) and rewrite `limine.conf` without the slot's `/KDOS <version> (slot <X>)` entry. `kdos update apply` runs it before its first write into the slot. Refused with exit 1 for the active slot (`bootctl: slot <x> is active; it is not written`) and an armed one (`bootctl: slot <x> is armed — cancel the trial first; it is not written`); exit 1 with `bootctl: cannot rewrite the boot menu` when the menu cannot be written, and 2 on bad usage |
 | `set-slot <a\|b> <uuid> [<luks-uuid>]` | Record a slot's root filesystem and, when encrypted, its LUKS container; without one the slot is recorded as unencrypted |
 | `crypt <fs-uuid>` | Print the LUKS container recorded for the slot whose root filesystem has that UUID; asked by the initramfs after `select`, silent with exit 1 when there is none |
-| `deploy <root> [<a\|b>]` | Copy the kernel and initramfs from a slot's root into that slot's directory on the ESP, with the root's identity as `EFI/kdos/<slot>/release` |
+| `deploy <root> [<a\|b>]` | Copy the kernel and initramfs from a slot's root into that slot's directory on the ESP, with the root's identity as `EFI/kdos/<slot>/release`. Deploying into the unfilled slot clears the mark and rewrites the menu, so its entry comes back. The installer writes each slot's first `release` record itself, `a` and, on an A/B install, `b`, so both slots carry a version from the first boot |
 | `theme [--print] [<accent>]` | Write the accent's console palette to `/etc/vtrgb` and rewrite the theme lines of `limine.conf` (the default accent when none is named); a machine with no `limine.conf` keeps its boot menu and still exits 0. `--print` prints the `limine.conf` lines and writes nothing |
 | `splash phosphor\|modern` | The boot splash's motion, as `kdos.splash=` on every KDOS entry |
 | `palette [<accent>]` | Print the console palette (the `/etc/vtrgb` format) for an accent, the default one when none is named |
@@ -2205,21 +2563,36 @@ absent, never as partial.
 `status --json` prints one line. `configured`, `live`, `active`, `trying`, `slot_a`, `slot_b`, `crypt_a`,
 `crypt_b` and `running` are read by `kdos update` with exact string matches, each spelled
 `"key": value` with the space, so their spelling is an interface; `attempts`, `bootnext`, `next`,
-`failed`, `entry` and `slots` (each slot's state, title, version, build, date, tree and kernel)
-are for readers that parse JSON: the System Versions page, the logout screen, the notices and
-`kdos-sysupdated`.
+`failed` (a trial that ended unconfirmed, or `null`), `abandoned` (a trial set aside at the boot
+menu, or `null`), `unfilled` (the unfilled slot, or `null`), `entry` and `slots` (each slot's
+state, title, version, build, date, tree and kernel) are for readers that parse JSON: the System
+Versions page, the logout screen, the notices and `kdos-sysupdated`. The unfilled slot's state in
+`slots` is `incomplete`, which takes precedence over `failed`, and `failed` over `abandoned`. A
+running slot that is neither the confirmed one nor on trial, picked at the boot menu, is
+`visiting`, ahead of all three: the text reads `slot <x>   <title>, visiting (this boot only)` and
+ends `trying   nothing — this boot was picked from the menu; the next boot starts <active>`, where
+a boot of the confirmed slot ends `trying   nothing — this slot is confirmed good`.
 
-With no boot state `status` and `list` exit 1. On the live medium, where `/` is an overlay in
-`/proc/mounts`, they say `this is the live medium — it has no boot state and no slots; install KDOS
-for A/B updates and rollback`, and `status --json` prints `{"configured": false, "live": true}`;
-on an installed machine with one root they say it has one root and no rollback, and `status --json`
-prints `{"configured": false}`.
+An install with one root has a boot state naming slot A alone: `status --json` prints
+`"configured": true` with `"slot_b": ""`, and the text's `other` line reads
+`other    none: this machine has one root and no rollback`. With no boot state at all `status`
+and `list` exit 1: on the live medium, where `/` is an overlay in `/proc/mounts`, they say `this is
+the live medium — it has no boot state and no slots; install KDOS for A/B updates and rollback`,
+and `status --json` prints `{"configured": false, "live": true}`; where the directory that holds
+`EFI/kdos/bootstate` is no mount point (it is on its parent's filesystem, as `/boot/efi` is in the
+emergency shell) `status` says `the ESP is not mounted at /boot/efi, so the boot state cannot be
+read; mount /boot/efi`; elsewhere they say
+`no boot state at /boot/efi/EFI/kdos/bootstate — this machine has one root and no rollback`, and
+`status --json` prints `{"configured": false}`.
 
 The ESP is root's alone, so every run as root against this machine's own state also writes
 world-readable copies a session can read: `/run/kdos/bootstate.json` (`status --json`),
-`/run/kdos/boot-entries.json` (`list --json=short`) and `/run/kdos/slot.json`. A `--json` read that
-cannot open the state file prints those copies instead, so the logout screen, the welcome tour and
-About this System answer without root. `kdos-sysupdated` refreshes them at start, every half minute
+`/run/kdos/bootstate.txt` (`status`'s text), `/run/kdos/boot-entries.json` (`list --json=short`)
+and `/run/kdos/slot.json`. A `status` or `--json` read that cannot open the state file prints
+those copies instead, so the logout screen, the welcome tour, About this System and a user at a
+shell answer without root; a user's `status` with no copy published says ``the boot state at
+<path> is readable by root alone; `kdos-bootctl status --json` prints the copy published in
+/run/kdos`` and exits 1. `kdos-sysupdated` refreshes them at start, every half minute
 and after each change it makes, and `try`, `cancel`, `mark-good`, `set-slot` and `deploy` write
 them as they change the state.
 
@@ -2236,15 +2609,16 @@ kdos-shot --help
 Spectacle takes the picture, in its background mode without its own notification
 (`spectacle -b -n -o <file>`): it is the one program KWin hands a screen to, through its
 ScreenShot2 interface. What `kdos-shot` adds is the naming, the clipboard, one notification and
-`qr`.
+`qr`. A rectangle stays in Spectacle's overlay after the drag, which can still move or resize it,
+and nothing is captured or decoded until it is accepted.
 
 | Mode | Takes |
 |---|---|
-| `region` (the default) | A rectangle you drag out (`spectacle -r`); `Escape` cancels and saves nothing |
+| `region` (the default) | A rectangle you drag out (`spectacle -r`) and accept with `Return` or the overlay's **Accept**; `Escape` cancels and saves nothing |
 | `screen` | The screen under the pointer (`-m`) |
 | `full` | Every screen (`-f`) |
 | `window` | The active window (`-a`) |
-| `qr` | A rectangle you drag out, read as a QR code by `zbarimg`, with the decoded text copied to the clipboard |
+| `qr` | A rectangle you drag out and accept with `Return` or the overlay's **Accept**, read as a QR code by `zbarimg`, with the decoded text copied to the clipboard |
 
 A screenshot is saved as `~/Pictures/Screenshots/kdos-<date>-<time>.png`
 (`kdos-%Y%m%d-%H%M%S.png`), or under `$XDG_PICTURES_DIR/Screenshots` when that variable is set,
@@ -2267,10 +2641,12 @@ Spectacle itself; `kdos-shot` is what KRunner's `capture.*` routes run.
 ### kdos-banner and kdos-getty
 
 `kdos-banner` draws the login banner: the KDOS logo beside the output of `fastfetch --logo none`,
-revealed line by line like a CRT beam, followed by the [`kdos oracle`](#kdos-oracle) line when
-the terminal is wide enough for it and has two rows to spare below the banner. `--plain` prints the
-banner with no animation and without the oracle line, so its output is the same every time and can
-be compared. fastfetch takes its parent process for the shell, and that parent is `kdos-banner`, so
+revealed line by line like a CRT beam. On a terminal of known height too short for the logo, the
+fetch and a prompt row, the logo is left out and the fetch printed alone; when the fetch and a
+prompt row are still taller than the terminal, whole blank-line-separated sections are dropped from
+the fetch's end until the rest fits, or it is cut one row short of the screen when no section break
+fits, so the `user@host`, **SYSTEM** and OS lines at its top stay on screen. `--plain` prints the
+banner with no animation, so its output is the same every time and can be compared. fastfetch takes its parent process for the shell, and that parent is `kdos-banner`, so
 the banner runs it with `FFTS_IGNORE_PARENT=1`: the **Shell** row names the login shell and the
 **Terminal** row the terminal fastfetch detects past it (`konsole` in Konsole). The same plain banner is printed when standard output is not a terminal, when
 `KDOS_NO_ANIM` is set, when `TERM` is unset or `dumb`, or when the terminal is too short for the
@@ -2294,14 +2670,57 @@ sudo kdos-fetch-static <name> <url> <sha256>
 ```
 
 `kdos-fetch-app` installs an application into a distrobox container with the box's own package
-manager (`apt`, `dnf` or `pacman`) and exports it to the host: its desktop entry as a launcher,
-and its command as a wrapper in `~/.local/bin` when it has one. `--box` defaults to `kdos-debian`;
-`--image` defaults to `debian:stable` and is used only when the box does not exist yet.
-`--remove` deletes both exports and uninstalls the package. For example:
+manager (`apt-get`, `dnf` or `pacman`) and exports to the host what the package installed, read
+from its file list (`dpkg-query -L`, `rpm -ql` or `pacman -Qlq`): each desktop file directly under
+`/usr/share/applications` becomes a launcher, handed to `distrobox-export` by its full path so that
+exactly that file is exported, with its `StartupWMClass` set to the file's name without `.desktop`
+when the file names none. distrobox names the export `<box>-<file>.desktop`, and KWin finds a
+window's title-bar icon by the desktop file named after its app id
+([`kdos appid`](#kdos-appid)), so when no `<file>.desktop` is in `XDG_DATA_HOME` or `XDG_DATA_DIRS`
+the export is copied to `~/.local/share/applications/<file>.desktop` with
+`X-KDOS-Fetch-Box=<box>` and the same `Exec` and `Icon`, and the export itself gets
+`NoDisplay=true`. The copy is then the one entry the menu lists, a pin names and the Task Manager
+resolves the window to, so a pinned launcher and its running window are one task; a host entry of
+that name is left to the host's application, and the export stays the visible one. Each command directly under `/usr/bin` becomes a wrapper in
+`~/.local/bin`. Arch's `neovim` is exported as `nvim`. `--box` defaults to `kdos-debian`;
+`--image` defaults to `debian:stable` and is used only when the box does not exist yet. A box it
+creates is made with `distrobox create --no-entry`, so the menu gets no launcher for the box
+itself, only the application's, and distrobox's closing `successfully created` and `To enter,
+run:` lines are not printed. An image with none of the three managers is refused with
+`kdos-fetch-app: <image> has none of apt-get, dnf or pacman` and exit 1, and a box the same run
+created for it is removed again with `distrobox rm --force`; a box that existed before is left
+alone. The first run needs the network even when the image is already in the image store: on its
+first start distrobox installs `sudo` and the rest of its dependencies into the box, and prints
+`Container Setup Complete!` even when that install failed, so that one line of the install's
+enter is not passed on: its setup steps reach the terminal as distrobox writes them. Before the
+package manager runs, the install prints `==> Running <manager> inside the box (a few minutes the
+first time)`, and the manager's own output is not shown, on an install as on a `--remove`. A box
+without `sudo` is taken for one whose first setup did not finish. Created by the same run, it is
+removed with `distrobox rm --force` and the command exits 1 with `kdos-fetch-app: the box <box>
+did not finish its first setup — the network is needed the first time; run again when online`.
+Found as `kdos-debian`, it is removed and created again once over the `--image` image before the install; if the recreated box has no `sudo` either,
+it is removed and the command exits 1 with the same sentence, and if the remove cannot take the
+old box, the command exits 1 naming `distrobox rm kdos-debian` as the repair. Found under a name
+given with `--box`, it is left alone and the command exits 1 naming `distrobox rm <box>` as the
+repair. `--remove` deletes the exports the package's file list names, and each copy that box's export
+made. `distrobox-export --delete` removes `~/.local/share/applications/<file>.desktop` along with
+the export, so whether that file is the box's copy is read before the delete: a copy the box made
+is unpinned, and any other file of that name (the user's own entry, another box's copy) is written
+back afterwards with its bytes and mode, or as the same symbolic link; one that cannot be read
+first is named in a warning, since the delete takes it. It then takes each deleted launcher (`applications:<box>-<file>.desktop`, and
+`applications:<file>.desktop` for a copy it deleted, or the `file://` URL of either) out of the
+`General/launchers` list of every Task Manager in the session through `plasmashell`'s
+`evaluateScript`, since the Task Manager keeps a pin whose desktop file is gone and draws it as a
+blank document, and uninstalls the package. A pin kept to some activities is matched on the URL
+after its `[<activities>]` prefix. With no `plasmashell` answering there is nothing to unpin and the
+step is skipped; a package that is not installed in the box is refused with `kdos-fetch-app:
+'<app>' is not installed inside '<box>'` and exit 1. `-h` and `--help` print the usage and exit 0. Its steps print as `==>`
+lines as they happen, piped or not. For example:
 
 ```sh
 kdos-fetch-app firefox-esr
 kdos-fetch-app --box arch --image archlinux:latest neovim
+kdos-fetch-app --remove firefox-esr
 ```
 
 The application name reaches the box's package manager as a separate argument and is never
@@ -2316,7 +2735,8 @@ treated as a tarball; anything else as a plain binary.
 ### kdos-sfx
 
 ```sh
-kdos-sfx login | notify | error | degauss | logout | warning | complete | added | removed
+kdos-sfx login | notify | error | degauss | logout | warning
+kdos-sfx complete | added | removed
 kdos-sfx --route
 kdos-sfx render <dir> [--format oga|wav]
 ```

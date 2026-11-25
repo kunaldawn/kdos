@@ -52,3 +52,6 @@ cmake -S . -B build -G Ninja \
 	-DENABLE_BACK_FORWARD_LIST_SWIFT=OFF
 cmake --build build
 DESTDIR=$PKG cmake --install build
+for f in LICENSE-LGPL-2 LICENSE-LGPL-2.1 LICENSE-APPLE; do
+	install -Dm644 "Source/WebCore/$f" "$PKG/usr/share/licenses/$name/$f"
+done

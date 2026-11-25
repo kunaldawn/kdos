@@ -14,6 +14,16 @@ accent and fonts of the Plasma session.
   package-wide English-only rule would remove anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
+## Patches
+
+`hidden-entries.patch` keeps applications whose desktop entry says `NoDisplay=true` out of the
+application chooser's list of all applications and out of its search, and still shows one when
+it is a choice for the file, named by the request or associated with the file's MIME type.
+Upstream lists every valid application service, so opening a video offers helpers such as
+kaccess, which appears as "Accessibility" with no icon, the Bluetooth wizard and settings pages.
+It is to be offered upstream to
+[xdg-desktop-portal-kde](https://invent.kde.org/plasma/xdg-desktop-portal-kde).
+
 ## Notes
 
 The install puts a systemd user unit, `plasma-xdg-desktop-portal-kde.service`, under

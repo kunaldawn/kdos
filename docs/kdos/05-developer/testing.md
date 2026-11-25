@@ -203,9 +203,9 @@ to what they are meant to do. Three run in `make check`, with the proof of a fou
 | Script | Checks | Run by |
 |---|---|---|
 | `testing/defaultscheck.py` | Every row of `testing/fixtures/defaultscheck/defaults.tsv`, one key each, reads back as the table says, through the cascade `/etc/xdg:/usr/share/kdos/xdg` with the earlier directory winning a key, and with `/usr/share/kdos/xdg-vm` or `/usr/share/kdos/xdg-live` in front for a `vm` or `live` row. Its own KConfig reader handles nested groups, comments, escapes, `[$e]` expansion and `[$i]` immutability, so it needs nothing but Python; `--kreadconfig CMD` reads every row with the real `kreadconfig6` instead, which proves the reader agrees with KConfig; `--root build/fs` reads a built tree; `--selftest` breaks each kind of row and requires each to fail. Defaults a port of KDOS's own installs are read from that port's source | `make defaultscheck`, `make check` |
-| `testing/xdgcheck.sh` | No file under `fs/etc/xdg` but the ones that must be there (`kdeglobals` with only `[KDE] LookAndFeelPackage`, `konsolerc`, `fcitx5/config`, `mimeapps.list`, `autostart/`, `menus/`); no file shipped under both `fs/etc/xdg` and `fs/usr/share/kdos/xdg` but `kdeglobals`; a login shell's `XDG_CONFIG_DIRS` is `/etc/xdg:/usr/share/kdos/xdg`; with `--root`, none of the files the installer writes per machine (`kxkbrc`, `kdosrc`, `kwinrc`) is in the image's `etc/xdg` | `make xdgcheck`, `make check` |
+| `testing/xdgcheck.sh` | No file under `fs/etc/xdg` but the ones that must be there (`kdeglobals` with only `[KDE] LookAndFeelPackage`, `konsolerc`, `fcitx5/config`, `fcitx5/conf/wayland.conf` with `Allow Overriding System XKB Settings=False`, `mimeapps.list`, `autostart/`, `menus/`); no file shipped under both `fs/etc/xdg` and `fs/usr/share/kdos/xdg` but `kdeglobals`; a login shell's `XDG_CONFIG_DIRS` is `/etc/xdg:/usr/share/kdos/xdg`; with `--root`, none of the files the installer writes per machine (`kxkbrc`, `kdosrc`, `kwinrc`) is in the image's `etc/xdg` | `make xdgcheck`, `make check` |
 | `testing/chordcheck.py` | No chord KDOS ships is bound twice. It builds the session's bindings from KDE's compiled-in defaults (a table measured from the Plasma and Frameworks sources), the `X-KDE-Shortcuts` of desktop entries, the `registerShortcut()` calls of KWin scripts and the `ShortcutHandler` blocks of KWin's QML effects and scripts, the shipped `kglobalshortcutsrc` along the cascade, and fcitx5's compiled-in hotkeys and the shipped `fcitx5/config`. A chord with two owners fails when one of them is a KDOS file; one between two upstream defaults is reported. `--live` reads what `kglobalaccel` holds in a running session instead | Preflight |
-| `testing/mimecheck.py` | Every desktop id in `/usr/share/kdos/xdg/kde-mimeapps.list` is installed: with `--root`, in the image; otherwise traced to `fs/`, to a port of ours, to a `build.sh` that writes it, or to the fetched tarball of the port it names (an id whose tarball is not fetched is reported as unverified, and fails only under `--strict`). The list itself must hold only the specification's three groups, a MIME type or scheme as every key, once per group | Preflight |
+| `testing/mimecheck.py` | Every desktop id that `/usr/share/kdos/xdg/kde-mimeapps.list` or `/etc/xdg/mimeapps.list` names as a default or an added association is installed (a removed association may name an application that is not, since it takes effect once that application is installed), and the run fails with no `kde-mimeapps.list` at all: with `--root`, in the image; otherwise traced to `fs/`, to a port of ours, to a `build.sh` that writes it, or to the fetched tarball of the port it names (an id whose tarball is not fetched is reported as unverified, and fails only under `--strict`). Each list, `/etc/xdg/mimeapps.list` among them, must hold only the specification's three groups, a MIME type or scheme as every key, once per group, and a desktop-named list such as `kde-mimeapps.list` no `[Added Associations]` or `[Removed Associations]`, which KService and GLib do not read there | Preflight |
 | `testing/monofont.py` | The KDOS monospace face, JetBrains Mono, is first for `monospace` in the shipped `45-kdos-mono.conf`, and with the fallbacks that file names covers box drawing, block elements, braille, Latin Extended-A and -B, Greek and Cyrillic; its cell, measured on `M`, is the advance of every covered glyph; its zero is marked and its `1`, `l` and `I` differ. It records the cell and line height at 10 pt and scales 1, 1.25 and 2. Needs fontTools; `--selftest` builds a face that fails each gate | The self-test's last block (`--selftest`); by hand with `--root build/fs` |
 | `testing/aboutcheck.sh` | Every program the About page runs prints exactly two non-empty lines, a label and a value, in under 100 ms, in the session's language and under `LANGUAGE=en_US:C`, on a machine with one root and no A/B boot state and with `/var` read-only. kinfocenter runs each on its GUI thread and stops System Settings with the page when one prints fewer than two lines | Preflight runs each script with an empty environment; `make aboutcheck` and `make check` run its `--selftest`; the full run is on a booted machine or with `--root` in a chroot |
 | `testing/lnfcheck.py` | The KDOS global themes hold only the `[file][group] key` entries Plasma's look-and-feel manager reads, every font a theme applies is declared where the manager decides a theme has fonts, every theme has its splash, layout and previews, and every launcher a desk pins is a box the login warms | `make lnfcheck`, `make check`, with its `--self-test`; by hand, `--tree build/fs` reads the installed packages |
@@ -325,19 +325,21 @@ A test whose only subject is code nothing ships is not coverage. It reports gree
 behaviour a person sees goes untested. When the last shipped caller of something goes, its
 assertions go with it.
 
-### A short TMPDIR
+### TMPDIR
 
-The suite makes its temporary directory with `mktemp -d`, under `$TMPDIR`, and several blocks bind
-Unix sockets inside it. A socket path is at most 108 bytes, so a deep `TMPDIR` fails those blocks
-with an error about the path, not about the test: the box launch block refuses with `the box name
-is too long for a socket path`, and the installer holds a disk path of at most 63 bytes, which the
-event-stream block keeps short by working relative to its own directory. A `TMPDIR` that is a
-symbolic link fails the thumbnail block too, because the thumbnail's URI is made from the resolved
-path. `/tmp` serves on most hosts; where it is small or deep, use a short real directory:
-
-```sh
-mkdir -p /dev/shm/st && TMPDIR=/dev/shm/st testing/selftest.sh; rm -rf /dev/shm/st
-```
+The suite makes its temporary directory with `mktemp -d`, under `$TMPDIR`. A `TMPDIR` of 172
+characters was measured to pass; one of 214 fails at `kdos verify`, whose fixture key path no
+longer fits the 256 bytes `kdos-pack` holds a path in (`KPK_PATH`). A Unix socket's path is at
+most 108 bytes, so every block that binds a socket or makes a box's runtime directory keeps its
+tree under `$SOCKD`, a second directory the suite makes under `/tmp` and removes on exit; a new
+block that binds one puts it there too. The packs block keeps its store and medium there as well,
+because `kdos-packd --fixture` prints a pack's overlay line from a 512-byte buffer and a longer
+store path cuts it before the base layer is named. The installer holds
+a disk path of at most 63 bytes, so its harness is handed image names relative to the suite's
+directory, and the initramfs scan fixture widens the init's 80-column `RESCUE_TRIED` cut by its
+own directory's length, then checks the width once that directory is stripped. A `TMPDIR` that is
+a symbolic link fails the thumbnail block, because the thumbnail's URI is made from the resolved
+path.
 
 ### Run it sanitized when you touch a parser
 
@@ -448,7 +450,11 @@ its own:
    CMake configure gets `-D BUILD_TESTING=ON`, and its tests run under `ctest
    --output-on-failure`: headless (`QT_QPA_PLATFORM=offscreen`), with a fresh home and runtime
    directory, and each test on a session bus of its own, so tests that serve fakes of the same D-Bus
-   name run side by side. The tests live beside each port in `src/desktop/<port>/tests/`: the
+   name run side by side. Each port sees the ones before it on `CMAKE_PREFIX_PATH` and `PATH`,
+   and what they installed under `/usr/share/kdos` at that path, as the build gives it: where the
+   system has no `/usr/share/kdos`, the run links it to the merged `usr/share/kdos` of every port
+   built so far and removes the link when it ends, so the SDDM theme draws its preview from
+   `kdos-plasma-look`'s greeter sets. The tests live beside each port in `src/desktop/<port>/tests/`: the
    Discover backend parsing `kpkg`, pack and box output, the System Settings pages' models against
    fake `kdos` helpers, the KRunner plugin's matches, the notices' decisions.
 2. **Plugins.** Every plugin a port installs under `lib/qt6/plugins` is loaded with
@@ -460,12 +466,20 @@ its own:
    `sddm-greeter` loads, and copied into a scratch themes directory the way the Login Screen page
    installs one.
 4. **qmllint.** Every QML file a port installs or compiles into its plugin is linted against the
-   installed QML modules and the ones the ports just built. A context property (a KCM's `kcm`, the
-   greeter's `sddm`) and a type a C++ plugin registers at run time cannot be resolved by reading the
-   file, so unqualified access, unresolved types and unused imports are reported without failing; a
-   module its host program registers in C++ with no `qmldir`, such as KWin's own, is let through by
-   name; a file copied from an upstream package is upstream's. Everything else qmllint finds fails.
-   The desk layout scripts are checked by `node`.
+   installed QML modules, the ones the ports just built, and the modules in their build trees: an
+   applet's own `plasma.applet.<id>`, compiled into its plugin with no `qmldir` installed, is where
+   the C++ applet class it registers (`QML_ELEMENT`) is read from, so the applet's QML reads that
+   class's members through `Plasmoid as <Alias>.<Class>` rather than through `Plasmoid`, which
+   qmllint knows only as `Plasma::Applet`. A context property (a KCM's `kcm`, the greeter's `sddm`)
+   and a type a C++ plugin registers at run time cannot be resolved by reading the file, so
+   unqualified access, unresolved types and unused imports are reported without failing. A module
+   its host program registers in C++ with no `qmldir` (Discover's `org.kde.discover`,
+   plasma-welcome's private module, the installer's, and KWin's `org.kde.kwin`, which
+   `kwin_wayland` registers for its scripts and effects) is let through by name and through its
+   alias, so a file imports it under one (`import org.kde.kwin as KWinComponents`, as KWin's own
+   effects do) and names each of its types through it. A file copied from an upstream package is
+   upstream's, and so is a line of a file made from one that the upstream file has word for word.
+   Everything else qmllint finds fails. The desk layout scripts are checked by `node`.
 
 Naming ports runs stages 1 to 3 for those and the ports they are generated by, and stage 4 for their
 QML. `--keep` leaves the scratch tree and prints where it is. `--selftest` runs the whole pipeline
@@ -508,7 +522,7 @@ real peer's bus name on a private bus. There are 30 fixture directories under `t
 | `toolkit` | ELF cases built at run time | That the toolkit guard refuses what each area may not link |
 | `colourlit` | A QML and a C++ file with literals marked | That the colour check reports every literal and only those |
 | `chordcheck` | Shortcut sets that collide (Meta+Space bound to KRunner while fcitx5 keeps it, Meta+Q rebound while plasmashell keeps it, a forward switch moved onto its own backward one, a QML effect taking a chord) and a recorded `kglobalaccel` session | That `chordcheck.py` fails each, from files and live, and passes a clean set |
-| `mimecheck` | Lists that are good, dangling and malformed, and a fixture tree | That `mimecheck.py` fails an id nothing installs and a list that does not parse |
+| `mimecheck` | Lists that are good, dangling and malformed, a desktop-named list carrying a removed association, a fixture tree, and a tree with `/etc/xdg/mimeapps.list` and no `kde-mimeapps.list` | That `mimecheck.py` fails an id nothing installs, a list that does not parse, a removal in a list nothing reads it from, and a tree that ships no `kde-mimeapps.list` |
 | `defaultscheck` | `defaults.tsv`, one row per default | What `defaultscheck.py` checks |
 | `kpackage`, `kwinrules`, `layoutjs`, `sddm`, `aboutdistro`, `units` | Good and bad cases for preflight's metadata, window-rule, desk-layout, greeter, About-page and unit checks | That each of those checks can fail |
 
@@ -545,18 +559,29 @@ three halves:
   every Framework a KCM, plasmoid, KWin plugin or the installer links, and `libplasma`, KWin,
   KDecoration, `plasma-workspace`, `libksysguard`, `layer-shell-qt` and Plasma Activities) and what
   `plasmatest.sh` runs: `ctest`, `qmllint`, `kpackagetool6` with every package structure Plasma
-  installs, `clang-format`, `node` for the desk scripts, and the applications whose QML modules
-  KDOS's QML imports (`plasma-welcome`, `plasma-desktop`, `sddm`).
+  installs, `clang-format`, `node` for the desk scripts, Pillow for the SDDM theme's preview, and
+  the applications whose QML modules KDOS's QML imports (`plasma-welcome`, `plasma-desktop`,
+  `sddm`).
 - **The headless half**: Weston's headless backend with its desktop shell, `at-spi2-core`,
   `pyatspi` and the Python libraries selenium-webdriver-at-spi needs, for the AT-SPI dumps (see
   [Goldens](#goldens)), and Python's D-Bus and GObject bindings for the fake Plasma session.
 
 **Discover is built from the tree's own release.** `libdiscover` installs no header upstream, and
 every Discover plugin interface carries Discover's full version in its identifier, so
-`kdos-discover` configures only against the exact release the tree ships. The image's last layer
+`kdos-discover` configures only against the exact release the tree ships. A layer of the image
 builds that release from the same tarball, with the recipe's flags, and copies `libdiscover`'s
-headers to `/usr/include/discover` as the recipe does; `testing/devdeps-image.sh` reads its version
-and hash out of the `discover` recipe, so a Plasma bump rebuilds that layer and nothing else does.
+headers to `/usr/include/discover` as the recipe does.
+
+**plasma-welcome is the tree's, built over Alpine's.** The KDOS Welcome pages call
+`Utils.globalShortcutTexts`, which the tree's `shortcut-texts.patch` adds, and qmllint reads `Utils`
+from the `qmltypes` that build installs; against Alpine's unpatched one every page that calls it
+fails. The layer runs the recipe's own `build.sh`, with its patches, on the tarball the recipe pins,
+and installs into `/usr` over Alpine's package. The image also carries the `LICENSES` of the tree's
+`plasma-desktop` release in `/usr/share/licenses/plasma-desktop/`, where a KDOS package keeps its
+licences and the SDDM theme's build copies its LGPL text from. `testing/devdeps-image.sh` reads the
+version and hash of all three out of their recipes and hands plasma-welcome's recipe directory to
+the build as the context `welcome`, so a Plasma bump or a changed patch rebuilds those layers and
+nothing else does.
 
 Two of its packages are there for what they unblock, and their absence is reported as something
 else: GNU `tar`, without which the reproducible-build block answers "the synthetic port did not
@@ -721,6 +746,7 @@ What the loop cannot carry:
 | `--chord <keys>` | Hold the modifiers and tap the key over VNC, e.g. `meta+shift+t` or `ctrl+alt+f2`. Use it for anything with two modifiers: `sendkey` presses and releases the whole combination at once, and such a chord never arrives |
 | `--type <text>` | Type into whatever has the focus, then Return: the greeter's password field, KRunner, a Konsole the run opened |
 | `--text <text>` | Type and stop, with no Return, for a search field or filter where Return would act on the first match |
+| `--key-delay <s>` | The gap between keys that `--type` and `--text` send, after each key's monitor round trip (default 0.1 s); 0.5 gives a human typing pace |
 | `--mouse X,Y` | Move the pointer, in absolute pixels |
 | `--click X,Y[,BTN]` | Move there and click; `BTN` is 1, 2 or 3 |
 | `--drag X1,Y1,X2,Y2[,BTN]` | Press at the first point, move to the second with the button held, release |
@@ -982,6 +1008,10 @@ Because the image is built from the tree, a photograph is reproducible from any 
 
 The following behaviours of the rig and the guest cause false results.
 
+- A program started through `--cmd` or `su` runs outside the logind session, so polkit has no
+  graphical agent for it and an action it asks for fails with `Error creating textual
+  authentication agent`. Start a program whose action needs authorisation from the session itself
+  (KRunner, or `--key` presses) to see the dialog.
 - Driving the session means a *login* shell (`su - kdos -c`). A plain user switch leaves the
   container tooling resolving the home directory to `/`, and every call fails on a permission
   error. A command that talks to the session also needs its bus, `DBUS_SESSION_BUS_ADDRESS`
@@ -1375,7 +1405,7 @@ names, and the script reports the target's world set, its package count and its
 | Harness | Runs | Does |
 |---|---|---|
 | `packlane.sh` | In the guest, session up | The pack lane end to end: the daemon, the keyring, an install from the medium or the store, the launchers, a box on a pack base, the energy attribution and a timed launch, reporting pass, fail or skip with a reason and carrying on past a failure. It exercises no rollback, and its checks for a base and `rt-gtk` in the store fail until packs have been imported |
-| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. Before it starts it reads the payload from `kinstall --dump probe` and the disk's size with `blockdev`, and refuses with exit status 2, printing both in MB, when the disk is smaller than the payload, the 512 MB ESP and 2 GiB; `kinstall`'s Prepare step then refuses, before anything is written, a disk smaller than the payload plus 768 MiB. The copy writes about the whole payload (47661 MB on the current tree), so a qcow2 target grows on the host by that much, and `vnc-shot.py` refuses an install run whose qcow2 could outgrow the host's free space. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. `INSTALL_DISK` names the target (default `/dev/vda`); `INSTALL_LUKS=1` makes the same run with an encrypted root, with the passphrase in `INSTALL_LUKS_PASS` (default `kdosdisk`). It then opens what it wrote: the ESP with its `limine.conf` and the A/B boot state, the volumes of the LVM group `kdos`, the fstab with the pack store's bind line, the `kdos` account, SDDM's autologin file, and the shared pack store under `/home/.kdos/packs`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
+| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. Before it starts it reads the payload and the installer's own figure from the `payload` and `install needs` lines of `kinstall --dump probe`, and the disk's size with `blockdev`, and refuses with exit status 2, printing both in MB, when the disk is smaller than the payload plus 768 MiB plus 2 GiB, the rule `kinstall`'s Prepare step applies; a payload, figure or disk size it cannot read refuses too. The copy writes about the whole payload (47661 MB on the current tree), so a qcow2 target grows on the host by that much, and `vnc-shot.py` refuses an install run whose qcow2 could outgrow the host's free space. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. `INSTALL_DISK` names the target (default `/dev/vda`); `INSTALL_LUKS=1` makes the same run with an encrypted root, with the passphrase in `INSTALL_LUKS_PASS` (default `kdosdisk`). It then opens what it wrote: the ESP with its `limine.conf` and the A/B boot state, the volumes of the LVM group `kdos`, the fstab with the pack store's bind line, the `kdos` account, SDDM's autologin file, and the shared pack store under `/home/.kdos/packs`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
 | `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. It waits `KDOS_BIOS_SECS` seconds (default 90), saves the screen as `build/shots/bios-screen.ppm` and the serial console as `build/shots/bios-serial.log`, then reads the log for `Found KDOS media` and `Switching to new root`. The stick is read-only, so the run never writes the image and can run while rig VMs have it attached: it prints `bios-boot: ok` and exits 0 when both are there, and `bios-boot: FAILED` with exit status 1 when either is missing. QEMU itself is killed rather than shut down, so its own exit status means nothing |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim (a terminal program in Konsole, as Kickoff launches it), wait for KWin's window list (`kdos hey list`) to name its window and its box, photograph it, and remove the box. An X11 window has no box, since its Wayland client is Xwayland, so it is matched by its class against the shim's name and the row says so. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |

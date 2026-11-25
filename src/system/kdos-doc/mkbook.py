@@ -26,7 +26,8 @@
 # chapters; and every
 # `kdos-*` row of the command index, and the row of each command in OURS,
 # becomes a manual page whose DESCRIPTION is the book section that row links
-# to. A manual page written by hand beside
+# to, each link in it to another page of the book printed as the `kdos-doc`
+# command that opens that page. A manual page written by hand beside
 # the book would be a second description going stale; this one is the book's
 # own words. --html writes the first output alone, straight into DEST, which
 # is how the published site is made.
@@ -67,6 +68,28 @@ OURS = {"kpkg", "kpkgadd", "kpkgdel", "kpkgbuild", "kpkgdepends", "ksvc",
         "service", "kinstall", "xdg-terminal-exec"}
 HTAG_RE = re.compile(r'<h([1-6])(?:\s+id="[^"]*")?>')
 DOC_RE = re.compile(r'^\[[^\]]*\]\(([^)#]+)(#[^)]*)?\)$')
+# What a NAME line must not leave to lowdown. The line is plain text taken
+# out of a table cell, and lowdown reads it as markdown: `$XDG_RUNTIME_DIR`
+# would lose its underscores to emphasis and `[ARGS]` could open a link.
+MD_SPECIAL_RE = re.compile(r'([\\`*_{}\[\]<>()#!|&~^])')
+# A NAME line is the whatis line apropos prints in whatever locale it runs
+# in, a root console's C locale among them, where a typographic character
+# prints as question marks; it is held to ASCII.
+ASCII_OF = {"\u2026": "...", "\u2014": "--", "\u2013": "-", "\u2018": "'",
+            "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2192": "->",
+            "\u00b7": "-"}
+# Manual pages are rendered without lowdown's smart typography: a page is
+# read for what to type, and the filter turns `--json` into an en dash and
+# straight quotes into curly ones.
+MAN_ARGS = ["-s", "-tman", "--out-no-smarty"]
+# apropos and whatis print the description makewhatis stored, and makewhatis
+# keeps only the first 150 bytes of the NAME line's roff after the dash,
+# every escape counted as written: lowdown writes " ^ ` ~ as a four-byte
+# \(xx escape and a backslash as \e, every other character as its UTF-8. A
+# longer line prints cut mid-word, so name_line ends one within the limit.
+WHATIS_MAX = 150
+ROFF_LEN = {'"': 4, "^": 4, "`": 4, "~": 4, "\\": 2}
+CLAUSE_RE = re.compile(r"[,;:](?=\s)|\s(?=\()|\s(?=--\s)")
 
 
 def lowdown(args, text):
@@ -226,11 +249,44 @@ def render_book(docs, root):
 
 # ── the manual pages ──────────────────────────────────────────────────────
 
-def section_text(path, frag):
+def doc_ref(target, path, book):
+    """The `kdos-doc` argument that opens a link's target, when the target is
+    a page of the book: the page's path under BOOK without `.md`, and its
+    fragment when it names one. None for anything else, a same-page fragment,
+    a file outside the book or a page that is not markdown."""
+    page, _, frag = target.partition("#")
+    if not page.endswith(".md"):
+        return None
+    dest = os.path.normpath(os.path.join(os.path.dirname(path), page))
+    rel = os.path.relpath(dest, book)
+    if rel.startswith(".."):
+        return None
+    return rel[:-3].replace(os.sep, "/") + ("#" + frag if frag else "")
+
+
+def man_link(m, path, book):
+    """A link as a manual page prints it. A man reader has nothing to click
+    and no book page open, so a link to another page of the book becomes its
+    text and the `kdos-doc` command that opens that page; a URL with a
+    scheme stays a link, which lowdown prints with its address; any other
+    target, a same-page fragment or a file outside the book, leaves its text
+    alone."""
+    text, target = m.group(1), m.group(2)
+    if SCHEME_RE.match(target):
+        return m.group(0)
+    ref = doc_ref(target, path, book)
+    return f"{text} (kdos-doc {ref})" if ref else text
+
+
+def section_text(path, frag, book=None):
     """The markdown of one book section: from the heading the fragment names
     to the next heading at its level or above, or the whole page after its
     title when there is no fragment. Headings inside become the manual's
-    subsections."""
+    subsections, pictures are dropped and links are as man_link prints them.
+    BOOK is the book's directory, the kdos/ that holds the page's part; it
+    defaults to the directory above the page's own."""
+    if book is None:
+        book = os.path.dirname(os.path.dirname(os.path.abspath(path)))
     with open(path, encoding="utf-8") as f:
         lines = f.read().split("\n")
     heads = headings(lines)
@@ -257,8 +313,7 @@ def section_text(path, frag):
         body.append(line)
     text = "\n".join(body)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', "", text)
-    text = LINK_RE.sub(lambda m: m.group(1)
-                       if not SCHEME_RE.match(m.group(2)) else m.group(0),
+    text = LINK_RE.sub(lambda m: man_link(m, os.path.abspath(path), book),
                        text)
     return text.strip() + "\n"
 
@@ -312,16 +367,57 @@ def commands(docs):
     return out
 
 
+def roff_len(text):
+    """The bytes lowdown writes for an ASCII NAME description."""
+    return sum(ROFF_LEN.get(c, len(c.encode())) for c in text)
+
+
+def whatis(desc):
+    """An ASCII description that makewhatis stores whole: unchanged when it
+    fits WHATIS_MAX, else ended before the last clause separator that fits,
+    or at the last space when no clause does, with no bracket left open; a
+    description with neither is cut at the limit."""
+    if roff_len(desc) <= WHATIS_MAX:
+        return desc
+    fit = 0
+    while roff_len(desc[:fit + 1]) <= WHATIS_MAX:
+        fit += 1
+    ends = [m.start() for m in CLAUSE_RE.finditer(desc) if m.start() <= fit]
+    cut = ends[-1] if ends else desc.rfind(" ", 0, fit + 1)
+    head = desc[:max(cut, 0)]
+    for o, c in ("()", "[]"):
+        while head.count(o) > head.count(c):
+            head = head[:head.rfind(o)]
+    return head.rstrip(" ,;:-") or desc[:fit]
+
+
+def name_line(desc):
+    """A row's description as the markdown of a NAME line: ASCII, short
+    enough for apropos to print whole, and every character lowdown would
+    read as markup escaped."""
+    desc = whatis("".join(ASCII_OF.get(c, c) for c in desc))
+    return MD_SPECIAL_RE.sub(r"\\\1", desc)
+
+
+# A section of the book says "this chapter" of itself; under man(1) it is a
+# page, and a reader of kinstall(1) has no chapter in front of them.
+CHAPTER_RE = re.compile(r'\b([Tt])his chapter\b')
+
+
+def man_body(body):
+    """A book section's markdown as a manual page's DESCRIPTION."""
+    return CHAPTER_RE.sub(lambda m: m.group(1) + "his page", body)
+
+
 def man_page(name, sec, desc, body, chapter, date):
-    md = (f"# NAME\n\n{name} \\- {desc}\n\n"
-          f"# DESCRIPTION\n\n{body}\n"
+    md = (f"# NAME\n\n{name} \\- {name_line(desc)}\n\n"
+          f"# DESCRIPTION\n\n{man_body(body)}\n"
           f"# SEE ALSO\n\n**kdos**(7), and the chapter this page is taken "
           f"from, *{DOCROOT}/{chapter}*.\n")
-    return lowdown(["-s", "-tman",
-                    "-M", "title=" + name.upper(),
-                    "-M", "section=" + sec,
-                    "-M", "date=" + date,
-                    "-M", "source=KDOS"], md)
+    return lowdown(MAN_ARGS + ["-M", "title=" + name.upper(),
+                               "-M", "section=" + sec,
+                               "-M", "date=" + date,
+                               "-M", "source=KDOS"], md)
 
 
 def write(path, text):
@@ -350,7 +446,7 @@ def main():
         if name in skip:
             made.append((name, sec))
             continue
-        body = section_text(page, frag)
+        body = section_text(page, frag, os.path.join(docs, "kdos"))
         if body is None:
             missing.append(f"{name}: no section #{frag} in "
                            f"{os.path.relpath(page, docs)}")
@@ -376,8 +472,9 @@ def main():
           "of the book that documents it.\n\n## Chapters\n\n" + toc + "\n\n"
           "# SEE ALSO\n\n" + cmds + "\n")
     write(os.path.join(dest, "usr/share/man/man7/kdos.7"),
-          lowdown(["-s", "-tman", "-M", "title=KDOS", "-M", "section=7",
-                   "-M", "date=" + date, "-M", "source=KDOS"], md))
+          lowdown(MAN_ARGS + ["-M", "title=KDOS", "-M", "section=7",
+                              "-M", "date=" + date, "-M", "source=KDOS"],
+                  md))
     print(f"mkbook: {len(chapters)} chapters, {len(made)} command pages")
 
 

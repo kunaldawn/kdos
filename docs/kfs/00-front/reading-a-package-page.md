@@ -23,9 +23,9 @@ everything it depends on.
 
 A page is numbered by its chapter and its place in it, as in `36.1`, and has a fixed anchor,
 `port-<name>`, so a link to a package from anywhere in the book reaches its page whatever its
-number. The recipes no phase list names are in a chapter of the appendices: those kept on purpose
-in `ports/unbuilt`, such as `texlive-doc`, and KDOS's own programs that a step script compiles
-without kpkg, such as `kdos-installer`, which `10_bootstrap` builds by hand.
+number. A recipe no phase list names would go in a chapter of the appendices, "Ports no phase
+builds": one kept on purpose in `ports/unbuilt`, or a program of KDOS's own that only a step script
+compiles, without kpkg. The tree holds neither, so the book has no such chapter.
 
 ## The three tiers
 

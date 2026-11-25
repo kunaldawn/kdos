@@ -10,6 +10,9 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/no-idle-exit.patch"
+patch -p1 -i "$PORT_SRC/local-names-through-avahi.patch"
+
+export LDFLAGS="$LDFLAGS -Wl,-z,stack-size=8388608"
 
 ./configure \
 	--prefix=/usr \

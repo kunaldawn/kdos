@@ -393,15 +393,15 @@ unless_root "a refused SetLocale is AccessDenied" grep -q "AccessDenied" <<<"$r"
 unless_root "and leaves the shipped file as it was" \
     cmp -s "$W/etc/locale.conf" "$REPO/fs/etc/locale.conf"
 answer locale1.set-locale yes
-r=$(call locale1 SetLocale array:string:LANG=en_GB.UTF-8,LC_TIME=en_DK.UTF-8 boolean:false)
+r=$(call locale1 SetLocale array:string:LANG=en_GB.UTF-8,LC_TIME=de_DE.UTF-8 boolean:false)
 lacks "an authorised SetLocale succeeds" "Error" "$r"
 is "locale.conf is bare NAME=value lines, the shape SDDM reads" \
     "LANG=en_GB.UTF-8
-LC_TIME=en_DK.UTF-8" "$(file locale.conf)"
+LC_TIME=de_DE.UTF-8" "$(file locale.conf)"
 l=$(dbus-send --bus="$ADDR" --print-reply --dest=org.freedesktop.locale1 \
     /org/freedesktop/locale1 org.freedesktop.DBus.Properties.Get \
     string:org.freedesktop.locale1 string:Locale 2>&1)
-has "and Locale reads it back" '"LC_TIME=en_DK.UTF-8"' "$l"
+has "and Locale reads it back" '"LC_TIME=de_DE.UTF-8"' "$l"
 n=$(asked)
 has "a variable given twice is refused" "InvalidArgs" \
     "$(call locale1 SetLocale array:string:LANG=en_GB.UTF-8,LANG=de_DE.UTF-8 boolean:false)"
@@ -409,7 +409,13 @@ has "an unknown variable is refused" "InvalidArgs" \
     "$(call locale1 SetLocale array:string:LD_PRELOAD=/tmp/x.so boolean:false)"
 has "a quote in a value is refused" "InvalidArgs" \
     "$(call locale1 SetLocale 'array:string:LANG=en"GB' boolean:false)"
+has "a language this system does not know is refused" \
+    "not a locale name this system knows" \
+    "$(call locale1 SetLocale array:string:LANG=xx_YY.UTF-8 boolean:false)"
 is "and polkit was asked nothing about any of them" "$n" "$(asked)"
+lacks "plasma-setup's LANG for a language with catalogues and no definition is taken" \
+    "Error" "$(call locale1 SetLocale array:string:LANG=ja_JP.UTF-8 boolean:false)"
+is "and written" "LANG=ja_JP.UTF-8" "$(file locale.conf)"
 call locale1 SetLocale array:string:LANG=C.UTF-8 boolean:false >/dev/null
 is "a new list replaces the old one whole" "LANG=C.UTF-8" "$(file locale.conf)"
 
@@ -446,9 +452,16 @@ is "an explicit layout is kept when the console changes" "gb" \
     "$(prop locale1 X11Layout)"
 call locale1 SetX11Keyboard string:ch string: string:fr string:ctrl:nocaps \
     boolean:true boolean:false >/dev/null
-is "a layout with a variant converts to the console map for both" "fr_CH" \
+is "a layout with a variant converts to the console map for both" "fr_CH-latin1" \
     "$(file keymap)"
 is "and the options read back" "ctrl:nocaps" "$(prop locale1 X11Options)"
+is "and the system kxkbrc carries the layout, variant and options whole" \
+    "[Layout]
+LayoutList=ch
+VariantList=fr
+Options=ctrl:nocaps
+ResetOldOptions=true
+Use=true" "$(file xdg/kxkbrc)"
 n=$(asked)
 has "a layout xkeyboard-config does not list is refused" "InvalidArgs" \
     "$(call locale1 SetX11Keyboard string:xx string: string: string: boolean:false boolean:false)"
@@ -464,6 +477,31 @@ r=$(call locale1 SetX11Keyboard string:us string: string: string: boolean:false 
 unless_root "a refused SetX11Keyboard is AccessDenied" grep -q "AccessDenied" <<<"$r"
 unless_root "and xkb.conf keeps the layout it had" \
     grep -qx "XKBLAYOUT=ch" "$W/etc/kdos/xkb.conf"
+unless_root "and so does the system kxkbrc" \
+    grep -qx "LayoutList=ch" "$W/etc/xdg/kxkbrc"
+
+# THE SYSTEM kxkbrc FOLLOWS EVERY LAYOUT CHANGE. The installer's copy names
+# the layout picked at install time; on an OEM machine plasma-setup picks
+# another through SetX11Keyboard, and a kxkbrc left behind would outrank it
+# in the session and at the lock screen.
+answer locale1.set-keyboard yes
+printf '[Layout]\nLayoutList=us\nVariantList=\nUse=true\n' > "$W/etc/xdg/kxkbrc"
+r=$(call locale1 SetX11Keyboard string:de string: string: string: boolean:false boolean:false)
+lacks "plasma-setup's SetX11Keyboard de succeeds" "Error" "$r"
+is "and replaces the installer's kxkbrc with the new layout" \
+    "[Layout]
+LayoutList=de
+VariantList=
+Use=true" "$(file xdg/kxkbrc)"
+call locale1 SetX11Keyboard string: string: string: string: boolean:false boolean:false >/dev/null
+is "an empty layout removes the system kxkbrc" "<absent>" "$(file xdg/kxkbrc)"
+call locale1 SetVConsoleKeyboard string:us string: boolean:false boolean:false >/dev/null
+is "a console change without convert writes no kxkbrc" "<absent>" "$(file xdg/kxkbrc)"
+r=$(call locale1 SetVConsoleKeyboard string:de-latin1 string: boolean:true boolean:false)
+lacks "SetVConsoleKeyboard de-latin1 with convert succeeds" "Error" "$r"
+has "and writes the converted layout to the system kxkbrc" "LayoutList=de" \
+    "$(file xdg/kxkbrc)"
+has "with Use=true" "Use=true" "$(file xdg/kxkbrc)"
 
 if [ "$ROOT" = 1 ]; then
     is "root's calls were answered without asking polkit once" "0" "$(asked)"

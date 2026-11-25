@@ -17,8 +17,8 @@
 #                           --key FILE [--version V]
 #                           [--prev DIR [--prev-root DIR]]... [--level N]
 #
-#   --root       the root the ISO's squashfs is made from, exactly: what the
-#                image holds is what a fresh install holds
+#   --root       the root the ISO's squashfs is made from: what the image
+#                holds is what a fresh install holds
 #   --upper      the image stage's upper layer, build/image-upper: the root
 #                is then that layer over --root (build/fs), mounted
 #                read-only in this run's own mount namespace, which is the
@@ -48,6 +48,20 @@
 #   --prev-root  that release's root, unpacked: with it the delta carries a
 #                changed file as a zstd patch against the old one, without
 #                it every changed file whole
+#
+# THE IMAGE IS THE ISO'S ROOT, LAYER FOR LAYER: a layer of this run's own
+# goes on top, with /mnt and /media as 110_iso.sh adds them, an empty
+# /boot/efi, and a whiteout over /kdos and /build, which it excludes. The
+# image itself carries /boot/efi because the apply of a machine still
+# running v0.2 makes no fstab mount points: it deletes every path the
+# manifest does not name and creates every directory it does, so a slot
+# written from an image without it boots with no ESP mounted and rolls
+# back. The recipe tree is copied into that layer and owned by root, as the
+# ISO's /ports is: build/image-ports belongs to the builder, and an image
+# takes every owner it reads, so a slot written from it would hand / and
+# /ports to the first account. `kdos image make` refuses a root whose /,
+# top-level directories or anything under etc, usr, boot or ports is not
+# root's.
 #
 # THE FORMAT CODE IS THIS CHECKOUT'S. kdos-tools is compiled here from
 # src/system/kdos-tools, the code every machine runs to read the image, and
@@ -97,7 +111,7 @@ fi
 # THE STAGE IS MOUNTED IN A NAMESPACE OF THIS RUN'S OWN, as script/chroot/exec.sh
 # mounts it for each 70_image step: nothing outside sees it, and it goes with
 # the run. KDOS_RELIMG_NS marks the re-executed copy.
-if [ -n "$UPPER" ] && [ -z "${KDOS_RELIMG_NS:-}" ]; then
+if [ -z "${KDOS_RELIMG_NS:-}" ]; then
     KDOS_RELIMG_NS=1 exec unshare --mount --propagation private -- bash "$0" "${ORIG[@]}"
 fi
 [ -f "$KEY" ] && [ -f "${KEY%.key}.pub" ] ||
@@ -106,11 +120,20 @@ fi
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 TOOLS=$(mktemp -d "${TMPDIR:-/tmp}/kdos-release-image.XXXXXX")
 trap 'umount "$TOOLS/stage" 2>/dev/null; rm -rf "$TOOLS"' EXIT
+LAYER=$TOOLS/layer
+mkdir -m 0755 "$LAYER" "$TOOLS/stage"
+install -d -m 0755 -o 0 -g 0 "$LAYER/mnt" "$LAYER/media" "$LAYER/boot" "$LAYER/boot/efi"
+mknod "$LAYER/kdos" c 0 0
+mknod "$LAYER/build" c 0 0
+lower=$(readlink -f "$ROOT")
 if [ -n "$UPPER" ]; then
-    mkdir "$TOOLS/stage"
-    mount -t overlay overlay -o "ro,lowerdir=$(readlink -f "$PORTS"):$(readlink -f "$UPPER"):$(readlink -f "$ROOT")" "$TOOLS/stage"
-    ROOT=$TOOLS/stage
+    cp -a "$PORTS/ports" "$LAYER/ports"
+    chown -R 0:0 "$LAYER/ports"
+    lower=$(readlink -f "$UPPER"):$lower
 fi
+chown 0:0 "$LAYER"
+mount -t overlay overlay -o "ro,lowerdir=$LAYER:$lower" "$TOOLS/stage"
+ROOT=$TOOLS/stage
 
 L="$HERE/src/libs"
 ${CC:-cc} -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \

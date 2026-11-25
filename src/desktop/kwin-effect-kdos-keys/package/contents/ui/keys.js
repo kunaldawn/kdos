@@ -90,15 +90,49 @@ function scriptOf(component, action) {
     return "";
 }
 
-// One row per shortcut that has a key. `infos` is allShortcutInfos() of
-// every component, each entry the unwrapped KGlobalShortcutInfo struct:
-// [action, action text, component, component text, context, context text,
-// keys, default keys]. A desktop entry's own key is its `_launch` action and
-// reads as the application's name; its other actions are prefixed with it,
-// so "Capture Rectangular Region" says which program captures. `loaded`
-// maps each script of scriptActions to whether KWin has it loaded; a script
-// it does not name counts as loaded, so an unanswered question about one
-// never hides a key that works.
+// The number of modifiers a keyText chord starts with. They are counted by
+// name in keyText's order, never by "+": the Plus key's own name is "+", and
+// "Meta++" is one modifier and a key.
+function modifierCount(text) {
+    var n = 0;
+    var at = 0;
+    for (var i = 0; i < modifiers.length; i++) {
+        var name = modifiers[i][1] + "+";
+        if (text.substr(at, name.length) === name && text.length > at + name.length) {
+            n++;
+            at += name.length;
+        }
+    }
+    return n;
+}
+
+// The order of one action's keys on its row: a default key before one a
+// person added, then the chord with fewer modifiers, then by text.
+// kglobalacceld hands the keys over in no fixed order, so a row sorted any
+// other way would show its chips in a different order in every session.
+function keyOrder(a, b, defaults) {
+    var da = defaults.indexOf(a) < 0 ? 1 : 0;
+    var db = defaults.indexOf(b) < 0 ? 1 : 0;
+    if (da !== db) {
+        return da - db;
+    }
+    var pa = modifierCount(a);
+    var pb = modifierCount(b);
+    if (pa !== pb) {
+        return pa - pb;
+    }
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// One row per shortcut that has a key, its keys in keyOrder. `infos` is
+// allShortcutInfos() of every component, each entry the unwrapped
+// KGlobalShortcutInfo struct: [action, action text, component, component
+// text, context, context text, keys, default keys]. A desktop entry's own
+// key is its `_launch` action and reads as the application's name; its
+// other actions are prefixed with it, so "Capture Rectangular Region" says
+// which program captures. `loaded` maps each script of scriptActions to
+// whether KWin has it loaded; a script it does not name counts as loaded,
+// so an unanswered question about one never hides a key that works.
 function rows(infos, rules, loaded) {
     var out = [];
     for (var i = 0; i < infos.length; i++) {
@@ -107,6 +141,7 @@ function rows(infos, rules, loaded) {
             continue;
         }
         var keys = [];
+        var defaults = (info[7] || []).map(keyText);
         var raw = info[6] || [];
         for (var k = 0; k < raw.length; k++) {
             var t = keyText(raw[k]);
@@ -114,6 +149,9 @@ function rows(infos, rules, loaded) {
                 keys.push(t);
             }
         }
+        keys.sort(function (a, b) {
+            return keyOrder(a, b, defaults);
+        });
         if (!keys.length) {
             continue;
         }

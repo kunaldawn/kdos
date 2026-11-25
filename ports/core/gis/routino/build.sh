@@ -15,3 +15,4 @@ make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= HAVE_SWIG= \
 	CFLAGS="$_cflags" LDFLAGS="$_ldflags"
 make prefix=/usr docdir=/usr/share/doc/routino LDFLAGS_LDSO= HAVE_SWIG= \
 	CFLAGS="$_cflags" LDFLAGS="$_ldflags" DESTDIR=$PKG install
+install -Dm644 agpl-3.0.txt "$PKG/usr/share/licenses/$name/agpl-3.0.txt"

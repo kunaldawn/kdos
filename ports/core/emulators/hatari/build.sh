@@ -21,6 +21,7 @@ cmake .. -G Ninja \
 ninja
 DESTDIR=$PKG ninja install
 cd ..
+install -Dm644 gpl.txt "$PKG/usr/share/licenses/$name/gpl.txt"
 
 test -x "$PKG/usr/bin/hatariui"
 

@@ -35,12 +35,18 @@
 # An id whose candidate port is not fetched yet is UNVERIFIED: reported, and a
 # failure only under --strict. An id no port accounts for fails.
 #
-# The list itself is held to its format: the three groups the specification
+# /etc/xdg/mimeapps.list is checked beside it: it holds the defaults that are
+# not a desktop application's and the removed associations KDOS ships.
+#
+# Each list is held to its format: the three groups the specification
 # defines, a MIME type or scheme handler as every key, a key once per group,
-# and every value a ;-separated list of desktop ids.
+# and every value a ;-separated list of desktop ids. An added or removed
+# association is read by KService and GLib only from a list named
+# mimeapps.list, so either group in a desktop-named list (<desktop>-mimeapps.list,
+# such as kde-mimeapps.list) fails: it would ship as a removal nothing reads.
 #
 # Exit 0 every id installed, 1 an id nothing installs, 2 a list that does not
-# parse, 3 no list ships at all.
+# parse, 3 no kde-mimeapps.list ships (unless --list names the lists).
 
 import argparse
 import glob
@@ -50,6 +56,7 @@ import subprocess
 import sys
 
 LIST = "kde-mimeapps.list"
+SYSTEM_LIST = "mimeapps.list"
 
 # Ids whose words do not name the port that installs them, measured from the
 # port's source: the resolver adds the port to the id's candidates.
@@ -63,9 +70,10 @@ MIME_KEY = re.compile(r"^[a-z0-9][a-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+_-]*$")
 
 def find_lists(root):
     if root:
-        cands = [os.path.join(root, "etc/xdg", LIST), os.path.join(root, "usr/share/kdos/xdg", LIST)]
+        cands = [os.path.join(root, "etc/xdg", SYSTEM_LIST), os.path.join(root, "etc/xdg", LIST),
+                 os.path.join(root, "usr/share/kdos/xdg", LIST)]
     else:
-        cands = ["fs/etc/xdg/" + LIST, "fs/usr/share/kdos/xdg/" + LIST]
+        cands = ["fs/etc/xdg/" + SYSTEM_LIST, "fs/etc/xdg/" + LIST, "fs/usr/share/kdos/xdg/" + LIST]
         cands += sorted(glob.glob("src/*/*/**/xdg/" + LIST, recursive=True))
     return [p for p in cands if os.path.isfile(p)]
 
@@ -82,6 +90,9 @@ def parse_list(path):
                 cur = s[1:-1]
                 if cur not in GROUPS:
                     errors.append("%s:%d: [%s] is not a group the specification defines" % (path, n, cur))
+                elif cur != GROUPS[0] and os.path.basename(path).endswith("-" + SYSTEM_LIST):
+                    errors.append("%s:%d: [%s] in a desktop-named list is ignored by KService and GLib;"
+                                  " it goes in /etc/xdg/mimeapps.list" % (path, n, cur))
                 groups.setdefault(cur, {})
                 continue
             if cur is None:
@@ -262,7 +273,7 @@ def main():
             uses.setdefault(i, []).append("named on the command line")
     else:
         lists = a.list or find_lists(a.root)
-        if not lists:
+        if not a.list and not any(os.path.basename(p) == LIST for p in lists):
             print("mimecheck: no %s ships (looked in %s)" %
                   (LIST, "the tree's etc/xdg and usr/share/kdos/xdg" if a.root
                    else "fs/ and src/*/*/**/xdg"), file=sys.stderr)

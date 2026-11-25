@@ -27,6 +27,7 @@ TestCase {
         compare(r[0].id, "games");
         compare(r[2].installed, true);
         compare(r[3].size, null);
+        compare(r[0].binhost, true);
         compare(Groups.rows(null).length, 0);
         compare(Groups.rows("text").length, 0);
     }
@@ -52,6 +53,19 @@ TestCase {
         verify(!Groups.noIndex(Groups.rows(sample)));
         verify(Groups.noIndex(Groups.rows([{ id: "a", size: null }, { id: "b", size: null }])));
         verify(!Groups.noIndex([]));
+    }
+
+    // Only the command's explicit false means no binhost is named; a row
+    // without the key, or with a size, leaves the Refresh advice standing.
+    function test_noBinhost() {
+        const none = [{ id: "a", size: null, binhost: false }, { id: "b", size: null, binhost: false }];
+        verify(Groups.noBinhost(Groups.rows(none)));
+        verify(Groups.noIndex(Groups.rows(none)));
+        verify(!Groups.noBinhost(Groups.rows([{ id: "a", size: null }, { id: "b", size: null }])));
+        verify(!Groups.noBinhost(Groups.rows([{ id: "a", size: null, binhost: false }, { id: "b", size: 10, binhost: false }])));
+        verify(!Groups.noBinhost(Groups.rows([{ id: "a", size: null, binhost: true }])));
+        verify(!Groups.noBinhost(Groups.rows(sample)));
+        verify(!Groups.noBinhost([]));
     }
 
     function test_bytes() {

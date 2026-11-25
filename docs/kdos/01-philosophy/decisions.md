@@ -106,7 +106,7 @@ The compositor is KWin, Plasma's own, built from its release tarball with the op
 and a small number of carried patches. KDOS does not fork it. KWin's behaviour is set through its
 configuration (defaults for `kwinrc`, `kwinrulesrc` and `kglobalshortcutsrc` in
 `/usr/share/kdos/xdg`), through KWin scripts and effects, and through window rules; what none of
-those reaches is a `.patch` with a `Subject:` line, offered upstream when it is written.
+those reaches is a `.patch` with a `Subject:` line, to be offered upstream.
 
 A fork of the compositor was the alternative, and it would let KDOS change anything. It was not
 taken because a fork stops receiving upstream's fixes, and a compositor's fixes are security and
@@ -128,8 +128,8 @@ Two needs show where the line falls:
   desktop-shell interfaces and lets a box's profile grant one back by name.
 
 The cost is a rebase of every patch at every Plasma release, and a set of KDOS plugins tied to
-KWin's internal interfaces that are rebuilt with it. Each patch's merge request is named in the KWin
-port's notes, and a patch upstream accepts is dropped at the release that carries it.
+KWin's internal interfaces that are rebuilt with it. Each patch is to be offered upstream, its merge request named in the KWin
+port's notes once opened, and a patch upstream accepts is dropped at the release that carries it.
 
 ## SDDM with a Wayland greeter
 
@@ -196,7 +196,7 @@ The installation medium carries the *base*: the ports [`ports/base`](../../../po
 their dependency closure, which `script/lib/imageset.py` computes over each recipe's `depends =`
 line without following it into a compiler `ports/buildonly` lists. That is the Plasma session, the
 core KDE applications, Firefox ESR, networking, printing and scanning, the box stack, the
-self-hosting toolchain and every program of KDOS's own, about 1,000 of the about 2,430 packages a
+self-hosting toolchain and every program of KDOS's own, about 900 of the about 2,440 packages a
 build makes. The build compiles every port all the same, and the release publishes every package
 it made on its signed [binhost](../06-reference/glossary.md#binhost), so the rest of the native
 ports (all of KDE Gear, LibreOffice, GIMP, Blender, Wine and the other applications
@@ -893,9 +893,11 @@ package that was built on the machine is built again in the slot, and the rest a
 `kdos update apply --source` builds the release's signed recipe tree on the machine instead.
 
 The new slot is kept only once a boot of it has finished `rcS` and then had a Plasma session (or,
-on a machine where nobody logs in, the login screen) up and answering for a minute; `kdos-sysupdated`
+on a machine SDDM does not log in automatically, the login screen) up and answering for a minute; `kdos-sysupdated`
 marks it good only when both have happened. A trial that never gets that far uses up its attempts
-and the next boot falls back to the slot that worked.
+and the next boot falls back to the slot that worked. Waiting for a session on every machine would
+roll a good release back whenever its one trial boot is left at the login screen, so a desktop that
+breaks only after a login is kept, and System Versions starts the other slot by hand.
 
 Building every update on the machine was the alternative, and it needs no published binaries at
 all: one signed recipe tree is the whole trust root, and every source is checked against a hash it

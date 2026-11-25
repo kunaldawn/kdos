@@ -80,7 +80,7 @@ profile is read once per client, and `wp_security_context_manager_v1` and
 `kde_lockscreen_overlay_v1` are never granted. The path is `$HOME/.config`, not
 `$XDG_CONFIG_HOME`, because `kdos-appbox` writes it there and the two must never disagree. It keeps
 the context's sandbox engine and instance id on the client connection, which a grant source needs
-and which upstream drops; that half is proposed upstream, the KDOS profile reader is not.
+and which upstream drops; that half is to be proposed upstream, the KDOS profile reader is not.
 
 `sandbox-badge.patch` gives a window three constant properties, `sandboxEngine`, `sandboxAppId`
 and `sandboxInstanceId`, read from its client's security context, and passes them to the
@@ -90,7 +90,7 @@ box's engine carries which boundary held, `io.kdos.appbox+private` or `io.kdos.a
 is how the glyph tells a confined box from one that could reach past its tag. It is applied after
 `sandbox-policy.patch`, whose engine and instance id it reads, and needs the
 [kdecoration](#port-kdecoration) and [breeze](#port-breeze) patches of the same name: against an
-unpatched kdecoration KWin does not compile. It is proposed upstream with them (it serves Flatpak's
+unpatched kdecoration KWin does not compile. It is to be proposed upstream with them (it serves Flatpak's
 `org.flatpak` engine unchanged).
 
 `kdos-crt.patch` adds `kdos_crt`, the effect behind Phosphor mode, as a built-in effect: it is
@@ -102,7 +102,7 @@ curvature, a faint floor in the accent, a 400 ms degauss when the colour scheme'
 and a collapse to a line and a dot when the session locks or quits. It is off by default, refuses a
 software renderer and HDR outputs, gives screenshots, screencasts and the colour picker the plain
 picture, stands aside while zoom or the magnifier runs, and with `Fullscreen=false` gives an active
-fullscreen window's output back to direct scanout. It is KDOS's own and not upstream; KDOS proposes
+fullscreen window's output back to direct scanout. It is KDOS's own and not upstream; KDOS is to propose
 instead a generic "custom screen shader" effect that loads a GLSL file and its uniforms, after
 which this shader ships as data and the patch is dropped. The effect interface moves between Plasma
 minor releases, so the patch is rebased at each one. It shares no file with the two sandbox

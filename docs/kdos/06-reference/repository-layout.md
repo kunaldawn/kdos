@@ -56,8 +56,12 @@ kdos/
 │   ├── unbuilt                the recipes no phase builds on purpose, one name per line
 │   ├── base                   the seeds of what the installation medium carries
 │   ├── buildonly              ports the medium's closure does not follow a dependency into
+│   ├── buildheaders           the ports of buildonly whose headers other packages' headers
+│   │                          include; a build here installs them prebuilt
 │   ├── groups                 the native application groups `kdos update install` and the
 │   │                          installer offer; staged into the image as /ports/groups
+│   ├── RELEASE                the release notes of the version being built, at most 16 KiB;
+│   │                          staged as /ports/RELEASE for `kdos update notes` and What's New
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
@@ -94,9 +98,9 @@ kdos/
 │   │   │   └── catalogue          every installable application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
 │   │   ├── kdos-boxsock/      one tagged Wayland socket per box launcher
-│   │   ├── kdos-doc/          this book on the image; `kdos` and `screenshots` link to docs/
-│   │   ├── kdos-kfs/          KDOS from Scratch on the image; `docs` links to docs/kfs,
-│   │   │                      `book` to script/book
+│   │   ├── kdos-doc/          this book, on the image; `kdos` and `screenshots` link to docs/
+│   │   ├── kdos-kfs/          KDOS from Scratch, installed with `sudo kdos update install kdos-kfs`;
+│   │   │                      `docs` links to docs/kfs, `book` to script/book
 │   │   ├── kdos-pack/         build, sign, index and diff packs
 │   │   └── kdos-tools/        one binary: the kdos command, the ksvc supervisor, kdos-getty,
 │   │                          kdos-bootctl and the other small system tools
@@ -258,7 +262,7 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
 | `ports/core/` | Upstream software: somebody else's source, Plasma, Frameworks and Gear among it | about 2,400 | `<shelf>/<name>/`, on 102 shelves |
-| `src/system/` | The package manager, the `kdos` command and its services, packs, boxes and the box socket, the installer, and the two books on the image (`kdos-doc`, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 8 | `<name>/` |
+| `src/system/` | The package manager, the `kdos` command and its services, packs, boxes and the box socket, the installer, and the two books (`kdos-doc`, the KDOS book the image carries, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, *KDOS from Scratch*, which `sudo kdos update install kdos-kfs` adds, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 8 | `<name>/` |
 | `src/art/` | The identity generators and what they make: icons, wallpapers, sounds, the login theme, the add-ons; the boot splash; the demo | 8 | `<name>/` |
 | `src/desktop/` | KDOS's parts of the Plasma desktop, in Qt and QML (and two in C): settings pages, widgets, KWin effects and scripts, the Discover backend, the runner, the graphical installer | 21 | `<name>/` |
 | `src/daemons/` | Root daemons whose client is the desktop account | 6 | `<name>/` |
@@ -335,17 +339,18 @@ and any recipe at another depth, and fails the orphan sweep in
 `script/phases/70_image/040_orphans.sh` when its list of repositories leaves out an area that holds
 a recipe, since the sweep deletes from the image every package whose port it cannot find.
 
-Two directories under `src/system/` are built by `10_bootstrap` scripts rather than through a phase
-list, because that phase runs before the package manager exists:
+Two directories under `src/system/` are built by `10_bootstrap` scripts, because that phase runs
+before the package manager exists:
 
 - `src/system/kdos-kpkg/` has no `kpkgbuild`. The package manager cannot be built by the package
   manager, so `script/phases/10_bootstrap/120_kpkg.sh` compiles it directly and installs it as
   `/usr/bin/kpkg` with four symlinks beside it: `kpkgadd`, `kpkgbuild`, `kpkgdel` and
   `kpkgdepends`.
-- `src/system/kdos-installer/` has a recipe, but no phase list names it.
-  `script/phases/10_bootstrap/130_kinstall.sh` compiles `kinstall` from the same directory, taking
-  every `.c` file by glob. The recipe's `build.sh` also compiles `src/system/kinstall-core`, the
-  backend, which has no recipe of its own.
+- `src/system/kdos-installer/` has a recipe, which `41_system`'s list names, and
+  `script/phases/10_bootstrap/130_kinstall.sh` compiles `kinstall` from the same directory first,
+  taking every `.c` file by glob, for the trees before that phase. The package adopts the file the
+  step installed. Both builds also compile `src/system/kinstall-core`, the backend, which has no
+  recipe of its own.
 
 ## The script directory
 
@@ -442,8 +447,9 @@ once the stamp is rewritten. `110_iso.sh` also copies both onto a medium made wi
 `KDOS_ISO_SOURCES=1`. `testing/` is
 mounted for the tree gates `70_image` runs (`087_gates.sh`): they can stop a build, and nothing in
 `testing/` is installed.
-`docs/` is mounted for two ports, `kdos-doc` and `kdos-kfs`, which render the two books onto the
-image; an edit to `docs/kdos` rebuilds the first and no other port, and an edit to `docs/kfs` the
+`docs/` is mounted for two ports, `kdos-doc` and `kdos-kfs`, which render the two books into
+packages: `kdos-doc`'s is on the image, and `kdos-kfs` is installed with
+`sudo kdos update install kdos-kfs`; an edit to `docs/kdos` rebuilds the first and no other port, and an edit to `docs/kfs` the
 second. The build writes only under `build/`; `build/fs/` is the target root
 filesystem it grows phase by phase.
 

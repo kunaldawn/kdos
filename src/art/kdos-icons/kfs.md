@@ -58,6 +58,11 @@ release that redraws those icons is shown in its older drawing until the script 
 `KDOS-Light` needs none: `paper`'s
 accent and status colours are dark, and the white glyph holds on them.
 
+Breeze's own licence file is in `breeze-icons`, which builds after this port, so the port
+carries the LGPL-3.0 and GPL-3.0 texts in `licenses/` and the last lines of `build.sh` install
+them; a build outside a KDOS tree, such as `plasmatest`'s container, has no other copy to read.
+`105_ports.sh` links the MIT text beside them.
+
 KIconLoader tries a name and then its dash-stripped forms in each theme before it moves to the
 next, so a name a theme above `hicolor` answers in a shorter form never reaches `hicolor`:
 `start-here-kdos` would be answered by AdwaitaLegacy's `start-here`, GNOME's foot, under Adwaita,
@@ -70,4 +75,7 @@ filled badge, and a copy of the emblem in `KDOS` would answer `checkmark` and
 
 Adwaita comes after Breeze in both themes' `Inherits` for the symbolic names only Adwaita draws,
 such as `sidebar-show-right-symbolic`, which GTK programs ask for; without it they draw the
-missing-image icon.
+missing-image icon, and every KDE program logs `Icon theme "Adwaita" not found`. The recipe does
+not name `adwaita-icon-theme` in `depends`: this port builds in `41_system`, and Adwaita's `gtk3`
+puts it in a later phase, so `phaseclosure` would refuse the edge. `ports/base` names
+`adwaita-icon-theme` instead, which is what puts it on every image beside these themes.

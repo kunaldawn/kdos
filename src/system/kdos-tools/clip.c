@@ -23,7 +23,11 @@
 
 #include "kdos-tools.h"
 
-/* See kdos-tools.h. */
+/*
+ * See kdos-tools.h. `wl-copy` with no text argument reads its stdin to EOF,
+ * then forks the copy that serves the selection and the first one exits, so
+ * the wait here ends once the text is taken and not when it is replaced.
+ */
 int kdt_clip_put(const char *text)
 {
 	if (!text)
@@ -35,10 +39,8 @@ int kdt_clip_put(const char *text)
 	KbArgv a = { 0 };
 
 	kb_argv_add(&a, "wl-copy");
-	kb_argv_add(&a, "--");
-	kb_argv_add(&a, text);
 	kb_argv_end(&a);
-	return kb_run(&a) == 0;
+	return kb_run_feed(&a, text, strlen(text)) == 0;
 }
 
 /*

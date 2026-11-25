@@ -29,6 +29,7 @@
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <QDBusMessage>
 #include <QDir>
 #include <QFile>
 #include <QProcess>
@@ -252,6 +253,51 @@ private Q_SLOTS:
         QVERIFY(!m_kcm->isTrialArmed());
     }
 
+    /* A refused Try is the news only until a trial is armed by another
+     * route: the server's own State change clears it, and a refusal about
+     * the channel is not touched by the trial at all. */
+    void trialRefusalClearsWhenArmedElsewhere()
+    {
+        begin();
+        write(u"deny"_s, u"Try\n"_s);
+        QTRY_VERIFY(slot(1)->isBootable());
+        m_kcm->startNextTime(u"b"_s);
+        QTRY_COMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        QVERIFY(m_kcm->message().contains(u"administrator's password"_s));
+
+        /* An unrelated update leaves the refusal in place. */
+        m_kcm->client()->refresh();
+        QTest::qWait(300);
+        QVERIFY(m_kcm->message().contains(u"administrator's password"_s));
+
+        write(u"deny"_s, QString());
+        QDBusMessage call = QDBusMessage::createMethodCall(u"io.kdos.Slots1"_s, Kdos::SlotsClient::objectPath(), Kdos::SlotsClient::interfaceName(), u"Try"_s);
+        call << u"b"_s;
+        const QDBusMessage reply = QDBusConnection::sessionBus().call(call);
+        QVERIFY2(reply.type() == QDBusMessage::ReplyMessage, qPrintable(reply.errorMessage()));
+
+        QTRY_VERIFY(m_kcm->isTrialArmed());
+        QTRY_VERIFY(m_kcm->message().isEmpty());
+        QCOMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::NoMessage));
+    }
+
+    void channelRefusalOutlivesATrial()
+    {
+        begin();
+        write(u"deny"_s, u"SetChannel\n"_s);
+        QTRY_VERIFY(m_kcm->isConfigured());
+        m_kcm->setChannelKind(u"folder"_s);
+        m_kcm->setChannelLocation(u"/srv/kdos"_s);
+        m_kcm->save();
+        QTRY_COMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        const QString refusal = m_kcm->message();
+
+        m_kcm->client()->requestTry(u"b"_s);
+        QTRY_VERIFY(m_kcm->isTrialArmed());
+        QTest::qWait(300);
+        QCOMPARE(m_kcm->message(), refusal);
+    }
+
     void channelIsASettingAppliedBySave()
     {
         begin();
@@ -338,6 +384,33 @@ private Q_SLOTS:
         QVERIFY(!read(u"calls.log"_s).contains(u"SetChannel"_s));
     }
 
+    /* System Settings' wrapper clears needsSave after save() returns
+     * (KCModuleQml::save); a refused address keeps the edit unsaved
+     * through that, so Reset and the title's '*' still offer it. */
+    void refusedChannelStaysUnsaved()
+    {
+        begin();
+        QTRY_VERIFY(m_kcm->isConfigured());
+        m_kcm->setChannelKind(u"address"_s);
+        m_kcm->setChannelLocation(u"http://example.com/kdos"_s);
+        QCOMPARE(m_kcm->channelError(), u"Updates are read from an https or file address."_s);
+        QVERIFY(m_kcm->needsSave());
+        m_kcm->save();
+        m_kcm->setNeedsSave(false);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        QTRY_VERIFY(m_kcm->needsSave());
+        QTest::qWait(200);
+        QVERIFY(m_kcm->needsSave());
+        QCOMPARE(m_kcm->channelLocation(), u"http://example.com/kdos"_s);
+        QVERIFY(!read(u"calls.log"_s).contains(u"SetChannel"_s));
+
+        /* Reset brings back the saved channel. */
+        m_kcm->load();
+        QTRY_COMPARE(m_kcm->channelKind(), u"release"_s);
+        QVERIFY(m_kcm->channelLocation().isEmpty());
+        QTRY_VERIFY(!m_kcm->needsSave());
+    }
+
     void composeChannel_data()
     {
         QTest::addColumn<QString>("kind");
@@ -351,7 +424,7 @@ private Q_SLOTS:
         QTest::newRow("folder space") << u"folder"_s << u"/media/my stick"_s << u"/media/my stick"_s << false;
         QTest::newRow("folder empty") << u"folder"_s << QString() << QString() << false;
         QTest::newRow("https") << u"address"_s << u"https://example.org/kdos"_s << u"https://example.org/kdos"_s << true;
-        QTest::newRow("http") << u"address"_s << u"http://10.0.0.2/kdos"_s << u"http://10.0.0.2/kdos"_s << true;
+        QTest::newRow("http") << u"address"_s << u"http://10.0.0.2/kdos"_s << u"http://10.0.0.2/kdos"_s << false;
         QTest::newRow("file") << u"address"_s << u"file:///srv/kdos"_s << u"file:///srv/kdos"_s << true;
         QTest::newRow("ftp") << u"address"_s << u"ftp://example.org/kdos"_s << u"ftp://example.org/kdos"_s << false;
         QTest::newRow("no host") << u"address"_s << u"https:///kdos"_s << u"https:///kdos"_s << false;
@@ -394,6 +467,34 @@ private Q_SLOTS:
         QVERIFY(m_kcm->isOnTrial());
     }
 
+    /* The other slot picked at the boot menu, nothing on trial: it runs for
+     * this boot alone, and is never called installed and not in use. */
+    void pickedAtTheMenuRunsForThisBootOnly()
+    {
+        begin();
+        write(u"cmdline"_s, u"root=UUID=9b2e4d70-61c3-4f8a-8e22-7c5a1f0b3d02 kdos_slot=b\n"_s);
+        m_kcm->load();
+        QTRY_VERIFY(slot(1)->isRunning());
+        QCOMPARE(slot(1)->state(), u"visiting"_s);
+        QCOMPARE(slot(1)->stateText(), u"Running for this boot only: the computer starts slot A next time"_s);
+        QVERIFY(!slot(0)->isRunning());
+        QCOMPARE(slot(0)->stateText(), u"Confirmed: the version this computer starts"_s);
+    }
+
+    /* A slot whose trial failed, started again by hand at the boot menu, is
+     * the root in use for this boot: the page says what kdos-bootctl says. */
+    void failedSlotPickedAtTheMenuRunsForThisBootOnly()
+    {
+        begin();
+        write(u"rolledback"_s, u"b\n"_s);
+        write(u"cmdline"_s, u"root=UUID=9b2e4d70-61c3-4f8a-8e22-7c5a1f0b3d02 kdos_slot=b\n"_s);
+        m_kcm->load();
+        QTRY_VERIFY(slot(1)->isRunning());
+        QVERIFY(slot(1)->isFailed());
+        QCOMPARE(slot(1)->state(), u"visiting"_s);
+        QCOMPARE(slot(1)->stateText(), u"Running for this boot only: the computer starts slot A next time"_s);
+    }
+
     void rollbackIsReported()
     {
         begin();
@@ -403,6 +504,19 @@ private Q_SLOTS:
         QCOMPARE(slot(1)->state(), u"failed"_s);
         QCOMPARE(m_kcm->rolledBackTitle(), u"KDOS 0.2.13 (slot B)"_s);
         QVERIFY(slot(1)->stateText().contains(u"went back"_s));
+    }
+
+    /* A trial set aside at the boot menu is the person's choice: the slot
+     * says so, and nothing reports a version that did not start. */
+    void abandonedTrialIsNotAFailure()
+    {
+        begin();
+        write(u"abandoned"_s, u"b\n"_s);
+        m_kcm->load();
+        QTRY_COMPARE(slot(1)->state(), u"abandoned"_s);
+        QVERIFY(!slot(1)->isFailed());
+        QVERIFY(m_kcm->rolledBackTitle().isEmpty());
+        QCOMPARE(slot(1)->stateText(), u"Set aside: you started the other version from the boot menu"_s);
     }
 
     void updateJobIsShown()
@@ -443,6 +557,59 @@ private Q_SLOTS:
         write(u"error"_s, u"kpkg: signature check failed\n"_s);
         m_kcm->load();
         QTRY_COMPARE(m_kcm->lastError(), u"kpkg: signature check failed"_s);
+    }
+
+    /* An update stopped part way through slot B: its root is neither the
+     * old version nor the new one, so nothing offers to start it. */
+    void incompleteSlotIsNotOffered()
+    {
+        begin();
+        write(u"unfilled"_s, u"b\n"_s);
+        m_kcm->load();
+        QTRY_COMPARE(slot(1)->state(), u"incomplete"_s);
+        QVERIFY(slot(1)->isPresent());
+        QVERIFY(!slot(1)->isBootable());
+        QCOMPARE(slot(1)->title(), u"Slot B"_s);
+        QVERIFY(slot(1)->versionText().isEmpty());
+        QCOMPARE(slot(1)->stateText(), u"Incomplete"_s);
+        QVERIFY(!slot(1)->reason().isEmpty());
+
+        m_kcm->startNextTime(u"b"_s);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::SystemVersionsModule::Error));
+        QCOMPARE(m_kcm->message(), slot(1)->reason());
+        QVERIFY(!read(u"calls.log"_s).contains(u"Try"_s));
+    }
+
+    /* A server that marks the slot only by `state` is read the same way. */
+    void incompleteStateAloneIsEnough()
+    {
+        Kdos::SlotInfo s(u"b"_s);
+        s.update({{u"present"_s, true},
+                  {u"version"_s, u"0.2.1"_s},
+                  {u"title"_s, u"KDOS 0.2.1 (slot B)"_s},
+                  {u"bootable"_s, true},
+                  {u"reason"_s, u"An update stopped while writing this slot."_s},
+                  {u"state"_s, u"incomplete"_s}});
+        QCOMPARE(s.state(), u"incomplete"_s);
+        QVERIFY(!s.isBootable());
+        QCOMPARE(s.title(), u"Slot B"_s);
+        /* The page's sentence names the command that refills the slot,
+         * whatever reason the server sends. */
+        QVERIFY(s.reason().contains(u"run kdos update apply --mount as root"_s));
+    }
+
+    /* Installed with one system slot: the boot state names only slot A. */
+    void oneSlotInstallIsConfigured()
+    {
+        begin();
+        write(u"bootstate"_s, read(u"bootstate"_s).replace(u"9b2e4d70-61c3-4f8a-8e22-7c5a1f0b3d02"_s, QString()));
+        m_kcm->load();
+        QTRY_VERIFY(!slot(1)->isPresent());
+        QVERIFY(m_kcm->isConfigured());
+        QVERIFY(slot(0)->isPresent());
+        QVERIFY(slot(0)->isRunning());
+        QCOMPARE(slot(1)->state(), u"empty"_s);
+        QVERIFY(!slot(1)->isBootable());
     }
 
     void oneRootIsNotConfigured()

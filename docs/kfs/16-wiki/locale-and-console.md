@@ -59,7 +59,8 @@ empty as shipped, which follows the console: the layout nearest the map in `/etc
 and how to change it are on
 [Session and environment](session-and-environment.md#the-keyboard-layout). A person's own layout,
 on System Settings → **Keyboard**, is saved in `~/.config/kxkbrc` and wins in that person's
-sessions.
+sessions. Turning the page's layout list on starts it from the layout the session runs, so a
+layout added joins it.
 
 **The console font** is compiled into `kdos-getty` and has no setting:
 
@@ -73,7 +74,7 @@ it; see [accent](../../kdos/04-programs/daemons.md#accent).
 
 **`/etc/inittab`**, from `fs/etc/inittab`, puts `kdos-getty` in front of the login on `tty2`:
 
-<!-- kfs:include fs/etc/inittab lines=38-51 pin=f39604cc4abd -->
+<!-- kfs:include fs/etc/inittab lines=39-52 pin=f39604cc4abd -->
 
 ## Usage
 
@@ -104,8 +105,11 @@ date and time strings.
    export LC_TIME=de_DE.UTF-8
    ```
 
-   The name must be one that `locale -a` lists: `C`, `C.UTF-8` and seventeen musl-locales
-   files, `cs_CZ.UTF-8` to `sv_SE.UTF-8`. With this one `date` prints `Mi Okt 21 19:14:39 UTC 2026`.
+   For a program that formats through the C library, such as `date`, the name must be one that
+   `locale -a` lists: `C`, `C.UTF-8` and seventeen musl-locales files, `cs_CZ.UTF-8` to
+   `sv_SE.UTF-8`. With this one `date` prints `Mi Okt 21 19:14:39 UTC 2026`; with any other it
+   prints English names, and musl writes numbers and currency the C way for every name. Region &
+   Language offers every region Qt's locale data knows, and KDE programs format by any of them.
 
 2. Log out and in again. The session wrapper runs a login shell, so the desktop inherits it.
 
@@ -135,7 +139,8 @@ date and time strings.
 
    kdos-settingsd checks the name, writes `/etc/keymap`, loads it, and with the second `true`
    sets the nearest graphical layout in `/etc/kdos/xkb.conf` as well, which the login screen takes
-   at once. Every console loads the map from the next time its login prompt starts; writing
+   at once, and in `/etc/xdg/kxkbrc`, which the session and lock screen of an account with no
+   `~/.config/kxkbrc` take at the next login. Every console loads the map from the next time its login prompt starts; writing
    `/etc/keymap` by hand does the same for the consoles alone.
 
 4. Log out of the desktop and in again, or set the layout on System Settings → **Keyboard**, which
@@ -149,7 +154,8 @@ On the live medium, `/etc/keymap` lasts until power-off unless the medium has a 
 System Settings → **Keyboard** → **Layouts**: turn on **Configure layouts**, add the layout and
 variant, and **Apply**. It applies at once, to your sessions only. The machine's own layout, the
 login screen's, is set through locale1's `SetX11Keyboard`, as `/etc/kdos/xkb.conf`'s comment
-shows. The consoles keep `/etc/keymap`.
+shows; kdos-settingsd writes it to `xkb.conf` and to `/etc/xdg/kxkbrc`, which every session and
+lock screen of an account with no `~/.config/kxkbrc` reads. The consoles keep `/etc/keymap`.
 
 ### Reading the console font
 
@@ -230,6 +236,7 @@ of sixteen numbers each. Setting the accent again rewrites it; see
 ## Known gaps
 
 - [Every program speaks English](../../kdos/06-reference/known-gaps.md#every-program-speaks-english)
+- [A command-line program's dates follow seventeen regions, and its numbers none](../../kdos/06-reference/known-gaps.md#a-command-line-programs-dates-follow-seventeen-regions-and-its-numbers-none)
 - [Emoji draw everywhere except the text console on `tty1`](../../kdos/06-reference/known-gaps.md#emoji-draw-everywhere-except-the-text-console-on-tty1)
 - [Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off everywhere](../../kdos/06-reference/known-gaps.md#nerd-font-icons-are-blank-on-tty1-and-the-shipped-configurations-turn-them-off-everywhere)
 

@@ -9,7 +9,8 @@
 #
 # One Debian package name a line. Each is a desktop application of Debian's
 # DEP-11 catalogue that cannot do its job from a box on KWin's Wayland
-# session, so a build of it would install something that does not work.
+# session, or whose job is a Debian system's, so a build of it would install
+# something that does not work or means nothing on KDOS.
 # The Debian lane leaves each out of every search, category and appstream://
 # link; a box already made for one is still listed, so it can be removed.
 # A catalogue row naming one of these packages is not affected. The image
@@ -41,9 +42,23 @@ wstroke
 gnome-logs
 
 # Manage a Debian system's own packages, which a box is not.
+gdebi
+gnome-packagekit
 gnome-software
 plasma-discover
 synaptic
+
+# Install, reconfigure, document or report bugs against a Debian system,
+# which KDOS is not: the live medium's installer, debconf's front ends, the
+# alternatives system's configurator, Debian's own manuals and its bug
+# reporter. deb-gview stays: it reads a .deb file, which works from a box.
+calamares-settings-debian
+configure-debian
+debian-reference-common
+developers-reference
+galternatives
+gkdebconf
+reportbug-gtk
 
 # Configure a firewall daemon the host does not run (firewalld, ufw,
 # opensnitchd); the host's packet filter is kdos-powerd's nftables ruleset,

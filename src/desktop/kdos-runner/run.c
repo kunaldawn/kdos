@@ -101,7 +101,12 @@ void rn_run_describe(const RnMatch *m, int in_terminal, KbBuf *out)
 }
 
 /* A kdos verb's failure, as a notification. Runs in the watcher, on a bus
- * connection of its own. */
+ * connection of its own. The summary says it failed before it names the row:
+ * a row's text is the state it asked for ("Phosphor mode on"), and alone it
+ * would read as the thing having happened. x-kde-appname names kdos-tools'
+ * kdos.notifyrc, without which Plasma keeps it out of the history, and the
+ * sender is that notifyrc's Name, "KDOS Tools", so the failure joins the one
+ * history group every kdos command files under. */
 static void report(const RnMatch *m, int status, const char *err)
 {
 #ifdef RN_HAVE_BUS
@@ -110,7 +115,7 @@ static void report(const RnMatch *m, int status, const char *err)
 	char summary[256], body[512];
 	size_t o = 0;
 
-	snprintf(summary, sizeof(summary), "%s", m->text);
+	snprintf(summary, sizeof(summary), "Failed: %s", m->text);
 	/* The last lines of what it printed: the refusal is at the end. */
 	{
 		size_t n = strlen(err);
@@ -136,11 +141,12 @@ static void report(const RnMatch *m, int status, const char *err)
 					   "/org/freedesktop/Notifications",
 					   "org.freedesktop.Notifications",
 					   "Notify") >= 0 &&
-	    sd_bus_message_append(call, "susssas", "KDOS", 0u, "dialog-error",
+	    sd_bus_message_append(call, "susssas", "KDOS Tools", 0u,
+				  "dialog-error",
 				  summary, body, 0) >= 0 &&
 	    sd_bus_message_open_container(call, 'a', "{sv}") >= 0 &&
-	    sd_bus_message_append(call, "{sv}", "desktop-entry", "s",
-				  "org.kde.krunner") >= 0 &&
+	    sd_bus_message_append(call, "{sv}", "x-kde-appname", "s",
+				  "kdos") >= 0 &&
 	    sd_bus_message_close_container(call) >= 0 &&
 	    sd_bus_message_append(call, "i", -1) >= 0)
 		sd_bus_call(bus, call, 5ULL * 1000 * 1000, NULL, NULL);

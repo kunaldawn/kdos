@@ -218,16 +218,18 @@ static int read_text(const char *path, char *out, size_t n)
 	return 0;
 }
 
-/* `-m M -d D -H h -M m -s SLACK -t PATH`, the pattern that matches the one
- * minute this reminder is for. There is no year in a snooze pattern, which is
- * why `in` refuses anything further out than 300 days. */
+/* `-m M -d D -H h -M m -S s -s SLACK -t PATH`, the pattern that matches the
+ * one second this reminder is for. The second is the target's own: a pattern
+ * of `-S 0` would fire `in 1m` at the next minute, anywhere from a second to
+ * a minute away. There is no year in a snooze pattern, which is why `in`
+ * refuses anything further out than 300 days. */
 static void spec_of(const time_t *at, const char *path, char *out, size_t n)
 {
 	struct tm tm;
 
 	localtime_r(at, &tm);
-	snprintf(out, n, "-m %d -d %d -H %d -M %d -S 0 -s %s -t %s",
-		 tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
+	snprintf(out, n, "-m %d -d %d -H %d -M %d -S %d -s %s -t %s",
+		 tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
 		 REMIND_SLACK, path);
 }
 
@@ -352,8 +354,8 @@ static int cmd_set(int argc, char **argv)
 	return 0;
 }
 
-/* Every reminder still waiting, oldest file first — which is the order the
- * directory gives and is good enough for a handful of rows. */
+/* Every reminder still waiting, in the order the directory gives: one that
+ * presents them to a person sorts them itself (cmd_ls). */
 static int each(int (*fn)(const char *path, const char *id, void *u), void *u)
 {
 	char *dir = timers_dir();
@@ -383,14 +385,85 @@ static int each(int (*fn)(const char *path, const char *id, void *u), void *u)
 	return n;
 }
 
-struct listing {
+struct row {
 	/* WIDE ENOUGH FOR THE ROW THE FORMAT BELOW BUILDS: an id, a formatted
 	 * time and the explicit 100-column precision, plus their separators.
 	 * Sized to the precision alone, the id and the time are what get
 	 * truncated and the line loses its left half, not its right. */
-	char line[REMIND_MAX][208];
+	char line[208];
+	int known;	/* `at` is the due time, not only when it was set */
+	time_t at;
+};
+
+struct listing {
+	struct row row[REMIND_MAX];
 	int n;
 };
+
+/* SOONEST FIRST: rows with a due time by it, then the rows whose due time
+ * could not be read, by when they were set. The line breaks a tie, so two
+ * reminders for one minute list in the same order every time. */
+static int row_cmp(const void *a, const void *b)
+{
+	const struct row *x = a, *y = b;
+
+	if (x->known != y->known)
+		return x->known ? -1 : 1;
+	if (x->at != y->at)
+		return x->at < y->at ? -1 : 1;
+	return strcmp(x->line, y->line);
+}
+
+/*
+ * WHEN THE ROW FIRES: the first moment at or after `set` (the file's mtime,
+ * when the row was written) that its `-m M -d D -H h -M m -S s` names, into
+ * *due. A pattern has no year, and `in` and `at` refuse anything over 300
+ * days out, so the moment is in the year `set` falls in or the next; a
+ * 29 February is looked for up to eight years on. 0 when the row is not one
+ * spec_of wrote, or names a date no year has.
+ */
+static int row_due(const char *path, time_t set, time_t *due)
+{
+	FILE *f = fopen(path, "re");
+	char line[1024];
+	int mo, d, h, mi, se, found = 0;
+
+	if (!f)
+		return 0;
+	while (!found && fgets(line, sizeof(line), f)) {
+		char *p = line;
+
+		if (*p == '#' || strncmp(p, "remind-", 7) != 0)
+			continue;
+		p += strcspn(p, " ");
+		found = sscanf(p, " -m %d -d %d -H %d -M %d -S %d", &mo, &d, &h,
+			       &mi, &se) == 5;
+	}
+	fclose(f);
+	if (!found || mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 ||
+	    h > 23 || mi < 0 || mi > 59 || se < 0 || se > 60)
+		return 0;
+
+	struct tm now;
+
+	localtime_r(&set, &now);
+	for (int y = now.tm_year; y <= now.tm_year + 8; y++) {
+		struct tm tm = { .tm_year = y, .tm_mon = mo - 1, .tm_mday = d,
+				 .tm_hour = h, .tm_min = mi, .tm_sec = se,
+				 .tm_isdst = -1 };
+		time_t t = mktime(&tm);
+
+		/* mktime rolls 31 April into 1 May: a date that moved is not
+		 * in this year. */
+		if (t == (time_t)-1 || tm.tm_mon != mo - 1 || tm.tm_mday != d)
+			continue;
+		if (t >= set) {
+			*due = t;
+			return 1;
+		}
+	}
+	return 0;
+}
 
 static int ls_one(const char *path, const char *id, void *u)
 {
@@ -398,23 +471,35 @@ static int ls_one(const char *path, const char *id, void *u)
 	char text[512];
 	struct stat st;
 	char when[64] = "?";
+	int ok = 0;
+	time_t at = 0;
 
 	if (!read_text(path, text, sizeof(text)))
 		snprintf(text, sizeof(text), "(no text)");
-	/* WHEN IT WAS ASKED FOR, and not the slot. The slot is in the row, in
-	 * snooze's syntax; the file's mtime is the moment a person typed it,
-	 * which is what they recognise a reminder by. */
+	/* WHEN IT FIRES, read from the row, which is the time a person asked
+	 * for and the one a listing is read for. A row that does not parse is
+	 * listed by the time it was set, the file's mtime, and labelled `set`
+	 * so it is never taken for a due time. */
 	if (stat(path, &st) == 0) {
 		struct tm tm;
+		time_t due;
 
-		localtime_r(&st.st_mtime, &tm);
-		strftime(when, sizeof(when), "%a %e %b %H:%M", &tm);
+		ok = row_due(path, st.st_mtime, &due);
+		at = ok ? due : st.st_mtime;
+		localtime_r(&at, &tm);
+		strftime(when, sizeof(when),
+			 ok ? "due %a %e %b %H:%M" : "set %a %e %b %H:%M", &tm);
 	}
 	/* AN EXPLICIT PRECISION, not a wide field trimmed by luck: a listing row
 	 * is one line and a long reminder truncates ON PURPOSE. */
-	if (l->n < REMIND_MAX)
-		snprintf(l->line[l->n++], sizeof(l->line[0]), "%s  %s  %.100s",
-			 id, when, text);
+	if (l->n < REMIND_MAX) {
+		struct row *r = &l->row[l->n++];
+
+		snprintf(r->line, sizeof(r->line), "%s  %s  %.100s", id, when,
+			 text);
+		r->known = ok;
+		r->at = at;
+	}
 	return 1;
 }
 
@@ -427,23 +512,25 @@ static int cmd_ls(void)
 	l.n = 0;
 	each(ls_one, &l);
 	cnt = l.n;
+	qsort(l.row, (size_t)cnt, sizeof(l.row[0]), row_cmp);
 	if (isatty(STDOUT_FILENO) || !cnt) {
 		if (!cnt)
 			printf("no reminders\n");
 		for (int i = 0; i < cnt; i++)
-			printf("%s\n", l.line[i]);
+			printf("%s\n", l.row[i].line);
 		return 0;
 	}
 	/*
 	 * NO TERMINAL, SO A TOAST. The chord that lists reminders has nowhere
 	 * to print, and a command that wrote to a stdout nobody is reading
-	 * would look like a chord that does nothing.
+	 * would look like a chord that does nothing. It shows the four that
+	 * fire soonest.
 	 */
 	for (int i = 0; i < cnt && i < 4; i++) {
 		size_t o = strlen(body);
 
 		snprintf(body + o, sizeof(body) - o, "%s%s", o ? "\n" : "",
-			 l.line[i]);
+			 l.row[i].line);
 	}
 	kb_notify("kdos", cnt == 1 ? "1 reminder" : "Reminders", body);
 	return 0;

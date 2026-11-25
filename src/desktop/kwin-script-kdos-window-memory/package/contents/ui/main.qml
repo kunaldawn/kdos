@@ -48,7 +48,15 @@
  * A window with no record that KWin centred while its size was a
  * placeholder is centred again when it takes its real size (memory.js,
  * recentre()), and one that opens larger than the usable area is moved and
- * shrunk into it (memory.js, fit()), so neither runs under the panel.
+ * shrunk into it (memory.js, fit()), so neither runs under the panel. One
+ * whose first real size is under half the usable area in either direction,
+ * the minimum a KXmlGui program with no saved size opens at, is grown to at
+ * least 60% by 70% of it and centred on its screen (memory.js, firstSize());
+ * what it closes at is recorded, so the person's own size wins after that.
+ * A borderless window (a splash, a frameless notice, a program drawing its
+ * own title bar) and a program whose small window is its design are never
+ * grown (memory.js, growable()); a decorated, resizable splash on a first
+ * launch is, and its record is dropped as a prelude's when it closes.
  *
  * The record lives in $XDG_STATE_HOME/kdos/window-memory, written by QSettings
  * through a temporary file and a rename, so a crash leaves the old file or
@@ -60,7 +68,7 @@
 
 import QtQuick
 import QtCore
-import org.kde.kwin
+import org.kde.kwin as KWinComponents
 
 import "memory.js" as Memory
 
@@ -86,6 +94,9 @@ Item {
     //   settle    the time until which a window placed at a placeholder size
     //             is centred again, or one larger than the work area fitted
     //             into it; 0 once done, or once it is moved by hand;
+    //   grow      a window with no record, until its first real size is
+    //             known: memory.js firstSize() grows it if that size is its
+    //             widgets' minimum;
     //   pid, opened  its process and the time it opened;
     //   first     no other window of its program was open when it opened;
     //   followedAt, successor  when a later window of the same process opened
@@ -132,7 +143,7 @@ Item {
     }
 
     function deskOf(window) {
-        return window.desktops.length > 0 ? window.desktops[0] : Workspace.currentDesktop;
+        return window.desktops.length > 0 ? window.desktops[0] : KWinComponents.Workspace.currentDesktop;
     }
 
     function settle(window, entry) {
@@ -141,12 +152,20 @@ Item {
         }
         if (Date.now() > entry.settle || !window.output) {
             entry.settle = 0;
+            entry.grow = false;
             return;
         }
-        const area = Workspace.clientArea(Workspace.MaximizeArea, window.output, deskOf(window));
-        const r = Memory.recentre(frame(window), area) || Memory.fit(frame(window), area);
+        const area = KWinComponents.Workspace.clientArea(KWinComponents.Workspace.MaximizeArea, window.output, deskOf(window));
+        const f = frame(window);
+        const placed = Memory.recentre(f, area) || Memory.fit(f, area);
+        const grown = entry.grow && Memory.growable(window) ? Memory.firstSize(placed || f, area) : null;
+        if (!Memory.isPlaceholder(f)) {
+            entry.grow = false;
+        }
+        const r = grown || placed;
         if (r) {
             entry.settle = 0;
+            entry.grow = false;
             window.frameGeometry = Qt.rect(r.x, r.y, r.width, r.height);
         }
     }
@@ -177,13 +196,14 @@ Item {
         window.fullScreenChanged.connect(update);
         window.interactiveMoveResizeStarted.connect(() => {
             entry.settle = 0;
+            entry.grow = false;
             entry.restored = null;
         });
     }
 
     function siblings(window, key) {
         const out = [];
-        const windows = Workspace.windows;
+        const windows = KWinComponents.Workspace.windows;
         for (let i = 0; i < windows.length; i++) {
             const other = windows[i];
             if (other !== window && !other.deleted && Memory.appKey(other) === key) {
@@ -194,7 +214,7 @@ Item {
     }
 
     function desktopById(id) {
-        for (const desktop of Workspace.desktops) {
+        for (const desktop of KWinComponents.Workspace.desktops) {
             if (desktop.id === id) {
                 return desktop;
             }
@@ -205,12 +225,12 @@ Item {
     // Gives a floating window the rectangle `record` asks for; false when
     // there is no screen or the place is taken by a sibling.
     function place(window, entry, record) {
-        const screens = Workspace.screens;
+        const screens = KWinComponents.Workspace.screens;
         const at = Memory.nearestScreen(record, screens.map(s => s.geometry));
         if (at < 0) {
             return false;
         }
-        const area = Workspace.clientArea(Workspace.MaximizeArea, screens[at], deskOf(window));
+        const area = KWinComponents.Workspace.clientArea(KWinComponents.Workspace.MaximizeArea, screens[at], deskOf(window));
         const target = Memory.restoreTarget(record, frame(window), scaleOf(screens[at]), area);
         if (Memory.originTaken(target.set, siblings(window, record.app))) {
             return false;
@@ -229,7 +249,7 @@ Item {
                 // view follows it, so the keyboard is never left on a window
                 // nobody can see.
                 if (window.active) {
-                    Workspace.currentDesktop = wanted;
+                    KWinComponents.Workspace.currentDesktop = wanted;
                 }
             }
         }
@@ -241,7 +261,7 @@ Item {
 
     function newEntry(window, key, now, first) {
         return {
-            app: key, rect: null, scale: 0, restored: null, pending: null, settle: 0,
+            app: key, rect: null, scale: 0, restored: null, pending: null, settle: 0, grow: false,
             pid: Number(window.pid) || 0, opened: now, first: first,
             followedAt: 0, successor: null, lead: false, left: false,
         };
@@ -302,6 +322,7 @@ Item {
             break;
         case "settle":
             entry.settle = now + Memory.settleInterval;
+            entry.grow = true;
             break;
         }
         watch(window, entry);
@@ -362,7 +383,7 @@ Item {
     }
 
     Connections {
-        target: Workspace
+        target: KWinComponents.Workspace
 
         function onWindowAdded(window) {
             root.opened(window);
@@ -375,7 +396,7 @@ Item {
 
     Component.onCompleted: {
         records = Memory.parse(store.value("records", "[]"));
-        const windows = Workspace.windows;
+        const windows = KWinComponents.Workspace.windows;
         for (let i = 0; i < windows.length; i++) {
             if (Memory.eligible(windows[i], exclude)) {
                 watch(windows[i], newEntry(windows[i], Memory.appKey(windows[i]), 0, false));

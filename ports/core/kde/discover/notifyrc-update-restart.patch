@@ -1,0 +1,53 @@
+Subject: notifier: post "Restart is required" once, from discoverabstractnotifier.notifyrc as UpdateRestart
+
+DiscoverNotifier::showRebootNotification() builds the notification
+with the static KNotification::event(), which queues a sendEvent() of
+its own, and then calls sendEvent() itself, so every restart is sent
+to org.freedesktop.Notifications twice. Construct the KNotification
+and set its title, text and icon instead, so the one sendEvent() posts
+it once.
+
+It also posts "UpdateRestart" with KNotification::DefaultEvent, which
+makes KNotification look the event up in the default component,
+plasma_workspace, instead of the discoverabstractnotifier component it
+names; plasma_workspace.notifyrc declares no UpdateRestart, so
+"Restart is required" is never shown. Name discoverabstractnotifier as
+the component without DefaultEvent, and spell that notifyrc's group
+[Event/UpdateRestart], the name the notifier posts, where it declares
+[Event/UpdateResart].
+
+--- a/libdiscover/resources/discoverabstractnotifier.notifyrc
++++ b/libdiscover/resources/discoverabstractnotifier.notifyrc
+@@ -653,7 +653,7 @@
+ Urgency=High
+ Action=Popup
+ 
+-[Event/UpdateResart]
++[Event/UpdateRestart]
+ Name=Restart is Required
+ Name[ar]=إعادة التّشغيل مطلوبة
+ Name[az]=Yenidən başlatmaq tələb olunur
+--- a/notifier/DiscoverNotifier.cpp
++++ b/notifier/DiscoverNotifier.cpp
+@@ -414,12 +414,15 @@
+         m_rebootNotification->close();
+     }
+ 
+-    KNotification *notification = KNotification::event(QStringLiteral("UpdateRestart"),
+-                                                       i18n("Restart is required"),
+-                                                       i18n("The system needs to be restarted for the updates to take effect."),
+-                                                       QStringLiteral("system-software-update"),
+-                                                       KNotification::Persistent | KNotification::DefaultEvent,
+-                                                       QStringLiteral("discoverabstractnotifier"));
++    // Constructed, not KNotification::event(): that queues a sendEvent() of
++    // its own, and with the one below every restart would be posted twice.
++    // The component is named without DefaultEvent, which would look the
++    // event up in plasma_workspace, whose notifyrc does not declare it.
++    KNotification *notification = new KNotification(QStringLiteral("UpdateRestart"), KNotification::Persistent);
++    notification->setComponentName(QStringLiteral("discoverabstractnotifier"));
++    notification->setTitle(i18n("Restart is required"));
++    notification->setText(i18n("The system needs to be restarted for the updates to take effect."));
++    notification->setIconName(QStringLiteral("system-software-update"));
+ 
+     auto restartAction = notification->addAction(i18nc("@action:button", "Update and Restart"));
+     auto shutdownAction = notification->addAction(i18nc("@action:button", "Update and Shut Down"));

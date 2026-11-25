@@ -16,7 +16,7 @@ this page does not repeat it.
 device mapper. It is on the live medium as well as on an installed system, because three programs
 use it:
 
-- The installer, [kdos-installer](#port-kdos-installer) (built in
+- The installer, [kdos-installer](#port-kdos-installer) (built first in
   [130_kinstall](../03-bootstrap/130-kinstall.md)) and its graphical front end
   [kdos-installer-gui](#port-kdos-installer-gui), which share one backend, creates the container and opens it while it
   installs.
@@ -50,7 +50,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2537-2555 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3696-3714 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -62,7 +62,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2813-2825 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3997-4009 pin=d5c38affc180 -->
 
 On the A/B layout both root slots are volumes of one LVM group inside the one container, so
 `crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The
@@ -75,7 +75,7 @@ named, by the chosen slot's `crypt_` entry or by `cryptdevice=`, from
 `script/phases/70_image/090_initramfs.sh` (the `\$` is the escape of the heredoc the init is
 written from):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=894-909 pin=093a88f36da4 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1029-1049 pin=758c5dbefd1e -->
 
 `unlock_root`, the function it calls, is walked through on
 [The initramfs init](../15-image/091-initramfs-init.md#the-unlock-function).
@@ -110,13 +110,15 @@ erase plan before switching; see [Encryption](../../kdos/02-user-guide/installat
 How far this path has been tested is recorded in
 [Status](../../kdos/06-reference/status.md#boot-and-system).
 
-1. Choose the boot entry. The splash shows `PASSPHRASE FOR kdosroot (attempt 1 of 3)`. On
-   `KDOS (verbose)` and `KDOS (single user)`, which carry no `quiet` and run no splash, the screen
-   shows `Passphrase for kdosroot (attempt 1 of 3): ` instead.
+1. Choose the boot entry. The splash shows `DISK PASSPHRASE (attempt 1 of 3)`. On
+   `KDOS <version> (verbose)` and `KDOS <version> (single user)`, which carry no `quiet` and run no splash, the screen
+   shows `Disk passphrase (attempt 1 of 3): ` instead.
 2. Type the passphrase and press Enter. Nothing is drawn as you type, not even asterisks.
 3. The splash shows `UNLOCKED` and the boot goes on, or `WRONG PASSPHRASE` and asks again; without
    the splash the screen shows `Unlocked.` or `Wrong passphrase.`
-4. After three wrong attempts the boot stops in a shell; see [Troubleshooting](#troubleshooting).
+4. After three wrong attempts the boot stops in a shell whose reason reads
+   `Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again.`; see
+   [Troubleshooting](#troubleshooting).
 
 ### Finding the container
 
@@ -239,11 +241,13 @@ in [Only an LVM erase install gets a second root slot](../../kdos/06-reference/k
 
 ## Tips
 
-- The initramfs loads no keyboard layout; `090_initramfs.sh` carries no `loadkeys`, and the layout
-  in `/etc/keymap` is applied only after the root is mounted. The prompt therefore reads keys in
-  the kernel's built-in layout, US English. A passphrase that was typed on another layout at
-  install time has to be typed by the US positions of its keys; a passphrase whose characters sit
-  on the same keys in both layouts, added with `luksAddKey`, avoids the question.
+- The prompt types with the console keymap named in `/boot/efi/EFI/kdos/keymap`, which the
+  installer writes and `kdos-settingsd` keeps equal to `/etc/keymap`; `090_initramfs.sh` carries
+  `loadkeys` and kbd's keymaps for it. A character that console map has no key for cannot be
+  typed there, and a layout kbd has no console map for (Arabic, the Asian scripts) gets the
+  kernel's US map. For such a layout, add with `luksAddKey` a passphrase that a US keyboard
+  types. `cat /boot/efi/EFI/kdos/keymap` shows the map the next boot loads; see
+  [Unlocking an encrypted root](../../kdos/03-architecture/boot-and-init.md#unlocking-an-encrypted-root).
 - Never pass a passphrase as a command-line argument. Any process can read another's arguments
   through `/proc/<pid>/cmdline`, which is why every KDOS program that feeds `cryptsetup` uses
   standard input. Typed at cryptsetup's own prompt, as in the procedures above, it is not exposed.
@@ -258,18 +262,21 @@ in [Only an LVM erase install gets a second root slot](../../kdos/06-reference/k
 ## Troubleshooting
 
 When the initramfs cannot finish, it puts the reason on the screen and opens a shell on `tty1`;
-see [The rescue shell](../../kdos/03-architecture/boot-and-init.md#the-rescue-shell). On an
-installed system, whose entries carry `console=tty0`, that shell is process 1, and leaving it
-panics the kernel. The initramfs has no `reboot`; restart with:
+see [The rescue shell](../../kdos/03-architecture/boot-and-init.md#the-rescue-shell). Process 1
+runs that shell in a loop, so `exit` opens a fresh one rather than panicking the kernel. The
+initramfs has no `reboot`; `Ctrl+Alt+Del` restarts at once, with no `sync`,
+so after changing a disk restart with:
 
 ```bash
 sync; echo b > /proc/sysrq-trigger
 ```
 
-**`Failed to unlock UUID=…:kdosroot` after three `WRONG PASSPHRASE`.** The container rejected
-every attempt. Besides a mistyped passphrase, the keyboard layout can cause this (see
-[Tips](#tips)). Restart and type the passphrase by its US key positions, or open the root from the
-live medium, whose layout you can set, and add a passphrase that types the same on both.
+**`Wrong passphrase three times. Ctrl+Alt+Del restarts and asks again.`** The container rejected
+every attempt. Besides a mistyped passphrase, the keyboard map can cause this (see
+[Tips](#tips)): an ESP with no `EFI/kdos/keymap`, or one naming a map without the passphrase's
+characters, leaves the US map. Restart and type the passphrase by its US key positions, or open the
+root from the live medium, whose layout you can set, and add a passphrase that types the same on
+both.
 
 **`cryptdevice: no device for UUID=…:kdosroot`.** No partition carries the container UUID the boot
 asked for. In the [rescue shell]{.idx}, compare the two:

@@ -27,12 +27,15 @@ The chapter follows these steps in order:
 
 A release is a live ISO. It carries the *base*: the Plasma session, the core KDE applications
 (Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition
-Manager and Yakuake, with the KIO workers and thumbnailers they use), Firefox ESR, Discover,
-networking, printing and scanning, the box stack, Python and Perl, and every KDOS tool. It
-carries no compiler: the toolchain is the `build-tools` group, and the Chinese, Japanese and
-Korean input methods are the `lang-zh`, `lang-ja` and `lang-ko` groups. Everything else is one
-download away, three ways, described in full in
-[Applications](applications.md#where-applications-come-from):
+Manager, Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use), the
+everyday programs beside them (Haruna, the video player, KolourPaint, Skanpage, Filelight, KFind,
+KCharSelect, KClock and KWalletManager), VLC, which Elisa plays through, Firefox ESR, Discover, the
+Orca screen reader and BRLTTY for braille displays, networking, printing and scanning, the box
+stack, Python and Perl, every KDOS tool and the KDOS book. It carries no compiler: the toolchain is
+the `build-tools` group, and `sudo kdos update install build-tools` leaves a working `cc` with the C
+library's and the kernel's headers, and the Chinese, Japanese and Korean input methods are the `lang-zh`,
+`lang-ja` and `lang-ko` groups. Everything else is one download away, three ways, described in full
+in [Applications](applications.md#where-applications-come-from):
 
 | Way | What it is |
 |---|---|
@@ -52,27 +55,52 @@ of `kunaldawn/kdos`, marked **Latest**. It carries:
 
 | File | What it is |
 |---|---|
-| `kdos-<version>.iso`, or `kdos-<version>.iso.part01`, `.part02`, … | The live ISO. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
-| `SHA256SUMS`, `SHA256SUMS.sig` | The checksum of the whole ISO and of every other file, and its signature by the release key |
+| `kdos-<tag>.iso` (for example `kdos-v0.2.iso`), or `kdos-<tag>.iso.part01`, `.part02`, … | The live ISO, named by the release's tag. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
+| `SHA256SUMS`, `SHA256SUMS.sig` | The checksums of the whole ISO and each of its parts, `sources.sha256`, the recipe tree, the update index, their two signatures and the release key, and the list's signature by the release key. The list does not cover its own signature or the book files below, which are attached after it is made |
 | `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
-| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built |
+| `kdos-ports.tar.xz`, `kdos-ports.tar.xz.sig` | The release's recipe tree and its signature: what `kdos update fetch` installs as `/ports` |
+| `kdos-update.idx`, `kdos-update.idx.sig` | The signed index of where the release's prebuilt packages and update image are |
+| `sources.sha256` | Every upstream source file the release's recipes name, by hash |
+| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built, attached once the release is published. The v0.2 release does not carry them |
 
 The release's prebuilt packages and its update image sit in pre-releases beside it
 (`binhost-<tag>-NN` and `image-<tag>`). They are not downloaded by hand: a KDOS machine finds them
 through the release's signed index. The `sources-<N>` pre-releases are the archive of upstream
 sources the build uses.
 
-Join the parts, if there are any, and check the result:
+When the release carries the ISO in parts (`.part01`, `.part02` and on, and no whole
+`kdos-<tag>.iso`), join them first. Run this only then: the shell empties
+`kdos-<tag>.iso` before `cat` reads anything, so on a release with one whole ISO it destroys
+the download.
 
 ```sh
-cat kdos-<version>.iso.part* > kdos-<version>.iso
+cat kdos-<tag>.iso.part?? > kdos-<tag>.iso
+```
+
+Then check the ISO:
+
+```sh
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-The last command must print `kdos-<version>.iso: OK`. A checksum list downloaded beside the file
-proves only that the two agree. On a machine already running KDOS,
-[`kdos verify`](../04-programs/kdos-command.md#kdos-verify) `kdos-<version>.iso` also checks the
-list's signature, `SHA256SUMS.sig`, against the release key the system trusts.
+It must print `kdos-<tag>.iso: OK`, with the tag, for example `kdos-v0.2.iso: OK`. A checksum list downloaded beside the file proves only that
+the two agree; its signature, `SHA256SUMS.sig`, proves the release key made it. On a machine that
+does not run KDOS, download `SHA256SUMS.sig` and `kdos-release.pub` too and check it with OpenSSL 3
+and `xxd`:
+
+```sh
+cut -d' ' -f2 kdos-release.pub | xxd -r -p | sha256sum | cut -c1-16     # must print ccb53bac7fdba3cd
+{ printf 302a300506032b6570032100; cut -d' ' -f2 kdos-release.pub; } | xxd -r -p > kdos-release.der
+awk '$2=="ccb53bac7fdba3cd"{print $3}' SHA256SUMS.sig | xxd -r -p > SHA256SUMS.sig.bin
+openssl pkeyutl -verify -pubin -keyform DER -inkey kdos-release.der -rawin \
+    -in SHA256SUMS -sigfile SHA256SUMS.sig.bin
+```
+
+The first line prints the id of the key in `kdos-release.pub`, which must be the one in the table
+above. The rest wraps the raw Ed25519 key in the header OpenSSL reads, takes that key's signature
+out of `SHA256SUMS.sig`, and prints `Signature Verified Successfully` when it matches. On a machine
+already running KDOS, [`kdos verify`](../04-programs/kdos-command.md#kdos-verify)
+`kdos-<tag>.iso` checks the list and its signature against the release key the system trusts.
 
 What you need to use it:
 
@@ -87,15 +115,19 @@ What you need to use it:
 ## Try it in a virtual machine first
 
 Any x86-64 virtual machine with UEFI firmware and 4 GB of memory boots the ISO. With QEMU and the
-OVMF firmware:
+OVMF firmware, at the path Debian and Ubuntu install it to:
 
 ```sh
 qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
 qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4G \
-    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<version>.iso \
+    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<tag>.iso \
     -drive file=kdos.qcow2,format=qcow2 -device virtio-vga -device virtio-net-pci,netdev=n \
     -netdev user,id=n -usb -device usb-tablet
 ```
+
+Other distributions keep OVMF elsewhere: Arch at `/usr/share/edk2/x64/OVMF.4m.fd`, Fedora under
+`/usr/share/edk2/ovmf/`. Where only the split code file is installed, replace `-bios <file>` with
+`-drive if=pflash,format=raw,readonly=on,file=<path>/OVMF_CODE.fd`.
 
 The disk is only needed to try the installer. From a clone of the repository, `make run` boots
 the ISO the build wrote in the same way, and `make rundisk` the disk once you have installed to it
@@ -118,18 +150,29 @@ The ISO is a hybrid image. Write it to a USB stick as a raw byte stream, replaci
 your stick. Everything on that device is lost:
 
 ```sh
-sudo dd if=kdos-<version>.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=kdos-<tag>.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 On Windows or macOS, any tool that writes a raw disk image does the same (Rufus in DD mode,
-balenaEtcher). Turn Secure Boot off in the firmware before booting the stick.
+balenaEtcher). Turn Secure Boot off in the firmware before booting the stick. A Ventoy stick boots
+the ISO copied onto its data partition: choose **Boot in normal mode** in Ventoy's menu. A stick
+that holds copies of the ISO's files, as Rufus's ISO mode or a copy onto a FAT stick makes, does
+not boot: Limine and the kernel start, and the boot stops at "Failed to find KDOS installation
+media." with a line saying to write the whole ISO.
 
 The stick must be at least as large as the ISO. The same image boots four ways: BIOS and UEFI, from
 an optical drive and from a stick. It carries two El Torito
 boot records for optical drives, one for each firmware, and for a stick a partition table with an
 EFI System Partition plus BIOS boot code in its first sector, so the `dd` above is the whole job and
 there is no separate step to make the stick bootable. ISO Image Writer, on any KDOS machine, does
-the same from a window.
+the same from a window; it does not list a stick the image was written to when a live session runs
+from it (a Ventoy stick is listed, and writing to it is refused because it is in use), and it says "Could not
+find the key to verify the ISO image" for a KDOS image, which `kdos verify kdos-<tag>.iso`
+checks against the release's signed `SHA256SUMS` instead.
+
+The ISO fits a DVD too. Burn it as a disc image, not as a file on a data disc: on Linux,
+`growisofs -dvd-compat -Z /dev/sr0=kdos-<tag>.iso`; on Windows, the ISO's **Burn disc image**
+menu entry.
 
 Once you have one working stick, a running KDOS system can copy itself to another without a second
 computer:
@@ -164,13 +207,14 @@ choose. Enter, Space and Right boot the highlighted entry at once, even during t
 | KDOS Live (verbose) | The same, with no splash: every kernel message and every line of the boot scrolls by on the screen (`loglevel=7` in place of `quiet loglevel=3`, and the screen named last of the consoles) |
 | Memory Test (memtest86+) | memtest86+ instead of the kernel. UEFI only: the entry is hidden on a BIOS boot, and absent from an image built without the memtest86+ port |
 
-Every KDOS Live entry names both `console=tty0` and `console=ttyS0`, so kernel messages also reach
-a serial line.
+Every KDOS Live entry names both `console=tty0` and `console=ttyS0,115200n8`, so kernel messages
+also reach a serial line, at 115200 baud, 8 data bits, no parity and one stop bit.
 
 ### Reading the splash
 
 What you see during boot is the KDOS splash, drawn directly to the framebuffer: the KDOS mark
-fading in, with a progress bar and the name of each stage as it starts. With Phosphor mode on it
+fading in, the release it boots under it (`Kool Desktop Operating System 0.2`, in the form
+`kdos version` gives), and a progress bar with the name of each stage as it starts. With Phosphor mode on it
 plays a CRT power-on instead (see [Phosphor mode](theming.md#phosphor-mode)). The initramfs, the small
 early filesystem the kernel starts from, runs the first stages; the service scripts of the real
 system run the rest. The bar never moves backwards: the first 15% is the initramfs's and the
@@ -195,19 +239,23 @@ rest the service scripts'. If a boot stops, the last stage named tells you where
 
 When the initramfs cannot continue, it shows the reason on the splash, hands the screen back and
 leaves you at a shell on the first console (`tty1`), with the reason printed above it, rather than
-rebooting, so you can look around. The serial line gets a shell too, beside the full boot log.
-The progress bar stops one segment short of full until the splash is dismissed, so a boot never
-shows 100% before it has finished. [Boot and init](../03-architecture/boot-and-init.md)
+rebooting, so you can look around. The screen also says that `Ctrl+Alt+Del` restarts the computer
+at once, and to run `sync` first if you changed a disk. The serial line gets a shell too, beside
+the full boot log.
+The progress bar stops one segment short of full, so a boot never shows 100% before it has
+finished; it fills only on a boot that ends at a text console, and a boot that ends at the login
+screen hands over at that hold. [Boot and init](../03-architecture/boot-and-init.md)
 describes what happens at each stage.
 
 ## Log in
 
-When the service scripts have finished, the splash fades to black and hands the screen to the
-login screen, SDDM, in the KDOS look. The live medium logs in by itself; an installed machine
+When the service scripts have finished, the splash holds its last picture until it hands the
+screen to the login screen, SDDM, in the KDOS look. The live medium logs in by itself; an installed machine
 shows the login screen and asks for a password, except on the one kind of installation that asks
 for automatic login (see [6. Accounts](installation.md#6-accounts)). After the login the KDOS
-splash for the session, KSplash, shows the same penguin in the same place while Plasma starts, so
-the boot, the login and the desktop read as one continuous start.
+splash for the session, KSplash, shows the same penguin in the same place while Plasma starts, its
+bar picking up where the boot splash's stopped, at 99% and one segment short, rather than starting
+again, so the boot, the login and the desktop read as one continuous start.
 
 The image ships one human account:
 
@@ -215,7 +263,7 @@ The image ships one human account:
 |---|---|
 | User name | `kdos` |
 | Password | `kdos` |
-| Groups | `wheel` (which grants `sudo` and the administrator's actions in System Settings), plus `tty`, `dialout`, `audio`, `video`, `cdrom`, `render`, `input`, `kvm`, `users` and `lpadmin` |
+| Groups | `wheel` (which grants `sudo` and the administrator's actions in System Settings), plus `tty`, `dialout`, `audio`, `video`, `cdrom`, `render`, `input`, `kvm`, `users`, `lpadmin` and `brlapi` (which lets Orca and other programs write to a braille display through BRLTTY) |
 
 On the live image the root password is also `kdos`. The [installer](installation.md) asks for your
 own user name and password, locks the root account by default, and never carries the live image's
@@ -261,15 +309,42 @@ The first login of an account opens the Welcome Center on the KDOS tour: pages f
 the look (the accent, light or dark, Phosphor mode, Night Light and reduced motion), the *desk*
 (how the panels are laid out; see [The desks](desktop.md#the-desks)), the system, software and
 boxes, the offline library, the keys, privacy and the network, help, the first-run checklist, and
-last **Make It Yours**: the groups of programs KDOS offers (games, office, graphics, the KDE
+**Make It Yours**: the groups of programs KDOS offers (games, office, graphics, the KDE
 collections, Chinese, Japanese and Korean input, and more), each with what it downloads. Tick some
 and press **Install**; each is downloaded ready-made, one at a time, after your password, and the
 page ends with a button to Discover for everything else. Until the computer has the release's
-package list the page has no sizes and offers nothing: connect, open Discover and press **Check
-for Updates**, then **Look Again**. Every choice there takes effect at once and can be changed
-later. On the live medium the tour opens at every login, on a
-page with a large **Install KDOS** button, and a second page offers to keep the session's changes
-on the stick.
+package list the page has no sizes and offers nothing: connect, open Discover, press **Refresh** on
+its Updates page, then **Look Again**. When the release names no binary host and a refresh cannot name
+one either (the last refresh found none, the published tree is older than this one, or the
+computer has one system slot, whose refresh takes no newer tree), the page says instead that no
+group can be installed ready-made, with a button to Discover, which can build programs on this
+computer, and its opening line offers only Discover. Make It Yours is the last KDOS page; Plasma's own **Enjoy
+It!** page follows it and ends the tour. Every choice there takes effect at once and can be
+changed later. On the live medium the tour opens at every login, on a page with a large **Install
+KDOS** button, and a second page offers to keep the session's changes on the stick. Welcome
+Center started again from the application launcher opens the same live tour, with both pages, and
+its Privacy page says the live session keeps no wallet.
+
+**What's New** is not part of the tour. It opens by itself only after an update, or after going
+back by hand from a newer version this account used, once per version, with the notes of the release now running, read from the slot itself: when a
+login is confirmed, about a minute in, once the desktop has stayed up, the running version is
+compared with the one this account was last shown, and a different one opens the page. At any
+other time **Release Notes** in the application menu (type `release notes` in it or in KRunner)
+or `kdos update notes` shows the notes of the version running. While the tour is open, Release
+Notes brings the tour's window forward with the notes over it, and **Back** returns to the tour.
+A boot that is not confirmed shows nothing, since
+the next boot may roll it back. After an update it says which version KDOS was updated from. An
+account's first login, a fresh install's included, records the version running and opens
+nothing, since nothing was updated; the live medium never opens it. After going back by hand from
+a newer version this account had used, it opens and says `KDOS went back to <version>; <newer>,
+in the other slot, did not start or was not kept.` After an update that did not start, it does
+not open: this account was never shown the newer version, so the version running is the one it
+already recorded. `kdos update notes` then begins `KDOS <version>, went back from <newer>`, and
+the page shows the same sentence when opened by hand. Release Notes opens the same page, as
+`plasma-welcome --pages 90-WhatsNew.qml`: on a fresh install it names the version running
+and points at System Settings → System Versions, which shows the versions on this computer, and
+on the live medium it names only the version running and says it is running from the live
+medium, with no System Versions button, since the live medium has no slots.
 
 ## Adding software to the live session
 
@@ -286,7 +361,10 @@ sudo kdos update install office          # a group: LibreOffice, Calibre and TeX
 
 Discover does the same from a window, and lists the catalogue's boxed applications beside the
 native ports. What a live session installs takes memory, and without a persistence store it is gone
-at the restart. [Applications](applications.md) describes the three ways to get software.
+at the restart. The downloaded package files take memory only while they install: on the live
+medium each one is deleted once it is installed. An install whose downloads do not fit in the room
+left is refused before anything is downloaded, naming what it needs and what is free.
+[Applications](applications.md) describes the three ways to get software.
 
 ## Keep what you change
 
@@ -305,8 +383,10 @@ when one is plugged in. `kdos persist create` adds one partition in the free spa
 partition on the device, by default the stick you booted from. Nothing already on the device is
 moved or rewritten; a blank stick is given a partition table first. It asks you to type `yes`
 before it writes; `--yes` skips the question. It refuses to make a second store when one already
-exists. A DVD cannot hold changes: started from a disc, `kdos persist create` and the Welcome page
-both need a USB stick or a disk to put the store on.
+exists. A DVD cannot hold changes, and neither can a Ventoy stick, whose KDOS is a file inside
+Ventoy's own partition. Started from a DVD, or from a Ventoy stick under UEFI or BIOS,
+`kdos persist` says so, and `kdos persist create` refuses the boot medium. Either way, `kdos persist create` and the Welcome page need another USB stick or a disk to put
+the store on, named as `sudo kdos persist create /dev/sdX`.
 
 The store is found by its label rather than by a device name, so it can equally live on a second
 stick or an internal disk, and it keeps working when USB devices come up in a different order.
@@ -359,7 +439,8 @@ offers groups of applications of two kinds (see
 - **KDOS applications**, the native groups, are downloaded prebuilt from the release's binhost into
   the new system while it installs. That needs a network. Without one, or when a download fails,
   the choice is recorded on the new disk and the install goes on; once the machine is online,
-  `sudo kdos update install --pending` installs it.
+  `sudo kdos update install --pending` installs it, or `su -c 'kdos update install --pending'`
+  with root's password from an account that is not an administrator.
 - **Boxed applications**, the catalogue's groups, are recorded on the new disk, and your first login
   there offers to build them, or you install them from Discover.
 
@@ -380,8 +461,10 @@ kdos desk dock           # lay the panels out as the Dock desk; `kdos desk undo`
 ```
 
 `kdos theme amber` shows the colour system at work. Plasma, every KDE application, the open
-Konsole windows, the wallpaper, the lock and login screens, the boot menu and the text consoles all
-take the amber accent, with nothing restarted. `kdos theme bone` restores the default. The same
+Konsole windows, the wallpaper and the lock screen take the amber accent at once. The login screen
+and the text consoles take it the next time each is shown (a console at its next login prompt),
+and the splash and the boot menu at the next boot. The live medium's boot menu is on the read-only
+medium and keeps its colours. `kdos theme bone` restores the default. The same
 choice is a swatch on System Settings' KDOS Look page, and picking a KDOS global theme on the
 Global Theme page carries it to the rest of the machine as well. [Theming](theming.md) lists all
 eight accents.
@@ -394,8 +477,10 @@ time, so it matches what you have rebound. [The desktop](desktop.md) describes b
 When you chose boxed applications in the installer, which records them on the new disk, your
 first session shows a notification saying they are ready to install rather than starting a long
 build unannounced. Run `kdos app install --pending` when you are ready, or open Discover (see
-[Applications](applications.md#discover)). Native groups the installer could not download wait
-for `sudo kdos update install --pending`; `kdos update groups` shows what is installed.
+[Applications](applications.md#discover)). Native groups chosen in the installer and not installed
+yet wait for `sudo kdos update install --pending` (`su -c 'kdos update install --pending'` from
+an account that is not an administrator), and the first login says so; `kdos update groups` shows
+what is installed.
 
 Everything else is installed from Discover or `kdos update install`, prebuilt or built on the
 machine; [Applications](applications.md#where-applications-come-from) says which to choose.

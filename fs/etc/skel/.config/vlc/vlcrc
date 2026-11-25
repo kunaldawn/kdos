@@ -1,0 +1,30 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   How VLC starts for a new account.
+#
+# THE ANSWER TO VLC'S FIRST-RUN QUESTION, given in advance. With
+# qt-privacy-ask unset the Qt interface opens a "Privacy and Network Access
+# Policy" dialog in front of the first file a person plays, and the file waits
+# behind it. The answer KDOS gives is the one the dialog's checkbox leaves
+# unticked: no album art or track details fetched from the network
+# (metadata-network-access=0). VLC is built without its update check, so the
+# dialog's other question has nothing to ask.
+#
+# VLC READS ONE FLAT NAMESPACE. Its loader skips every line that starts with
+# `#` or `[`, so the section headers are only where VLC's own writer puts each
+# key; a key under the wrong header still reads.
+#
+# VLC REWRITES THIS FILE whole when a person saves its preferences, with every
+# option it has and none of these comments.
+# ---------------------------------
+
+[core] # core program
+metadata-network-access=0
+
+[qt] # Qt interface
+qt-privacy-ask=0

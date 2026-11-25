@@ -10,13 +10,18 @@
 #   kdos_session_open      $BROWSER, which the login shell may not have set
 #   kdos_session_xdg_dirs  XDG_CONFIG_DIRS: the distribution's defaults, and
 #                          the overlays of a virtual machine and the live medium
+#   kdos_session_live_data XDG_DATA_DIRS: the live medium's own desktop entries
 #   kdos_session_boxes     the appbox warmup
+#   kdos_session_fcitx5_profile
+#                          a new account's input-method profile, whose first
+#                          entry is the system keyboard layout
 #
 # The session bus, the audio stack and the per-user timers are not here: they
 # are user services (/etc/kdos/user-services), started once per user by
 # turnstile at the first login, whatever kind of login that is, and stopped at
-# the last. The keyboard layout is not here either: kdos-settingsd serves it as
-# locale1 from /etc/kdos/xkb.conf, and KWin and startplasma read it there.
+# the last. The keyboard layout itself is not set here: kdos-settingsd serves
+# it as locale1 from /etc/kdos/xkb.conf, and KWin and startplasma read it
+# there; the fcitx5 profile only names the same layout.
 
 # ONE ROAD TO A LINK, ON A PATH THAT MAY HAVE READ NO PROFILE.
 # /etc/profile.d sets $BROWSER for a login shell, and startplasma hands the
@@ -90,6 +95,32 @@ kdos_session_xdg_dirs() {
 	unset _xd
 }
 
+# THE LIVE MEDIUM'S DESKTOP ENTRIES GO IN FRONT OF THE IMAGE'S, THERE ALONE.
+# /usr/share/kdos/data-live holds the entries the live session starts
+# differently: Welcome Center's, whose Exec passes --live-environment, which
+# the tour's live pages (Install, Keep Your Changes, the live wording of
+# Privacy and Make It Yours) read; Welcome Center's kded module passes it at
+# login, and a tour reopened from the launcher without it is an installed
+# machine's. An entry of the same desktop id earlier in XDG_DATA_DIRS
+# replaces the image's, so the directory goes first, on the live medium only.
+# XDG_DATA_DIRS unset means the specification's /usr/local/share:/usr/share,
+# which the list keeps behind it. Added once, like the config overlays. The
+# argument replaces the directory's path.
+kdos_session_live_data() {
+	_dl=${1:-/usr/share/kdos/data-live}
+	_dd=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+	case ":$_dd:" in
+		*":$_dl:"*) ;;
+		*)
+			if [ -d "$_dl" ] && kdos_session_live; then
+				XDG_DATA_DIRS=$_dl:$_dd
+				export XDG_DATA_DIRS
+			fi
+			;;
+	esac
+	unset _dd _dl
+}
+
 # The live medium: the root is the overlay the initramfs builds over the
 # image, which no installed system's root is — the test `kdos doctor` makes of
 # the same mount table. /proc/mounts names the root's type in the third field.
@@ -118,4 +149,94 @@ kdos_session_live() {
 kdos_session_boxes() {
 	command -v kdos-appbox >/dev/null 2>&1 || return 0
 	(nice -n 10 kdos-appbox warmup >/dev/null 2>&1 &)
+}
+
+# A NEW ACCOUNT'S FCITX5 PROFILE NAMES THE SYSTEM LAYOUT, NEVER A FIXED ONE.
+# fcitx5, which KWin starts as the input method, takes its group's Default
+# Layout as its inactive state. With its Wayland module's 'Allow Overriding
+# System XKB Settings' on, it also writes that layout into ~/.config/kxkbrc as
+# LayoutList, which outranks /etc/xdg/kxkbrc; /etc/xdg/fcitx5/conf/wayland.conf
+# turns the option off, and the Input Method page can turn it back on. A
+# profile naming any layout but the machine's would then put that layout
+# under the lock screen, which checks a password typed on the wrong keys.
+# So the profile is written here, before
+# KWin starts, from /etc/kdos/xkb.conf (the argument replaces that path): the
+# first entry of XKBLAYOUT's and of XKBVARIANT's comma lists, and when the
+# layout is empty, the one locale1 serves, which follows the console keymap;
+# `us` when neither names one. A value outside xkb.conf's character set
+# (letters, digits, `_+:.-`) is not used. The group is the four input methods
+# the image carries: the layout, then pinyin, anthy and hangul.
+#
+# An existing profile is never touched, so the Input Method page's choices,
+# and a layout a person picked, stand. The file is written whole under a
+# temporary name and renamed, so a login cut short leaves no half profile for
+# the next one to keep.
+kdos_session_fcitx5_profile() {
+	_fx_dir=${XDG_CONFIG_HOME:-$HOME/.config}/fcitx5
+	[ -n "$HOME" ] || [ -n "${XDG_CONFIG_HOME:-}" ] || return 0
+	[ -e "$_fx_dir/profile" ] && { unset _fx_dir; return 0; }
+	_fx_l=
+	_fx_v=
+	if [ -r "${1:-/etc/kdos/xkb.conf}" ]; then
+		while IFS= read -r _fx_line || [ -n "$_fx_line" ]; do
+			case $_fx_line in
+				XKBLAYOUT=*) _fx_l=${_fx_line#XKBLAYOUT=} ;;
+				XKBVARIANT=*) _fx_v=${_fx_line#XKBVARIANT=} ;;
+			esac
+		done < "${1:-/etc/kdos/xkb.conf}"
+	fi
+	if [ -z "$_fx_l" ] && command -v dbus-send >/dev/null 2>&1; then
+		_fx_l=$(kdos_session_locale1 X11Layout)
+		_fx_v=$(kdos_session_locale1 X11Variant)
+	fi
+	_fx_l=$(kdos_session_xkb_first "$_fx_l")
+	_fx_v=$(kdos_session_xkb_first "$_fx_v")
+	[ -n "$_fx_l" ] || { _fx_l=us; _fx_v=; }
+	[ -n "$_fx_v" ] && _fx_l=$_fx_l-$_fx_v
+	if mkdir -p "$_fx_dir" 2>/dev/null && printf '%s\n' \
+		'[Groups/0]' '# Group Name' 'Name=Default' '# Layout' \
+		"Default Layout=$_fx_l" '# Default Input Method' \
+		"DefaultIM=keyboard-$_fx_l" '' \
+		'[Groups/0/Items/0]' '# Name' "Name=keyboard-$_fx_l" '# Layout' 'Layout=' '' \
+		'[Groups/0/Items/1]' '# Name' 'Name=pinyin' '# Layout' 'Layout=' '' \
+		'[Groups/0/Items/2]' '# Name' 'Name=anthy' '# Layout' 'Layout=' '' \
+		'[Groups/0/Items/3]' '# Name' 'Name=hangul' '# Layout' 'Layout=' '' \
+		'[GroupOrder]' '0=Default' > "$_fx_dir/.profile.kdos.$$" 2>/dev/null; then
+		mv -f "$_fx_dir/.profile.kdos.$$" "$_fx_dir/profile" 2>/dev/null || \
+			rm -f "$_fx_dir/.profile.kdos.$$"
+	else
+		rm -f "$_fx_dir/.profile.kdos.$$" 2>/dev/null
+	fi
+	unset _fx_dir _fx_l _fx_v _fx_line
+}
+
+# The first entry of an XKB comma list, quotes removed, or nothing when it
+# holds a character xkb.conf does not allow.
+kdos_session_xkb_first() {
+	_xf=$1
+	case $_xf in
+		\"*\") _xf=${_xf#\"}; _xf=${_xf%\"} ;;
+		\'*\') _xf=${_xf#\'}; _xf=${_xf%\'} ;;
+	esac
+	_xf=${_xf%%,*}
+	case $_xf in
+		*[!A-Za-z0-9_+:.-]*) _xf= ;;
+	esac
+	printf '%s' "$_xf"
+	unset _xf
+}
+
+# One string property of locale1 on the system bus, or nothing.
+kdos_session_locale1() {
+	_lv=$(dbus-send --system --print-reply=literal --reply-timeout=2000 \
+		--dest=org.freedesktop.locale1 /org/freedesktop/locale1 \
+		org.freedesktop.DBus.Properties.Get \
+		string:org.freedesktop.locale1 "string:$1" 2>/dev/null) || _lv=
+	case $_lv in
+		*variant*) _lv=${_lv#*variant} ;;
+		*) _lv= ;;
+	esac
+	_lv=${_lv#"${_lv%%[! 	]*}"}
+	printf '%s' "${_lv%%[ 	]*}"
+	unset _lv
 }

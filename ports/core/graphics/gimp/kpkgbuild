@@ -10,7 +10,7 @@
 
 name        = gimp
 version     = 3.2.6
-release     = 1
+release     = 2
 source      = https://download.gimp.org/pub/gimp/v${version%.*}/$name-$version.tar.xz
 sha256      = 40b15e90ad0c0c631b76da3c467ea9847fa5c24f37413ac5b492804860a28cd8  gimp-3.2.6.tar.xz
 description = GNU Image Manipulation Program — raster image editor and photo retoucher

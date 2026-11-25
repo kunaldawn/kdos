@@ -151,12 +151,14 @@ if [ -d "$REPO_ROOT/testing" ]; then
         || log_mount "warning: testing bound read-write: no read-only remount"
     mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/kdos/ports"
 fi
-# The Makefile and the Dockerfile read-only: kdos-kfs renders Part I of KDOS
-# from Scratch from /kdos, and that part shows lines of both; 110_iso.sh
-# copies both onto a medium that carries the sources. Without the binds each
-# is the container's empty mount point, and the book prints "not in this
-# tree" where the listing goes. A file the container lacks is skipped.
-for _f in Makefile Dockerfile; do
+# The Makefile, the Dockerfile and LICENSE read-only: kdos-kfs renders Part I
+# of KDOS from Scratch from /kdos, and that part shows lines of the first two;
+# 110_iso.sh copies both onto a medium that carries the sources; 105_ports.sh
+# installs LICENSE as /usr/share/licenses/kdos/LICENSE and stops the image
+# without it. Without the binds each is the container's empty mount point, and
+# the book prints "not in this tree" where the listing goes. A file the
+# container lacks is skipped.
+for _f in Makefile Dockerfile LICENSE; do
     [ -f "$REPO_ROOT/$_f" ] && [ -e "$CHROOT_DIR/kdos/$_f" ] || continue
     mount --bind "$REPO_ROOT/$_f" "$CHROOT_DIR/kdos/$_f"
     mount -o remount,bind,ro "$CHROOT_DIR/kdos/$_f" \
@@ -181,6 +183,9 @@ case "${KDOS_PKG_STORE:-0}" in
     check) _store=/kdos/build/pkgstore; _store_check=1 ;;
     *)     _store=; _store_check=0 ;;
 esac
+
+_release=
+[ "${KDOS_GIT_DIRTY:-0}" = 0 ] && _release=${KDOS_GIT_TAG:-}
 
 # Execute command inside chroot, from /kdos so relative paths hold, with an
 # environment cleared by `env -i` down to HOME, TERM, PATH and the variables
@@ -223,6 +228,16 @@ esac
 #   KDOS_GIT_DATE      70_image/045_identity.sh into /etc/os-release
 #   KDOS_GIT_TIME      the commit's time in Unix seconds, which
 #                      70_image/105_ports.sh stamps into /ports/TREE
+#   KDOS_GIT_TAG,      the release tag on the commit itself, empty when it
+#   KDOS_GIT_RELEASE   has none, and that tag again only when the checkout
+#                      is clean, set here: a dirty tree's packages are not
+#                      the release's. 70_image/105_ports.sh stamps
+#                      KDOS_GIT_RELEASE into /ports/TREE and 010_binhost.sh
+#                      into the binhost index as `version`, the one name
+#                      `kdos update` matches the two by; empty, both name
+#                      the commit. 70_image/045_identity.sh stops the build
+#                      when KDOS_GIT_RELEASE without its v is not
+#                      /etc/os-release's VERSION_ID
 #
 # /usr/local/bin is LAST, unlike fs/etc/profile which puts it first. Our own
 # tools install there — kdos, kdos-appbox — and 70_image calls kdos-appbox
@@ -260,5 +275,7 @@ exec chroot "$CHROOT_DIR" /usr/bin/env -i \
     KDOS_GIT_DIRTY="${KDOS_GIT_DIRTY:-0}" \
     KDOS_GIT_DATE="${KDOS_GIT_DATE:-}" \
     KDOS_GIT_TIME="${KDOS_GIT_TIME:-}" \
+    KDOS_GIT_TAG="${KDOS_GIT_TAG:-}" \
+    KDOS_GIT_RELEASE="$_release" \
     PATH=/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin \
     /bin/bash -c "cd /kdos && exec \"\$@\"" -- "$@"

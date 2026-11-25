@@ -29,23 +29,23 @@ to be edited for a store to be used: at boot the initramfs asks `blkid` for a fi
 the generator's escaping: the init is written by a heredoc, and the generated script has a plain
 `$`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1193-1265 pin=3aace9336e51 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1435-1507 pin=534689bd2caa -->
 
 `find_persist` is the lookup. It asks for the label again every tenth of a second while USB storage
 is still arriving, so a store on a stick that is enumerated after the medium is found is still used:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=983-1086 pin=4d82dbf65d60 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1125-1228 pin=4d82dbf65d60 -->
 
 A store on the disk the medium was found on is mounted through a loop device at the partition's
 offset, because the medium's whole-disk mount keeps the kernel from opening any partition on that
 disk; `persist_dev` decides:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1070-1092 pin=e97ce69fa4ef -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1230-1252 pin=cbb91ba467b9 -->
 
 The store's mount is moved into the new root as `/mnt/persist`, so the running session can see it
 and the shutdown can remount it read-only by that name before it reboots:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1348-1357 pin=3877b564d3c6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1574-1583 pin=3877b564d3c6 -->
 
 On the store itself, the overlay uses two directories, `upper/` (the session's files) and `work/`
 (overlayfs's own), which the initramfs creates when they are missing.
@@ -53,11 +53,11 @@ On the store itself, the overlay uses two directories, `upper/` (the session's f
 `kdos persist create` makes the filesystem with no reserved blocks and the label, through a loop
 device when the store is on the boot disk:
 
-<!-- kfs:include src/system/kdos-tools/persist.c lines=808-831 pin=79e13633f0f1 -->
+<!-- kfs:include src/system/kdos-tools/persist.c lines=969-992 pin=79e13633f0f1 -->
 
 The menu entry that skips the store:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=351-356 pin=00a38d5e1ac3 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=399-404 pin=2aed62e4ba8e -->
 
 ## Usage
 
@@ -102,9 +102,14 @@ The menu entry that skips the store:
 
 With no device named, `create` picks the disk the live system booted from. A machine that booted
 the image from an optical drive, as a virtual machine with the ISO attached does, has `/dev/sr0`
-there, and `create` refuses it: `kdos persist: /dev/sr0 is read-only (a disc) — name a USB stick
-or disk`. Name a writable disk instead, as below. The Welcome tour's page offers each writable USB
-stick that has nothing mounted.
+there: `kdos persist` says the boot medium is a disc and cannot hold a store, and `create`
+refuses it: `kdos persist: /dev/sr0 is read-only (a disc) — name a USB stick or disk`. A Ventoy
+stick runs the image as a file inside its own partition, through `/dev/mapper/ventoy`; booted
+under UEFI the medium is that mapping, and under BIOS it is the stick's second-partition node,
+which Ventoy points at the same mapping. Under both firmwares the report says a Ventoy stick
+cannot take a KDOS store, and `create` refuses the medium, and the physical stick under it, with
+the same words. Name a writable disk instead, as below. The Welcome tour's
+page offers each writable USB stick that has nothing mounted and is not the Ventoy stick.
 
 ### Making a store on another device
 

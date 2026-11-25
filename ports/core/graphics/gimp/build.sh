@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export LDFLAGS="$LDFLAGS -Wl,-z,stack-size=8388608"
+
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release \

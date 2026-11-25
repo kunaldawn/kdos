@@ -25,9 +25,17 @@
 # so a row here is what makes the choice. An id counts only while its entry is
 # installed; a row whose application is removed falls through in silence,
 # which is why mimecheck.py also fails on an id the built image does not
-# carry. /etc/xdg/mimeapps.list holds the few handlers that are not a desktop
-# application's, and names no type this file names. A person's own choice
+# carry. A row may name several, best first: the first one installed opens
+# the file, which lets a type whose choice is installed from the binhost
+# name an application on the installation medium behind it.
+# /etc/xdg/mimeapps.list holds the few handlers that are not a desktop
+# application's, and names no default this file names; it also carries the
+# removed associations this list cannot. A person's own choice
 # lands in ~/.config/mimeapps.list and outranks both.
+#
+# KService and GLib read only [Default Applications] from a desktop-named
+# list such as this one, so a removed or added association written here is
+# ignored; it goes in /etc/xdg/mimeapps.list.
 #
 # Three roles of the table open no file and have no type to name here: the
 # terminal is kdeglobals' TerminalApplication (Konsole), the calculator is
@@ -175,29 +183,32 @@ image/wmf=org.inkscape.Inkscape.desktop
 # claim it too, and only preview it.
 image/x-xcf=gimp.desktop
 
-# Video: Haruna. Dragon is installed and claims the same types, and the
-# three that close the list besides.
-video/mp4=org.kde.haruna.desktop
-video/matroska=org.kde.haruna.desktop
-video/webm=org.kde.haruna.desktop
-video/mpeg=org.kde.haruna.desktop
-video/quicktime=org.kde.haruna.desktop
-video/ogg=org.kde.haruna.desktop
-video/vnd.avi=org.kde.haruna.desktop
-video/mp2t=org.kde.haruna.desktop
-video/x-ms-wmv=org.kde.haruna.desktop
-video/x-theora+ogg=org.kde.haruna.desktop
-video/x-ogm+ogg=org.kde.haruna.desktop
-video/x-flv=org.kde.haruna.desktop
-video/3gpp=org.kde.haruna.desktop
-application/vnd.ms-asf=org.kde.haruna.desktop
-video/vnd.rn-realvideo=org.kde.haruna.desktop
-video/x-flic=org.kde.haruna.desktop
+# Video: Haruna, then VLC. The installation medium carries both: Haruna as
+# the video player, VLC for Elisa, which plays through libvlc, and for video
+# once Haruna is removed. vlc.desktop declares no type, so its place
+# behind Haruna on each row is the only thing that offers it. Dragon claims
+# the same types, and the three that close the list besides.
+video/mp4=org.kde.haruna.desktop;vlc.desktop;
+video/matroska=org.kde.haruna.desktop;vlc.desktop;
+video/webm=org.kde.haruna.desktop;vlc.desktop;
+video/mpeg=org.kde.haruna.desktop;vlc.desktop;
+video/quicktime=org.kde.haruna.desktop;vlc.desktop;
+video/ogg=org.kde.haruna.desktop;vlc.desktop;
+video/vnd.avi=org.kde.haruna.desktop;vlc.desktop;
+video/mp2t=org.kde.haruna.desktop;vlc.desktop;
+video/x-ms-wmv=org.kde.haruna.desktop;vlc.desktop;
+video/x-theora+ogg=org.kde.haruna.desktop;vlc.desktop;
+video/x-ogm+ogg=org.kde.haruna.desktop;vlc.desktop;
+video/x-flv=org.kde.haruna.desktop;vlc.desktop;
+video/3gpp=org.kde.haruna.desktop;vlc.desktop;
+application/vnd.ms-asf=org.kde.haruna.desktop;vlc.desktop;
+video/vnd.rn-realvideo=org.kde.haruna.desktop;vlc.desktop;
+video/x-flic=org.kde.haruna.desktop;vlc.desktop;
 
 # Sound that comes in a video container or a film's audio track, WebM audio
-# and AC-3, goes to Haruna with the video; mpv claims both too.
-audio/webm=org.kde.haruna.desktop
-audio/ac3=org.kde.haruna.desktop
+# and AC-3, goes to Haruna or VLC with the video; mpv claims both too.
+audio/webm=org.kde.haruna.desktop;vlc.desktop;
+audio/ac3=org.kde.haruna.desktop;vlc.desktop;
 
 # Music: Elisa. Strawberry is installed and claims every type here.
 # *.ogg and *.opus are globbed by several Ogg subtypes of equal weight, and
@@ -242,7 +253,16 @@ application/vnd.efi.img=org.kde.isoimagewriter.desktop
 
 # Mail, calendars and contacts: Thunderbird, one application for all three
 # with no Akonadi server in the session. KMail, KOrganizer and KAddressBook
-# are installed and claim the same types.
+# claim the same types. Thunderbird is in the internet group, not on the
+# base; until it is installed a mailto: link falls to kdos-nomail.desktop,
+# the one entry on the base that claims the scheme, which says how to install
+# it. Without a claimant KIO reads the link as a file and reports that it
+# cannot read it. Until a mail or calendar program is installed text/calendar
+# has no handler, so an invitation opens Open With and Default Applications
+# names no calendar: Kate and Okular's text generator claim the type as a
+# kind of plain text, and /etc/xdg/mimeapps.list removes both associations,
+# a removal this list cannot make. A calendar installed later (Merkuro, KOrganizer) offers itself
+# through its own entry.
 x-scheme-handler/mailto=thunderbird.desktop
 message/rfc822=thunderbird.desktop
 text/calendar=thunderbird.desktop
@@ -289,6 +309,7 @@ application/vnd.oasis.opendocument.graphics=libreoffice-draw.desktop
 application/vnd.oasis.opendocument.graphics-template=libreoffice-draw.desktop
 application/vnd.oasis.opendocument.graphics-flat-xml=libreoffice-draw.desktop
 application/vnd.oasis.opendocument.formula=libreoffice-math.desktop
+application/vnd.oasis.opendocument.formula-template=libreoffice-math.desktop
 
 # Remote desktops: Remmina, for every scheme it serves; KRDC is installed and
 # has no SPICE. An ssh: link opens a shell in Konsole through KIO's telnet

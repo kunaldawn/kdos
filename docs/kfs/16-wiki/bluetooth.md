@@ -29,7 +29,7 @@ named `bluetooth`, and its supervised process `bluetoothd`. It is on by default 
 medium and an installed system. The installer lists it among its service choices, on unless you
 turn it off:
 
-<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=29-35 pin=09936ab49b18 -->
 
 ## Configuration
 

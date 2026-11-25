@@ -31,12 +31,12 @@ unless the install asked for autologin.
 
 The two console lines:
 
-<!-- kfs:include fs/etc/inittab lines=24-51 pin=a25c6ec1fbcf -->
+<!-- kfs:include fs/etc/inittab lines=24-52 pin=adbecf648f72 -->
 
-`kdos-dm` is started only once `rcS` has returned, and `rcS` lets go of the framebuffer
-synchronously at its end, so the greeter's compositor never races the boot splash for the
-display. Its log is `/var/log/sddm.log`, one boot per file, with the previous boot's in
-`/var/log/sddm.log.old`.
+`kdos-dm` is started only once `rcS` has returned, and the splash stops drawing synchronously at
+the end of `rcS`, leaving its settled frame on screen for the greeter's compositor to replace with
+its first one, so the compositor never races the boot splash for the display. SDDM's log is
+`/var/log/sddm.log`, one boot per file, with the previous boot's in `/var/log/sddm.log.old`.
 
 ### /etc/sddm.conf.d/
 
@@ -46,7 +46,7 @@ KDOS session wrapper and no X sessions (see
 [Session and environment](session-and-environment.md#how-sddm-starts-the-session)), the accounts
 from uid 1000 up, and the theme, from `fs/etc/sddm.conf.d/00-kdos.conf`:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=56-69 pin=8cac08410de7 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=65-78 pin=8cac08410de7 -->
 
 [`kde_settings.conf`]{.idx term="/etc/sddm.conf.d/kde_settings.conf"} is the one home of
 `[Autologin]`. The installer writes it, the Login Screen page of System Settings writes it, and it
@@ -65,7 +65,7 @@ encrypted root that asked for it, and with no `[Autologin]` anywhere else, which
 
 `sddm` installs three stacks of its own, from `ports/core/auth/sddm/build.sh`:
 
-<!-- kfs:include ports/core/auth/sddm/build.sh lines=39-73 pin=048145511062 -->
+<!-- kfs:include ports/core/auth/sddm/build.sh lines=40-74 pin=048145511062 -->
 
 `sddm` is a password login and `sddm-autologin` one with no password, refused for any uid under
 1000 except the OEM wizard's `plasma-setup`. `sddm-greeter` is the greeter's own session;
@@ -150,7 +150,7 @@ The account is offered on the greeter at once: SDDM lists every account from uid
 
 ### Single-user mode
 
-On an installed system, boot the menu's `KDOS (single user)` entry, or run `sudo telinit S` on a
+On an installed system, boot the menu's `KDOS <version> (single user)` entry, or run `sudo telinit S` on a
 running machine. The live medium's menu has no single-user entry. `sulogin`
 asks for root's password. On an installed system root's password is locked unless one was set in
 the installer, and `sulogin` gives no shell to a locked root; set a password first with

@@ -24,14 +24,27 @@
 # without them (kdosbuild.sh called by hand) writes neither line, and
 # About this System shows the image as unstamped rather than inventing a commit.
 #
-# THE RELEASE RECORD, /etc/kdos-release, is written beside it: VERSION
-# (os-release's VERSION_ID and `+BUILD_ID`, the name kdos-bootctl and
-# kdos-sysupdated give a root without a record), BUILD_ID, BUILD_DATE, TREE
+# THE RELEASE RECORD, /etc/kdos-release, is written beside it: VERSION,
+# BUILD_ID, BUILD_DATE, TREE
 # (the commit) and TREE_TIME (the commit's time). `kdos update` judges an
 # offered slot image newer by TREE_TIME against the image's own time, and
 # kdos-bootctl copies the record to the ESP for the boot menu; without it no
 # image is ever newer than the running system. A build with no commit writes
-# none.
+# none. VERSION has one form, the one `kdos update` writes when it fills a
+# slot from a tree: a release build gives the release without its tag's `v`
+# (0.2.1), any other build os-release's VERSION_ID and `+BUILD_ID`
+# (0.2.1+4dc1f7f826a3-dirty), the name kdos-bootctl and kdos-sysupdated also
+# give a root without a record. Two forms would name the two slots of one
+# machine differently in System Versions and on the logout screen.
+#
+# A RELEASE BUILD (KDOS_GIT_RELEASE set: a clean checkout with a release tag
+# on HEAD) stops when the tag without its `v` is not the root's
+# /etc/os-release VERSION_ID: every surface that names the release (About
+# this System, `kdos version`, the boot menus, What's New, /etc/kdos-release)
+# reads it from there, so an unbumped file would ship the new tag calling
+# itself the old release. The root's copy is the one 10_bootstrap's
+# 000_file_system.sh made of fs/etc/os-release, so a bump reaches a tree
+# already built only when that step runs again.
 #
 # Runs before 100_packs.sh so the base pack carries the stamped file.
 
@@ -45,6 +58,12 @@ grep -v -e '^BUILD_ID=' -e '^KDOS_BUILD_DATE=' "$OSR" > "$OSR.new" || true
 cat "$OSR.new" > "$OSR"
 rm -f "$OSR.new"
 
+vid=$(sed -n 's/^VERSION_ID="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$OSR")
+if [ -n "${KDOS_GIT_RELEASE:-}" ] && [ "${KDOS_GIT_RELEASE#v}" != "$vid" ]; then
+    echo "FATAL: release $KDOS_GIT_RELEASE but /etc/os-release says VERSION_ID=$vid — bump fs/etc/os-release, or run 10_bootstrap:000_file_system.sh again if it is bumped" >&2
+    exit 1
+fi
+
 rm -f /etc/kdos-release
 if [ -z "${KDOS_GIT_COMMIT:-}" ]; then
     echo "No commit given; $OSR left unstamped."
@@ -57,12 +76,14 @@ echo "BUILD_ID=\"$id\"" >> "$OSR"
 [ -n "${KDOS_GIT_DATE:-}" ] && echo "KDOS_BUILD_DATE=\"$KDOS_GIT_DATE\"" >> "$OSR"
 echo "Stamped $OSR: BUILD_ID=$id${KDOS_GIT_DATE:+, KDOS_BUILD_DATE=$KDOS_GIT_DATE}"
 
-vid=$(sed -n 's/^VERSION_ID="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$OSR")
+ver="$vid+$id"
+[ -n "${KDOS_GIT_RELEASE:-}" ] && ver="${KDOS_GIT_RELEASE#v}"
+
 {
     echo '# The KDOS release this root holds. Written by the image build and by'
     echo '# `kdos update` when it fills this root; read by kdos-sysupdated and'
     echo '# kdos-bootctl.'
-    echo "VERSION=\"$vid+$id\""
+    echo "VERSION=\"$ver\""
     echo "BUILD_ID=\"$id\""
     echo "BUILD_DATE=\"${KDOS_GIT_DATE:-}\""
     echo "TREE=\"$KDOS_GIT_COMMIT\""
@@ -70,4 +91,4 @@ vid=$(sed -n 's/^VERSION_ID="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$OSR")
     echo "INSTALLED_BY=\"medium\""
 } > /etc/kdos-release
 chmod 0644 /etc/kdos-release
-echo "Wrote /etc/kdos-release: $vid+$id, tree time ${KDOS_GIT_TIME:-0}"
+echo "Wrote /etc/kdos-release: $ver, tree time ${KDOS_GIT_TIME:-0}"

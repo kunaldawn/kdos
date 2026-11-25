@@ -151,10 +151,12 @@ var EXPECT = [
     ["io.kdos.slots.channel",                                   "KAAKAA"],
     ["io.kdos.slots.install-route",                             "KAAKAA"],
     ["io.kdos.slots.bless",                                     "ynnynn"],
-    /* Discover's KDOS backend: a port installed prebuilt from the binhost
-     * keeps the grant a while; a port built here asks every time, since it
-     * runs a recipe's build.sh as root. */
+    /* Discover's KDOS backend: a port installed prebuilt from the binhost,
+     * or removed after it was installed on request, keeps the grant a
+     * while; a port built here asks every time, since it runs a recipe's
+     * build.sh as root. */
     ["io.kdos.ports.install",                                   "KAAKAA"],
+    ["io.kdos.ports.remove",                                    "KAAKAA"],
     ["io.kdos.ports.build",                                     "AAAAAA"],
     /* The graphical installer erases a disk: an administrator's password
      * every time, at the machine only. The live medium's own rule

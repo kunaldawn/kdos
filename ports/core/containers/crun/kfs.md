@@ -36,3 +36,25 @@ program is linked from. No shared `libcrun` is built.
 crun parses its command line with `argp`, which glibc provides and musl does not; configure stops
 with `argp functions not found` unless a library supplies `argp_parse`, which is why
 [argp-standalone](#port-argp-standalone) is in `depends`.
+
+`kill-all-without-cgroup.patch` makes `crun kill --all` and the kill inside `crun delete --force`
+signal the container's own process and every process descended from it when the container has no
+cgroup. A rootless container under the `cgroupfs` manager gets none: Podman passes no cgroup path,
+crun cannot create one in a session cgroup that root owns, and it records an empty path. A
+container that shares the host pid namespace, as every [distrobox](#port-distrobox) box does
+(`--pid host`), is stopped through `kill --all`: Podman sends the stop signal itself with `--all`
+whenever the container has no pid namespace of its own and was not created with `--cgroups
+disabled`, so the init is still alive when the tree is collected. Unpatched, `kill --all` walks the empty
+path, signals nothing and reports success; Podman then waits for a pid that never dies, `podman stop`, `distrobox
+rm --force` and `distrobox stop` fail with `given PID did not die within timeout`, and the container
+stays `Stopping` until the machine restarts. With neither a cgroup nor a pid namespace the patch
+finds the container's processes through the parent links in `/proc/<pid>/stat`, breadth first from
+the container's process, at most 4,096 of them, and collects the whole tree before the first signal:
+a child whose parent dies is reparented to `conmon` and could no longer be found. Signalling the init
+alone is not enough, because a descendant it leaves, such as distrobox-init's `sleep` loop, keeps
+the root filesystem's overlay mounted and the next `podman start` or `distrobox enter` fails with
+`device or resource busy` until it exits. A `kill --all` that finds the process already gone
+succeeds, as the walk of an empty cgroup does, so a stop racing the container's own exit is not
+reported as a failure. A process a `podman exec` or `distrobox enter` started descends from its own
+`conmon`, not from the container's process, and outlives the stop, as it does on any host without a
+delegated cgroup. To be offered upstream to crun.

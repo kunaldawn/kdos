@@ -17,3 +17,6 @@ python3 "$PORT_SRC/genpreview.py" "/usr/share/kdos/greeter/$(kdos-theme accents 
 
 install -d "$PKG/usr/share/sddm/themes/kdos"
 cp -a . "$PKG/usr/share/sddm/themes/kdos/"
+
+install -Dm644 /usr/share/licenses/plasma-desktop/LICENSES/LGPL-2.0-or-later.txt \
+	"$PKG/usr/share/licenses/$name/LGPL-2.0-or-later.txt"

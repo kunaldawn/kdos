@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <linux/kd.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 
 #include "kbase.h"
 #include "ktui.h"
@@ -286,16 +287,82 @@ static void detect_caps(void)
 	}
 }
 
+/*
+ * THE VT IS FOUND ONCE, AND IT MAY NOT BE /dev/tty. sudo runs its command on a
+ * fresh pseudo-terminal (use_pty), so TERM is still linux and the screen is
+ * still the console, but every console ioctl fails on the pts: the palette
+ * would stay kdos-getty's, whose slots 4-6 are VT blue, magenta and cyan where
+ * a program's rules and hints belong, and the Shift state that turns a Tab
+ * into a back-tab could not be read. The descriptor is, in order: the
+ * terminal itself when it answers KDGKBTYPE, else the VT sudo was started
+ * from ($SUDO_TTY, when it names /dev/ttyN), else /dev/tty0 when stdin is a
+ * pts under a sudo that set no SUDO_TTY. A sudo whose SUDO_TTY names a pts, a
+ * pts outside sudo (ssh with TERM=linux) and any TERM but linux are not on
+ * this machine's screen and get none. It is opened at ktui_term_init and held
+ * until ktui_term_shutdown, across a suspend, and closed there alone.
+ */
+static int vt_fd = -1;
+
+static int is_vt(int fd)
+{
+	char type;
+
+	return fd >= 0 && ioctl(fd, KDGKBTYPE, &type) == 0;
+}
+
+static int vt_open(const char *path)
+{
+	int fd = open(path, O_RDWR | O_NOCTTY | O_CLOEXEC);
+
+	if (fd >= 0 && !is_vt(fd)) {
+		close(fd);
+		fd = -1;
+	}
+	return fd;
+}
+
+static int vt_find(void)
+{
+	const char *st = getenv("SUDO_TTY");
+
+	if (!(ktui_caps & KT_CAP_LINUXVT))
+		return -1;
+	if (is_vt(tty_fd))
+		return tty_fd;
+	if (st && !strncmp(st, "/dev/tty", 8) && st[8] >= '0' && st[8] <= '9')
+		return vt_open(st);
+	if (!st && getenv("SUDO_UID") && isatty(0)) {
+		const char *n = ttyname(0);
+
+		if (n && !strncmp(n, "/dev/pts/", 9))
+			return vt_open("/dev/tty0");
+	}
+	return -1;
+}
+
+static void vt_close(void)
+{
+	if (vt_fd >= 0 && vt_fd != tty_fd)
+		close(vt_fd);
+	vt_fd = -1;
+}
+
+/* Library-internal: ktui_input asks it for the Shift state. -1 is no VT. */
+int ktui_term_vt_fd(void)
+{
+	return vt_fd;
+}
+
 /* The console palette is ours for the duration and exactly restored after:
  * GIO_CMAP hands back what kdos-getty's setvtrgb loaded, PIO_CMAP puts the
- * installer's eight slots in its place. No external tool, no drift. */
+ * program's eight slots in its place. No external tool, no drift. The colour
+ * map is console-wide, so the VT descriptor sets the one on screen; a VT that
+ * will not hand its map back is left alone, since it could not be restored. */
 static void palette_install(void)
 {
-	if (!(ktui_caps & KT_CAP_LINUXVT) || tty_fd < 0)
+	if (vt_fd < 0 || ioctl(vt_fd, GIO_CMAP, saved_cmap) < 0)
 		return;
-
-	if (ioctl(tty_fd, GIO_CMAP, saved_cmap) == 0)
-		cmap_saved = 1;
+	cmap_saved = 1;
 
 	unsigned char cm[48];
 	for (int i = 0; i < 16; i++) {
@@ -304,18 +371,19 @@ static void palette_install(void)
 		cm[i * 3 + 1] = c.g;
 		cm[i * 3 + 2] = c.b;
 	}
-	ioctl(tty_fd, PIO_CMAP, cm);
+	ioctl(vt_fd, PIO_CMAP, cm);
 }
 
 static void palette_restore(void)
 {
-	if (cmap_saved && tty_fd >= 0)
-		ioctl(tty_fd, PIO_CMAP, saved_cmap);
+	if (cmap_saved && vt_fd >= 0)
+		ioctl(vt_fd, PIO_CMAP, saved_cmap);
+	cmap_saved = 0;
 }
 
 void ktui_term_repalette(void)
 {
-	if (!(ktui_caps & KT_CAP_LINUXVT) || tty_fd < 0)
+	if (!cmap_saved)
 		return;
 	unsigned char cm[48];
 	for (int i = 0; i < 16; i++) {
@@ -324,7 +392,7 @@ void ktui_term_repalette(void)
 		cm[i * 3 + 1] = c.g;
 		cm[i * 3 + 2] = c.b;
 	}
-	ioctl(tty_fd, PIO_CMAP, cm);
+	ioctl(vt_fd, PIO_CMAP, cm);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -460,10 +528,16 @@ static void probe_terminal(void)
 	ktui_term_flush();
 }
 
+/* Where ktui_term_caret() last put the terminal's cursor; negative is hidden. */
+static int caret_x = -2, caret_y = -2;
+
 static void enter_screen(void)
 {
 	/* The Linux VT has no alternate buffer and ignores 1049; harmless. */
 	emit("\033[?1049h\033[?25l\033[2J\033[H");
+	/* The escape above hid the cursor, so a caret asked for at the
+	 * position it held before a suspend must be written again. */
+	caret_x = caret_y = -1;
 	/*
 	 * BRACKETED PASTE, ALWAYS. Without it a paste arrives as the keys it
 	 * spells and a line beginning with a chord runs the chord — and a
@@ -486,14 +560,13 @@ static void enter_screen(void)
  */
 void ktui_term_caret(int x, int y)
 {
-	static int last_x = -2, last_y = -2;
 	const KtuiBackend *b = ktui_backend();
 	char seq[48];
 
-	if (x == last_x && y == last_y)
+	if (x == caret_x && y == caret_y)
 		return;
-	last_x = x;
-	last_y = y;
+	caret_x = x;
+	caret_y = y;
 
 	/* A display server places it, and the escape is never written: this
 	 * surface's stdout is not the screen it is drawn on. */
@@ -525,6 +598,24 @@ void ktui_term_caret(int x, int y)
 	ktui_term_flush();
 }
 
+/*
+ * ON A LINUX VT A HIDDEN CURSOR IS HIDDEN AGAIN IN EVERY FRAME. The console's
+ * cursor state belongs to the virtual console, not to this program, and
+ * anything else that writes to it (a kernel message, another program on the
+ * same VT, a reset) can turn it back on at wherever the last frame's write
+ * left it. Six bytes a frame keep that cell from showing a stray block; a
+ * terminal emulator keeps its own mode and is not sent them.
+ */
+void ktui_term_caret_hold(void)
+{
+	const KtuiBackend *b = ktui_backend();
+
+	if (!(ktui_caps & KT_CAP_LINUXVT) || (b && b->caret) ||
+	    ktui_offscreen() || (caret_x >= 0 && caret_y >= 0))
+		return;
+	emit("\033[?25l");
+}
+
 static void leave_screen(void)
 {
 	if (kkbd_pushed) {
@@ -552,6 +643,7 @@ int ktui_term_init(int want_mouse)
 	tty_fd = open("/dev/tty", O_RDWR | O_CLOEXEC);
 	if (tty_fd < 0)
 		tty_fd = isatty(0) ? 0 : -1;
+	vt_fd = vt_find();
 
 	if (want_mouse && !(ktui_caps & KT_CAP_LINUXVT))
 		ktui_caps |= KT_CAP_MOUSE;
@@ -579,6 +671,7 @@ void ktui_term_shutdown(void)
 	leave_screen();
 	palette_restore();
 	raw_off();
+	vt_close();
 	if (tty_fd > 2)
 		close(tty_fd);
 	tty_fd = -1;
@@ -605,4 +698,37 @@ void ktui_term_resume(void)
 	ktui_term_size_refresh();
 	ktui_draw_resize();
 	ktui_draw_invalidate();
+}
+
+/*
+ * THE NOTE IS THE LAST THING ON THE RESTORED TERMINAL BEFORE THE PROGRAM,
+ * so it says how to come back while nothing else is on the screen. The child
+ * starts with SHLVL=2: bash.bashrc draws its banner only in the first shell
+ * of a terminal (SHLVL 1), and a banner tall enough to fill a 25-row console
+ * would scroll the note away before the prompt appears.
+ */
+int ktui_run_console_note(const char *note, char *const argv[])
+{
+	ktui_term_suspend();
+	ktui_input_suspend();
+	if (note && *note)
+		printf("\033[0m%s\n\n", note);
+	fflush(stdout);
+	pid_t pid = fork();
+	if (pid == 0) {
+		setenv("SHLVL", "2", 1);
+		execvp(argv[0], argv);
+		_exit(127);
+	}
+	int st = 0;
+	if (pid > 0)
+		waitpid(pid, &st, 0);
+	fputs("\n\033[0m-- press Enter to return --", stdout);
+	fflush(stdout);
+	int c;
+	while ((c = getchar()) != '\n' && c != EOF)
+		;
+	ktui_input_resume();
+	ktui_term_resume();
+	return st;
 }

@@ -146,7 +146,8 @@ private Q_SLOTS:
             fakes->power.knocks.insert(QStringLiteral("kdeconnect"), 10 + i);
             settle();
         }
-        QTest::qWait(1000);
+        QTRY_COMPARE_WITH_TIMEOUT(fakes->notifications.replied, 1, 10000);
+        settle();
         QCOMPARE(fakes->notifications.calls, 1);
         QCOMPARE(fakes->notifications.shown.size(), 1);
         fakes->notifications.invoke(fakes->connection, fakes->notifications.shown.first().id, QStringLiteral("deny"));

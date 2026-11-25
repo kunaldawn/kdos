@@ -20,12 +20,17 @@
  * Piper speaks, each from a model file on the disk. Dolphin's Transcribe
  * action runs `transcribe`, and Klipper's Read Aloud action runs `say`.
  *
- * ONE MODEL SHIPS: base.en, from the whisper-model-base-en port, in
- * /usr/share/whisper.cpp/models. Every other one is a personal choice —
- * language, size and the trade between the two, from 32 MB to 3.1 GB — so the
- * image carries the English default and this carries the way to get the
- * rest. NO VOICE SHIPS: a voice is a language and a speaker, about 63 MB
- * each, and `voice get` fetches one into ~/.local/share/piper/voices.
+ * THE IMAGE CARRIES NONE OF IT. whisper.cpp, piper and the base.en model
+ * are three ports — `whisper.cpp`, `piper` and `whisper-model-base-en`, the
+ * last putting base.en in /usr/share/whisper.cpp/models — each installed
+ * with `sudo kdos update install <port>`. `get` and `transcribe` need
+ * whisper-cli, `voice get` and `say` need piper, and each says so and names
+ * that command before it does anything else, so nothing is downloaded for a
+ * program that is not there to use it. A model is a
+ * personal choice — language, size and the trade between the two, from
+ * 32 MB to 3.1 GB — and so is a voice, a language and a speaker at about
+ * 63 MB each; `get` and `voice get` fetch them into the person's own data
+ * directory.
  *
  * IT WRITES TO THE USER'S DATA DIRECTORY AND NEVER TO /usr. A model is found
  * at $KDOS_WHISPER_MODEL, then in $XDG_DATA_HOME/whisper.cpp/models, then in
@@ -188,7 +193,7 @@ static int cmd_list(void)
 
 		human(MODELS[i].bytes, sz, sizeof(sz));
 		printf("  %-16s %9s  %s\n", MODELS[i].name, sz,
-		       here ? "installed" : shipped ? "shipped" : "");
+		       here ? "installed" : shipped ? "packaged" : "");
 		free(p);
 		free(sp);
 	}
@@ -276,6 +281,8 @@ static int fetch_verified(const char *url, const char *part,
 	return 0;
 }
 
+static int need_prog(const char *prog, const char *port);
+
 /*
  * THE FETCH. curl writes to a `.part` beside the destination and the rename
  * happens only after both checks pass, so an interrupted download is never a
@@ -292,6 +299,8 @@ static int cmd_get(const char *name)
 				"try: kdos speech list\n", name);
 		return 1;
 	}
+	if (need_prog("whisper-cli", "whisper.cpp"))
+		return 1;
 	if (!kb_have_prog("curl")) {
 		fprintf(stderr, "kdos speech: curl is not on $PATH\n");
 		return 1;
@@ -345,6 +354,17 @@ static int cmd_remove(const char *name)
 }
 
 static int speech_usage(int rc);
+
+/* The program a verb runs, checked before the verb does anything: 0 when it
+ * is on $PATH, otherwise 1 and the command that installs its port. */
+static int need_prog(const char *prog, const char *port)
+{
+	if (kb_have_prog(prog))
+		return 0;
+	fprintf(stderr, "kdos speech: %s is not installed — "
+			"sudo kdos update install %s\n", port, port);
+	return 1;
+}
 
 /* ── transcribe ────────────────────────────────────────────────────────── */
 
@@ -489,9 +509,17 @@ static int cmd_transcribe(int argc, char **argv)
 	}
 	if (first >= argc)
 		return speech_usage(2);
+	if (need_prog("whisper-cli", "whisper.cpp")) {
+		if (notify)
+			kb_notify("kdos", "Transcription failed",
+				  "whisper.cpp is not installed");
+		return 1;
+	}
 	if (!(model = find_whisper())) {
 		fprintf(stderr, "kdos speech: no transcription model — "
-				"kdos speech get %s\n", DEFAULT_MODEL);
+				"kdos speech get %s, or sudo kdos update "
+				"install whisper-model-base-en\n",
+			DEFAULT_MODEL);
 		if (notify)
 			kb_notify("kdos", "Transcription failed",
 				  "no transcription model is installed");
@@ -646,7 +674,7 @@ static int cmd_voice_list(void)
 		printf("  %-22s %7s  %s\n", VOICES[i].name, sz,
 		       voice_here(dir, VOICES[i].name) ? "installed"
 		       : voice_here(SYSTEM_VOICE_DIR, VOICES[i].name)
-			       ? "shipped" : "");
+			       ? "packaged" : "");
 	}
 	printf("\n  kdos speech voice get %s\n", DEFAULT_VOICE);
 	free(dir);
@@ -670,6 +698,8 @@ static int cmd_voice_get(const char *name)
 				"try: kdos speech voice list\n", name);
 		return 1;
 	}
+	if (need_prog("piper", "piper"))
+		return 1;
 	if (!kb_have_prog("curl")) {
 		fprintf(stderr, "kdos speech: curl is not on $PATH\n");
 		return 1;
@@ -780,6 +810,8 @@ static int cmd_say(int argc, char **argv)
 	}
 	if (want && (!*want || strchr(want, '/')))
 		return speech_usage(2);
+	if (need_prog("piper", "piper"))
+		return 1;
 	if (!(voice = find_voice(want))) {
 		fprintf(stderr, "kdos speech: %s — a voice is <name>.onnx with "
 				"its .onnx.json, in %s or %s\n",
@@ -839,9 +871,9 @@ out:
 /* ── sync: Klipper's Read Aloud action ─────────────────────────────────── */
 
 /*
- * KLIPPER HAS NO PER-ACTION CONDITION, so the action exists only while a
- * voice does: added when one is installed, removed — exactly that action,
- * found by its description and command — when the last one goes. Every
+ * KLIPPER HAS NO PER-ACTION CONDITION, so the action exists only while piper
+ * and a voice both do: added when both are installed, removed — exactly that
+ * action, found by its description and command — when either goes. Every
  * other action is the person's and is not touched; one that sat after ours
  * moves down a place, which is how Klipper itself numbers them.
  *
@@ -976,7 +1008,7 @@ static int drop_action(KEnt *e, int n, int idx)
 
 static int cmd_sync(void)
 {
-	char *voice = find_voice(NULL);
+	char *voice = kb_have_prog("piper") ? find_voice(NULL) : NULL;
 	int n = 0, count, at = -1, rc = 0;
 	KEnt *e = klipper_read(&n);
 	const char *cs = kent(e, n, "General", "Number of Actions");
@@ -1012,8 +1044,9 @@ static int cmd_sync(void)
 		snprintf(num, sizeof(num), "%d", count - 1);
 		rc |= set("General", "Number of Actions", num);
 		if (!rc)
-			printf("Klipper no longer offers Read Aloud: no voice "
-			       "is installed\n");
+			printf("Klipper no longer offers Read Aloud: %s\n",
+			       kb_have_prog("piper") ? "no voice is installed"
+						     : "piper is not installed");
 	}
 	for (int i = 0; i < n; i++) {
 		free(e[i].group);
@@ -1053,8 +1086,10 @@ static int speech_usage(int rc)
 	       "  voice get NAME   download one; %s with no NAME\n"
 	       "  voice remove NAME  delete one\n"
 	       "\n"
-	       "KDOS ships %s in " SYSTEM_MODEL_DIR ", which\n"
-	       "transcribe uses when none of yours is here, and no voice.\n",
+	       "transcribe needs whisper.cpp and say needs piper; neither is on\n"
+	       "the image. sudo kdos update install whisper.cpp (or piper)\n"
+	       "installs one, and whisper-model-base-en puts %s in\n"
+	       SYSTEM_MODEL_DIR ".\n",
 	       DEFAULT_VOICE, DEFAULT_MODEL);
 	return rc;
 }

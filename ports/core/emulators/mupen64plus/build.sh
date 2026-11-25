@@ -39,6 +39,12 @@ for _c in core ui-console audio-sdl input-sdl rsp-hle video-rice video-glide64mk
 	make -C "source/mupen64plus-$_c/projects/unix" install "${_mk[@]}" \
 		GL_LDLIBS="$(_gl $_c)" LDCONFIG=true DESTDIR="$PKG"
 done
+for _c in core ui-console audio-sdl input-sdl rsp-hle video-rice video-glide64mk2; do
+	install -Dm644 "source/mupen64plus-$_c/LICENSES" "$PKG/usr/share/licenses/$name/LICENSES.$_c"
+done
+for _f in core/doc/gpl-license core/doc/lgpl-license core/doc/font-license video-glide64mk2/doc/fxt1-license; do
+	install -Dm644 "source/mupen64plus-$_f" "$PKG/usr/share/licenses/$name/${_f##*/}"
+done
 
 cat > "$PKG/usr/share/applications/mupen64plus.desktop" <<'DESKTOP'
 [Desktop Entry]

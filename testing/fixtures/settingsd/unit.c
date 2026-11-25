@@ -369,6 +369,28 @@ static void locales(void)
 	      !ks_locale_assign_ok("LANG=a b", &k, &empty) &&
 	      !ks_locale_assign_ok("LANGX=en", &k, &empty),
 	      "an unknown name, no value, a quote and a space are refused");
+	CHECK(ks_locale_known(0, "de_DE.UTF-8") && ks_locale_known(0, "C.UTF-8") &&
+	      ks_locale_known(0, "C") && ks_locale_known(0, "POSIX"),
+	      "a musl-locales definition, C, C.UTF-8 and POSIX are known");
+	CHECK(ks_locale_known(0, "ja_JP.UTF-8") && ks_locale_known(0, "de_AT") &&
+	      ks_locale_known(0, "de_DE.utf8") && ks_locale_known(0, "de") &&
+	      ks_locale_known(0, "sr_RS@latin"),
+	      "a language with catalogues or a definition is known in any "
+	      "territory, with or without a codeset");
+	CHECK(!ks_locale_known(0, "xx_YY.UTF-8") &&
+	      !ks_locale_known(0, "de_DE.UTF8") &&
+	      !ks_locale_known(0, "de-DE") && !ks_locale_known(0, "de_de") &&
+	      !ks_locale_known(0, "de_DE.") && !ks_locale_known(0, "de_DE@") &&
+	      !ks_locale_known(0, "..") && !ks_locale_known(0, ""),
+	      "a language nothing knows, a misspelt codeset and a dash are not");
+	CHECK(ks_locale_known(1, "de_DE:de:en:C") && ks_locale_known(1, "de_AT") &&
+	      ks_locale_known(1, "ja") && ks_locale_known(1, "sr@latin"),
+	      "LANGUAGE takes ll, ll_CC and ll@mod of a known language, and C");
+	CHECK(!ks_locale_known(1, "xx") && !ks_locale_known(1, "de_DE.UTF-8") &&
+	      !ks_locale_known(1, "de::en") && !ks_locale_known(1, "d") &&
+	      !ks_locale_known(1, ":"),
+	      "and refuses a language nothing knows, a codeset and an empty "
+	      "element");
 
 	memset(vals, 0, sizeof(vals));
 	strcpy(vals[0], "en_GB.UTF-8");
@@ -421,7 +443,7 @@ static void keyboards(void)
 	      !ks_keymap_name_ok("/etc/passwd") && !ks_keymap_name_ok("-x"),
 	      "a keymap is a name loadkeys looks up, never a path");
 	CHECK(ks_keymap_installed("de-latin1") && ks_keymap_installed("dvorak") &&
-	      !ks_keymap_installed("de") && !ks_keymap_installed("de-lat"),
+	      !ks_keymap_installed("dvo") && !ks_keymap_installed("de-lat"),
 	      "an installed keymap is found by its whole name, a prefix is not");
 
 	/* The table on its own, where no symbols are installed to check the
@@ -467,14 +489,23 @@ static void keyboards(void)
 	      ks_xkb_to_vt("de", "", a, sizeof(a)) && !strcmp(a, "de-latin1") &&
 	      ks_xkb_to_vt("de", "nodeadkeys", a, sizeof(a)) &&
 	      !strcmp(a, "de-latin1-nodeadkeys") &&
-	      ks_xkb_to_vt("ch", "", a, sizeof(a)) && !strcmp(a, "sg") &&
-	      ks_xkb_to_vt("ch", "fr", a, sizeof(a)) && !strcmp(a, "fr_CH") &&
+	      ks_xkb_to_vt("ch", "", a, sizeof(a)) && !strcmp(a, "sg-latin1") &&
+	      ks_xkb_to_vt("ch", "fr", a, sizeof(a)) &&
+	      !strcmp(a, "fr_CH-latin1") &&
 	      ks_xkb_to_vt("us,de", ",nodeadkeys", a, sizeof(a)) && !strcmp(a, "us"),
 	      "XKB to the console: the table, the name itself, its -latin1 form, "
 	      "and the first of several layouts");
 	CHECK(ks_xkb_to_vt("de", "mac", a, sizeof(a)) && !strcmp(a, "de-latin1") &&
-	      ks_xkb_to_vt("ch", "de_nodeadkeys", a, sizeof(a)) && !strcmp(a, "sg"),
+	      ks_xkb_to_vt("ch", "de_nodeadkeys", a, sizeof(a)) &&
+	      !strcmp(a, "sg-latin1"),
 	      "a variant the console has no map for still finds the layout's");
+	CHECK(ks_keymap_installed("de") && ks_keymap_installed("dk") &&
+	      ks_keymap_installed("pt") &&
+	      ks_xkb_to_vt("de", "", a, sizeof(a)) && !strcmp(a, "de-latin1") &&
+	      ks_xkb_to_vt("dk", "", a, sizeof(a)) && !strcmp(a, "dk-latin1") &&
+	      ks_xkb_to_vt("pt", "", a, sizeof(a)) && !strcmp(a, "pt-latin1"),
+	      "an 8-bit -latin1 map is taken over kbd's bare 7-bit one: "
+	      "de, dk and pt");
 	CHECK(!ks_xkb_to_vt("it", "", a, sizeof(a)) && !a[0],
 	      "a layout with no installed console map leaves the console alone");
 
@@ -522,7 +553,75 @@ static void keyboards(void)
 	      strstr(s, "# AN EMPTY XKBLAYOUT FOLLOWS THE CONSOLE"),
 	      "xkb.conf keeps its explanation around the new values");
 	free(s);
+
+	/* The system kxkbrc, which the session reads before xkb.conf. */
+	CHECK(!kb_path_exists(tp("etc/xdg")), "the shipped tree has no etc/xdg");
+	memset(&x, 0, sizeof(x));
+	strcpy(x.layout, "de");
+	CHECK(ks_set_kxkbrc(&x) == 0, "a system kxkbrc is written, etc/xdg made");
+	s = slurp("etc/xdg/kxkbrc");
+	CHECK(!strcmp(s, "[Layout]\nLayoutList=de\nVariantList=\nUse=true\n"),
+	      "in the shape kinstall writes, LayoutList=de and Use=true");
+	free(s);
+	strcpy(x.variant, "nodeadkeys");
+	strcpy(x.model, "pc105");
+	strcpy(x.options, "ctrl:nocaps");
+	CHECK(ks_set_kxkbrc(&x) == 0, "a rewrite with every field succeeds");
+	s = slurp("etc/xdg/kxkbrc");
+	CHECK(!strcmp(s, "[Layout]\nLayoutList=de\nVariantList=nodeadkeys\n"
+			 "Model=pc105\nOptions=ctrl:nocaps\n"
+			 "ResetOldOptions=true\nUse=true\n"),
+	      "and replaces the file whole, options with ResetOldOptions");
+	free(s);
+	strcpy(x.options, "a\nUse=false");
+	CHECK(ks_set_kxkbrc(&x) != 0, "a field with a line break is refused");
+	s = slurp("etc/xdg/kxkbrc");
+	CHECK(strstr(s, "Options=ctrl:nocaps\n") && !strstr(s, "Use=false"),
+	      "and the file is as it was");
+	free(s);
+	x.layout[0] = 0;
+	CHECK(ks_set_kxkbrc(&x) == 0 && !kb_path_exists(tp("etc/xdg/kxkbrc")),
+	      "an empty layout removes it");
+	CHECK(ks_set_kxkbrc(&x) == 0, "and removing an absent one succeeds");
 	ks_set_keymap("us");
+}
+
+/* The ESP's copy of the console keymap, for the initramfs's passphrase. */
+static void esp_keymap(void)
+{
+	char *s;
+
+	CHECK(ks_set_keymap("de-latin1") == 0 &&
+	      !kb_path_exists(tp("esp/EFI/kdos/keymap")),
+	      "a test tree with no ESP named writes no ESP keymap");
+	setenv("KDOS_SETTINGSD_ESP", tp("esp"), 1);
+	CHECK(ks_set_keymap("dk-latin1") == 0 &&
+	      !kb_path_exists(tp("esp/EFI/kdos/keymap")),
+	      "nor does an ESP with no EFI/kdos, which is the live medium");
+	mkdir(tp("esp"), 0755);
+	mkdir(tp("esp/EFI"), 0755);
+	mkdir(tp("esp/EFI/kdos"), 0755);
+	ks_esp_keymap_sync();
+	s = slurp("esp/EFI/kdos/keymap");
+	CHECK(!strcmp(s, "dk-latin1\n"),
+	      "at start an ESP without the file gets /etc/keymap's name");
+	free(s);
+	CHECK(ks_set_keymap("de-latin1") == 0, "a keymap is set");
+	s = slurp("esp/EFI/kdos/keymap");
+	CHECK(!strcmp(s, "de-latin1\n") &&
+	      !kb_path_exists(tp("esp/EFI/kdos/keymap.new")),
+	      "and the ESP's copy follows it, one line, no temp file left");
+	free(s);
+	kb_write_file(tp("esp/EFI/kdos/keymap"), "us\n");
+	ks_esp_keymap_sync();
+	s = slurp("esp/EFI/kdos/keymap");
+	CHECK(!strcmp(s, "de-latin1\n"), "a stale copy is rewritten at start");
+	free(s);
+	CHECK(ks_set_keymap("") == 0 &&
+	      !kb_path_exists(tp("esp/EFI/kdos/keymap")),
+	      "no keymap removes the ESP's copy too");
+	ks_set_keymap("us");
+	unsetenv("KDOS_SETTINGSD_ESP");
 }
 
 int main(int argc, char **argv)
@@ -548,5 +647,6 @@ int main(int argc, char **argv)
 	ntp();
 	locales();
 	keyboards();
+	esp_keymap();
 	return fails;
 }

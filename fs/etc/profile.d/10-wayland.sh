@@ -34,8 +34,12 @@ fi
 # read only by a program whose XDG_CURRENT_DESKTOP names KDE: without it a file
 # opened from a console opens in whatever handler the plain lists name, not in
 # the application the desktop opens it in. The prefix names the menu the
-# desktop's own launcher reads, plasma-applications.menu.
+# desktop's own launcher reads, plasma-applications.menu. KDE_SESSION_VERSION
+# is the Plasma release startplasma names, 6: xdg-utils compares it as a
+# number whenever XDG_CURRENT_DESKTOP is KDE, and an empty value stops each
+# such test with `[: : integer expected` on stderr.
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-KDE}"
+export KDE_SESSION_VERSION="${KDE_SESSION_VERSION:-6}"
 export XDG_MENU_PREFIX="${XDG_MENU_PREFIX:-plasma-}"
 
 # The per-user session bus lives at a fixed runtime path, the one every box

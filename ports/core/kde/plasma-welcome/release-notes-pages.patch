@@ -1,0 +1,234 @@
+Subject: Pages asked for by a second instance open in the running window; a one-page run has one exit
+
+Welcome Center is single-instance: a second start hands its arguments to the
+running one, which raises its window. The pages a second start names with
+--pages are shown in that window as layers over the pages it has open, so
+Back returns to them and an entry that opens one page works while the tour
+is open. A window that is itself a run of exactly those pages is only raised.
+The update footer, which has only OK, gains a Back button while a layer is
+open, so the Plasma update page under the layers stays reachable.
+
+A --pages run of one page with no layer open shows neither Skip nor the page
+indicator: Finish is its one exit.
+
+--- a/src/app.h
++++ b/src/app.h
+@@ -51,6 +51,11 @@ public:
+     void setMode(App::Mode mode);
+     void setPages(const QStringList &pages);
+ 
++Q_SIGNALS:
++    // Pages named by --pages to a second instance, ending in ".qml";
++    // Main shows them as layers over the pages already open
++    void pagesRequested(const QStringList &pages);
++
+ private:
+     // These members should be set before the QML engine loads Main
+     Mode m_mode;
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -30,6 +30,18 @@
+ // Ensure the public plugin is linked by referencing exported symbol
+ Q_IMPORT_QML_PLUGIN(org_kde_plasma_welcomePlugin);
+ 
++// The page names of a --pages value, each ending in ".qml"
++static QStringList pageFileNames(const QString &value)
++{
++    QStringList pages = value.split(QLatin1Char(','));
++    for (QString &page : pages) {
++        if (!page.endsWith(QLatin1String(".qml"))) {
++            page.append(QLatin1String(".qml"));
++        }
++    }
++    return pages;
++}
++
+ int main(int argc, char *argv[])
+ {
+     auto format = QSurfaceFormat::defaultFormat();
+@@ -90,9 +102,28 @@ int main(int argc, char *argv[])
+     engine.rootContext()->setContextObject(new KLocalizedQmlContext(&engine));
+ 
+     // Make it single-instance so it raises e.g. when middle-clicking on taskmanager
+-    // or accidentally launching it while it's already open
++    // or accidentally launching it while it's already open. Pages named by the
++    // second instance's --pages are handed to the running window first.
+     KDBusService service(KDBusService::Unique);
+-    QObject::connect(&service, &KDBusService::activateRequested, &engine, [&engine](const QStringList & /*arguments*/, const QString & /*workingDirectory*/) {
++    QObject::connect(&service, &KDBusService::activateRequested, &engine, [&engine, &aboutData, &pagesOption](const QStringList &arguments, const QString & /*workingDirectory*/) {
++        QCommandLineParser remoteParser;
++        aboutData.setupCommandLine(&remoteParser);
++        remoteParser.addOption(QCommandLineOption(QStringLiteral("post-update")));
++        remoteParser.addOption(QCommandLineOption(QStringLiteral("live-environment")));
++        remoteParser.addOption(QCommandLineOption(QStringLiteral("self-test")));
++        remoteParser.addOption(pagesOption);
++        remoteParser.parse(arguments);
++
++        if (remoteParser.isSet(pagesOption)) {
++            const QStringList pages = pageFileNames(remoteParser.value(pagesOption));
++            if (!pages.isEmpty()) {
++                auto appSingleton = engine.singletonInstance<App *>("org.kde.plasma.welcome.private", "App");
++                if (appSingleton) {
++                    Q_EMIT appSingleton->pagesRequested(pages);
++                }
++            }
++        }
++
+         const auto rootObjects = engine.rootObjects();
+         for (auto obj : rootObjects) {
+             auto view = qobject_cast<QQuickWindow *>(obj);
+@@ -107,15 +138,8 @@ int main(int argc, char *argv[])
+     // Tell QML about requested mode/pages
+     auto appSingleton = engine.singletonInstance<App *>("org.kde.plasma.welcome.private", "App");
+     if (parser.isSet(QStringLiteral("pages"))) {
+-        QStringList pages = parser.value(pagesOption).split(",");
++        const QStringList pages = pageFileNames(parser.value(pagesOption));
+         if (!pages.isEmpty()) {
+-            // Ensure each page ends with ".qml"
+-            for (QString &page : pages) {
+-                if (!page.endsWith(".qml")) {
+-                    page.append(".qml");
+-                }
+-            }
+-
+             appSingleton->setMode(App::Mode::Pages);
+             appSingleton->setPages(pages);
+         }
+--- a/src/qml/Main.qml
++++ b/src/qml/Main.qml
+@@ -125,6 +125,58 @@ Kirigami.ApplicationWindow {
+         }
+     }
+ 
++    // A page named on the command line: one of Welcome Center's own pages,
++    // else a distro page of that name, else the error page for an unknown one
++    function _createNamedPage(page) {
++        var error = "";
++        var warnStrings = "";
++
++        let tryPage = function(page) {
++            let component = Qt.createComponent(page);
++            if (component.status !== Component.Error) {
++                return component.createObject(null);
++            } else {
++                error += component.errorString();
++                warnStrings += ((warnStrings.length > 0) ? "\n" : "")
++                                + "Couldn't load page '" + page + "'" + "\n" + "  " + component.errorString();
++                component.destroy();
++                return null;
++            }
++        }
++
++        // Try as both a regular page and distro page
++        let object = tryPage(page);
++        if (object === null) {
++            object = tryPage("file://" + Private.App.distroPagesDir + page);
++        }
++        if (object === null) {
++            console.warn(warnStrings);
++            object = _createErrorPage(error, false, true);
++        }
++        return object;
++    }
++
++    // Pages a second instance asks for open as layers over whatever this
++    // window shows, so Back returns to it; asking again replaces them. A
++    // window that is itself a run of exactly those pages is only raised.
++    Connections {
++        target: Private.App
++
++        function onPagesRequested(pages) {
++            pageStack.layers.clear();
++            if (Private.App.mode === Private.App.Pages
++                    && JSON.stringify(pages) === JSON.stringify(Private.App.pages)) {
++                return;
++            }
++            pages.forEach(page => {
++                let object = _createNamedPage(page);
++                if (object !== null) {
++                    pageStack.layers.push(object);
++                }
++            });
++        }
++    }
++
+     Component.onCompleted: {
+         // Push pages dynamically
+         switch (Private.App.mode) {
+@@ -173,30 +225,7 @@ Kirigami.ApplicationWindow {
+                 break;
+ 
+             case Private.App.Pages:
+-                Private.App.pages.forEach(page => {
+-                    var error = "";
+-                    var warnStrings = "";
+-
+-                    let tryPage = function(page) {
+-                        let component = Qt.createComponent(page);
+-                        if (component.status !== Component.Error) {
+-                            _pushPage(component.createObject(null));
+-                            return true;
+-                        } else {
+-                            error += component.errorString();
+-                            warnStrings += ((warnStrings.length > 0) ? "\n" : "")
+-                                            + "Couldn't load page '" + page + "'" + "\n" + "  " + component.errorString();
+-                            component.destroy();
+-                            return false;
+-                        }
+-                    }
+-
+-                    // Try as both a regular page and distro page
+-                    if (!tryPage(page) && !tryPage("file://" + Private.App.distroPagesDir + page)) {
+-                        console.warn(warnStrings);
+-                        _pushPage(_createErrorPage(error, false, true));
+-                    }
+-                });
++                Private.App.pages.forEach(page => _pushPage(_createNamedPage(page)));
+ 
+                 break;
+         }
+--- a/src/qml/footers/FooterDefault.qml
++++ b/src/qml/footers/FooterDefault.qml
+@@ -60,6 +60,9 @@ RowLayout {
+     QQC2.Button {
+         id: prevButton
+         Layout.alignment: Qt.AlignLeft
++
++        // A run of one page has nothing to skip: Finish is its one exit
++        visible: !(root.atStart && root.atEnd && !root.inLayer)
+         Layout.preferredWidth: (leftPadding === 0 || rightPadding === 0 || spacing === 0) ? -1 : leftPadding + icon.width + spacing + root.buttonTextWidth + rightPadding
+ 
+         action: Kirigami.Action {
+@@ -92,6 +95,7 @@ RowLayout {
+     QQC2.PageIndicator {
+         Layout.alignment: Qt.AlignHCenter
+ 
++        visible: pageStack.depth > 1
+         enabled: !root.inLayer
+         count: pageStack.depth
+         currentIndex: pageStack.currentIndex
+--- a/src/qml/footers/FooterUpdate.qml
++++ b/src/qml/footers/FooterUpdate.qml
+@@ -15,6 +15,22 @@
+ RowLayout {
+     spacing: 0
+ 
++    // Pages a second instance asks for open as layers over the update page;
++    // Back is the one way back to it, as OK closes the window
++    QQC2.Button {
++        visible: pageStack.layers.depth > 1
++        Layout.rightMargin: Kirigami.Units.smallSpacing
++
++        action: Kirigami.Action {
++            text: i18nc("@action:button", "&Back")
++            icon.name: Qt.application.layoutDirection === Qt.LeftToRight ? "go-previous-symbolic" : "go-previous-rtl-symbolic"
++            shortcut: Qt.application.layoutDirection === Qt.LeftToRight ? "Left" : "Right"
++            enabled: pageStack.layers.depth > 1
++
++            onTriggered: pageStack.layers.pop()
++        }
++    }
++
+     QQC2.Switch {
+         Layout.fillWidth: true
+ 

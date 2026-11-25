@@ -23,6 +23,7 @@ make -j1 "${_make[@]}" PACKAGE_ONLY=yes DESTDIR=$PKG \
 	COMPLETIONDIR=$PKG/usr/share/bash-completion/completions install
 mv "$PKG/usr/share/bash-completion/completions/010_tuxpaint-completion.bash" \
 	"$PKG/usr/share/bash-completion/completions/tuxpaint"
+install -Dm644 docs/COPYING.txt "$PKG/usr/share/licenses/$name/COPYING.txt"
 
 rm -f "$PKG/usr/share/tuxpaint/fonts/locale/zh_tw_docs/maketuxfont.py"
 for d in "$PKG"/usr/share/doc/tuxpaint-$version/*/ "$PKG"/usr/share/man/*/; do

@@ -25,7 +25,7 @@ What the image ships in each ring:
 
 | Ring | Shipped key | From |
 |:--|:--|:--|
-| `/etc/kdos/keys` | None | `fs/etc/kdos/keys/` holds only a `README` |
+| `/etc/kdos/keys` | `kdos-binhost.pub` and `kdos-release.pub`, the image's own build's, when the build found them; otherwise none | `70_image`'s `105_ports.sh`; `fs/etc/kdos/keys/` holds only the `README` |
 | `/etc/kdos/keys/packs` | `kdos-packs.pub` | `fs/etc/kdos/keys/packs/` |
 | `/etc/kdos/keys/tree` | `kdos-release.pub`, when the build had a release key; otherwise none | `70_image`'s `105_ports.sh` |
 
@@ -40,6 +40,11 @@ The host ring, for a [binary host]{.idx}'s index and for a package's own `.sig` 
 `fs/etc/kdos/keys/README`, states the policy:
 
 <!-- kfs:include fs/etc/kdos/keys/README -->
+
+The image step that fills it, from `script/phases/70_image/105_ports.sh`, empties it of keys and
+installs each of the build's two public keys it finds:
+
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=195-203 pin=d1eaf4c2d7e4 -->
 
 Every `*.pub` directly in the directory is trusted; the loader does not descend into `packs/` or
 `tree/`, which is what keeps the three rings apart. `KPKG_KEYRING` names another directory for one
@@ -68,7 +73,7 @@ The ring `kdos update fetch` checks a published ports tree's `kdos-ports.tar.xz.
 
 The image step that fills it, from `script/phases/70_image/105_ports.sh`:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=151-160 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=185-194 pin=68e72034c604 -->
 
 Where `fetch` looks for the tree is [`/etc/kdos/update.conf`]{.idx}, which is not shipped; see
 [/etc/kdos/update.conf](../../kdos/06-reference/configuration.md#etckdosupdateconf).
@@ -168,7 +173,8 @@ and exit status 1.
 
 `kpkgadd` checks the `.sig` when it finds one and `/etc/kdos/keys` holds a key, and refuses the
 package when it does not verify. A package with no `.sig` is installed, and so is one with a `.sig`
-on a machine whose ring is empty, as it ships; `KPKG_REQUIRE_SIG=1` refuses both.
+on a machine whose ring is empty, as an image built without the keys ships it;
+`KPKG_REQUIRE_SIG=1` refuses both.
 
 ### Signing packs with your own key
 
@@ -292,7 +298,8 @@ verification reads the ring afresh, so the next one does not try the deleted key
 ## Troubleshooting
 
 **`kpkg verify-index` or `kpkg binhost` prints `no trusted keys in /etc/kdos/keys`.**
-The ring is empty, as it ships. Copy the builder's `.pub` in. `kpkg binhost` exits 2 for this, for
+The ring is empty: the image was built without its build's keys, or they were deleted. Copy the
+builder's `.pub` in. `kpkg binhost` exits 2 for this, for
 a missing index, and for a failed verification.
 
 **`kpkg binhost` prints `no trusted signature — refusing to use it`.**
@@ -313,8 +320,8 @@ written under; see
 Run `sudo kdos update fetch` to see the reason. The ring is read first: an image built without a
 release key has an empty `/etc/kdos/keys/tree`, and `fetch` stops there, before any download, with
 `no trusted tree key in /etc/kdos/keys/tree` and the state `no-key`. With a key, and no
-`/etc/kdos/update.conf`, it downloads from the project's latest release, and while none carries a
-tree it ends
+`/etc/kdos/update.conf`, it downloads from the project's latest release, and a release that
+carries no tree ends
 `kdos update: https://github.com/kunaldawn/kdos/releases/latest/download/kdos-ports.tar.xz could not be downloaded`,
 after curl's `The requested URL returned error: 404`. A tree whose signature does not verify, or
 whose `TREE` stamp is older than the installed one, is refused. The states are in
@@ -335,7 +342,7 @@ anchors directory through p11-kit at once, so `trust list` shows a new root befo
 
 ## Known gaps
 
-- [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
+- [No published release's update has been applied to an installed machine](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)
 - [Secure Boot is not supported](../../kdos/06-reference/known-gaps.md#secure-boot-is-not-supported):
   the boot loader is unsigned
 - Unsigned packs and unenforced module signatures, among the points in

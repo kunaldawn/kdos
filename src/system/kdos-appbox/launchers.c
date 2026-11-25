@@ -769,6 +769,9 @@ static void assign_ids(void)
  * The files written are listed in <data>/kdos/launcher-icons, and that list is
  * what the next run deletes before it writes: the icon directories are shared
  * with every other program that installs one, so nothing is swept by pattern.
+ * `kdos-box export` copies a box's icon the same way, from the files it took
+ * out of the running box, and deletes exactly the names its launcher id
+ * gives them when the launcher goes (launcher_icons_remove).
  */
 static const char *const ICON_EXTS[] = { "svg", "svgz", "png", "xpm", NULL };
 
@@ -786,41 +789,43 @@ static int copy_icon(const char *src, const char *dst, KbBuf *manifest,
 	}
 	if (kb_copy_file(src, dst) != 0)
 		return 0;
-	kb_buf_printf(manifest, "%s\n", dst + strlen(data) + 1);
+	if (manifest)
+		kb_buf_printf(manifest, "%s\n", dst + strlen(data) + 1);
 	return 1;
 }
 
-static int export_icon(const Launcher *a, const char *data, KbBuf *manifest)
+int launcher_icons_copy(const char *root, const char *icon, const char *lid,
+			const char *data, KbBuf *manifest)
 {
 	char path[2048], dst[4096];
 	char **sizes;
 	int n = 0;
 
-	if (!a->icon[0] || !a->root[0] || !a->lid[0])
+	if (!icon[0] || !root[0] || !lid[0])
 		return 0;
-	if (a->icon[0] == '/') {
-		const char *dot = strrchr(a->icon, '.');
+	if (icon[0] == '/') {
+		const char *dot = strrchr(icon, '.');
 
-		snprintf(path, sizeof(path), "%s%s", a->root, a->icon);
-		if (!dot || !kb_path_exists(path))
+		snprintf(path, sizeof(path), "%s%s", root, icon);
+		if (!dot || strchr(dot, '/') || !kb_path_exists(path))
 			return 0;
-		snprintf(dst, sizeof(dst), "%s/pixmaps/%s%s", data, a->lid, dot);
+		snprintf(dst, sizeof(dst), "%s/pixmaps/%s%s", data, lid, dot);
 		return copy_icon(path, dst, manifest, data);
 	}
-	if (strchr(a->icon, '/'))
+	if (strchr(icon, '/'))
 		return 0;
-	snprintf(path, sizeof(path), "%s/usr/share/icons/hicolor", a->root);
+	snprintf(path, sizeof(path), "%s/usr/share/icons/hicolor", root);
 	sizes = kb_listdir(path, NULL);
 	for (char **sz = sizes; sz && *sz; sz++) {
 		for (int e = 0; ICON_EXTS[e]; e++) {
 			char src[4096];
 
 			snprintf(src, sizeof(src), "%s/%s/apps/%s.%s", path, *sz,
-				 a->icon, ICON_EXTS[e]);
+				 icon, ICON_EXTS[e]);
 			if (!kb_path_exists(src))
 				continue;
 			snprintf(dst, sizeof(dst), "%s/icons/hicolor/%s/apps/%s.%s",
-				 data, *sz, a->lid, ICON_EXTS[e]);
+				 data, *sz, lid, ICON_EXTS[e]);
 			n += copy_icon(src, dst, manifest, data);
 		}
 	}
@@ -830,15 +835,45 @@ static int export_icon(const Launcher *a, const char *data, KbBuf *manifest)
 	for (int e = 0; ICON_EXTS[e]; e++) {
 		char src[4096];
 
-		snprintf(src, sizeof(src), "%s/usr/share/pixmaps/%s.%s", a->root,
-			 a->icon, ICON_EXTS[e]);
+		snprintf(src, sizeof(src), "%s/usr/share/pixmaps/%s.%s", root,
+			 icon, ICON_EXTS[e]);
 		if (!kb_path_exists(src))
 			continue;
-		snprintf(dst, sizeof(dst), "%s/pixmaps/%s.%s", data, a->lid,
+		snprintf(dst, sizeof(dst), "%s/pixmaps/%s.%s", data, lid,
 			 ICON_EXTS[e]);
 		return copy_icon(src, dst, manifest, data);
 	}
 	return 0;
+}
+
+int launcher_icons_remove(const char *lid, const char *data)
+{
+	char path[2048], f[4096];
+	char **sizes;
+	int n = 0;
+
+	if (!lid[0] || strchr(lid, '/'))
+		return 0;
+	snprintf(path, sizeof(path), "%s/icons/hicolor", data);
+	sizes = kb_listdir(path, NULL);
+	for (char **sz = sizes; sz && *sz; sz++)
+		for (int e = 0; ICON_EXTS[e]; e++) {
+			snprintf(f, sizeof(f), "%s/%s/apps/%s.%s", path, *sz, lid,
+				 ICON_EXTS[e]);
+			n += unlink(f) == 0;
+		}
+	kb_strv_free(sizes);
+	for (int e = 0; ICON_EXTS[e]; e++) {
+		snprintf(f, sizeof(f), "%s/pixmaps/%s.%s", data, lid,
+			 ICON_EXTS[e]);
+		n += unlink(f) == 0;
+	}
+	return n;
+}
+
+static int export_icon(const Launcher *a, const char *data, KbBuf *manifest)
+{
+	return launcher_icons_copy(a->root, a->icon, a->lid, data, manifest);
 }
 
 /* The previous run's icons go, by the list it left. */
@@ -1399,10 +1434,10 @@ int box_launchers(const char *box, BoxLauncher *out, int max)
  * container nor a profile any more — removed with `kdos-box remove` and its
  * profile deleted — so the entry and its `<command>@<box>` shim are a Start
  * menu row and a command that open nothing. They are the user's, written by
- * export and marked `X-KDOS-Export=true`, and they go here, where the rest of
- * the menu is reconciled.
+ * export and marked `X-KDOS-Export=true`, and they go here with the icons
+ * export copied for them, where the rest of the menu is reconciled.
  */
-static int sweep_stale_exports(const char *dir)
+static int sweep_stale_exports(const char *dir, const char *data)
 {
 	char **names = kb_listdir(dir, NULL);
 	int n = 0;
@@ -1428,10 +1463,17 @@ static int sweep_stale_exports(const char *dir)
 			free(pp);
 		}
 		if (stale && unlink(p) == 0) {
-			char shim[1024], target[256];
+			char shim[1024], target[256], lid[256];
 			char **bins;
 			char *bin = kb_path_join(kb_home_dir(), ".local/bin");
 			size_t bl = strlen(box);
+
+			/* The entry's file name less `.desktop` is the
+			 * launcher id its icons are named with. */
+			kb_strlcpy(lid, *f, sizeof(lid));
+			if (strlen(lid) > 8)
+				lid[strlen(lid) - 8] = '\0';
+			launcher_icons_remove(lid, data);
 
 			bins = kb_listdir(bin, NULL);
 			for (char **s = bins; s && *s; s++) {
@@ -1562,12 +1604,14 @@ static void skel_rules(const char *fsroot)
 		kb_warn("cannot write %s", path);
 }
 
-int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir)
+int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir,
+		     int verbose)
 {
 	napps = 0;
 	if (srcdir && packsdir) {
 		int n = genlaunchers_dirs(srcdir);
-		fprintf(stderr, "%d extracted pack(s) read\n", n);
+		if (verbose)
+			fprintf(stderr, "%d extracted pack(s) read\n", n);
 		/* The user tree is written whole, so a store regeneration that
 		 * read only the store boxes would delete every installed
 		 * pack's launchers; it reads both sources. */
@@ -1577,7 +1621,8 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 				kb_warn("the launchers are left as they were");
 				return 1;
 			}
-			fprintf(stderr, "%d app pack(s) read\n", n);
+			if (verbose)
+				fprintf(stderr, "%d app pack(s) read\n", n);
 		}
 	} else if (srcdir) {
 		parse_dir(srcdir);
@@ -1592,7 +1637,8 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 			kb_warn("the launchers are left as they were");
 			return 1;
 		}
-		fprintf(stderr, "%d app pack(s) read\n", n);
+		if (verbose)
+			fprintf(stderr, "%d app pack(s) read\n", n);
 	}
 	assign_ids();
 
@@ -1620,7 +1666,7 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 	write_launchers(apps_dir, data);
 	write_throwaway_menu(data);
 	int mimes = write_mimeinfo(apps_dir);
-	int stale = user ? sweep_stale_exports(apps_dir) : 0;
+	int stale = user ? sweep_stale_exports(apps_dir, data) : 0;
 	free(apps_dir);
 	free(data);
 
@@ -1630,9 +1676,10 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 	int cmds = 0;
 	for (int i = 0; i < napps; i++)
 		cmds += apps[i].cmdonly;
-	fprintf(stderr, "%d launchers, %d command-only, %d mime types, %d shims"
-		"%s\n", napps - cmds, cmds, mimes, shims,
-		stale ? ", stale exports removed" : "");
+	if (verbose)
+		fprintf(stderr, "%d launchers, %d command-only, %d mime types, "
+			"%d shims%s\n", napps - cmds, cmds, mimes, shims,
+			stale ? ", stale exports removed" : "");
 	if (user) {
 		box_rules_refresh();
 		rebuild_sycoca();

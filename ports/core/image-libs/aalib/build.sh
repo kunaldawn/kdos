@@ -15,6 +15,7 @@ patch -p1 -i "$PORT_SRC/m4-quote.patch"
 patch -p1 -i "$PORT_SRC/linuxkbd-bounds.patch"
 patch -p1 -i "$PORT_SRC/config-no-rpath.patch"
 patch -p1 -i "$PORT_SRC/ltconfig-musl.patch"
+patch -p1 -i "$PORT_SRC/curses-resize.patch"
 
 export CFLAGS="$CFLAGS -Wno-implicit-function-declaration -Wno-implicit-int \
 	-Wno-int-conversion -Wno-incompatible-pointer-types \

@@ -15,12 +15,15 @@
 #
 # /ports IS RECIPES AND NOTHING ELSE: each port's kpkgbuild, build.sh, patches
 # and other recipe files, ports/shelves, ports/sources.idx, ports/groups (the
-# groups `kdos update install` and the installer offer), and src/, the two
-# books under docs/ and script/book for the programs of our own, whose sources
-# no archive holds. A shipped machine updates
-# by building from this tree, and kpkg fetches each source over the network
-# from the sources-<N> archive or upstream. The fetched tarballs are tens of
-# gigabytes and stay off the medium.
+# groups `kdos update install` and the installer offer), ports/RELEASE (the
+# release notes `kdos update notes` and What's New read), ports/buildonly (the
+# build-only ports `kdos update` keeps out of a prebuilt plan),
+# ports/buildheaders (the build-only ports a build here installs prebuilt
+# because installed packages' headers include them), and src/, the two books
+# under docs/ and script/book for the programs of our own, whose sources no
+# archive holds. A shipped machine updates by building from this tree, and
+# kpkg fetches each source over the network from the sources-<N> archive or
+# upstream. The fetched tarballs are tens of gigabytes and stay off the medium.
 #
 # A FILE IS A SOURCE WHEN ITS RECIPE HASHES IT (`sha256 = <hash>  <file>`) OR
 # WHEN IT IS AN ARCHIVE, unless it is a recipe file: kpkgbuild, build.sh,
@@ -62,10 +65,15 @@ echo "Staging the recipe tree for /ports..."
 rm -rf "$STAGE"
 mkdir -p "$TREE/core"
 
-for f in shelves sources.idx groups; do
+for f in shelves sources.idx groups RELEASE buildonly buildheaders; do
     [ -f "/ports/$f" ] || { echo "FATAL: /ports/$f is missing" >&2; exit 1; }
     cp "/ports/$f" "$TREE/$f"
 done
+# `kdos update` reads 16 KiB of RELEASE and cuts the rest off mid-sentence.
+if [ "$(stat -c %s "$TREE/RELEASE")" -gt 16384 ]; then
+    echo "FATAL: ports/RELEASE is over 16 KiB; kdos update notes shows only the first 16 KiB" >&2
+    exit 1
+fi
 
 nports=0
 nfiles=0
@@ -123,6 +131,18 @@ echo "  $nports ports ($nfiles files), $nsrc of our own under src/, $(du -sh "$S
 # the stamp takes any signed tree, an older one included. `ports/publish
 # --release` writes the same lines into a published tree, and `version <tag>`.
 #
+# `version <tag>` IS WHAT FINDS THE RELEASE: `kdos update` fetches the signed
+# binhost index from the release of that name, and a tree with no version
+# line has no binhost unless update.conf or $KDOS_UPDATE_BINHOST names one,
+# so every prebuilt install on the image refuses. The line is
+# KDOS_GIT_RELEASE, which script/chroot/exec.sh sets to the Makefile's tag on
+# HEAD only when the checkout is clean: a dirty tree's packages are not the
+# release's, and its image naming the release would install the release's
+# packages over them. 010_binhost.sh stamps the same name into build/binhost's
+# index, which `kdos update` refuses when it differs from the tree's. The tag
+# must be a name `ports/publish --release` accepts, the alphabet `kdos update`
+# reads back, or it is refused here rather than ignored on every machine.
+#
 # THE RELEASE KEY'S PUBLIC HALF GOES INTO /etc/kdos/keys/tree, the ring
 # `kdos update fetch` verifies a published tree against. It is the key
 # `ports/publish --release` signs with, kept in build/keys/ and never in git.
@@ -138,13 +158,27 @@ echo "  $nports ports ($nfiles files), $nsrc of our own under src/, $(du -sh "$S
 # packages and slot images and no other builder's. With neither the ring
 # ships empty, and `kdos update install --prebuilt` and the image lane
 # refuse with no-key.
+tag=${KDOS_GIT_TAG:-}
+release=${KDOS_GIT_RELEASE:-}
+if [ -n "$tag" ] && ! [[ $tag =~ ^[A-Za-z0-9_+~][A-Za-z0-9._+~-]{0,39}$ ]]; then
+    echo "FATAL: tag '$tag' cannot name a release: letters, digits and . _ + ~ - only, not first . or -, at most 40" >&2
+    exit 1
+fi
 if [ -n "${KDOS_GIT_COMMIT:-}" ]; then
     {
         echo "kdos-tree 1"
         echo "commit $KDOS_GIT_COMMIT"
         echo "time ${KDOS_GIT_TIME:-0}"
+        [ -z "$release" ] || echo "version $release"
     } > "$TREE/TREE"
     chmod 0644 "$TREE/TREE"
+    if [ -n "$release" ]; then
+        echo "  /ports/TREE names release $release"
+    elif [ -n "$tag" ]; then
+        echo "  the checkout has changes: /ports/TREE does not name release $tag"
+    else
+        echo "  HEAD carries no tag: /ports/TREE names no release, and prebuilt installs need binhost = in update.conf"
+    fi
 else
     echo "  no commit given: /ports carries no TREE stamp"
 fi
@@ -225,3 +259,38 @@ if [ "$unarchived" -gt 0 ]; then
     echo "  warning: $unarchived source(s) of installed packages are not in sources.idx;" >&2
     echo "           ports/publish has not run for them" >&2
 fi
+
+# ── The licence texts of our own ports ──────────────────────────────────
+#
+# /usr/share/licenses/kdos/LICENSE is the repository's MIT text. A package
+# that is KDOS's own work, whose recipe is under src/ or is a ports/core
+# recipe with no source, and whose recipe's `license =` names MIT, gets
+# /usr/share/licenses/<name>/LICENSE as a link to it: no such port carries a
+# copy of the text, and kpkg copies only what a source holds. A meta package
+# owns no file and gets none. An entry the package installs itself is left as
+# it is. The text and the links belong to no package, so testing/unowned.py
+# subtracts exactly these, `kpkg check --all` lists them as unowned, and a
+# later package that installs its own LICENSE there adopts the path.
+LICENCES=/usr/share/licenses
+echo "Installing $LICENCES/kdos/LICENSE..."
+[ -f /kdos/LICENSE ] || { echo "FATAL: /kdos/LICENSE is missing" >&2; exit 1; }
+install -Dm644 /kdos/LICENSE "$LICENCES/kdos/LICENSE"
+nlinks=0
+for p in /var/lib/kpkg/db/*; do
+    [ -f "$p" ] || continue
+    n=${p##*/}
+    r=$(recipe_of "$n") || continue
+    case "$r" in
+        /kdos/src/*) ;;
+        *) ! grep -qE '^source[[:space:]]*=[[:space:]]*[^[:space:]]' "$r" || continue ;;
+    esac
+    awk '$1 == "license" { sub(/^[^=]*=/, ""); print }' "$r" | grep -qw MIT || continue
+    awk 'NR > 1 && /[^\/]$/ { found = 1; exit } END { exit !found }' "$p" || continue
+    if [ -e "$LICENCES/$n/LICENSE" ] || [ -L "$LICENCES/$n/LICENSE" ]; then
+        continue
+    fi
+    install -d -m 0755 "$LICENCES/$n"
+    ln -s ../kdos/LICENSE "$LICENCES/$n/LICENSE"
+    nlinks=$((nlinks + 1))
+done
+echo "  $LICENCES/<name>/LICENSE links the MIT text for $nlinks package(s) of our own"

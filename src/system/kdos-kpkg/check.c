@@ -7,8 +7,8 @@
  * ---------------------------------
  *   kpkg check — does the root still hold what was installed
  *
- *   kpkg check [--root <path>] <package>...
- *   kpkg check [--root <path>] --all
+ *   kpkg check [--root <path>] [--brief] [--log <file>] <package>...
+ *   kpkg check [--root <path>] [--brief] [--log <file>] --all
  *
  * Each package's manifest is walked against the root and its file record
  * (`<db>/.files/<name>`, kpkg.h):
@@ -35,6 +35,14 @@
  * design. `kdos update apply` gates a slot on this status, so a file counted
  * as `config` there is one an update keeps without question.
  *
+ * `--brief` prints only the `missing`, `changed` and `mode` lines and the
+ * summary; `config` and `unowned` files are still counted there. `--log
+ * <file>` writes every line, the summary included, to <file> (created 0644,
+ * truncated) whatever `--brief` leaves off the terminal; a log that cannot be
+ * opened is reported and the check runs without it. Neither changes the exit
+ * status. `kdos update apply` checks a slot with both, so an apply prints the
+ * faults and the count and the slot's file list stays in its log.
+ *
  * Paths are joined to the root as the manifest spells them, so `./bin/x` on a
  * merged-/usr root is checked through the root's own `bin` link. Ownership
  * for the unowned walk is the canonical table (kp_owned_load), so a file
@@ -42,6 +50,8 @@
  * ---------------------------------
  */
 
+#include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,7 +67,28 @@ typedef struct {
 
 typedef struct {
 	int missing, changed, mode, config, unowned, unrecorded;
+	int brief;	/* --brief: config and unowned lines are counted only */
+	FILE *log;	/* --log: every line, or NULL                        */
 } Tally;
+
+/* One finding or summary line: to the log when there is one, and to stdout
+ * unless it is a `config` or `unowned` line under --brief. */
+static void say(const Tally *t, int quiet, const char *fmt, ...)
+	__attribute__((format(printf, 3, 4)));
+static void say(const Tally *t, int quiet, const char *fmt, ...)
+{
+	va_list ap;
+	if (!(quiet && t->brief)) {
+		va_start(ap, fmt);
+		vprintf(fmt, ap);
+		va_end(ap);
+	}
+	if (t->log) {
+		va_start(ap, fmt);
+		vfprintf(t->log, fmt, ap);
+		va_end(ap);
+	}
+}
 
 static int cmp_rec(const void *a, const void *b)
 {
@@ -139,11 +170,11 @@ static int check_one(const KpConf *c, const char *root, const char *name,
 		struct stat st;
 		if (l[ll - 1] == '/') {
 			if (!kb_is_dir(full)) {
-				printf("%s: missing %s\n", name, l);
+				say(t, 0, "%s: missing %s\n", name, l);
 				t->missing++;
 			}
 		} else if (lstat(full, &st) != 0) {
-			printf("%s: missing %s\n", name, l);
+			say(t, 0, "%s: missing %s\n", name, l);
 			t->missing++;
 		} else {
 			const Rec *r = rec ? find_rec(rec, nrec, l) : NULL;
@@ -159,15 +190,15 @@ static int check_one(const KpConf *c, const char *root, const char *name,
 			} else if (!S_ISREG(st.st_mode) ||
 				   kb_sha256_file(full, hex) != 0 ||
 				   strcmp(hex, r->sha)) {
-				printf("%s: %s %s\n", name,
+				say(t, conf, "%s: %s %s\n", name,
 				       conf ? "config" : "changed", l);
 				if (conf)
 					t->config++;
 				else
 					t->changed++;
 			} else if ((st.st_mode & 07777) != r->mode) {
-				printf("%s: %s %s %04o, installed %04o\n",
-				       name, conf ? "config mode" : "mode", l,
+				say(t, conf, "%s: %s %s %04o, installed %04o\n",
+				    name, conf ? "config mode" : "mode", l,
 				       (unsigned)(st.st_mode & 07777), r->mode);
 				if (conf)
 					t->config++;
@@ -250,7 +281,7 @@ static void walk_unowned(const char *root, const char *rel,
 				walk_unowned(root, child, owned, t);
 			} else if (!kp_owned_owner(owned, child) &&
 				   !generated(child)) {
-				printf("unowned ./%s\n", child);
+				say(t, 1, "unowned ./%s\n", child);
 				t->unowned++;
 			}
 		}
@@ -265,12 +296,17 @@ static void walk_unowned(const char *root, const char *rel,
 
 int kp_cmd_check(KpConf *c, int argc, char **argv)
 {
-	int all = 0;
+	int all = 0, brief = 0;
+	const char *logp = NULL;
 	char **want = kb_calloc((size_t)argc + 1, sizeof(*want));
 	int nwant = 0;
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--all"))
 			all = 1;
+		else if (!strcmp(argv[i], "--brief"))
+			brief = 1;
+		else if (!strcmp(argv[i], "--log") && i + 1 < argc)
+			logp = argv[++i];
 		else if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c->root, argv[++i], sizeof(c->root));
 		else if (argv[i][0] == '-') {
@@ -281,8 +317,10 @@ int kp_cmd_check(KpConf *c, int argc, char **argv)
 			want[nwant++] = argv[i];
 	}
 	if (all == (nwant > 0)) {
-		printf("Usage: kpkg check [--root <path>] <package>...\n"
-		       "       kpkg check [--root <path>] --all\n");
+		printf("Usage: kpkg check [--root <path>] [--brief] [--log <file>] "
+		       "<package>...\n"
+		       "       kpkg check [--root <path>] [--brief] [--log <file>] "
+		       "--all\n");
 		free(want);
 		return 2;
 	}
@@ -296,6 +334,9 @@ int kp_cmd_check(KpConf *c, int argc, char **argv)
 	}
 
 	Tally t = {0};
+	t.brief = brief;
+	if (logp && !(t.log = fopen(logp, "w")))
+		kp_err("cannot write %s: %s", logp, strerror(errno));
 	int npkg = 0, rc = 0;
 	if (all) {
 		for (char **p = names; p && *p; p++) {
@@ -328,16 +369,18 @@ int kp_cmd_check(KpConf *c, int argc, char **argv)
 		kp_owned_free(owned);
 	}
 
-	printf("%d package%s checked: %d missing, %d changed, %d mode, "
-	       "%d config", npkg, npkg == 1 ? "" : "s", t.missing, t.changed,
-	       t.mode, t.config);
+	say(&t, 0, "%d package%s checked: %d missing, %d changed, %d mode, "
+	    "%d config", npkg, npkg == 1 ? "" : "s", t.missing, t.changed,
+	    t.mode, t.config);
 	if (all)
-		printf(", %d unowned", t.unowned);
-	putchar('\n');
+		say(&t, 0, ", %d unowned", t.unowned);
+	say(&t, 0, "\n");
 	if (t.unrecorded)
-		printf("%d package%s installed with no file record: checked "
-		       "for presence only\n", t.unrecorded,
-		       t.unrecorded == 1 ? "" : "s");
+		say(&t, 0, "%d package%s installed with no file record: checked "
+		    "for presence only\n", t.unrecorded,
+		    t.unrecorded == 1 ? "" : "s");
+	if (t.log)
+		fclose(t.log);
 	if (rc)
 		return rc;
 	return t.missing || t.changed || t.mode ? 1 : 0;

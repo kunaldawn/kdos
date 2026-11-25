@@ -1,0 +1,78 @@
+Subject: Open a help: page installed as HTML in the browser when KHelpCenter is absent
+
+--- a/src/util/kurlhandler_p.cpp	2026-10-02 18:49:35.000000000 +0530
++++ b/src/util/kurlhandler_p.cpp	2026-11-17 23:25:01.506205721 +0530
+@@ -11,6 +11,7 @@
+ #include <QCoreApplication>
+ #include <QDebug>
+ #include <QDesktopServices>
++#include <QDir>
+ #include <QLocale>
+ #include <QProcess>
+ #include <QStandardPaths>
+@@ -40,6 +41,49 @@
+ #endif
+ }
+ 
++// A help: path names a page of a handbook under doc/HTML/<language>/ in the generic data
++// directories. Return that page as a file: URL, with the help: URL's fragment, when it is an HTML
++// file installed there in the user's language or in English; otherwise an invalid URL. A path
++// with a ".." component is refused, so a help: URL can only name a file under doc/HTML.
++static QUrl localHtmlPage(const QUrl &url)
++{
++    const QString rawPath = url.path();
++    if (!rawPath.startsWith(QLatin1Char('/')) || rawPath.split(QLatin1Char('/')).contains(QLatin1String(".."))) {
++        return {};
++    }
++
++    QString path = QDir::cleanPath(rawPath);
++    if (path == QLatin1Char('/')) {
++        path += QCoreApplication::applicationName() + QLatin1String("/index.html");
++    } else if (rawPath.endsWith(QLatin1Char('/'))) {
++        path += QLatin1String("/index.html");
++    }
++    if (!path.endsWith(QLatin1String(".html"))) {
++        return {};
++    }
++
++    QStringList languages;
++    const QStringList uiLanguages = QLocale().uiLanguages();
++    for (const QString &uiLanguage : uiLanguages) {
++        QString language = uiLanguage;
++        language.replace(QLatin1Char('-'), QLatin1Char('_'));
++        languages << language << language.section(QLatin1Char('_'), 0, 0);
++    }
++    languages << QStringLiteral("en");
++    languages.removeDuplicates();
++
++    for (const QString &language : std::as_const(languages)) {
++        const QString file = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QLatin1String("doc/HTML/") + language + path);
++        if (!file.isEmpty()) {
++            QUrl page = QUrl::fromLocalFile(file);
++            page.setFragment(url.fragment());
++            return page;
++        }
++    }
++
++    return {};
++}
++
+ KUrlHandler::KUrlHandler(QObject *parent)
+     : QObject(parent)
+ {
+@@ -51,6 +95,15 @@
+         return;
+     }
+ 
++    // Without KHelpCenter, a page installed as HTML opens in the default browser, before any
++    // online copy: a DocBook handbook installs no .html file and still falls through to
++    // docs.kde.org below.
++    const QUrl pageUrl = localHtmlPage(url);
++    if (pageUrl.isValid()) {
++        QDesktopServices::openUrl(pageUrl);
++        return;
++    }
++
+     const QUrl docUrl = concatDocsUrl(url);
+     if (docUrl.isValid()) {
+         QDesktopServices::openUrl(docUrl);

@@ -256,8 +256,13 @@ static int run_info(const char *root)
  * for the tool, the flag and the directory. */
 #define MAN_BATCH 200
 
-/* The page names are relative to the manual directory, because makewhatis
- * changes into that directory before it reads a single one.
+/* Each page and the -d base go by absolute path. makewhatis -d changes into
+ * its base before it reads a page, so a relative name resolves inside the
+ * base: one spelled from a relative --root names nothing there and the page
+ * is left out of the index, and a symlinked page named relative to the
+ * manual root crashes makewhatis and loses its whole batch. By absolute path
+ * the link is indexed as an alias of its target. A relative manual directory
+ * is resolved with realpath() first; an absolute one keeps its spelling.
  *
  * THE DATABASE IS THE ASSERTION, NOT THE STATUS. makewhatis exits non-zero
  * for one unreadable page or dangling link and still writes every other
@@ -281,18 +286,33 @@ static int run_man(const KpTriggers *t, const char *root)
 		rc = kb_run(&a);
 	} else {
 		const char *p = t->man.p;
+		if (mdir[0] != '/') {
+			char *abs = realpath(mdir, NULL);
+			if (!abs) {
+				free(db);
+				free(mdir);
+				return 1;
+			}
+			free(mdir);
+			mdir = abs;
+		}
 		for (int left = t->nman; left > 0;) {
 			KbArgv a = {0};
+			char *page[MAN_BATCH];
+			int n = 0;
 			kb_argv_add(&a, t_tool[T_MAN]);
 			kb_argv_add(&a, "-d");
 			kb_argv_add(&a, mdir);
-			for (int k = 0; k < MAN_BATCH && left > 0; k++, left--) {
-				kb_argv_add(&a, p);
+			for (; n < MAN_BATCH && left > 0; n++, left--) {
+				page[n] = kb_path_join(mdir, p);
+				kb_argv_add(&a, page[n]);
 				p += strlen(p) + 1;
 			}
 			kb_argv_end(&a);
 			if (kb_run(&a) != 0)
 				rc = 1;
+			while (n > 0)
+				free(page[--n]);
 		}
 	}
 	if (rc != 0 && kb_path_exists(db))

@@ -186,6 +186,15 @@ the SHA-256 and mode of every regular file it placed.
    sudo kpkg check --all --root /mnt/slot-b
    ```
 
+4. Print only the faults and the summary with `--brief`, and keep every line in a file with
+   `--log <file>`. `--brief` leaves the `config` and `unowned` lines off the terminal and still
+   counts them in the summary; neither option changes the exit status. `kdos update apply` checks a
+   slot this way, with its list in `/var/log/kdos-update-check.log`:
+
+   ```bash
+   sudo kpkg check --all --brief --log /tmp/check.log --root /mnt/slot-b
+   ```
+
 ### Development files
 
 The image installs each package without the files only a build or a reader of manuals uses, and
@@ -283,17 +292,18 @@ updates keep it and build it here again (see
    kpkgdepends pv
    ```
 
-2. Restore the development files of what `pv` compiles against: `ncurses`, which its recipe
+2. Install the build tools the base does not carry, `binutils` and `make` among them, and
+   restore the development files of what `pv` compiles against: `ncurses`, which its recipe
    names, and `musl`, `linux` and `gcc`, which every compile reads. `kpkg install` refuses until
-   they are back, and names them:
+   they are back, and names them. `--dev --deps pv` restores that closure though `pv` itself is
+   not installed:
 
    ```bash
-   sudo kdos update install --dev ncurses musl linux gcc
+   sudo kdos update install build-tools
+   sudo kdos update install --dev --deps pv
    ```
 
-   `kpkg install` also needs the build tools the base does not carry, `binutils` and `make`
-   among them; `kdos update install --source pv` does this step itself and installs every member
-   of the `build-tools` group the machine lacks first.
+   `kdos update install --source pv` does this step itself.
 
 3. Fetch the sources of the port. `kpkg fetch` takes each file the recipe hashes and the machine
    lacks from the KDOS source archive first and from the recipe's own URL second, and keeps a copy
@@ -336,7 +346,8 @@ updates keep it and build it here again (see
 
 On a running system an installed package counts as current whatever its recipe says, so
 `kpkg install` of an installed port prints `Nothing to do` and builds nothing. `-f` rebuilds the
-named ports, though not their dependencies:
+named ports; a dependency is built only when it is not installed, and the walk stops at an
+installed package, so nothing beneath one is built:
 
 ```bash
 sudo env KPKG_FETCH=1 kpkg install -f pv
@@ -447,11 +458,21 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
 - `kpkg help` prints the full command list. `kpkg` has no update command; the system is updated,
   and software the base leaves out installed, with `kdos update` ([Updating](updating.md)).
 - `kpkg install --root DIR <port>` installs into another root, such as a mounted target or a
-  second slot, and `kpkg list --root DIR` lists one.
+  second slot, and `kpkg list --root DIR` lists one. The usage is `kpkg [--root <path>] <command>
+  [options]`: `--root` may come before the command word or among its options, and a `-` word
+  before the command that `kpkg help` does not list under Options prints
+  `kpkg: unknown option '<word>' — try: kpkg help` and exits 1. Only `install`, `remove`,
+  `list`, `info`, `check`, `facets`, `needs` and `binhost` read a root; a leading `--root` before
+  any other command prints `kpkg: option '--root' is not for '<command>'` and exits 1, and an
+  install-only option before a command other than `install` is refused the same way.
 - `kpkg check` reads the record taken after the package's install hook ran, so a mode a hook sets
   is not a finding.
-- A failed build leaves its work directory, `/var/cache/kpkg/work/<name>`, for you to look at. The
-  next build of the same port empties it; delete it yourself to reclaim the space.
+- A failed `kpkg` build leaves its work directory, `/var/cache/kpkg/work/<name>`, for you to look
+  at. The next build of the same port empties it; delete it yourself to reclaim the space. A build
+  `kdos update` starts, for `install --source`, `install --dev` or an `apply` that builds, removes
+  it instead (`KPKG_CLEAN_FAILED`; see
+  [Installing host software](../../kdos/02-user-guide/administration.md#installing-host-software)).
+  A build stopped or killed keeps it either way.
 - Python software that is not a port goes in a virtual environment, `python3 -m venv DIR`. The
   system's `site-packages` belongs to `kpkg`, and `pip install` outside an environment is refused
   with `error: externally-managed-environment`, whose text suggests `python3 -m venv ~/.venvs/NAME`.
@@ -516,7 +537,7 @@ A `kpkg install` or `kpkg remove` waits and never finishes
 
 ## Known gaps
 
-- [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
+- [No published release's update has been applied to an installed machine](../../kdos/06-reference/known-gaps.md#no-published-releases-update-has-been-applied-to-an-installed-machine)
 - `kpkg help` lists an `update` command that does not exist; see
   [Packaging](../../kdos/06-reference/command-index.md#packaging) in the command index.
 

@@ -1,0 +1,122 @@
+# bash completion for kpkg.
+
+# The package database (one file per installed package; its dot-named
+# directories are not packages and the glob skips them) and the port
+# trees, as kpkg.conf's defaults name them; a machine without the trees
+# completes the installed packages alone.
+_kdos_kpkg_db=/var/lib/kpkg/db
+_kdos_kpkg_repos="/ports/core /ports/src/system /ports/src/art /ports/src/desktop /ports/src/daemons"
+
+_kdos_kpkg_installed() {
+    local d
+    for d in "$_kdos_kpkg_db"/*; do
+        [ -f "$d" ] && printf '%s\n' "${d##*/}"
+    done
+}
+
+# A port is a directory holding a kpkgbuild: <repo>/<name>/ under src/,
+# <repo>/<shelf>/<name>/ under core/.
+_kdos_kpkg_ports() {
+    local r f
+    for r in $_kdos_kpkg_repos; do
+        for f in "$r"/*/kpkgbuild "$r"/*/*/kpkgbuild; do
+            [ -f "$f" ] || continue
+            f=${f%/kpkgbuild}
+            printf '%s\n' "${f##*/}"
+        done
+    done
+    _kdos_kpkg_installed
+}
+
+_kdos_kpkg() {
+    local cur prev cmd i at=0
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # The options before the command word: --root takes a value.
+    for ((i = 1; i < COMP_CWORD; i++)); do
+        case "${COMP_WORDS[i]}" in
+            --root) ((i++)) ;;
+            -*) ;;
+            *) at=$i; break ;;
+        esac
+    done
+
+    case "$prev" in
+        --root) COMPREPLY=($(compgen -d -- "$cur")); return ;;
+        --log|--sign|-o) COMPREPLY=($(compgen -f -- "$cur")); return ;;
+    esac
+
+    if [ "$at" -eq 0 ]; then
+        COMPREPLY=($(compgen -W "install remove list info check facets needs meta fetch verify keygen sign index verify-index verify-pkg delta apply-delta binhost store help --root --keep-cache --force --build-only --commit --version" -- "$cur"))
+        return
+    fi
+
+    cmd=${COMP_WORDS[at]}
+    case "$cmd" in
+        install|i)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--root --keep-cache --force --build-only --commit" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_ports)" -- "$cur")) ;;
+            esac ;;
+        remove|r)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--root" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_installed)" -- "$cur")) ;;
+            esac ;;
+        list|l) COMPREPLY=($(compgen -W "--root --json" -- "$cur")) ;;
+        info)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--root --json" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_installed)" -- "$cur")) ;;
+            esac ;;
+        check)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--root --all --brief --log" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_installed)" -- "$cur")) ;;
+            esac ;;
+        facets)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--strip --list --root" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_installed)" -- "$cur")) ;;
+            esac ;;
+        needs)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--resolve --scan --root" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_installed)" -- "$cur")) ;;
+            esac ;;
+        verify)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--repro" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "$(_kdos_kpkg_ports)" -- "$cur")) ;;
+            esac ;;
+        meta) COMPREPLY=($(compgen -W "$(_kdos_kpkg_ports)" -- "$cur") $(compgen -d -- "$cur")) ;;
+        fetch) COMPREPLY=($(compgen -W "$(_kdos_kpkg_ports)" -- "$cur")) ;;
+        index)
+            case "$cur" in
+                -*) COMPREPLY=($(compgen -W "--sign" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -d -- "$cur")) ;;
+            esac ;;
+        verify-index) COMPREPLY=($(compgen -d -- "$cur")) ;;
+        binhost)
+            # binhost [--root <path>] <dir> <port>: a directory, then ports.
+            local npos=0
+            for ((i = at + 1; i < COMP_CWORD; i++)); do
+                case "${COMP_WORDS[i]}" in
+                    --root) ((i++)) ;;
+                    -*) ;;
+                    *) ((npos++)) ;;
+                esac
+            done
+            if [ "$npos" -eq 0 ]; then
+                COMPREPLY=($(compgen -W "--root" -- "$cur") $(compgen -d -- "$cur"))
+            else
+                COMPREPLY=($(compgen -W "$(_kdos_kpkg_ports)" -- "$cur"))
+            fi ;;
+        store) [ "$COMP_CWORD" -eq $((at + 1)) ] && COMPREPLY=($(compgen -W "gc" -- "$cur")) ||
+                   COMPREPLY=($(compgen -d -- "$cur")) ;;
+        sign|verify-pkg|delta|apply-delta) COMPREPLY=($(compgen -f -- "$cur")) ;;
+        *) COMPREPLY=() ;;
+    esac
+}
+complete -F _kdos_kpkg kpkg

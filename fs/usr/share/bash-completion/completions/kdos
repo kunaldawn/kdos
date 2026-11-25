@@ -1,6 +1,7 @@
 # bash completion for the kdos umbrella command.
 
 _kdos_accents="phosphor amber ice bone norton borland perfect paper"
+_kdos_kpkg_db=/var/lib/kpkg/db
 
 _kdos() {
     local cur prev
@@ -8,16 +9,16 @@ _kdos() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "help theme phosphor desk tiling status doctor version app share remind notify toggle settings menu panel places trash thumb verify hey appid privacy checklist backup speech timezone hostname locale keymap in-vm update firmware cve why explain persist restarts" -- "$cur"))
+        COMPREPLY=($(compgen -W "help theme phosphor desk tiling status doctor version app share remind notify toggle settings menu panel places trash thumb verify hey appid privacy checklist backup speech timezone hostname locale keymap in-vm update image firmware cve why explain persist restarts sandbox march rebuild clone oracle" -- "$cur"))
         return
     fi
 
     case "${COMP_WORDS[1]}" in
         theme)
             case "$prev" in
-                --from-plasma|--audit) COMPREPLY=($(compgen -W "$_kdos_accents" -- "$cur")) ;;
+                --from-plasma|--account|--audit) COMPREPLY=($(compgen -W "$_kdos_accents" -- "$cur")) ;;
                 style) COMPREPLY=($(compgen -f -- "$cur")) ;;
-                theme) COMPREPLY=($(compgen -W "$_kdos_accents next prev list current style --audit --from-plasma" -- "$cur")) ;;
+                theme) COMPREPLY=($(compgen -W "$_kdos_accents next prev list current style --audit --account --from-plasma" -- "$cur")) ;;
                 *) COMPREPLY=() ;;
             esac ;;
         phosphor)
@@ -82,7 +83,25 @@ _kdos() {
         help)     COMPREPLY=($(compgen -W "--keys --pager" -- "$cur")) ;;
         remind)   COMPREPLY=($(compgen -W "in at tomorrow ls clear --ask" -- "$cur")) ;;
         notify)   COMPREPLY=($(compgen -W "--time --battery --dnd" -- "$cur")) ;;
-        update)   COMPREPLY=($(compgen -W "check fetch apply install notes" -- "$cur")) ;;
+        update)
+            case "$prev" in
+                update) COMPREPLY=($(compgen -W "check fetch apply install groups notes theme" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        app)
+            case "$prev" in
+                app) COMPREPLY=($(compgen -W "list search info groups install launch remove export import tui" -- "$cur")) ;;
+                list) COMPREPLY=($(compgen -W "--all" -- "$cur")) ;;
+                install) COMPREPLY=($(compgen -W "--dry-run --pending" -- "$cur")) ;;
+                tui) COMPREPLY=($(compgen -W "add rm ls" -- "$cur")) ;;
+                export|import) COMPREPLY=($(compgen -f -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        image)
+            case "$prev" in
+                image) COMPREPLY=($(compgen -W "make verify unpack carry" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -d -- "$cur")) ;;
+            esac ;;
         firmware)
             case "$prev" in
                 firmware) COMPREPLY=($(compgen -W "sync" -- "$cur")) ;;
@@ -90,6 +109,22 @@ _kdos() {
                 *) COMPREPLY=($(compgen -W "--dry-run --json --all --root" -- "$cur")) ;;
             esac ;;
         verify)   COMPREPLY=($(compgen -W "--notify" -- "$cur") $(compgen -f -- "$cur")) ;;
+        why)
+            # An absolute path, or an installed port: the package database
+            # holds one file per installed package. `kdos why` takes only a
+            # word that starts with `/` as a path and looks any other up as a
+            # port, so a relative file name is never offered.
+            [ "$COMP_CWORD" -eq 2 ] || return
+            if [ "${cur#/}" != "$cur" ]; then
+                compopt -o filenames 2>/dev/null
+                COMPREPLY=($(compgen -f -- "$cur"))
+                return
+            fi
+            local ports="" d
+            for d in "$_kdos_kpkg_db"/*; do
+                [ -f "$d" ] && ports="$ports ${d##*/}"
+            done
+            COMPREPLY=($(compgen -W "$ports" -- "$cur")) ;;
         *)        COMPREPLY=() ;;
     esac
 }

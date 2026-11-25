@@ -29,17 +29,26 @@
  * cannot be changed on a live container; such a change is written, and the
  * box keeps its old setting until it is removed and created again. The keys
  * are createTimeKeys(); a change to one on a box that has a container is
- * remembered in this page's state file until the box is made again, which is
- * what the "Recreate" banner shows.
+ * remembered in this page's state file until the box is made again. A change
+ * made with `kdos-box profile` reaches the page through the report instead:
+ * kdos-box compares the file with the label its container was created with
+ * and prints a `!` line naming the keys that differ, which staleKeys()
+ * holds. The "Recreate" banner shows both. For a container whose label
+ * records what it was made with (the report's `created = matches` or
+ * `differs`), the report is authoritative: applyReport() drops every
+ * remembered key it does not name, so a key set back in a terminal leaves
+ * the banner too. A container with no label keeps the page's memory.
  */
 
 #pragma once
 
 #include <QDateTime>
+#include <QHash>
 #include <QObject>
 #include <QQmlPropertyMap>
 #include <QString>
 #include <QStringList>
+#include <QValidator>
 #include <QVariantMap>
 
 namespace Kdos
@@ -58,6 +67,7 @@ class BoxProfile : public QObject
     Q_PROPERTY(QQmlPropertyMap *notes READ notes CONSTANT)
     Q_PROPERTY(QStringList generalNotes READ generalNotes NOTIFY notesChanged)
     Q_PROPERTY(bool notesLoaded READ notesLoaded NOTIFY notesChanged)
+    Q_PROPERTY(QStringList staleKeys READ staleKeys NOTIFY notesChanged)
     Q_PROPERTY(QStringList otherGrants READ otherGrants NOTIFY loaded)
     Q_PROPERTY(bool dirty READ isDirty NOTIFY dirtyChanged)
     Q_PROPERTY(bool atDefaults READ isAtDefaults NOTIFY dirtyChanged)
@@ -86,9 +96,11 @@ public:
     static QString cpuSpelling(int tenths);
     static int parseDurationSeconds(const QString &raw);
 
-    /* Parses `kdos-box profile <box>` output into mechanisms and notes.
-     * The notes and mechanisms keep kdos-box's words exactly; markup() is
-     * how the page shows them. */
+    /* Parses `kdos-box profile <box>` output into mechanisms and notes,
+     * and, when it reports a labelled container, drops this box's pending
+     * keys that the report does not name as differing. The notes and
+     * mechanisms keep kdos-box's words exactly; markup() is how the page
+     * shows them. */
     void applyReport(const QString &report);
 
     /* kdos-box's terminal text as rich text for a label: escaped, with each
@@ -108,6 +120,13 @@ public:
     QQmlPropertyMap *notes() const;
     QStringList generalNotes() const;
     bool notesLoaded() const;
+    /* The create-time keys the report says the container was not made
+     * with, as kdos-box names them in its `!` line; empty when it prints
+     * none. */
+    QStringList staleKeys() const;
+    /* The `!` line kdos-box prints for a profile written after its box was
+     * created. */
+    static bool isRecreateNote(const QString &note);
     QStringList otherGrants() const;
     bool isDirty() const;
     bool isAtDefaults() const;
@@ -121,10 +140,21 @@ public:
 
     /* The page's own memory of create-time changes not yet applied. */
     QStringList pendingRecreate() const;
-    void addPendingRecreate(const QStringList &keys);
-    /* The same for a box this object is not showing: a save that finishes
-     * after the page has moved to another box still records its keys. */
+    /* Read the state file again after recordPendingRecreate or
+     * dropPendingRecreate wrote this box's keys. */
+    void reloadPending();
+    /* Record create-time keys for a box, whichever box the page shows: a
+     * save that finishes after the page has moved to another box still
+     * records its keys. */
     static void recordPendingRecreate(const QString &box, const QStringList &keys);
+    /* Forget these pending keys of a box: a write set them back to what
+     * its container was made with. */
+    static void dropPendingRecreate(const QString &box, const QStringList &keys);
+    /* The keys a `kdos-box profile` write says are back at the values the
+     * container was made with ("memory, cpus are what the box was created
+     * with"). kdos-box says so only for a container whose label records
+     * those values. */
+    static QStringList keysBackToCreated(const QString &output);
     void clearPendingRecreate();
     /* Forget the pending keys once the box has been made since they were
      * recorded, or has no container any more. */
@@ -139,6 +169,11 @@ public:
     Q_INVOKABLE int memoryFromText(const QString &text) const;
     Q_INVOKABLE int durationFromText(const QString &text) const;
     Q_INVOKABLE int cpusFromText(const QString &text) const;
+    Q_INVOKABLE QString formatPids(int n) const;
+    Q_INVOKABLE int pidsFromText(const QString &text) const;
+    /* The validator of the spin box for `key` (memory, cpus, pids or
+     * autostop): see LimitValidator. One per key, owned by the profile. */
+    Q_INVOKABLE QValidator *limitValidator(const QString &key);
 
 Q_SIGNALS:
     void loaded();
@@ -161,10 +196,35 @@ private:
     QQmlPropertyMap *m_notes;
     QStringList m_generalNotes;
     bool m_notesLoaded = false;
+    QStringList m_staleKeys;
     bool m_dirty = false;
     bool m_atDefaults = true;
     QStringList m_pending;
     QDateTime m_pendingSince;
+    QHash<QString, QValidator *> m_validators;
+};
+
+/* A limit spin box's text is final only in the form the spin box shows it
+ * in, its value's own spelling ("512.0 MiB", "2 cores", "5 minutes"):
+ * anything else is Intermediate. qqc2-desktop-style's SpinBox takes a value
+ * on every keystroke whose text is Acceptable and then redraws the text in
+ * that spelling, so an accept-anything validator turned "5" into "5.0 MiB"
+ * under the cursor and the next key made it unreadable. Return or leaving
+ * the field asks fixup() for the spelling of what was typed, which is
+ * Acceptable, and the spin box takes it. */
+class LimitValidator : public QValidator
+{
+    Q_OBJECT
+
+public:
+    LimitValidator(const BoxProfile *profile, const QString &key, QObject *parent);
+    State validate(QString &input, int &pos) const override;
+    void fixup(QString &input) const override;
+
+private:
+    QString spelled(const QString &text) const;
+    const BoxProfile *m_profile;
+    QString m_key;
 };
 
 }

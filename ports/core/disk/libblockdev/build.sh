@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/c-locale-strerror.patch"
+
 export CFLAGS="$CFLAGS -Wno-error"
 
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --disable-static \

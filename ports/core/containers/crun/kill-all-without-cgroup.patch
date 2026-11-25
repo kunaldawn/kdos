@@ -1,0 +1,162 @@
+Subject: signal the container process and its descendants on kill --all and delete --force when it has no cgroup
+
+A rootless container under the cgroupfs manager gets no cgroup, and one that shares the host
+pid namespace (podman --pid host, as every distrobox does) is stopped through `kill --all`.
+Upstream walks the empty cgroup path, signals nothing and returns success, so podman waits for
+a pid that never dies and leaves the container Stopping until reboot.  Without a cgroup or a
+pid namespace the container's processes are found through the parent links in /proc: the
+container's own process and every process descended from it are signalled, the tree collected
+before the first signal.  A descendant left alive is reparented to conmon and keeps the root
+filesystem's overlay mounted, so the next start fails with EBUSY until it exits.
+
+--- a/src/libcrun/container.c
++++ b/src/libcrun/container.c
+@@ -1650,6 +1650,95 @@
+   return false;
+ }
+ 
++/* The most processes kill_container_tree reaches below the container's
++   own process; a deeper or wider tree is signalled in part.  */
++#define KILL_TREE_MAX 4096
++
++/* Read the parent of PID from /proc/PID/stat, or return -1.  */
++static pid_t
++read_ppid (pid_t pid)
++{
++  char path[64], buf[512], *s;
++  cleanup_close int fd = -1;
++  ssize_t n;
++  int ppid;
++
++  snprintf (path, sizeof (path), "/proc/%d/stat", pid);
++  fd = open (path, O_RDONLY | O_CLOEXEC);
++  if (fd < 0)
++    return -1;
++  n = read (fd, buf, sizeof (buf) - 1);
++  if (n <= 0)
++    return -1;
++  buf[n] = '\0';
++  /* The command name may hold ')' and spaces; the fields after the last
++     ')' are the state and the parent.  */
++  s = strrchr (buf, ')');
++  if (s == NULL || sscanf (s + 1, " %*c %d", &ppid) != 1)
++    return -1;
++  return ppid;
++}
++
++/* Signal a container that has no cgroup: its own process and every
++   process descended from it, found through the parent links in /proc.
++   The tree is collected before the first signal, because a child whose
++   parent dies is reparented out of it and could no longer be found.
++   The descendants are signalled only once the container's own process
++   was, so a pid already reused is not walked.  A descendant already gone
++   is skipped.  The result is that of signalling the container's own
++   process.  */
++static int
++kill_container_tree (libcrun_container_status_t *status, int sig, libcrun_error_t *err)
++{
++  cleanup_free pid_t *pids = NULL;
++  cleanup_free pid_t *ppids = NULL;
++  cleanup_dir DIR *dir = NULL;
++  pid_t tree[KILL_TREE_MAX];
++  size_t n = 0, alloc = 0, len = 1, head = 0, i;
++  struct dirent *de;
++  int ret;
++
++  tree[0] = status->pid;
++  dir = opendir ("/proc");
++  while (dir && (de = readdir (dir)) != NULL)
++    {
++      char *end;
++      long pid = strtol (de->d_name, &end, 10);
++      pid_t ppid;
++
++      if (*end != '\0' || pid <= 0 || pid == status->pid)
++        continue;
++      ppid = read_ppid ((pid_t) pid);
++      if (ppid <= 0)
++        continue;
++      if (n == alloc)
++        {
++          alloc = alloc ? alloc * 2 : 1024;
++          pids = xrealloc (pids, alloc * sizeof (*pids));
++          ppids = xrealloc (ppids, alloc * sizeof (*ppids));
++        }
++      pids[n] = (pid_t) pid;
++      ppids[n++] = ppid;
++    }
++
++  while (head < len && len < KILL_TREE_MAX)
++    {
++      pid_t parent = tree[head++];
++
++      for (i = 0; i < n && len < KILL_TREE_MAX; i++)
++        if (ppids[i] == parent)
++          tree[len++] = pids[i];
++    }
++
++  ret = libcrun_kill_linux (status, sig, err);
++  if (UNLIKELY (ret < 0))
++    return ret;
++
++  for (i = 1; i < len; i++)
++    kill (tree[i], sig);
++  return 0;
++}
++
+ static int
+ container_delete_internal (libcrun_context_t *context, runtime_spec_schema_config_schema *def,
+                            const char *id, bool force, bool killall, libcrun_error_t *err)
+@@ -1725,12 +1814,26 @@
+               crun_error_release (err);
+             }
+         }
+-      else if (status.cgroup_path)
++      else if (! is_empty_string (status.cgroup_path))
+         {
+           ret = libcrun_cgroup_killall (cgroup_status, SIGKILL, err);
+           if (UNLIKELY (ret < 0))
+             return ret;
+         }
++      else
++        {
++          /* No pid namespace and no cgroup: kill the container's own
++             process and its descendants.  */
++          ret = kill_container_tree (&status, SIGKILL, err);
++          if (UNLIKELY (ret < 0))
++            {
++              errno = crun_error_get_errno (err);
++              if (errno != ESRCH && errno != EINVAL)
++                return ret;
++
++              crun_error_release (err);
++            }
++        }
+     }
+ 
+   if (def->linux && def->linux->intel_rdt)
+@@ -1795,6 +1898,24 @@
+   if (UNLIKELY (ret < 0))
+     return ret;
+ 
++  /* A container that runs without a cgroup (rootless with the cgroupfs
++     manager) has no list of processes to signal; signal its own process
++     and its descendants, or `kill --all` succeeds having signalled nothing
++     and the container never stops, and a descendant left alive keeps the
++     root filesystem mounted.  A process already gone leaves nothing to
++     signal, as an empty cgroup does.  */
++  if (is_empty_string (status.cgroup_path))
++    {
++      ret = kill_container_tree (&status, sig, err);
++      if (UNLIKELY (ret < 0))
++        {
++          if (crun_error_get_errno (err) != ESRCH)
++            return ret;
++          crun_error_release (err);
++        }
++      return 0;
++    }
++
+   cgroup_status = libcrun_cgroup_make_status (&status);
+ 
+   ret = libcrun_cgroup_killall (cgroup_status, sig, err);

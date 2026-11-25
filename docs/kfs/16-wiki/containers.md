@@ -98,7 +98,7 @@ script that starts `podman system service` when nothing answers on your socket,
 `$XDG_RUNTIME_DIR/podman/podman.sock` (`/run/podman/podman.sock` for root), and runs a command
 against it. The service exits after five minutes with no client:
 
-<!-- kfs:include ports/core/containers/podman/build.sh lines=35-93 pin=2f2d1e86bdb2 -->
+<!-- kfs:include ports/core/containers/podman/build.sh lines=39-97 pin=2f2d1e86bdb2 -->
 
 The *Containers* menu entry runs [`podman-tui`]{.idx} through it:
 
@@ -131,6 +131,10 @@ The *Containers* menu entry runs [`podman-tui`]{.idx} through it:
 
 `podman ps -a` also lists the boxes. Leave those to `kdos-box`, which keeps their profiles and
 composed roots in step: removing one with `podman rm` leaves its profile and its pack mounts behind.
+A box's image is kept when the box is removed, so it can be made again offline;
+`kdos-box remove <name> --purge` runs `podman rmi` on it when no other box names it, and
+`podman rmi <image>` releases one left behind. The `kdos/…` images belong to `kdos app`, whose
+`remove` releases them.
 
 ### A distrobox
 
@@ -206,8 +210,8 @@ disk, and uses the kernel's overlay driver once `kdos-appbox` has written your `
   until [`/etc/containers/nodocker`]{.idx} or `~/.config/containers/nodocker` exists.
 - `podman run --init` and pods use `catatonit`, at `/usr/lib/podman/catatonit`; inside the
   container it is process 1, named `/run/podman-init`.
-- Quadlet is installed, in `/usr/lib/podman`, and nothing runs it: there is no systemd to read
-  `.container` files.
+- Quadlet, `podmansh`, `podman auto-update` and `podman generate systemd` are not installed:
+  there is no systemd to read or run the units they need; nor are their manual pages.
 - An image pulled by a short name comes from `docker.io`; give the full reference
   (`quay.io/...`, `ghcr.io/...`) for any other registry.
 - `podman system df` shows how much space images, containers and volumes take, and

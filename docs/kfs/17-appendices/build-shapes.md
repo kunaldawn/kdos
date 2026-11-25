@@ -65,7 +65,7 @@ runs the package lint and rolls the package. No shape does any of that itself. T
 A `configure` script, then make. [pv](#port-pv) and [acl](#port-acl) are built with this shape,
 each with its own switches in place of some of these:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=806-808 pin=1455cb9a0681 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=812-814 pin=1455cb9a0681 lang=bash -->
 
 configure takes the exported flags by itself. In the chroot phases it also reads the site file
 `script/env/config.site`, which `CONFIG_SITE` names, and which places `sysconfdir`,
@@ -77,7 +77,7 @@ read the site file. See [autotools](../../kdos/05-developer/writing-ports.md#aut
 
 meson configures into a build directory and ninja builds it:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=828-831 pin=f119190e4a66 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=834-837 pin=f119190e4a66 lang=bash -->
 
 Three things in it are deliberate. `--libdir=lib`, because meson picks its default library
 directory from the machine it runs on: `lib64` wherever `/usr/lib64` is a real directory, and the
@@ -97,7 +97,7 @@ no wrap mode, so a missing subproject fails by name instead of being fetched, an
 
 The reference shape uses make as CMake's generator:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=892-897 pin=d390ab3f3189 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=898-903 pin=d390ab3f3189 lang=bash -->
 
 The tree's commonest form uses Ninja instead, with CMake's own build and install commands. The KDE
 Frameworks are built this way, here [karchive](#port-karchive):
@@ -117,7 +117,7 @@ picks `lib64` by itself, apart from the tree's `GNUInstallDirs` default. See
 
 A Rust program builds from its vendor bundle, with no network:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=927-933 pin=56bff5f813e7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=933-939 pin=56bff5f813e7 lang=bash -->
 
 The bundle, `<name>-vendor-<version>.tar.xz`, holds every crate the program needs and the cargo
 configuration that points cargo at them; [Sources and the archive](../01-preparing/sources.md#vendor-bundles)
@@ -131,7 +131,7 @@ into `$PKG` by hand, since `cargo build` installs nothing. See
 
 A Go program builds from its module vendor tree, also offline:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=985-988 pin=945a281da9a7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=991-994 pin=945a281da9a7 lang=bash -->
 
 `-ldflags "-s -w"` is required, because the Go linker otherwise writes DWARF and a symbol table that
 kpkg does not strip; `testing/preflight.sh` fails a `go build` without both. `-trimpath`,
@@ -164,7 +164,7 @@ without uninstalling the copy the build root holds. kpkg compiles the bytecode a
 
 A Qt project that ships a `.pro` file:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1040-1043 pin=3c09c3145853 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1046-1049 pin=3c09c3145853 lang=bash -->
 
 qmake reads no flags from the environment, so the three `QMAKE_*_RELEASE` variables hand it the
 exported ones, and `CONFIG+=release` keeps a debug build out. The install goes to `INSTALL_ROOT`,
@@ -189,7 +189,7 @@ See [Python, Perl, Haskell, Node and OCaml modules](../../kdos/05-developer/writ
 
 A project with only a makefile:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1121-1123 pin=88831e0ba377 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1127-1129 pin=88831e0ba377 lang=bash -->
 
 The flags are exported, not passed as make arguments. A variable on the make command line overrides
 the makefile's own assignment of it, so passing `CFLAGS=...` there would discard whatever the

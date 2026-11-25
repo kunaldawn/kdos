@@ -79,6 +79,22 @@ void ModelTest::catalogueFile()
     // A meta line above its row describes nothing.
     QCOMPARE(cat.rows.value(u"app.early"_s).name, QString());
 
+    // `deb` and `about` rows apply wherever they stand: the shipped file puts
+    // `deb` above its pack row, and an `about` may come before or after it.
+    const CatalogueRow maxima = cat.rows.value(u"app.maxima"_s);
+    QVERIFY(maxima.vendorDeb);
+    QCOMPARE(maxima.license, u"MIT"_s);
+    QCOMPARE(maxima.author, u"Maxima Team"_s);
+    QCOMPARE(maxima.homepage, u"https://maxima.example/"_s);
+    QCOMPARE(maxima.description, u"A computer algebra system|with a pipe"_s);
+    const CatalogueRow early = cat.rows.value(u"app.early"_s);
+    QVERIFY(!early.vendorDeb);
+    QCOMPARE(early.license, u"GPL-2.0-or-later"_s);
+    QCOMPARE(early.author, u"Early Ltd"_s);
+    QCOMPARE(early.description, u"kept: an about row may stand above its row"_s);
+    QVERIFY(!kcalc.vendorDeb);
+    QVERIFY(kcalc.license.isEmpty() && kcalc.description.isEmpty());
+
     QCOMPARE(cat.groups.size(), 2);
     const CatalogueGroup *office = cat.group(u"office"_s);
     QVERIFY(office);
@@ -299,6 +315,38 @@ void ModelTest::trayRules()
     contradicts.insert(u"rebootRequired"_s, false);
     QVERIFY(!readSlotsState(contradicts).rebootRequired);
 
+    // Discover's restart is for a staged update alone: the armed slot holds a
+    // version newer than the running one. State's `version` names the armed
+    // slot's; the running one is ListSlots', and bootctl's `slots` carry both.
+    QCOMPARE(armedVersion(s), u"0.2.14"_s);
+    QVERIFY(!stagedUpdate(s)); // the running version is not known yet
+    SlotsState listed = s;
+    readSlotList({QVariantMap{{u"id"_s, u"a"_s}, {u"running"_s, true}, {u"version"_s, u"0.2.13"_s}},
+                  QVariantMap{{u"id"_s, u"b"_s}, {u"running"_s, false}, {u"version"_s, u"0.2.14"_s}}},
+                 &listed);
+    QCOMPARE(listed.runningVersion, u"0.2.13"_s);
+    QCOMPARE(listed.otherVersion, u"0.2.14"_s);
+    QVERIFY(stagedUpdate(listed));
+    SlotsState sameVersion = listed;
+    sameVersion.phaseVersion = u"0.2.13"_s; // a switch to a slot of the running version
+    QVERIFY(!stagedUpdate(sameVersion));
+    SlotsState older = listed;
+    older.phaseVersion = u"0.2.9"_s; // back to an older version
+    QVERIFY(!stagedUpdate(older));
+    SlotsState newerByVercmp = listed;
+    newerByVercmp.runningVersion = u"0.2.9"_s;
+    newerByVercmp.phaseVersion = u"0.2.10"_s; // 0.2.10 is newer than 0.2.9
+    QVERIFY(stagedUpdate(newerByVercmp));
+    SlotsState unlisted = listed;
+    readSlotList({QVariantMap{{u"id"_s, u"a"_s}, {u"version"_s, u"9"_s}}}, &unlisted); // no running slot: kept
+    QCOMPARE(unlisted.runningVersion, u"0.2.13"_s);
+    QVERIFY(stagedUpdate(readSlotsState(armed))); // bootctl: b 0.2.15 armed over a 0.2.13
+    QVERIFY(!stagedUpdate(readSlotsState(trial))); // booted into the trial
+    QVariantMap switchOnly = armed;
+    switchOnly.insert(u"slots"_s, QVariantMap{{u"a"_s, QVariantMap{{u"version"_s, u"0.2.13"_s}}}, {u"b"_s, QVariantMap{{u"version"_s, u"0.2.13"_s}}}});
+    QVERIFY(!stagedUpdate(readSlotsState(switchOnly)));
+    QVERIFY(!stagedUpdate(readSlotsState(contradicts))); // nothing armed
+
     const SlotsState acquiring = readSlotsState(QJsonDocument::fromJson(fixture("slots-state-acquiring.json")).object().toVariantMap());
     QCOMPARE(acquiring.offer, u"0.2.14"_s);
     QCOMPARE(acquiring.job, u"acquire"_s);
@@ -327,8 +375,23 @@ void ModelTest::installPreview()
     QCOMPARE(p.builds, 0);
     QVERIFY(p.built.isEmpty());
     QString said = installPreviewText(p);
-    QVERIFY(said.startsWith(u"Downloads 3 packages ("_s));
+    QVERIFY(said.startsWith(u"Installs 3 packages; downloads 50"_s));
     QVERIFY(!said.contains(u"hours"_s));
+
+    // Every package already in the binhost cache: the total counts it and
+    // no bytes, and the text says so instead of "0 bytes".
+    p = parseInstallPreview("librewolf prebuilt librewolf-158.0.1-1.tar.xz 92274688\ntotal 1 0 0\n");
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 1);
+    QCOMPARE(p.bytes, quint64(0));
+    QCOMPARE(installPreviewText(p), u"Installs 1 package, already downloaded."_s);
+
+    // Some cached, some not: the size is only what is still to download.
+    p = parseInstallPreview("a prebuilt a-1-1.tar.xz 2048\nb prebuilt b-1-1.tar.xz 1048576\ntotal 2 1048576 0\n");
+    said = installPreviewText(p);
+    QVERIFY(said.startsWith(u"Installs 2 packages; downloads 1"_s));
+    QVERIFY(said.contains(u"&nbsp;"_s));
+    QVERIFY(!said.contains(u"already"_s));
 
     // Built here: the builds and the restores counted, the builds named,
     // and the warning.
@@ -337,11 +400,45 @@ void ModelTest::installPreview()
     QCOMPARE(p.downloads, 2);
     QCOMPARE(p.bytes, quint64(1048576));
     QCOMPARE(p.builds, 2);
+    QCOMPARE(p.restores, 1);
     QCOMPARE(p.built, (QStringList{u"libfoo"_s, u"bat"_s}));
     said = installPreviewText(p);
-    QVERIFY(said.startsWith(u"Builds 2 packages here, downloads 2 ("_s));
+    QVERIFY(said.startsWith(u"Builds 2 packages here and installs 1 prebuilt and restores the development files of 1 installed package, downloading 1"_s));
     QVERIFY(said.contains(u"building can take hours"_s));
     QVERIFY(said.contains(u"Built here: libfoo, bat"_s));
+
+    // A build whose dependencies are installed but stripped: the `dev`
+    // lines restore their development files and are said apart from the
+    // prebuilt installs, with the size still the whole download, and a
+    // `dev-source` line is a build.
+    QByteArray restoring = "ktimer source 24.12.0-1\nqt6-tools prebuilt qt6-tools-6.8.1-1.tar.xz 1048576\n";
+    for (int i = 0; i < 229; i++)
+        restoring += "lib" + QByteArray::number(i) + " dev lib" + QByteArray::number(i) + "-1-1.tar.xz 1024\n";
+    restoring += "total 230 1282048 1\n";
+    p = parseInstallPreview(restoring);
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 230);
+    QCOMPARE(p.restores, 229);
+    QCOMPARE(p.builds, 1);
+    QCOMPARE(p.built, QStringList{u"ktimer"_s});
+    said = installPreviewText(p);
+    QVERIFY(said.startsWith(u"Builds 1 package here and installs 1 prebuilt and restores the development files of 229 installed packages, downloading 1"_s));
+    QVERIFY(!said.contains(u"230"_s));
+    QVERIFY(said.contains(u"building can take hours"_s));
+    QVERIFY(said.contains(u"Built here: ktimer"_s));
+    restoring.replace("total 230 1282048 1\n", "a prebuilt a-1-1.tar.xz 1\nb prebuilt b-1-1.tar.xz 1\nc dev-source 2.0-1\ntotal 232 1282050 2\n");
+    p = parseInstallPreview(restoring);
+    QCOMPARE(p.restores, 229);
+    QCOMPARE(p.builds, 2);
+    QCOMPARE(p.built, (QStringList{u"ktimer"_s, u"c"_s}));
+    QVERIFY(installPreviewText(p).startsWith(u"Builds 2 packages here and installs 3 prebuilt and restores the development files of 229 installed packages, downloading"_s));
+    // Restores alone, built and not, and from the cache.
+    p = parseInstallPreview("d source 1.0-1\nz dev z-1-1.tar.xz 4096\ntotal 1 0 1\n");
+    QCOMPARE(installPreviewText(p), u"Builds 1 package here and restores the development files of 1 installed package, already downloaded; building can take hours.<br/>Built here: d"_s);
+    p = parseInstallPreview("y dev y-1-1.tar.xz 4096\nz dev z-1-1.tar.xz 4096\ntotal 2 8192 0\n");
+    QVERIFY(installPreviewText(p).startsWith(u"Restores the development files of 2 installed packages; downloads 8"_s));
+    p = parseInstallPreview("x prebuilt x-1-1.tar.xz 4096\nz dev z-1-1.tar.xz 4096\ntotal 2 0 0\n");
+    QCOMPARE(installPreviewText(p), u"Installs 1 package and restores the development files of 1 installed package, already downloaded."_s);
 
     // One per member of a group adds up; a name is escaped.
     p = parseInstallPreview("==> g: a (1 of 2)\na<b source 1.0-1\ntotal 0 0 1\n==> g: c (2 of 2)\ntotal 1 10 0\n");
@@ -350,6 +447,11 @@ void ModelTest::installPreview()
     QCOMPARE(p.builds, 1);
     QVERIFY(installPreviewText(p).contains(u"a&lt;b"_s));
     QVERIFY(!installPreviewText(p).contains(u"a<b"_s));
+    QVERIFY(installPreviewText(p).startsWith(u"Builds 1 package here and installs 1 prebuilt, downloading 10"_s));
+
+    // Built here beside a package already in the cache.
+    p = parseInstallPreview("c prebuilt c-1-1.tar.xz 4096\nd source 1.0-1\ntotal 1 0 1\n");
+    QVERIFY(installPreviewText(p).startsWith(u"Builds 1 package here and installs 1 prebuilt, already downloaded; building can take hours."_s));
 
     // Nothing to do, and no dry run at all.
     p = parseInstallPreview("total 0 0 0\nkate is already installed\n");
@@ -581,7 +683,7 @@ void ModelTest::plansRemove()
     Plan p = removePlan(e, ctx);
     QCOMPARE(p.steps.size(), 4);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"app.scribus"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"app.scribus"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"app.scribus"_s, u"--purge"_s}));
     QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove app.scribus"_s}));
     QCOMPARE(argvOf(p.steps[3]), (QStringList{u"kdos-appbox"_s, u"genlaunchers"_s, u"--packs"_s, u"--user"_s}));
 
@@ -596,9 +698,27 @@ void ModelTest::plansRemove()
     Entry box;
     box.lane = Lane::Box;
     box.id = u"work"_s;
+    // A box on its own is asked about first, with no program run for the
+    // question: what goes, and for a pack box the directory that stays.
     p = removePlan(box, ctx);
-    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s}));
+    QCOMPARE(p.steps.size(), 3);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Ask);
+    QVERIFY(p.steps[0].program.isEmpty());
+    QCOMPARE(p.steps[0].question, u"Remove the box work?"_s);
+    QVERIFY(p.steps[0].questionText.contains(u"every launcher exported from it"_s));
+    QVERIFY(p.steps[0].questionText.contains(u"~/.local/share/kdos/boxes/work"_s));
+    QCOMPARE(p.steps[1].kind, Step::Kind::Run);
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
+    QCOMPARE(p.steps[2].kind, Step::Kind::Run);
+    QCOMPARE(argvOf(p.steps[2]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
+    Entry storeBox;
+    storeBox.lane = Lane::Box;
+    storeBox.id = u"scratch"_s;
+    storeBox.boxBase = u"image:debian:trixie"_s;
+    p = removePlan(storeBox, ctx);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Ask);
+    QVERIFY(p.steps[0].questionText.contains(u"every package installed in it"_s));
+    QVERIFY(!p.steps[0].questionText.contains(u"writable layer"_s));
 
     Entry pack;
     pack.lane = Lane::Pack;
@@ -607,14 +727,50 @@ void ModelTest::plansRemove()
     pack.packOrigin = u"store"_s;
     p = removePlan(pack, ctx);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s, u"--purge"_s}));
     QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove box.work"_s}));
 
+    // A port of the system (no world line) is refused, and so is a world
+    // port an installed package needs. One installed on request that nothing
+    // needs is a dry run of the removal, asked about before the helper runs
+    // under pkexec.
     Entry port;
     port.lane = Lane::Port;
     port.id = u"kate"_s;
+    port.name = u"Kate"_s;
+    port.state = EntryState::Installed;
+    p = removePlan(port, ctx);
+    QVERIFY(!p.isValid());
+    QVERIFY(p.refusal.contains(u"part of the KDOS system"_s));
+    port.neededBy = u"kdevelop"_s;
+    p = removePlan(port, ctx);
+    QVERIFY(!p.isValid());
+    QVERIFY(p.refusal.contains(u"needed by kdevelop"_s));
+    port.neededBy.clear();
+    port.id = u"librewolf"_s;
+    port.removable = true;
+    p = removePlan(port, ctx);
+    QCOMPARE(p.steps.size(), 2);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Preview);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos"_s, u"update"_s, u"remove"_s, u"--dry-run"_s, u"librewolf"_s}));
+    QCOMPARE(p.steps[1].kind, Step::Kind::Run);
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-helper"_s, u"remove"_s, u"librewolf"_s}));
+    QVERIFY(!p.steps[1].downloads);
+    port.state = EntryState::None;
     QVERIFY(!removePlan(port, ctx).isValid());
+    // The built-here twin of an installed port removes the same package by
+    // the same steps; not installed, it has nothing to remove.
+    port.state = EntryState::Installed;
     port.lane = Lane::PortSource;
+    p = removePlan(port, ctx);
+    QCOMPARE(p.steps.size(), 2);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Preview);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos"_s, u"update"_s, u"remove"_s, u"--dry-run"_s, u"librewolf"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-helper"_s, u"remove"_s, u"librewolf"_s}));
+    port.removable = false;
+    QVERIFY(removePlan(port, ctx).refusal.contains(u"part of the KDOS system"_s));
+    port.removable = true;
+    port.state = EntryState::None;
     QVERIFY(!removePlan(port, ctx).isValid());
 
     Entry deb;

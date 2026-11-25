@@ -93,5 +93,14 @@ The browser-plugin directory `/usr/lib/mozilla` and the KDE 4 service menus in
 `build.sh` replaces upstream's desktop entry. The Qt interface sets the window class `vlc`, which
 `StartupWMClass` names. The entry has no `MimeType` line: other players' entries claim the
 audio and video types, and the default for each type is chosen in the desktop's mimeapps table,
-`/usr/share/kdos/xdg/kde-mimeapps.list`. The icons are
-upstream's, from `make install`.
+`/usr/share/kdos/xdg/kde-mimeapps.list`. Every video row of that table, and the WebM-audio and
+AC-3 rows, names `vlc.desktop` behind Haruna's entry, and those rows are the only place VLC is
+offered for a type: the installation medium carries VLC, because [elisa](#port-elisa) plays through libvlc, and not Haruna, so on a
+system without Haruna a video opens in VLC. The icons are upstream's, from `make install`.
+
+The Qt interface asks a privacy question on its first start, in a dialog in front of the first
+file played, unless `qt-privacy-ask` is 0. `/etc/skel/.config/vlc/vlcrc` sets it to 0 for every
+new account, with `metadata-network-access=0`, the answer the dialog leaves unticked: VLC fetches
+no album art or track details from the network. VLC reads the file from
+`$XDG_CONFIG_HOME/vlc/vlcrc`, skipping every line that starts with `#` or `[`, and rewrites it
+whole when its preferences are saved.

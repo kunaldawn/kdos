@@ -10,7 +10,8 @@
 
   check is allowed to the active local session without a prompt: Discover
   asks CheckNew on every start, and a password on every start would be a
-  password nobody reads. Installing the offered update is an
+  password nobody reads. A caller the check is not allowed to is answered
+  from the update document without a fetch, never with an error. Installing the offered update is an
   administrator's, once per authentication, because it chooses what the
   machine boots next; naming a version, every time. There is no vacuum
   action: Vacuum removes nothing here and asks nobody.

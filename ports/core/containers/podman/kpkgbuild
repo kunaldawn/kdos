@@ -10,7 +10,7 @@
 
 name        = podman
 version     = 6.1.2
-release     = 1
+release     = 4
 source      = https://github.com/podman-container-tools/podman/archive/v$version.tar.gz
 sha256      = a4b2b10bd560cf9b4c50c282bd04bb74486ff6c78bebd51427f779fe985fc1bb  podman-6.1.2.tar.gz
 description = Daemonless container engine for OCI containers

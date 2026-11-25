@@ -10,7 +10,7 @@
 
 name        = netpbm
 version     = 11.16.1
-release     = 1
+release     = 2
 source      = https://github.com/ceamac/netpbm-make-dist/releases/download/v$version/$name-$version.tar.xz
 sha256      = ddd596db2b8200f249c4c2cbe8595c0bbfd152a206712c2f5e55551cc3e95767  netpbm-11.16.1.tar.xz
 description = Several hundred converters and filters for the PBM, PGM, PPM and PAM image formats, and libnetpbm

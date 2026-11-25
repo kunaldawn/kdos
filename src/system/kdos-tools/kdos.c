@@ -125,7 +125,7 @@ static void help_body(FILE *o)
 	 */
 	fprintf(o, "%sWHERE THINGS LIVE%s\n", C_A, C_0);
 	fprintf(o, "  %-24s %s\n", "the host",
-		"kpkg — compiled here from source, against musl");
+		"kdos update install — prebuilt, or built here");
 	fprintf(o, "  %-24s %s\n", "applications",
 		"kdos app — a box over a pack, or built here online");
 	fprintf(o, "  %-24s %s\n", "environments",
@@ -161,6 +161,7 @@ static void help_body(FILE *o)
 		{ "kdos backup run", "one restic snapshot from ~/.config/kdos/backup.conf" },
 		{ "kdos privacy", "who has the microphone, the camera, the screen" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
+		{ "kdos version", "the release and its build — also --version and -V" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos verify <file>", "against its .sha256, SHA256SUMS and KDOS signature" },
 		{ "kdos places", "Dolphin's Places — also `add DIR`" },
@@ -177,12 +178,16 @@ static void help_body(FILE *o)
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
 		{ "kdos-power suspend", "suspend; also poweroff and reboot (elogind)" },
 		{ "kdos-energy", "which app is spending the battery" },
-		{ "kdos-doc [page]", "the KDOS book, in the Help Center" },
-		{ "sudo kinstall", "install this live image onto a disk" },
+		{ "kdos-doc [page]", "the KDOS book, in the Help Center or the browser" },
 		{ NULL, NULL }
 	};
 	for (int i = 0; CMDS[i][0]; i++)
 		fprintf(o, "  %-26s %s\n", CMDS[i][0], CMDS[i][1]);
+	/* Only where it can run: an installed machine has no live image to
+	 * install, and kinstall there refuses the very command the row offers. */
+	if (kdt_root_is_live())
+		fprintf(o, "  %-26s %s\n", "sudo kinstall",
+			"install this live image onto a disk");
 	fputc('\n', o);
 }
 
@@ -1092,7 +1097,10 @@ static void check_packs(void)
 		      (unsigned)getuid());
 
 	/* An overlay upper cannot live on overlayfs, and a live session's
-	 * $HOME does. The fallback is tmpfs and it is not silent. */
+	 * $HOME does, so a box's upper falls back to tmpfs. That is the live
+	 * medium working as made, so it is a skip: a warning would put a red
+	 * row on the Health page that asks for a remedy nothing in the session
+	 * has. */
 	{
 		struct statfs st;
 		const char *home = kb_home_dir();
@@ -1101,10 +1109,9 @@ static void check_packs(void)
 			skip_("cannot stat %s to say where a box's writes would "
 			      "go", home);
 		else if ((unsigned long)st.f_type == 0x794c7630UL)
-			warn_("$HOME is on overlayfs (a live session), so a "
-			      "persistent box cannot exist — its upper falls "
-			      "back to tmpfs and its changes end with the "
-			      "session");
+			skip_("$HOME is on overlayfs (a live session): a "
+			      "box's writes end with the session, and an "
+			      "installed system keeps them");
 		else
 			ok("$HOME can hold an overlay upper — a persistent box "
 			   "keeps what you write");
@@ -1229,11 +1236,61 @@ static void bus_line(KdtBus *b, const char *name, const char *what,
  * through ksvc, and the bus is one of them, at $XDG_RUNTIME_DIR/bus: a
  * session that found a bus anywhere else is talking to one turnstile does not
  * supervise, which outlives nothing and restarts nothing.
+ *
+ * Only the socket path of the address is compared. dbus-daemon appends
+ * `,guid=…` to the address it hands the services it activates (KRunner, and
+ * everything started from it), and the same bus with a guid is still the
+ * session's; comparing the whole string reports that bus as foreign.
  */
+
+/* The `path=` value of the first transport of a D-Bus address, when that
+ * transport is `unix:`, into out with its %xx escapes decoded; 0 when the
+ * address names no such path. */
+static int bus_addr_unix_path(const char *addr, char *out, size_t n)
+{
+	const char *p, *end;
+
+	if (!addr || strncmp(addr, "unix:", 5) || n == 0)
+		return 0;
+	p = addr + 5;
+	end = strchr(p, ';');
+	if (!end)
+		end = p + strlen(p);
+	while (p < end) {
+		const char *kv_end = memchr(p, ',', (size_t)(end - p));
+
+		if (!kv_end)
+			kv_end = end;
+		if ((size_t)(kv_end - p) >= 5 && !strncmp(p, "path=", 5)) {
+			size_t o = 0;
+
+			for (p += 5; p < kv_end; p++) {
+				int c = (unsigned char)*p;
+
+				if (c == '%' && kv_end - p >= 3 &&
+				    isxdigit((unsigned char)p[1]) &&
+				    isxdigit((unsigned char)p[2])) {
+					char hx[3] = { p[1], p[2], 0 };
+
+					c = (int)strtol(hx, NULL, 16);
+					p += 2;
+				}
+				if (o + 1 >= n)
+					return 0;
+				out[o++] = (char)c;
+			}
+			out[o] = 0;
+			return o > 0;
+		}
+		p = kv_end + 1;
+	}
+	return 0;
+}
+
 static void check_session_bus(const char *rt)
 {
 	const char *addr = getenv("DBUS_SESSION_BUS_ADDRESS");
-	char want[512];
+	char want[512], have[512];
 
 	if (kb_path_exists("/run/turnstiled/control.sock"))
 		ok("turnstiled is running (/run/turnstiled/control.sock)");
@@ -1242,15 +1299,17 @@ static void check_session_bus(const char *rt)
 		      "bus, no audio (start with: service start turnstiled)");
 
 	if (rt && *rt) {
-		snprintf(want, sizeof(want), "unix:path=%s/bus", rt);
-		if (addr && !strcmp(addr, want))
+		snprintf(want, sizeof(want), "%s/bus", rt);
+		if (bus_addr_unix_path(addr, have, sizeof(have)) &&
+		    !strcmp(have, want))
 			ok("DBUS_SESSION_BUS_ADDRESS=%s", addr);
 		else if (addr && *addr)
-			warn_("DBUS_SESSION_BUS_ADDRESS=%s, not %s — this "
-			      "shell's bus is not the session's", addr, want);
+			warn_("DBUS_SESSION_BUS_ADDRESS=%s, not unix:path=%s — "
+			      "this shell's bus is not the session's", addr,
+			      want);
 		else
 			warn_("DBUS_SESSION_BUS_ADDRESS is not set — expected "
-			      "%s", want);
+			      "unix:path=%s", want);
 	}
 
 	/* The user table's own verdict, line for line as ksvc prints it. */
@@ -2095,31 +2154,26 @@ static int cmd_doctor(int argc, char **argv)
 	return doctor_warns ? 1 : 0;
 }
 
+/* kdos-bootctl's reading of a root's identity (bootctl.c). */
+void bootctl_root_version(const char *root, char *out, size_t n);
+
 static int cmd_version(void)
 {
 	struct utsname u;
 	char rel[128] = "";
-	char *os = kb_read_all("/etc/os-release", NULL);
+	const char *root = getenv("KDOS_UPDATE_SYSROOT");
 
 	uname(&u);
-	/* VERSION_ID is what the update machinery compares, so it is what is
-	 * printed: a second notion of "the version" would be one that drifts. */
-	for (char *l = os; l && *l;) {
-		char *nl = strchr(l, '\n');
-
-		if (nl)
-			*nl = '\0';
-		if (!strncmp(l, "VERSION_ID=", 11)) {
-			const char *v = l + 11;
-
-			if (*v == '"')
-				v++;
-			kb_strlcpy(rel, v, sizeof(rel));
-			rel[strcspn(rel, "\"")] = '\0';
-		}
-		l = nl ? nl + 1 : NULL;
-	}
-	free(os);
+	/* The release in the one form every surface gives it, the boot menu,
+	 * the splash, the installer, the greeter and What's New: VERSION from
+	 * /etc/kdos-release, `0.2.1` on a release build and `0.2.1+<BUILD_ID>`
+	 * on any other, or os-release's VERSION_ID and `+BUILD_ID` on a root
+	 * with no record. A second form would name one machine two ways, and a
+	 * form without the build would print a `-dirty` development image as
+	 * the release it is not. KDOS_UPDATE_SYSROOT stands in for the root, as
+	 * it does for `kdos update notes`; the line is left out when neither
+	 * file names a release. */
+	bootctl_root_version(root && *root ? root : "/", rel, sizeof(rel));
 	printf("%sKDOS%s — Kool Desktop Operating System\n", C_A, C_0);
 	if (*rel)
 		printf("  release  %s\n", rel);
@@ -2322,13 +2376,18 @@ static int notify_send(const char *summary, const char *body)
 	}
 	/* sound-name is the freedesktop sound theme's event: a raw Notify
 	 * names no notifyrc event, so without it Plasma plays nothing. Do Not
-	 * Disturb and the Notifications page's sound switch still apply. */
+	 * Disturb and the Notifications page's sound switch still apply.
+	 * x-kde-appname names kdos.notifyrc, which keeps it in the history
+	 * (kb_notify() in libkbase says why), and the sender is that
+	 * notifyrc's Name, "KDOS Tools", so the toast's header, the history
+	 * group and the Notifications page all read one name. */
 	rc = kdt_bus_call(b, "org.freedesktop.Notifications",
 			  "/org/freedesktop/Notifications",
 			  "org.freedesktop.Notifications", "Notify", &r, err,
-			  sizeof(err), "susssasa{sv}i", "kdos", 0u,
-			  "dialog-information", summary, body, 0, 1,
-			  "sound-name", "s", "message-new-instant", -1);
+			  sizeof(err), "susssasa{sv}i", "KDOS Tools", 0u,
+			  "dialog-information", summary, body, 0, 2,
+			  "sound-name", "s", "message-new-instant",
+			  "x-kde-appname", "s", "kdos", -1);
 	kdt_bus_free(b, r);
 	kdt_bus_close(b);
 	if (rc != 0) {
@@ -2429,11 +2488,88 @@ static int cmd_notify(int argc, char **argv)
 	return notify_send(argv[0], argc > 1 ? argv[1] : "");
 }
 
+/*
+ * `kdos <verb> -h` AND `kdos <verb> --help` ANSWER THE SAME WAY FOR EVERY
+ * VERB: its usage on stdout, and 0. Asking for help is not a usage error, and
+ * a script that tests `kdos x --help` for a verb's presence reads the status.
+ *
+ * Most verbs print a usage message of their own when the first argument is
+ * -h or --help, many on stderr and with 2, because it is the same message a
+ * wrong argument earns. Those are run as they are, with stderr on stdout,
+ * and answer 0 whatever they returned. The verbs below have no usage message that
+ * --help reaches — `why` would look up a port named --help, `toggle` a
+ * toggle, `settings` would open System Settings — and print their line from
+ * here instead, without being run at all. A verb added to kdos_main()
+ * belongs in this table unless its first-argument --help prints its usage
+ * and does nothing else; testing/selftest.sh asks every verb.
+ */
+static const struct {
+	const char *verb, *usage;
+} USAGE[] = {
+	{ "status", "usage: kdos status [--bar]\n" },
+	{ "toggle", "usage: kdos toggle [<name> [on|off]]\n"
+		    "       names: stay-awake, night-light, dnd, "
+		    "reduced-motion\n" },
+	{ "why", "usage: kdos why <path|port>\n" },
+	{ "explain", "usage: kdos explain [topic]\n" },
+	{ "oracle", "usage: kdos oracle [--plain]\n" },
+	{ "version", "usage: kdos version\n" },
+	{ "--version", "usage: kdos version\n" },
+	{ "settings", "usage: kdos settings [page|kcm_id]\n" },
+};
+
+static int is_help_arg(const char *a)
+{
+	return !strcmp(a, "-h") || !strcmp(a, "--help");
+}
+
+/* kdos_dispatch()'s answer for a verb it does not have: above any exit
+ * status, so no verb's own can be taken for it. */
+#define KDOS_UNKNOWN_VERB 256
+
+static int kdos_dispatch(const char *cmd, int argc, char **argv);
+
 int kdos_main(int argc, char **argv)
 {
 	colours();
 
 	const char *cmd = argc > 1 ? argv[1] : "help";
+	int rc;
+
+	if (argc > 2 && is_help_arg(argv[2]) && strcmp(cmd, "help") &&
+	    !is_help_arg(cmd)) {
+		int saved;
+
+		for (size_t i = 0; i < sizeof(USAGE) / sizeof(USAGE[0]); i++)
+			if (!strcmp(cmd, USAGE[i].verb)) {
+				fputs(USAGE[i].usage, stdout);
+				return 0;
+			}
+		fflush(stdout);
+		fflush(stderr);
+		saved = dup(STDERR_FILENO);
+		dup2(STDOUT_FILENO, STDERR_FILENO);
+		rc = kdos_dispatch(cmd, argc, argv);
+		fflush(stdout);
+		fflush(stderr);
+		if (saved >= 0) {
+			dup2(saved, STDERR_FILENO);
+			close(saved);
+		}
+		if (rc != KDOS_UNKNOWN_VERB)
+			return 0;
+	} else {
+		rc = kdos_dispatch(cmd, argc, argv);
+		if (rc != KDOS_UNKNOWN_VERB)
+			return rc;
+	}
+	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
+		C_0, cmd);
+	return 1;
+}
+
+static int kdos_dispatch(const char *cmd, int argc, char **argv)
+{
 	int rest = argc - 2;
 	char **restv = argv + 2;
 
@@ -2489,7 +2625,8 @@ int kdos_main(int argc, char **argv)
 		return kdt_image_main(rest, restv);
 	if (!strcmp(cmd, "firmware"))
 		return kdt_firmware_main(rest, restv);
-	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
+	if (!strcmp(cmd, "version") || !strcmp(cmd, "--version") ||
+	    !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app"))
 		return kdt_app(rest, restv);
@@ -2528,8 +2665,5 @@ int kdos_main(int argc, char **argv)
 		return share_main(argc - 1, argv + 1);
 	if (!strcmp(cmd, "remind"))
 		return remind_main(argc - 1, argv + 1);
-
-	fprintf(stderr, "%skdos:%s unknown command '%s' — try: kdos help\n", C_W,
-		C_0, cmd);
-	return 1;
+	return KDOS_UNKNOWN_VERB;
 }

@@ -21,3 +21,6 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 
 install -Dm755 kdos-packd "$PKG/usr/sbin/kdos-packd"
 install -d "$PKG/var/lib/kdos/packs/staging" "$PKG/var/lib/kdos/packs/mnt"
+
+install -Dm644 "$LIBS/libksig/monocypher/LICENCE.md" \
+	"$PKG/usr/share/licenses/$name/monocypher-LICENCE.md"

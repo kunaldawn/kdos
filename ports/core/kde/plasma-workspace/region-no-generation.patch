@@ -1,0 +1,64 @@
+Subject: treat a save without locale generation as a success in Region & Language
+
+On a system that needs no generation step (BSD, musl) the KCM's
+generator is LocaleGeneratorBase, whose only answer to a save is
+userHasToGenerateManually with a fixed text telling the user to generate
+locales from the distribution's manual. The KCM already counts that
+signal as success there and shows "Changes will take effect the next
+time you log in", but it also shows the text as an error, and the
+"don't turn off the computer" warning it raised before the call stays up
+beside both.
+
+For LocaleGeneratorBase the signal reaches only saveToConfigFile and
+takeEffectNextTime, and save() raises no generation warning. Every other
+generator is unchanged.
+
+--- a/kcms/region_language/kcmregionandlang.cpp
++++ b/kcms/region_language/kcmregionandlang.cpp
+@@ -38,6 +38,13 @@
+ 
+ K_PLUGIN_CLASS_WITH_JSON(KCMRegionAndLang, "kcm_regionandlang.json")
+ 
++// LocaleGeneratorBase serves systems that need no generation step (BSD, musl): any locale name is
++// valid there, so its userHasToGenerateManually is the save's success and carries no message.
++static bool generatesLocales(const LocaleGeneratorBase *generator)
++{
++    return strcmp(generator->metaObject()->className(), "LocaleGeneratorBase") != 0;
++}
++
+ class FlagImageProvider : public QQuickImageProvider
+ {
+ public:
+@@ -66,7 +73,9 @@
+     , m_optionsModel(new OptionsModel(this))
+     , m_generator(LocaleGenerator::getGenerator())
+ {
+-    connect(m_generator, &LocaleGeneratorBase::userHasToGenerateManually, this, &KCMRegionAndLang::userHasToGenerateManually);
++    if (generatesLocales(m_generator)) {
++        connect(m_generator, &LocaleGeneratorBase::userHasToGenerateManually, this, &KCMRegionAndLang::userHasToGenerateManually);
++    }
+     connect(m_generator, &LocaleGeneratorBase::success, this, &KCMRegionAndLang::generateFinished);
+     connect(m_generator, &LocaleGeneratorBase::needsFont, this, &KCMRegionAndLang::requireInstallFont);
+     connect(m_generator, &LocaleGeneratorBase::success, this, &KCMRegionAndLang::saveToConfigFile);
+@@ -76,7 +85,7 @@
+     connect(GlibcLocaleConstructor::instance(), &GlibcLocaleConstructor::enabledChanged, this, &KCMRegionAndLang::enabledChanged);
+ 
+     // if we don't support auto locale generation for current system (BSD, musl etc.), userHasToGenerateManually regarded as success
+-    if (strcmp(m_generator->metaObject()->className(), "LocaleGeneratorBase") != 0) {
++    if (generatesLocales(m_generator)) {
+         connect(m_generator, &LocaleGeneratorBase::success, this, &KCMRegionAndLang::takeEffectNextTime);
+     } else {
+         connect(m_generator, &LocaleGeneratorBase::userHasToGenerateManually, this, &KCMRegionAndLang::takeEffectNextTime);
+@@ -159,7 +168,11 @@
+         QDBusConnection::systemBus().asyncCall(setLanguagesCall);
+ 
+         if (!locales.isEmpty()) {
+-            Q_EMIT startGenerateLocale();
++            // startGenerateLocale shows "don't turn off the computer", which only a generator's
++            // success or failure takes down again.
++            if (generatesLocales(m_generator)) {
++                Q_EMIT startGenerateLocale();
++            }
+             m_generator->localesGenerate(locales);
+         } else {
+             // after clicking "defaults" so all the settings are default

@@ -18,3 +18,22 @@ Qt Widgets, and many KDE libraries and applications with a window link it.
   would remove every catalogue in another language. The switch also skips upstream's `en`
   catalogue, which holds only English plural forms, so a count in one of the widgets reads as the
   source spells it, with the `(s)` left in.
+
+## Patches
+
+`rest-day-contrast.patch` changes the colour `KDateTable`, the month grid of `KDatePicker` and of
+the Date & Time settings page, draws a rest day in: the weekday headers of the days outside the
+locale's working week, and every Sunday's date. Upstream draws both in the fixed `Qt::darkRed`,
+which reads on a light ground and measures about 1.8:1 on a dark one, so under every dark KDOS
+accent (all but Paper) the Sunday column is close to invisible. With the patch the table takes
+dark red or a light red (HSL 0°, 100%, 75%), whichever has the higher WCAG contrast with the
+ground that cell is drawn on: the window colour for a header and the cell's background for a
+date. Every dark KDOS accent then gives at least 6:1 with the light red, and Paper, like any light
+scheme, keeps upstream's dark red at about 10:1. The selected day is drawn in the highlighted text
+colour even on a Sunday: no red reaches 3:1 on the selection colour of any KDOS scheme (2.2 to
+2.6:1), where the highlighted text gives 4.5:1 or better. A disabled table, such as the Date & Time
+page's calendar while the time is set automatically, mixes the red toward the cell's ground until
+it contrasts no more than that cell's plain text, which the palette's Disabled group dims; at
+full strength the rest days would be the only dates that look clickable. A high-contrast colour
+scheme still draws no red at all, as upstream does. It is to be offered upstream as a merge request
+against `frameworks/kwidgetsaddons`.

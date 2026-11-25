@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/plasmasetuprc-kdos-groups.patch"
+patch -p1 -i "$PORT_SRC/plasma-setup-kdos-firstboot.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
@@ -23,3 +24,4 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 rm -rf "$PKG/usr/lib/systemd" "$PKG/usr/lib/sysusers.d" "$PKG/usr/lib/tmpfiles.d"
+rm -rf "$PKG/usr/share/plasma/packages/org.kde.plasmasetup.language" "$PKG/usr/share/plasma/packages/org.kde.plasmasetup.prepare"

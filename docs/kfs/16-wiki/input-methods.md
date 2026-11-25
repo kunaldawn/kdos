@@ -38,15 +38,26 @@ what it does is in [Input methods](../../kdos/03-architecture/session.md#input-m
 
 ### ~/.config/fcitx5/profile
 
-Which engines a key can reach. Every new account gets the shipped copy,
-`fs/etc/skel/.config/fcitx5/profile`: one group whose first entry is the keyboard layout and whose
-others are the engines the image installs:
+Which engines a key can reach. `/etc/skel` carries none: the session writes it at the first
+login, before KWin starts fcitx5, from the system keyboard layout in `/etc/kdos/xkb.conf`. It is
+one group, `Default`, whose `Default Layout` is the first layout of `XKBLAYOUT` with the first
+variant of `XKBVARIANT` after a dash (`de-nodeadkeys`), and whose items are `keyboard-<layout>`,
+then `pinyin`, `anthy` and `hangul`, the engines the image installs. With no layout in `xkb.conf`
+it takes the one locale1 serves, which follows the console keymap, and `us` when that names none
+either. A profile that exists is never rewritten. From `fs/usr/local/lib/kdos/session-common.sh`,
+which `kdos-session-wrapper` and the Plasma environment script both call:
 
-<!-- kfs:include fs/etc/skel/.config/fcitx5/profile -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=154-211 pin=787320f78c94 -->
 
-The first item is the *inactive* state, plain typing in the layout; the others are what turning the
-[input method]{.idx} on can reach. The Input Method page edits this file; fcitx5 writes it itself
-when it saves its state.
+The layout can matter beyond fcitx5: with *Allow Overriding System XKB Settings* on, fcitx5
+writes the group's layout into `~/.config/kxkbrc`, which outranks `/etc/xdg/kxkbrc` (the
+installer's layout, rewritten by [kdos-settingsd](#port-kdos-settingsd) on every locale1 layout
+change), so a profile
+naming another layout would put it under the lock screen too. KDOS ships that option off (see
+`wayland.conf` below), and a person can turn it back on from the Input Method page; the
+generated profile keeps the layout written then the system's. The first item is the *inactive* state, plain typing in the
+layout; the others are what turning the [input method]{.idx} on can reach. The Input Method page
+edits this file; fcitx5 writes it itself when it saves its state.
 
 ### /etc/xdg/fcitx5/config
 
@@ -57,7 +68,20 @@ from `fs/etc/xdg/fcitx5/config`:
 <!-- kfs:include fs/etc/xdg/fcitx5/config lines=16-28 pin=d03efcf96f8d -->
 
 Each add-on's options are in `~/.config/fcitx5/conf/<addon>.conf`, such as `conf/pinyin.conf`,
-once the Input Method page has saved them.
+once the Input Method page has saved them; without one, fcitx5 reads `fcitx5/conf/<addon>.conf`
+along `XDG_CONFIG_DIRS`.
+
+### /etc/xdg/fcitx5/conf/wayland.conf
+
+The options of fcitx5's Wayland module. KWin owns the keyboard layout list, so KDOS turns off
+*Allow Overriding System XKB Settings*: with it on, fcitx5 writes its group's layout, the one in
+the profile above, into `~/.config/kxkbrc` at every start and on every input-method change, which
+replaces the layout the installer, locale1 or System Settings → Keyboard set. From `fs/etc/xdg/fcitx5/conf/wayland.conf`:
+
+<!-- kfs:include fs/etc/xdg/fcitx5/conf/wayland.conf -->
+
+With it off, the profile's `keyboard-<layout>` first item is only the inactive state: fcitx5 decodes
+keys with the keymap KWin hands it, whatever layout that is.
 
 ### The build
 
@@ -84,15 +108,15 @@ service:
 A boxed application reaches fcitx5 through KWin, never directly. `kdos-appbox` sets one variable
 for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=481-493 pin=afbe7df0b3c1 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=482-494 pin=afbe7df0b3c1 -->
 
 ## Usage
 
 ### Typing in another language
 
 1. Click into a text field of an application, host or boxed.
-2. Press `Ctrl+Space` to turn the input method on. fcitx5 switches from `keyboard-us` to the
-   engine used last; the first time, that is the one after it in the profile, `pinyin`.
+2. Press `Ctrl+Space` to turn the input method on. fcitx5 switches from the layout item (`keyboard-de` on a German
+   machine) to the engine used last; the first time, that is the one after it in the profile, `pinyin`.
 3. Type. The text being composed is shown in the field, and the numbered candidates appear in
    fcitx5's candidate window beside it; choose a candidate with its number key.
 4. Press `Ctrl+Space` again to go back to plain typing.
@@ -104,17 +128,31 @@ typing and back. The input method's tray icon shows which engine is in use.
 ### Adding an engine
 
 1. System Settings → **Input Method**.
-2. **Add Input Method**, pick the engine, for example **Shuangpin** or **Wubi**, and **Add**.
+2. **Add Input Method**. The list opens with **Only Show Current Language** ticked, and the
+   session's language is always English, so it holds only English keyboard layouts: untick it,
+   or type the engine's name in the list's **Search…** field. Pick the engine, for example
+   **Shuangpin**, **Wubi** or **Anthy**, and **Add**.
 3. **Apply**. fcitx5 reloads, and the engine is in the group at once.
 
 The same page sets the hotkeys and, through each engine's configure button, its options.
+
+### The language's glyph forms
+
+Each language group carries [noto-cjk](#port-noto-cjk) and a default that makes that language's
+variant of it the first CJK face: [noto-cjk-prefer-ja](#port-noto-cjk-prefer-ja) in `lang-ja`
+(Noto Sans CJK JP), [noto-cjk-prefer-zh](#port-noto-cjk-prefer-zh) in `lang-zh` (SC, Simplified
+Chinese) and [noto-cjk-prefer-ko](#port-noto-cjk-prefer-ko) in `lang-ko` (KR). The session runs in
+`en_US.UTF-8`, so the text typed here names no language, and the default decides whether a kanji
+takes its Japanese or its Korean or Chinese shape. With two groups installed, the lower file name
+wins, `ja` before `ko` before `zh`; how fontconfig orders them is in
+[Han text and the language groups](fonts-and-theming.md#han-text-and-the-language-groups).
 
 ### Switching engine from a prompt
 
 ```bash
 fcitx5-remote -n             # the engine in use
 fcitx5-remote -s anthy       # switch to anthy
-fcitx5-remote -s keyboard-us
+fcitx5-remote -s keyboard-de # back to the layout, on a German machine
 fcitx5-remote                # 1 inactive, 2 active, 0 no text field has the focus
 ```
 
@@ -151,8 +189,8 @@ memory, so a changed profile lasts until power-off unless a persistence store ex
 1. `pgrep -a fcitx5`. No line means fcitx5 is not running: check that **Fcitx 5** is chosen on
    the Virtual Keyboard page, and `grep -A1 Wayland ~/.config/kwinrc` for an `InputMethod` of your
    own that names something else.
-2. `fcitx5-remote -n` while the field has the focus. `keyboard-us` after `Ctrl+Space` means the
-   group holds nothing else: add an engine as above.
+2. `fcitx5-remote -n` while the field has the focus. The layout item, such as `keyboard-us`, after
+   `Ctrl+Space` means the group holds nothing else: add an engine as above.
 3. Check the application in another program: if it works in another GTK or Qt program and not in
    this one, the toolkit is the cause.
 
@@ -164,6 +202,14 @@ backend answers `org.gnome.desktop.interface`, which [xdg-desktop-portal-gtk](#p
 serves. GTK 3 reads the same portal under `GTK_USE_PORTAL=1` and still prints `wayland`: it sets
 that value itself whenever KWin offers `text-input-v3`, above the portal's empty one. Under Xwayland, `grep fcitx5 /usr/lib/gtk-3.0/3.0.0/immodules.cache` must print the
 module's lines: without them GTK 3 never loads fcitx5-gtk's module and falls back to plain typing.
+
+**The keyboard layout goes back to another one at every login.** `grep -E 'LayoutList|Use'
+~/.config/kxkbrc` printing a `LayoutList` you did not choose means something wrote it for you.
+`grep -r 'XKB Settings' ~/.config/fcitx5/conf/wayland.conf /etc/xdg/fcitx5/conf/wayland.conf`
+must print `False`; a `True` of your own, saved from the Input Method page, lets fcitx5 write its
+group's layout into `kxkbrc` again, and `grep 'Default Layout' ~/.config/fcitx5/profile` names
+the layout it writes. Then set the layout on System Settings → Keyboard, or delete
+`~/.config/kxkbrc` and log in again to take the system's.
 
 **Running fcitx5 in the foreground for its messages.** `fcitx5-diagnose` prints upstream's report
 of the environment. KWin restarts fcitx5 when it exits; its messages go to the session log,

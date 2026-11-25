@@ -136,7 +136,7 @@ KDE's or with an application's:
 |---|---|---|
 | C++ namespace | `Kdos` | `Kdos::KdosCommand`, `Kdos::LibraryShelf` |
 | D-Bus service and interface | `io.kdos.*` | `io.kdos.Runner`, `io.kdos.Kded1`, `io.kdos.Slots1`, `io.kdos.Power1` |
-| polkit action | `io.kdos.*` | `io.kdos.firewall.set`, `io.kdos.slots.bless`, `io.kdos.slots.install-route`, `io.kdos.ports.install`, `io.kdos.ports.build`, `io.kdos.installer.run` |
+| polkit action | `io.kdos.*` | `io.kdos.firewall.set`, `io.kdos.slots.bless`, `io.kdos.slots.install-route`, `io.kdos.ports.install`, `io.kdos.ports.remove`, `io.kdos.ports.build`, `io.kdos.installer.run` |
 | System Settings module | `kcm_kdos_*` | `kcm_kdos_look`, `kcm_kdos_system` |
 | Plasma package and plugin id | `org.kdos.*` | `org.kdos.privacy`, `org.kdos.meters`, `org.kdos.desk.tiling` |
 | KWin effect and script id | `kdos_*` | `kdos_unfold`, `kdos_keys`, `kdos_runraise` |
@@ -187,7 +187,12 @@ without the JSON changing is caught.
 A plasmoid is built with `plasma_add_applet(org.kdos.<name> QML_SOURCES ... CPP_SOURCES ...)` and
 carries a `metadata.json` with `X-Plasma-API-Minimum-Version` 6.0, which plasmashell needs before
 it will load the widget at all. A widget that belongs in the system tray names its
-`X-Plasma-NotificationAreaCategory`. A QML module several pieces import (the checklist's
+`X-Plasma-NotificationAreaCategory`. A widget with a C++ applet class registers it with
+`QML_ELEMENT` (and `QML_UNCREATABLE`), passes `QML_ARGS DEPENDENCIES org.kde.plasma.plasmoid` to
+`plasma_add_applet`, and reads the class's members through `Plasmoid as <Alias>.<Class>` after
+`import plasma.applet.org.kdos.<name> as <Alias>`: the attached `Plasmoid` is typed as the base
+`Plasma::Applet`, and qmllint in [`make plasmatest`](testing.md) fails a member read through it.
+A QML module several pieces import (the checklist's
 `org.kdos.checklist`, which the Welcome pages also show) is built and installed as a module of its
 own.
 
@@ -207,7 +212,9 @@ KWin loads three kinds of package from `share/kwin`: a JavaScript effect (`KWin/
 Each is installed with ECM's `kpackage_install_package` and keeps working across KWin releases,
 because it reaches KWin through its scripting API rather than its C++ classes. A compiled effect
 does not: KWin embeds its version in the plugin's interface id and refuses one built for another
-release, so KDOS's one compiled effect is carried as a patch to the `kwin` port. A shortcut a
+release, so KDOS's one compiled effect is carried as a patch to the `kwin` port. A package's QML
+imports KWin's types as `import org.kde.kwin as KWinComponents` and names every one qualified
+(`KWinComponents.ShortcutHandler`), as KWin's own effects do. A shortcut a
 script or effect registers is checked against every other binding the session makes (see
 [Shortcuts](#shortcuts)).
 
@@ -314,14 +321,17 @@ A piece never runs as root. It reaches what needs root one of two ways:
   Each asks polkit about the caller for each method that changes something, so the piece calls the
   method and the polkit agent prompts when an administrator must approve. A module that shows a control as available or
   not asks polkit first without a prompt, as the firewall module does.
-- **pkexec on one program.** Where a whole operation runs as root (installing a port, building
-  one, installing the system), the piece runs `pkexec` on one helper whose path a polkit policy
-  names in `org.freedesktop.policykit.exec.path`: `kdos-ports-helper` under
-  `io.kdos.ports.install`, `kdos-ports-builder` under `io.kdos.ports.build`, and `kinstall` under
-  `io.kdos.installer.run`. pkexec takes the action whose path matches the program it is asked to
-  run, so the policy and the program's installed path must agree, and two operations that must not
-  share a grant are two programs, one per action: the builder is a separate binary so that a
-  password kept from a prebuilt install never covers a build.
+- **pkexec on one program.** Where a whole operation runs as root (installing a port, removing
+  one, building one, installing the system), the piece runs `pkexec` on one helper whose path a
+  polkit policy names in `org.freedesktop.policykit.exec.path`: `kdos-ports-helper install` under
+  `io.kdos.ports.install`, `kdos-ports-helper remove` under `io.kdos.ports.remove`,
+  `kdos-ports-builder` under `io.kdos.ports.build`, and `kinstall` under `io.kdos.installer.run`.
+  pkexec takes the first action whose path matches the program it is asked to run and, where the
+  action names one in `org.freedesktop.policykit.exec.argv1`, whose first argument matches too, so
+  the policy and the program's installed path must agree, and one program's verbs under two actions
+  each name their verb: an action naming the path alone would match any verb. Two operations that
+  must not share a grant whatever is asked are two programs: the builder is a separate binary so
+  that a password kept from a prebuilt install never covers a build.
 
 The daemons, their interfaces and their grants are in [The daemons](../04-programs/daemons.md) and
 [the security model](../03-architecture/security-model.md).

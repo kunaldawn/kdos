@@ -23,11 +23,18 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QWindow>
 
 #include <functional>
+#include <memory>
+#include <utility>
 
 #include "accentmodel.h"
 #include "lookcontroller.h"
@@ -68,6 +75,91 @@ Q_SIGNALS:
     Q_SCRIPTABLE void accentSynced(const QString &accent);
     Q_SCRIPTABLE void accentSyncFailed(const QString &accent, const QString &message);
 };
+
+/* The `kcm` System Settings hands the page: the controller, and the name
+ * KCM.SimpleKCM reads for its title. */
+class FakeKcm : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(Kdos::LookController *controller MEMBER controller CONSTANT)
+    Q_PROPERTY(QString name MEMBER name CONSTANT)
+
+public:
+    Kdos::LookController *controller = nullptr;
+    QString name = QStringLiteral("KDOS Look");
+};
+
+/* The i18ndc the page calls, as the engine's context object: the text with
+ * its arguments put in, untranslated. The test links what the KCM's own
+ * library links, and Qt Quick reaches it only through the QML engine, so
+ * the page is driven through QObject properties and the window's own
+ * functions rather than the Qt Quick classes. */
+class FakeI18n : public QObject
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE QString i18ndc(const QString &, const QString &, const QString &text, const QVariant &a1 = {}, const QVariant &a2 = {}, const QVariant &a3 = {}) const
+    {
+        QString out = text;
+        int n = 1;
+        for (const QVariant &a : {a1, a2, a3}) {
+            out.replace(QLatin1Char('%') + QString::number(n++), a.toString());
+        }
+        return out;
+    }
+};
+
+/* A window round the page, with the lookups the test makes in it. A
+ * Repeater's delegates are visual children only, out of reach of
+ * findChildren, so the swatches are found by walking `children`. */
+const char *const swatchWindow = R"(
+import QtQuick
+Window {
+    width: 900
+    height: 700
+    Loader {
+        anchors.fill: parent
+        source: pageUrl
+    }
+    function under(item, out) {
+        if (item.accentId !== undefined)
+            out.push(item)
+        for (let i = 0; i < item.children.length; ++i)
+            under(item.children[i], out)
+        return out
+    }
+    function swatch(id) {
+        return under(contentItem, []).find(s => s.accentId === id) ?? null
+    }
+    function stops() {
+        return under(contentItem, []).filter(s => s.activeFocusOnTab).map(s => s.accentId).join(",")
+    }
+    function focusOn(id) {
+        swatch(id).forceActiveFocus(Qt.TabFocusReason)
+    }
+    function focusBy(id, reason) {
+        swatch(id).forceActiveFocus(reason)
+    }
+    function named(item, name) {
+        if (item.objectName === name)
+            return item
+        for (let i = 0; i < item.children.length; ++i) {
+            const found = named(item.children[i], name)
+            if (found)
+                return found
+        }
+        return null
+    }
+    function ringShown(id) {
+        const ring = named(swatch(id).background, "focusRing")
+        return ring ? ring.visible : "absent"
+    }
+    function frameWidth(id) {
+        return named(swatch(id).background, "focusRing")?.parent.children[0].border.width ?? 0
+    }
+}
+)";
 
 namespace
 {
@@ -408,6 +500,24 @@ private Q_SLOTS:
         }
     }
 
+    void anUnchangedListLeavesTheSwatchesAlone()
+    {
+        LookController c(paths());
+        refreshed(c);
+        QSignalSpy reset(c.accents(), &QAbstractItemModel::modelReset);
+        QSignalSpy changed(c.accents(), &QAbstractItemModel::dataChanged);
+        refreshed(c);
+        QCOMPARE(reset.count(), 0);
+        QCOMPARE(changed.count(), 0);
+        QVERIFY(act(c, [&] {
+            return c.applyAccent(QStringLiteral("amber"));
+        }));
+        QCOMPARE(c.accent(), QStringLiteral("amber"));
+        QCOMPARE(reset.count(), 0);
+        QVERIFY(changed.count() > 0);
+        QVERIFY(c.accents()->data(c.accents()->index(1), AccentModel::CurrentRole).toBool());
+    }
+
     void aMissingSchemeIsListedButNotApplied()
     {
         QVERIFY(QFile::remove(dataHome() + QStringLiteral("/color-schemes/KDOSIce.colors")));
@@ -505,6 +615,137 @@ private Q_SLOTS:
         QVERIFY(QFile::rename(state->filePath(QStringLiteral("accent.new")), state->filePath(QStringLiteral("etc/accent"))));
         QTRY_COMPARE_WITH_TIMEOUT(c.accent(), QStringLiteral("norton"), 5000);
         QCOMPARE(c.syncState(), LookController::SyncState::InStep);
+    }
+
+    /* The swatch that holds the focus when the current accent moves off it
+     * keeps its Tab stop until the focus leaves: a control cannot drop its
+     * Tab stop while it holds the active focus, and Qt Quick says so on
+     * stderr each time. Once the focus leaves, the group has one stop
+     * again, on the current swatch. */
+    void aPickMadeElsewhereLeavesTheFocusedSwatchAlone()
+    {
+        LookController c(paths());
+        refreshed(c);
+        QQmlEngine engine;
+        FakeI18n i18n;
+        engine.rootContext()->setContextObject(&i18n);
+        FakeKcm kcm;
+        kcm.controller = &c;
+        QQmlContext context(engine.rootContext());
+        context.setContextProperty(QStringLiteral("kcm"), &kcm);
+        context.setContextProperty(QStringLiteral("pageUrl"), QUrl::fromLocalFile(QDir::cleanPath(QStringLiteral(KDOS_FAKE_KDOS "/../../ui/main.qml"))));
+        QQmlComponent component(&engine);
+        component.setData(swatchWindow, QUrl());
+        std::unique_ptr<QObject> made(component.create(&context));
+        QVERIFY2(made, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QWindow *>(made.get());
+        QVERIFY(window);
+        const auto swatch = [&](const char *id) {
+            QVariant found;
+            QMetaObject::invokeMethod(window, "swatch", Q_RETURN_ARG(QVariant, found), Q_ARG(QVariant, QString::fromLatin1(id)));
+            return qvariant_cast<QObject *>(found);
+        };
+        const auto stops = [&] {
+            QVariant list;
+            QMetaObject::invokeMethod(window, "stops", Q_RETURN_ARG(QVariant, list));
+            return list.toString();
+        };
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+
+        QTRY_VERIFY(swatch("bone"));
+        QObject *bone = swatch("bone");
+        QObject *amber = swatch("amber");
+        QVERIFY(amber);
+        QMetaObject::invokeMethod(window, "focusOn", Q_ARG(QVariant, QStringLiteral("bone")));
+        QTRY_VERIFY(bone->property("activeFocus").toBool());
+
+        QTest::failOnWarning(QRegularExpression(QStringLiteral("Cannot set activeFocusOnTab")));
+        writePlasma(QStringLiteral("KDOSAmber"));
+        writeState(QStringLiteral("accent"), QStringLiteral("amber"));
+        writeState(QStringLiteral("accent.new"), QStringLiteral("amber"));
+        QVERIFY(QFile::remove(state->filePath(QStringLiteral("etc/accent"))));
+        QVERIFY(QFile::rename(state->filePath(QStringLiteral("accent.new")), state->filePath(QStringLiteral("etc/accent"))));
+        QTRY_COMPARE_WITH_TIMEOUT(c.accent(), QStringLiteral("amber"), 5000);
+        QTRY_VERIFY(amber->property("current").toBool());
+        QVERIFY(!bone->property("current").toBool());
+        QVERIFY(bone->property("activeFocus").toBool());
+        QVERIFY(bone->property("activeFocusOnTab").toBool());
+        QVERIFY(amber->property("activeFocusOnTab").toBool());
+
+        QTest::keyClick(window, Qt::Key_Tab);
+        QVERIFY(!bone->property("activeFocus").toBool());
+        QVERIFY(!bone->property("activeFocusOnTab").toBool());
+        QCOMPARE(stops(), QStringLiteral("amber"));
+    }
+
+    /* The frame marks the current accent and the focus ring marks the
+     * keyboard: the stop Tab reaches is the current swatch, which already
+     * wears the 2 px frame, so focus that only thickened the frame would
+     * change no pixel. The ring shows for keyboard focus, from either
+     * direction, and not for a mouse press, and the frame is the same
+     * width either way. */
+    void aKeyboardFocusedSwatchDrawsARingOfItsOwn()
+    {
+        LookController c(paths());
+        refreshed(c);
+        QQmlEngine engine;
+        FakeI18n i18n;
+        engine.rootContext()->setContextObject(&i18n);
+        FakeKcm kcm;
+        kcm.controller = &c;
+        QQmlContext context(engine.rootContext());
+        context.setContextProperty(QStringLiteral("kcm"), &kcm);
+        context.setContextProperty(QStringLiteral("pageUrl"), QUrl::fromLocalFile(QDir::cleanPath(QStringLiteral(KDOS_FAKE_KDOS "/../../ui/main.qml"))));
+        QQmlComponent component(&engine);
+        component.setData(swatchWindow, QUrl());
+        std::unique_ptr<QObject> made(component.create(&context));
+        QVERIFY2(made, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QWindow *>(made.get());
+        QVERIFY(window);
+        const auto call = [&](const char *method, const char *id) {
+            QVariant out;
+            QMetaObject::invokeMethod(window, method, Q_RETURN_ARG(QVariant, out), Q_ARG(QVariant, QString::fromLatin1(id)));
+            return out;
+        };
+        const auto focusBy = [&](const char *id, Qt::FocusReason reason) {
+            QMetaObject::invokeMethod(window, "focusBy", Q_ARG(QVariant, QString::fromLatin1(id)), Q_ARG(QVariant, int(reason)));
+        };
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+
+        QTRY_VERIFY(qvariant_cast<QObject *>(call("swatch", "bone")));
+        QObject *bone = qvariant_cast<QObject *>(call("swatch", "bone"));
+        QVERIFY(bone->property("current").toBool());
+        QCOMPARE(call("ringShown", "bone").toString(), QStringLiteral("false"));
+        QCOMPARE(call("frameWidth", "bone").toInt(), 2);
+        QCOMPARE(call("frameWidth", "amber").toInt(), 1);
+
+        focusBy("bone", Qt::TabFocusReason);
+        QTRY_VERIFY(bone->property("activeFocus").toBool());
+        QCOMPARE(call("ringShown", "bone").toString(), QStringLiteral("true"));
+        QCOMPARE(call("frameWidth", "bone").toInt(), 2);
+        QCOMPARE(call("ringShown", "amber").toString(), QStringLiteral("false"));
+
+        focusBy("amber", Qt::MouseFocusReason);
+        QTRY_VERIFY(!bone->property("activeFocus").toBool());
+        QCOMPARE(call("ringShown", "bone").toString(), QStringLiteral("false"));
+        QCOMPARE(call("ringShown", "amber").toString(), QStringLiteral("false"));
+        QCOMPARE(call("frameWidth", "bone").toInt(), 2);
+
+        focusBy("bone", Qt::BacktabFocusReason);
+        QTRY_VERIFY(bone->property("activeFocus").toBool());
+        QCOMPARE(call("ringShown", "bone").toString(), QStringLiteral("true"));
+
+        focusBy("amber", Qt::MouseFocusReason);
+        focusBy("bone", Qt::MouseFocusReason);
+        QTRY_VERIFY(bone->property("activeFocus").toBool());
+        QCOMPARE(call("ringShown", "bone").toString(), QStringLiteral("false"));
+        QCOMPARE(call("frameWidth", "bone").toInt(), 2);
     }
 
     void phosphorPairsARetroAccentAndPutsItBack()

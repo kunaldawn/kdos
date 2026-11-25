@@ -40,9 +40,16 @@ against it.
 ## Notes
 `LLVM_INSTALL_DIR=/usr` is read from the environment by the `shiboken6_generator` CMake project,
 which puts it first on `CMAKE_PREFIX_PATH` to find libclang, the parser the generator reads Qt's
-headers with. `ninja` runs with `PYTHONPATH` set to the build tree's
-`sources` directory for the same reason as the `.pyi` patch: the build imports the `shiboken6`
-package it has just built.
+headers with. The `shiboken6` generator is the one file of the package that links libclang, and
+`facet_dev = usr/bin/shiboken6` puts it in the development facet: the run-time bindings
+(`libpyside6`, `libshiboken6` and the Python modules) load no clang, so the package's measured
+run-time needs, and its binhost `N:` line, name no `clang`, and a prebuilt Falkon or FreeCAD does
+not install the compiler. A prebuilt machine that generates bindings needs both halves:
+`kdos update install --dev python3-pyside6` restores the generator and `kdos update install clang`
+the libclang it loads, without which it does not start; a source build of a port that depends on
+PySide6 installs both, as it installs every declared dependency. `ninja` runs with `PYTHONPATH`
+set to the build tree's `sources` directory for the same reason as the `.pyi` patch: the build
+imports the `shiboken6` package it has just built.
 
 The install step puts a `PySide6Config.abi3.cmake` in `/usr/lib/cmake/PySide6` that computes the
 `PySide6` package, typesystem and glue directories relative to its own location. `build.sh`

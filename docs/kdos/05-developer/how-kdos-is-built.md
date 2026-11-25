@@ -99,7 +99,7 @@ runs, not under the image's BusyBox. It then runs that image with:
 | `--privileged` | The later phases mount `/proc`, `/sys` and bind mounts inside the target tree and `chroot` into it, which needs those privileges |
 | `--cpu-shares=256` | A weight, not a cap: an idle host gives the build every thread; under contention it yields to other containers and services, and on a systemd cgroup-v2 host shares the CPU evenly with the user session. `KDOS_CPU_SHARES` changes the weight. The environment every phase shares sets one job count, `KDOS_JOBS`, for make, `cmake --build` and cargo: the host's thread count, clamped to one job per 2 GiB of memory |
 | `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too; ninja is handed `-j$KDOS_JOBS` by `script/bin/ninja` |
-| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile` and the `Dockerfile` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them |
+| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them; `LICENSE` for the MIT text the image installs |
 
 The container is a fixed, known starting point. Whatever distribution your machine runs, the
 compilers that start the bootstrap are the same ones, which is why a build on one developer's
@@ -276,7 +276,8 @@ thing it builds. Its twenty-two scripts run in this order:
 | `120_kpkg.sh` | `kpkg`, compiled from `src/system/kdos-kpkg` with `libkbase`, `libkpkg` and `libksig`, installed as `/usr/bin/kpkg` with four more names linked to it | Nothing can read a recipe before `kpkg` exists |
 | `130_kinstall.sh` | The installer, `kinstall`, from `src/system/kdos-installer` | It links nothing beyond musl, so it exists on every tree from this phase onwards |
 
-`kpkg` and `kinstall` are never rebuilt by a later phase, so these two compile lines carry the
+`kpkg` is never rebuilt by a later phase, and `kinstall` is every tree's installer until the
+`kdos-installer` package of `41_system` adopts its file, so these two compile lines carry the
 tree's hardening themselves (stack protector, stack-clash probes, `-z now`, packed relative
 relocations and a build ID); every other step keeps the plain flags of `script/env/host.env`.
 
@@ -580,7 +581,8 @@ build it. The list holds:
   plugin, the notices, the `library:/` folder and the graphical installer, `kdos-installer-gui`.
 - **The root daemons**: `kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `kdos-packd`,
   `kdos-settingsd` (the hostname, time and locale services System Settings and the greeter ask)
-  and `kdos-sysupdated` (the system-update service Discover drives).
+  and `kdos-sysupdated` (the system-update service Discover drives), and `kdos-mdnsd`, which
+  answers `.local` host names from Avahi as `nobody`.
 - **The meta ports**, last: `kde-plasma`, the eight `kde-gear-*` sets, `kde-gear` and `kde-all`,
   which build nothing and name what `kpkg install` gives a machine.
 
@@ -700,7 +702,7 @@ overlay over `build/fs` (below):
 | `088_ledger.sh` | Writes the image ledger, `build/image-ledger`: every package the finished tree holds, largest first, with its bytes and the dependency path from a `ports/base` seed that put it there (`script/lib/imageset.py --ledger`), and prints its top twenty and total |
 | `090_initramfs.sh` | Builds the initramfs, `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store's directories; with `KDOS_PACK_KDOS=1`, also packs the system as the base pack `kdos` |
-| `105_ports.sh` | Stages the recipe-only ports tree for `/ports` in `build/image-ports` with its `TREE` stamp, puts the release key's public half in `/etc/kdos/keys/tree`, and writes the source offer `/usr/share/kdos/SOURCES` |
+| `105_ports.sh` | Stages the recipe-only ports tree for `/ports` in `build/image-ports` with its `TREE` stamp (which names the release on a clean checkout of a tagged commit) and the release notes `RELEASE`, puts the release key's public half in `/etc/kdos/keys/tree`, and writes the source offer `/usr/share/kdos/SOURCES` |
 | `110_iso.sh` | Assembles the ISO tree, appending the staged ports tree to `system.sfs`, writes `build/iso-build/kdos.iso`, and fails a base ISO larger than 1,900 MiB (`KDOS_ISO_MAX`), printing the ledger's top twenty, unless `KDOS_ISO_GATE=0` |
 
 The order carries dependencies: the binhost and the package store run on `build/fs` before the
@@ -735,7 +737,9 @@ stamps every inode with the epoch, so the clamp is also what the medium shows.
 **The recipe tree and the source offer.** Every image carries the ports tree at `/ports`, recipes
 only, so a shipped machine can update by building from source. `105_ports.sh` stages it: every
 file in each port directory except the sources its recipe hashes (`sha256 =`) and any archive,
-`ports/shelves`, `ports/sources.idx`, `ports/groups` (the native groups), `src/` at `/ports/src`
+`ports/shelves`, `ports/sources.idx`, `ports/groups` (the native groups), `ports/RELEASE` (the
+release notes `kdos update notes` and What's New show; the step stops when it is missing or over
+16 KiB), `src/` at `/ports/src`
 for the programs of our own, whose
 sources no archive holds, `docs/kdos`, `docs/screenshots` and `docs/kfs` under `/ports/docs`, and
 `script/book` at `/ports/script/book`. Those last are the sources of `kdos-doc` and `kdos-kfs`,
@@ -746,7 +750,12 @@ has neither. The tree is about 100 MB unsquashed; the fetched sources it leaves 
 about 42 GB. `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of
 `/ports/src` that hold ports. `/ports/TREE` names the commit and its time (`kdos-tree 1`, then
 `commit` and `time` lines), which is how `kdos update fetch` tells a newer published tree from an
-older one, and `build/keys/kdos-release.pub`, when it exists, goes into `/etc/kdos/keys/tree` as the
+older one. An image built from a clean checkout of a tagged commit also names its release there,
+`version <tag>`, which is how a machine finds that release's binhost with no `update.conf`; the log
+says `/ports/TREE names release <tag>`, and any other build says why it names none. The tag comes
+from `make build` (`KDOS_GIT_TAG`, the one release tag, `v<digit>…`, on `HEAD`), and `ports/publish --release` refuses an
+ISO whose tree names no release, another release or another commit, or that carries no
+`/ports/RELEASE`. `build/keys/kdos-release.pub`, when it exists, goes into `/etc/kdos/keys/tree` as the
 key such a tree must be signed with. Without it the image trusts no tree, and `kdos update fetch`
 there stops before downloading anything, recording `no-key`. The same step writes `/usr/share/kdos/SOURCES`, the written source
 offer: the repository, the commit the image was built from (`-dirty` when the tree had unrecorded
@@ -789,9 +798,10 @@ for it. What the initramfs does at boot is in
    signature, and its boot code area is not empty. Any failure fails the build.
 
 The medium carries the base: Plasma, the applications every desk pins (Konsole, Dolphin, Kate,
-Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake, named
-one by one in `ports/base`) and Firefox ESR, no compiler, and none of the other native
-applications, which a machine installs from its
+Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake), the
+everyday programs beside them (Haruna, KolourPaint, Skanpage, Filelight, KFind, KCharSelect, KClock
+and KWalletManager), each named one by one in `ports/base`, and Firefox ESR, no compiler, and none
+of the other native applications, which a machine installs from its
 release's binhost one by one or as groups (see
 [Installing more software](../03-architecture/packaging.md#installing-more-software)). It carries
 no boxed application either: podman builds each catalogue application on the machine that
@@ -801,14 +811,15 @@ switches change what it carries, `KDOS_ISO_SOURCES=1` (the tree's sources under 
 `KDOS_PACK_KDOS=1` (the base pack); see [The first build](developing.md#the-first-build). How the
 medium boots is in [Boot and init](../03-architecture/boot-and-init.md).
 
-**What the medium needs.** Measured on a full build tree, the base is 1,003 of 2,430 packages
-and 9.5 GB of their 49.8 GB of files; the base ISO itself is not measured yet. An image built with
-`KDOS_IMAGE=full` carries every package and its ISO is 20.4 GB. The full image sets four
-requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
+**What the medium needs.** Measured on a full build tree, the base is 900 of 2,442 packages
+and 5.5 GB of their 49.5 GB of files, and the base ISO measures about 1,700 MiB (1,699 MiB
+measured), about 200 MiB under the 1,900 MiB gate, with the 13 MB of noto-fonts-extra that
+`ports/base` also names. An image built with `KDOS_IMAGE=full` carries every package and its
+ISO is 20.4 GB. The full image sets four requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
 [Installation](../02-user-guide/installation.md), [kinstall](../04-programs/kinstall.md) and the
 release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a Blu-ray disc for
 optical boot, since the image does not fit a DVD; a disk larger than the install, because
-`kinstall` refuses one smaller than the install size plus 768 MiB; and a release published in
+`kinstall` refuses one smaller than the install size plus 768 MiB plus 2 GiB; and a release published in
 several parts, because GitHub holds no asset of 2 GiB or more. `make run` gives its virtual machine
 a sparse 192 GB disk, large enough for the install's two A/B slots.
 

@@ -149,6 +149,21 @@ QString AccentModel::setFromList(const QString &listOutput)
         }
         rows.append(r);
     }
+    /* The same accents in the same order are updated in place: a reset
+     * destroys every swatch, the focused one and its accessible object with
+     * it, and a screen reader re-reads the page. Only a list that adds,
+     * drops or reorders an accent resets. */
+    bool sameIds = rows.size() == m_rows.size();
+    for (qsizetype i = 0; sameIds && i < rows.size(); ++i) {
+        sameIds = rows.at(i).id == m_rows.at(i).id;
+    }
+    if (sameIds) {
+        if (!rows.isEmpty()) {
+            m_rows = rows;
+            Q_EMIT dataChanged(index(0), index(int(m_rows.size()) - 1));
+        }
+        return current;
+    }
     const int before = int(m_rows.size());
     beginResetModel();
     m_rows = rows;

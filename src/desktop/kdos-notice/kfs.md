@@ -13,6 +13,7 @@ started by the session's autostart (`/usr/share/kdos/xdg/autostart/kdos-notice.d
 | "Your last update didn't start" | `kdos-bootctl status --json` | no |
 | "firefox-esr in the box www was closed to free memory" | `status` on `/run/kdos-oomd.sock` | no |
 | "This computer's hardware needs firmware-nvidia", with Install | `kdos firmware sync --dry-run --json` | yes |
+| "Software chosen during install is not installed yet", with Open Discover when a boxed selection waits | `/var/lib/kdos/apps-pending` and `/var/lib/kdos/groups-pending`, with `/ports/groups` for the groups' titles | yes |
 
 The same binary run as `kdos-notice --bless`, from `/etc/xdg/autostart/kdos-session-good.desktop`,
 is the second mark of a confirmed boot: once `org.kde.plasmashell` has answered on the session bus
@@ -44,12 +45,50 @@ A notification's id is good only while the server that issued it runs. Plasma ta
 `replaces_id` it never issued as the new notification's own number, so replacing or closing an
 id from an earlier login, or from a plasmashell that has since restarted, would replace or close
 another program's notification. kdos-notice forgets every id when it starts and when the server
-changes owner; a notice that was waiting for a person (restarts, CVEs, the applications still to install) is
+changes owner; a notice that was waiting for a person (restarts, CVEs, the software still to install) is
 then posted again to the
 new server, since a restarted plasmashell lost it.
 
+The software notice covers both of the installer's records. `apps-pending`'s boxed selections
+are counted and sent to Discover; `groups-pending`'s native groups are named by the titles their
+`group <id> <title>` lines give them in `/ports/groups`, the names the installer offered them by,
+and by id when the tree has no title for one, one name a line, since a title may hold a comma or an
+"and" that a separator inside a line would read as another group; a list too long for its buffer
+falls back to the count alone. Several groups take a one-line header, "3 KDOS application groups:" beside
+boxed selections and "3 KDOS application groups wait." alone, since the summary already says the
+software was chosen during the install and is not installed yet. One group's sentence and the
+count alone say the groups chosen during the install "are not installed yet", true both when a medium with no binary host only recorded them and when the binary
+host did not answer, with `sudo kdos update install --pending`, "once a binary host answers", as
+the way to install them, or `su -c 'kdos update install --pending'` for an account outside `wheel`,
+which sudo refuses: the installer leaves the account out of `wheel` when Administrator is unticked.
+Membership is read from the group database with `getgrouplist` at every decision, as sudo reads it,
+and `KDOS_NOTICE_ADMIN_GROUP` names another group in place of `wheel` for the tests. With no boxed selection waiting there is no Open Discover, since Discover does not
+list a group, and the icon is `system-software-install` rather than Discover's. The body is plain
+text: Plasma's notification body is a small subset of HTML, so Markdown backticks would be drawn as
+backticks, and a title's `&`, `<` and `>` go as entities. Qt wraps a line after a hyphen, so the
+command stands on a line of its own, plain ASCII, after a newline that Plasma's notification server
+turns into a line break, and the line before it, "Once a binary host answers, run:", is short enough
+not to wrap; with boxed selections waiting too, the groups' text and the command come first and
+"1 boxed app also waits in Discover." follows as the last line. Plasma's popup shows eight lines
+before it scrolls, each 38 to 41 characters wide at 1920x1080 as its proportional font's glyphs
+fall; `KN_POPUP_LINES` and `KN_POPUP_COLS` take 8 and the narrow end, 38, and that body is laid
+out to them, each line counted by its wrapped height: when the titles would pass the eighth line,
+as many as fit are listed and then "and N more", or the count alone when not even one fits, so the
+command and the boxed-app line stay above the scroll. The popup shows the top of a body and scrolls the
+rest, so several groups alone go as a one-line count, "7 KDOS application groups wait.", then the
+command, then "They are:" and every title with no line budget: the command stands on the popup's
+third line and a scroll hides only titles, and Discover does not list a group and that notice has
+no Details action, so it is the one place on the desktop that names them. An id named for want of a title goes in typographic quotes with
+each hyphen a non-breaking one (U+2011), which is display text and not the command.
+The notice is keyed on both files' ids, not on the titles, so a tree whose title changed posts
+nothing new, and it is withdrawn when neither names anything; both are read again once the package database has been quiet for ten
+seconds, so the notice changes or goes within seconds of a `--pending` run. `groups-pending` is
+read the way `--pending` reads it, each line cut at its first space, tab or `#`, so the notice names
+exactly the groups that command would install. `KDOS_APPS_PENDING`, `KDOS_GROUPS_PENDING` and
+`KDOS_NOTICE_GROUPS` move the three files for the tests.
+
 The actions are fixed argument vectors: Details opens Konsole on `kdos cve`, or System Settings at
-System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`; Install opens Konsole on `sudo kdos firmware sync`;
+System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`; Install opens Konsole on `sudo kdos firmware sync`, or on `su -c 'kdos firmware sync'`, which asks for root's password there, for an account outside `wheel`, and the firmware notice's body names the same command;
 Open Discover opens Discover at "Selected during install"; and Log Out asks Plasma's logout prompt
 over D-Bus. A signal
 that claims to be the notification server's is acted on only when its sender owns

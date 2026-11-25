@@ -14,14 +14,18 @@
 
 #include "slotinfo.h"
 
+#include <KIO/CommandLauncherJob>
 #include <KLocalizedString>
 
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
-#include <QProcess>
+#include <QGuiApplication>
 #include <QUrl>
+#include <QWindow>
+
+#include <functional>
 
 using namespace Qt::StringLiterals;
 
@@ -57,6 +61,22 @@ QString describeError(SlotsClient::Request request, const QString &name, const Q
     return i18nc("@info %1 D-Bus error name", "The request was refused (%1).", name);
 }
 
+/* Started through KIO under the program's desktop name, so the launch
+ * carries an XDG activation token: KWin raises the window it opens, and a
+ * Discover already running is handed the token with its arguments and comes
+ * to the front instead of only flashing its taskbar entry. */
+void launch(QObject *owner, const QString &program, const QStringList &args, const QString &desktopName, const std::function<void()> &failed)
+{
+    auto *job = new KIO::CommandLauncherJob(program, args, owner);
+    job->setDesktopName(desktopName);
+    QObject::connect(job, &KJob::result, owner, [failed](KJob *j) {
+        if (j->error()) {
+            failed();
+        }
+    });
+    job->start();
+}
+
 bool hasSpaceOrControl(const QString &s)
 {
     for (const QChar c : s) {
@@ -84,6 +104,7 @@ SystemVersionsModule::SystemVersionsModule(QObject *parent, const KPluginMetaDat
     });
     connect(m_client, &SlotsClient::loadedChanged, this, &SystemVersionsModule::availabilityChanged);
     connect(m_client, &SlotsClient::propertiesUpdated, this, [this] {
+        dropStaleTrialMessage();
         /* The first answer after a SetChannel is the server's own spelling
          * of what was written, and it replaces the edit. */
         if (m_awaitingChannel) {
@@ -100,6 +121,7 @@ SystemVersionsModule::SystemVersionsModule(QObject *parent, const KPluginMetaDat
     });
     connect(m_client, &SlotsClient::slotsUpdated, this, [this] {
         syncSlots();
+        dropStaleTrialMessage();
         Q_EMIT statusChanged();
     });
     connect(m_client, &SlotsClient::busyChanged, this, &SystemVersionsModule::busyChanged);
@@ -296,8 +318,11 @@ QString SystemVersionsModule::composeChannel(const QString &kind, const QString 
             err = i18nc("@info", "Type the address the KDOS update files are published at.");
         } else if (hasSpaceOrControl(loc) || !url.isValid()) {
             err = i18nc("@info", "This is not an address an update can be read from.");
-        } else if (scheme != "https"_L1 && scheme != "http"_L1 && scheme != "file"_L1) {
-            err = i18nc("@info", "Updates are read from an https, http or file address.");
+        } else if (scheme != "https"_L1 && scheme != "file"_L1) {
+            /* kdos update fetches with curl --proto =https,file and
+             * kdos-sysupdated refuses any other scheme, so a plain http
+             * address would be saved and then fail every fetch. */
+            err = i18nc("@info", "Updates are read from an https or file address.");
         } else if (scheme != "file"_L1 && url.host().isEmpty()) {
             err = i18nc("@info", "The address names no server.");
         }
@@ -459,12 +484,100 @@ void SystemVersionsModule::setMessage(const QString &text, MessageType type)
      * again when the same thing happens again. */
     m_message = text;
     m_messageType = text.isEmpty() ? NoMessage : type;
+    m_trialMessage = false;
     Q_EMIT messageChanged();
+}
+
+QString SystemVersionsModule::trialKey() const
+{
+    return isTrialArmed() ? u"armed "_s + m_client->trySlot() : QString();
+}
+
+void SystemVersionsModule::dropStaleTrialMessage()
+{
+    /* A refusal is the news only while the trial it was about stands: once
+     * a trial is armed or called off by another route (kdos-bootctl, a
+     * second System Settings, busctl), it would sit above the banner that
+     * contradicts it until closed by hand. */
+    if (m_trialMessage && trialKey() != m_trialKeyAtMessage) {
+        dismissMessage();
+    }
 }
 
 void SystemVersionsModule::dismissMessage()
 {
     setMessage(QString(), NoMessage);
+}
+
+void SystemVersionsModule::holdOver(QWindow *scene)
+{
+    if (!scene || scene->isVisible()) {
+        return;
+    }
+    const auto usable = [scene](QWindow *w) {
+        return w && w != scene && w->isVisible() && !scene->isAncestorOf(w);
+    };
+    QWindow *top = QGuiApplication::focusWindow();
+    while (top && top->parent()) {
+        top = top->parent();
+    }
+    if (!usable(top)) {
+        top = nullptr;
+        const auto windows = QGuiApplication::topLevelWindows();
+        for (QWindow *w : windows) {
+            if (usable(w) && w->type() == Qt::Window && !w->transientParent()) {
+                top = w;
+                break;
+            }
+        }
+    }
+    if (top && scene->transientParent() != top) {
+        scene->setTransientParent(top);
+    }
+}
+
+/* QWindow's own unbounded maximum, QWINDOWSIZE_MAX in a private header. */
+static constexpr int unboundedWindowSize = (1 << 24) - 1;
+
+/* Every change of a bound makes QWindow resize the window into its bounds,
+ * unless the minimum exceeds the maximum in both dimensions. A window
+ * whose size has moved since it was held is outside the old bounds, so the
+ * order of the changes decides whether the window is resized. */
+void SystemVersionsModule::holdSize(QWindow *prompt, QWindow *page)
+{
+    if (!prompt || prompt == page) {
+        releaseSize();
+        return;
+    }
+    if (m_heldPrompt && m_heldPrompt != prompt) {
+        releaseSize();
+    }
+    const QSize size = prompt->size();
+    if (m_heldPrompt == prompt && prompt->minimumSize() == size && prompt->maximumSize() == size) {
+        return;
+    }
+    /* The maximum moves first: whatever the old minimum, fitting the
+     * window's size into a maximum of that same size leaves it there. Qt's
+     * Wayland plugin sends no bounds whose minimum exceeds the maximum, and
+     * both changes reach the compositor in one commit. */
+    prompt->setMaximumSize(size);
+    prompt->setMinimumSize(size);
+    m_heldPrompt = prompt;
+}
+
+void SystemVersionsModule::releaseSize()
+{
+    if (QWindow *window = m_heldPrompt) {
+        /* A minimum above every maximum leaves the window as it is while
+         * the bounds pass through states that would fit it into the old
+         * hold; the last two changes fit its size into bounds that already
+         * hold it. */
+        window->setMinimumSize(QSize(unboundedWindowSize, unboundedWindowSize));
+        window->setMaximumSize(QSize(unboundedWindowSize - 1, unboundedWindowSize - 1));
+        window->setMinimumSize(QSize(0, 0));
+        window->setMaximumSize(QSize(unboundedWindowSize, unboundedWindowSize));
+    }
+    m_heldPrompt.clear();
 }
 
 void SystemVersionsModule::load()
@@ -485,7 +598,10 @@ void SystemVersionsModule::save()
     const QString channel = composeChannel(m_channelKind, m_channelLocation, &err);
     if (!err.isEmpty()) {
         setMessage(err, Error);
-        setNeedsSave(true);
+        /* KCModuleQml::save clears needsSave once this returns, which would
+         * grey out Reset and drop the title's '*' over an edit that was not
+         * written: the state is raised again on the next turn of the loop. */
+        QMetaObject::invokeMethod(this, &SystemVersionsModule::updateSaveState, Qt::QueuedConnection);
         return;
     }
     if (m_installRoute != m_client->installRoute() || m_buildDeps != m_client->buildDeps()) {
@@ -543,22 +659,26 @@ void SystemVersionsModule::restartNow()
 
 void SystemVersionsModule::openUpdates()
 {
-    if (!QProcess::startDetached(u"plasma-discover"_s, {u"--mode"_s, u"update"_s})) {
+    launch(this, u"plasma-discover"_s, {u"--mode"_s, u"update"_s}, u"org.kde.discover"_s, [this] {
         setMessage(i18nc("@info", "Discover could not be started, so updates cannot be checked from here."), Error);
-    }
+    });
 }
 
 void SystemVersionsModule::openInstaller()
 {
-    if (!QProcess::startDetached(u"kdos-installer-gui"_s, {})) {
+    launch(this, u"kdos-installer-gui"_s, {}, u"kdos-installer"_s, [this] {
         setMessage(i18nc("@info", "The installer could not be started. Open Install KDOS from the desktop or the launcher."), Error);
-    }
+    });
 }
 
 void SystemVersionsModule::onRequestFinished(SlotsClient::Request request, const QString &errorName, const QString &errorMessage)
 {
     if (!errorName.isEmpty()) {
         setMessage(describeError(request, errorName, errorMessage), Error);
+        if (request == SlotsClient::Request::Try || request == SlotsClient::Request::CancelTry) {
+            m_trialMessage = true;
+            m_trialKeyAtMessage = trialKey();
+        }
         if (request == SlotsClient::Request::SetChannel) {
             m_awaitingChannel = false;
             updateSaveState();

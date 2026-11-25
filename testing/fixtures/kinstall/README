@@ -6,3 +6,90 @@ those change), a passwd naming the sddm account, one accent's login-screen set
 under usr/share/kdos/greeter/amber, and empty kbd keymaps for the console
 keymap search. The selftest copies it before each run, so a writer never edits
 the fixture itself.
+
+pagedraw.c draws one kinstall page with no terminal, linking pages.c with
+kinstall-core: it prints the page's body rectangle, the whole frame as text
+and `# cuts N`, the text draws that lost the end of their string. Its
+PAGEDRAW_* variables stand in a disk, a mounted partition, a processor's
+name and a running or failed install, as its header lists, and
+PAGEDRAW_MODAL and PAGEDRAW_HELP a confirm or the F1 card over the page.
+zoneinfo/ is a four-zone zone1970.tab, none of them UTC, one of them
+tzdata's real Puerto Rico row with its 59-character codes column, for the
+sections that check the Time page's parsing and choosing; zoneinfo-long/ holds zone names wider than the
+Time page's zone list, for the section that draws every page at 80x33 with
+the longest values and refuses any `# cuts` but 0.
+
+net/ holds three machines' routes for $KDOS_NET_ROOT, which kinstall-core
+reads in place of / for proc/net/route, proc/net/ipv6_route and
+sys/class/net: up/ an IPv4 default route on an eth0 that is up, down/ the
+same route on an eth0 with no carrier (a pulled cable leaves the route), and
+v6/ only an IPv6 default route on eth0 beside the kernel's unreachable ::/0
+on lo.
+
+udev/ holds three disks' records as udev writes them under /run/udev/data:
+a SATA SSD whose ID_MODEL_ENC is longer than libata's 16-byte sysfs model,
+an ATA name with \x20 escapes, and a QEMU disk. `harness udevmodel` reads one
+with a sysfs model given on its command line.
+
+`harness copyfile` runs the Bootloader step's copy on two paths and exits 1
+when it reports a failure: a missing source, a destination it cannot
+create, or a write that does not land (/dev/full).
+
+copy-progress.txt is a real rsync --info=progress2 --no-inc-recursive stream,
+each line prefixed with the seconds since rsync started, thinned to a line
+each 50 ms and keeping every line without file counts. The selftest feeds it
+to `harness copy` at its own times and re-timed, and bounds the time left the
+Copy step's note shows.
+
+live-shape.txt is the live medium's tree in rsync's copy order (the ISO's
+system.sfs, listed and sorted by path), as runs of 128 entries: entries and
+bytes per run. A run with a third field, L, is extra names of hard-linked
+files (15% of the bytes, as on the live root), which rsync -H counts in its
+total and makes as links at no copy cost; the stream advances the file
+count over them and no bytes or time. The selftest builds progress2 streams
+from it at several costs per byte and per file, and bounds the time left on
+the tree the installer actually copies, given the link names' bytes and,
+to show the bound needs them, without. Refresh it when the tree's shape
+changes a lot.
+
+live-tree.txt is the same tree by kind of entry, in rsync's own order (files
+before directories in each directory, each directory followed by what is in
+it), as runs of 128 entries: regular files, later names of hard-linked files,
+symbolic links, directories, and the bytes of the files and of the later
+names. It was made from `unsquashfs -lln` of the ISO's system.sfs, with the
+later names found by inode in the built tree. `harness copy` builds the
+copy's profile from it as probe_payload() does from the live root, and the
+selftest copies it at costs per kind fitted to the progress the rig's GUI
+install showed. Refresh it with live-shape.txt.
+
+`harness copy` also reads a KINSTALL_COPY_TRACE file (kinstall writes one when
+the variable names a file): its `# prof` line stands in for a tree, its lines
+are replayed at their recorded times, and each `# <copy> total= links=` line
+starts the next copy of those figures, printing `# <copy>` before its notes.
+With KI_HARNESS_TICKS in its environment it also gives the ticks kinstall's
+reader gives each KI_COPY_TICK_S with no line, each note of a tick printed as
+`@<seconds> <note>` between the notes of the lines around it.
+
+Eight such files come from the live medium's graphical installer on the rig.
+two30.trace, two30b.trace, fresh30.trace, fresh30c.trace and e2e10-30.trace
+are installs onto an empty 30 GiB disk, each a root copy and then slot B's;
+one12.trace, fresh12.trace and e2e10-12.trace are installs onto 12 GiB, one
+slot. two30b's slot B copy ends in small files that its estimate reads a
+little high; two30's and fresh30c's slot B copies have an estimate at 0.65
+to 0.8 of the real time through their first half, which sets the low floor
+the selftest gives the plain replays; e2e10-30's slot B copy has a stretch
+from 13 s to 17 s of its 28 that copies slower than the rest, through which
+its estimate stands at 1.3 to 1.4 times the real time, which sets the high
+bound the selftest gives that copy. fresh12, fresh30 and fresh30c come from
+one live medium's GUI installs framed once a second, and e2e10-12 and
+e2e10-30 from another's, so their replays can be set against the frames.
+All eight are thinned as copy-progress.txt is: every `#` line and every
+line without file counts kept, and of the lines with counts one each 50 ms,
+with the last before each line without counts and the last of each copy.
+The selftest replays each copy with ticks, one12's root copy re-timed to
+two GUI installs on 12 GiB (the notes those runs showed, MiB over rate), and
+each real copy slowed two, three and five times with a running line in each
+second left empty, and bounds the time left a front end shows on them,
+framed at twenty phases of the second. The time left's constants in
+kinstall-core.h each sit inside the range on which every replay but
+e2e10-30's slot B passes.

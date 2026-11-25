@@ -19,7 +19,8 @@ The companion chapter [Known gaps](known-gaps.md) lists what does not exist at a
 
 KDOS is at **v0.2**. The book states the version only here and in the
 [repository README](../../../README.md); the system reads it from `fs/etc/os-release`
-(`VERSION="0.2"`).
+(`VERSION="0.2"`), and a release build and `ports/publish --release` refuse a tag that is not
+its `VERSION_ID` with a `v` before it.
 
 The v0.2 line is a desktop built on KDE Plasma 6.8, KDE Frameworks and all of KDE Gear, with KDOS's
 own packaging, boxes, updates, daemons and identity around it, and its interfaces are stable enough
@@ -71,7 +72,7 @@ end to end on a booted machine that holds packs, exercised by a harness that rep
 its reason rather than passing silently.
 
 The natively ported applications are mostly unproved. The lists of the userland phases,
-`40_lang` to `44_apps`, name 2,183 recipes for the languages, the system, the graphical stacks,
+`40_lang` to `44_apps`, name 2,188 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed. On the live ISO under QEMU,
 Dolphin, Konsole, Discover and System Settings start and draw; no other application has been
 started on an image, and none has been installed from a published binhost under a harness. A package in the build tree is current when its recipe's `kp_recipe_hash`
@@ -87,7 +88,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,442 recipes, 2,399 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,446 recipes, 2,402 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted, and a staged tree that breaks a packaging rule is refused with that rule's message |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry of a failed phase, the jobserver and the merge of `build/snapshots/timings.json`, with the machine each figure is filed under. The KDE ports of `43_toolkits`, `44_apps` and `50_desktop` have not been through a full build |
@@ -100,14 +101,12 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,442 recipes, 2 are absent from the build tree's package
+- **The ports tree.** Of the 2,446 recipes, 0 are absent from the build tree's package
   database once a build has run every phase, and the database holds no name that no recipe gives.
-  The two are `kdos-installer`, which `10_bootstrap` compiles by script and never records as a
-  package, and `texlive-doc`, whose recipe `ports/unbuilt` lists as built by no phase. Every other
-  port is installed by a package phase, as a name on its list or as a dependency of one that no
-  earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
+  Every port is installed by a package phase, as a name on its list or as a dependency of one
+  that no earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
   list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 185 by `40_lang`,
-  1,035 by `41_system`, 188 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 91 by
+  1,048 by `41_system`, 189 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 92 by
   `50_desktop` and 2 by `60_kernel`; `python3 testing/phaseclosure.py` prints these figures, and
   `testing/bookcounts.py` fails on a recipe that no phase installs unless `ports/unbuilt` names it.
   On a built tree, the absent names are what `comm -23` prints when it compares the names of the
@@ -224,12 +223,12 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,442 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,399 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,446 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,402 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/system` | 8 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 8 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 21 | `find src/desktop -name kpkgbuild \| wc -l` |
-| — in `src/daemons` | 6 | `find src/daemons -name kpkgbuild \| wc -l` |
+| — in `src/daemons` | 7 | `find src/daemons -name kpkgbuild \| wc -l` |
 | Shelves | 102 | `grep -cvE '^(#\|$)' ports/shelves` |
 | Archived source files | 2,614 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
 | Native groups | 15 | `grep -c '^group ' ports/groups` |

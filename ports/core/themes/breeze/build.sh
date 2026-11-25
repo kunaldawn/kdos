@@ -11,6 +11,7 @@
 
 patch -p1 -i "$PORT_SRC/sandbox-badge.patch"
 patch -p1 -i "$PORT_SRC/square-corners.patch"
+patch -p1 -i "$PORT_SRC/button-focus-outline.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

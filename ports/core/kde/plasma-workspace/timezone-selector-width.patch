@@ -1,0 +1,28 @@
+Subject: TimezoneSelector: size the floating toolbar to its contents and padding
+
+The toolbar under the map set its width to the row's implicit width, so the
+row got that width less the toolbar's left and right padding. Its two combo
+boxes do not shrink below their implicit width, and the time-zone box ran
+past the panel's right edge. Without the width binding the toolbar takes its
+implicit width, the row plus its padding. The height keeps its binding. The
+location box takes the same right margin the region box has, so the row's
+ends are symmetric with and without the location box.
+
+--- a/components/timezoneselector/TimezoneSelector.qml	2026-10-27 17:02:06.000000000 +0530
++++ b/components/timezoneselector/TimezoneSelector.qml	2026-11-23 19:18:06.327264884 +0530
+@@ -327,7 +327,6 @@
+             anchors.bottomMargin: Kirigami.Units.gridUnit
+             anchors.horizontalCenter: parent.horizontalCenter
+ 
+-            width: mainLayout.implicitWidth
+             height: mainLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
+ 
+             contentItem: RowLayout {
+@@ -381,6 +380,7 @@
+ 
+                 QQC2.ComboBox {
+                     id: locationComboBox
++                    Layout.rightMargin: Kirigami.Units.largeSpacing
+ 
+                     visible: regionComboBox.currentText !== regionComboBox.chooseText
+                     displayText: currentText

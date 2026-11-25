@@ -10,8 +10,9 @@
  * Typing "photosynthesis" finds it wherever this machine holds it, with no
  * network:
  *
- *   the KDOS and KFS books   headings of /usr/share/doc/{kdos,kfs}, opened
- *                            in the browser at that heading
+ *   the KDOS and KFS books   headings of /usr/share/doc/{kdos,kfs}, each
+ *                            under its page's title, opened in the browser
+ *                            at that heading
  *   manual pages             `kdos*` pages, opened by man(1) in Konsole
  *   Zeal docsets             entries whose name starts with the query, from
  *                            each docset's own SQLite index (zeal.c)
@@ -30,7 +31,12 @@
  * BELOW THE PALETTE. Library rows are in the Low category, so a verb or an
  * application is never pushed down by an encyclopedia, and krunnerrc does not
  * name `kdos-library` among the favourites. The library alone is KRunner's
- * single-runner mode, which the palette's `lib <words>` opens.
+ * single-runner mode, which the palette's `lib <words>` opens. A query that
+ * is the whole title of a KDOS settings page (`KDOS Look`) is a request for
+ * that page, which the palette answers (match.c): every library row for it
+ * keeps its order but ranks at most 0.42, so the book's section about the
+ * page never reads as the best answer, and one titled with the page's name
+ * reads `KDOS Look in KDOS book`.
  * ---------------------------------
  */
 
@@ -75,6 +81,7 @@ typedef struct {
 	char *text;		/* the heading, as plain text      */
 	char *file;		/* absolute path of the page       */
 	char *id;		/* the heading's anchor, or ""     */
+	char *page;		/* its page's title, or "" on that title itself */
 	int level;		/* 1..3                            */
 	int book;		/* index into books[]              */
 } Heading;
@@ -106,6 +113,7 @@ static void heads_free(void)
 		free(g_heads[i].text);
 		free(g_heads[i].file);
 		free(g_heads[i].id);
+		free(g_heads[i].page);
 	}
 	free(g_heads);
 	g_heads = NULL;
@@ -113,7 +121,7 @@ static void heads_free(void)
 }
 
 static void head_add(const char *text, const char *file, const char *id,
-		     int level, int book)
+		     const char *page, int level, int book)
 {
 	if (g_nheads >= 50000 || !*text)
 		return;
@@ -121,16 +129,25 @@ static void head_add(const char *text, const char *file, const char *id,
 	g_heads[g_nheads].text = kb_strdup(text);
 	g_heads[g_nheads].file = kb_strdup(file);
 	g_heads[g_nheads].id = kb_strdup(id);
+	g_heads[g_nheads].page = kb_strdup(page);
 	g_heads[g_nheads].level = level;
 	g_heads[g_nheads].book = book;
 	g_nheads++;
 }
 
 /* Every <h1>..<h3> of one page, with its id. Pandoc and lowdown both write
- * `<hN id="x">text</hN>`, with spans for section numbers inside. */
+ * `<hN id="x">text</hN>`, with spans for section numbers inside. The page's
+ * first non-empty <h1>..<h3> is its title, whatever its level: a KDOS
+ * chapter's h1, a KFS part's h1, chapter's h2 or port page's h3. Every later
+ * heading carries it as the row's subtext: the books repeat a heading across
+ * chapters (`The firewall` is in four), and title_by_source() puts the
+ * chapter in the title of each row whose heading another row shares, since
+ * KRunner shows a subtext on the selected row alone. */
 static void page_headings(const char *file, int book)
 {
 	char *html = kb_read_whole(file, NULL);
+	char page[512] = "";
+	int first = 1;
 
 	if (!html)
 		return;
@@ -165,8 +182,13 @@ static void page_headings(const char *file, int book)
 		for (char *c = text; *c; c++)
 			if (*c == '\n' || *c == '\t')
 				*c = ' ';
-		head_add(text, file, id, level, book);
 		p = end + 3;
+		if (!*text)
+			continue;
+		head_add(text, file, id, first ? "" : page, level, book);
+		if (first)
+			kb_strlcpy(page, text, sizeof(page));
+		first = 0;
 	}
 	free(html);
 }
@@ -243,10 +265,10 @@ static int cache_load(const char *sig)
 		return 0;
 	}
 	while ((l = strtok_r(NULL, "\n", &save))) {
-		char *f[5];
+		char *f[6];
 		int nf = 0;
 
-		for (char *p = l; nf < 5; nf++) {
+		for (char *p = l; nf < 6; nf++) {
 			f[nf] = p;
 			p = strchr(p, '\t');
 			if (!p) {
@@ -255,9 +277,9 @@ static int cache_load(const char *sig)
 			}
 			*p++ = '\0';
 		}
-		if (nf != 5)
+		if (nf != 6)
 			continue;
-		head_add(f[4], f[2], f[3], atoi(f[1]), atoi(f[0]) % NBOOKS);
+		head_add(f[5], f[2], f[3], f[4], atoi(f[1]), atoi(f[0]) % NBOOKS);
 	}
 	free(text);
 	return 1;
@@ -276,16 +298,18 @@ static void cache_save(const char *sig)
 	kb_buf_printf(&b, "%s\n", sig);
 	for (int i = 0; i < g_nheads; i++)
 		if (!strchr(g_heads[i].file, '\t') && !strchr(g_heads[i].file, '\n'))
-			kb_buf_printf(&b, "%d\t%d\t%s\t%s\t%s\n", g_heads[i].book,
+			kb_buf_printf(&b, "%d\t%d\t%s\t%s\t%s\t%s\n", g_heads[i].book,
 				      g_heads[i].level, g_heads[i].file,
-				      g_heads[i].id, g_heads[i].text);
+				      g_heads[i].id, g_heads[i].page, g_heads[i].text);
 	kb_write_file_atomic(path, b.p ? b.p : "");
 	kb_buf_free(&b);
 }
 
 static void books_load(void)
 {
-	char sig[2048] = "v1", one[160], two[160], dir[1024], pkg[1024];
+	/* The signature opens with the line format: a cache written in
+	 * another one is rebuilt, not read as headings. */
+	char sig[2048] = "v2", one[160], two[160], dir[1024], pkg[1024];
 
 	for (int i = 0; i < NBOOKS; i++) {
 		size_t l = strlen(sig);
@@ -385,7 +409,11 @@ static void match_books(const RnQuery *q, RnList *out)
 		if (!m)
 			return;
 		kb_strlcpy(m->text, h->text, sizeof(m->text));
-		kb_strlcpy(m->subtext, books[h->book].name, sizeof(m->subtext));
+		if (*h->page)
+			snprintf(m->subtext, sizeof(m->subtext), "%s · %s", h->page,
+				 books[h->book].name);
+		else
+			kb_strlcpy(m->subtext, books[h->book].name, sizeof(m->subtext));
 		kb_strlcpy(m->icon, "help-contents", sizeof(m->icon));
 		kb_strlcpy(m->category, "Offline library", sizeof(m->category));
 		m->catrel = RN_CAT_LOW;
@@ -496,14 +524,102 @@ static void match_places(const RnQuery *q, RnList *out)
 	rn_arg(m, url);
 }
 
+/* The length of a row's source: its subtext up to the ` · `, a heading's
+ * chapter, a page title's book, or Kolibri; 0 when it has none. */
+static int source_len(const RnMatch *m)
+{
+	const char *dot = strstr(m->subtext, " · ");
+
+	return dot ? (int)(dot - m->subtext) : (int)strlen(m->subtext);
+}
+
+/* Rows `from` on whose text another of those rows shares are titled
+ * `<text> in <its source>`: KRunner shows a row's subtext only while the
+ * row is selected, so two `The firewall` rows read as one answer shown
+ * twice until each says its chapter. A row whose title is unique keeps its
+ * bare text, and so does a row with no source or whose longer title would
+ * not fit. Two headings of one text in one chapter both read `<text> in
+ * <chapter>`: the chapter is the finest source a row carries. The titles are
+ * compared before any is changed, so every row of a shared title is
+ * retitled, not all but the last. */
+static void title_by_source(RnList *out, int from)
+{
+	int n = out->n - from;
+	char *dup;
+
+	if (n < 2)
+		return;
+	dup = calloc((size_t)n, 1);
+	if (!dup)
+		return;
+	for (int i = 0; i < n; i++)
+		for (int j = i + 1; j < n; j++)
+			if (!strcmp(out->v[from + i].text, out->v[from + j].text))
+				dup[i] = dup[j] = 1;
+	for (int i = 0; i < n; i++) {
+		RnMatch *m = &out->v[from + i];
+		size_t tl = strlen(m->text), sl = (size_t)source_len(m);
+
+		if (!dup[i] || !sl || tl + 4 + sl >= sizeof(m->text))
+			continue;
+		memcpy(m->text + tl, " in ", 4);
+		memcpy(m->text + tl + 4, m->subtext, sl);
+		m->text[tl + 4 + sl] = '\0';
+	}
+	free(dup);
+}
+
+/* Rows `from` on, beside the KDOS settings pages. A row whose text is a
+ * page's Name, whatever was typed, is titled `<name> in <its source>`, by
+ * source_len()'s rule: System Settings' own runner lists that page under
+ * its bare Name for a part of it as for the whole, and two rows of one title
+ * read as one answer shown twice. When the query is a page's whole title the
+ * rows are also scaled under the palette's row for it; scaling, not
+ * clamping, keeps the order among them, and a heading's 0.7, the most a row
+ * of words reaches, becomes 0.42. The pages are read once per call, not
+ * once per row: a keystroke can bring dozens of rows. */
+static void below_settings(const RnQuery *q, RnList *out, int from)
+{
+	RnSetting pages[RN_SETTINGS_MAX];
+	int np, whole;
+
+	if (from >= out->n)
+		return;
+	np = rn_settings_load(pages, RN_SETTINGS_MAX);
+	whole = rn_settings_title(q, pages, np) != NULL;
+	for (int i = from; i < out->n; i++) {
+		RnMatch *m = &out->v[i];
+		const RnSetting *p = rn_settings_find(pages, np, m->text);
+
+		if (whole) {
+			m->catrel = RN_CAT_LOW;
+			m->rel *= 0.6;
+		}
+		if (p) {
+			int sl = source_len(m);
+
+			if (sl)
+				snprintf(m->text, sizeof(m->text), "%s in %.*s",
+					 p->name, sl, m->subtext);
+			else
+				snprintf(m->text, sizeof(m->text),
+					 "%s in the library", p->name);
+		}
+	}
+}
+
 void rn_library_match(const RnQuery *q, RnList *out)
 {
+	int from = out->n;
+
 	if (!q->nw)
 		return;
 	match_places(q, out);
 	match_books(q, out);
 	match_man(q, out);
 	rn_zeal_match(q, out);
+	title_by_source(out, from);
+	below_settings(q, out, from);
 }
 
 /* ── the servers ───────────────────────────────────────────────────────── */
@@ -745,11 +861,14 @@ static void kolibri_rows(RnAsk *a, RnList *out)
 
 void rn_library_answer(RnAsk *a, const RnQuery *q, RnList *out)
 {
-	(void)q;
+	int from = out->n;
+
 	if (a->kind == RN_ASK_KIWIX)
 		kiwix_rows(a, out);
 	else
 		kolibri_rows(a, out);
+	title_by_source(out, from);
+	below_settings(q, out, from);
 }
 
 void rn_library_reset(void)

@@ -4,8 +4,9 @@
 local network: it is how this machine finds [printers]{.idx term="printer"}, [scanners]{.idx term="scanner"} and file servers without a DNS
 server, and how other machines find it as `<hostname>.local`. This page covers the daemon, its
 configuration, the commands that browse, resolve and publish, and what to check when nothing is
-found. It also covers a limit that comes from the C library: an ordinary program cannot look up a
-`.local` name on KDOS.
+found. It also covers how an ordinary program looks up a `.local` name on KDOS, whose C library
+has no NSS for `nss-mdns` to plug into: through DNS, by way of
+[kdos-mdnsd](#port-kdos-mdnsd).
 
 ## Installation
 
@@ -71,6 +72,24 @@ C library, musl, does not read the file at all, and the file says so:
 
 <!-- kfs:include fs/etc/nsswitch.conf -->
 
+### .local names through DNS
+
+musl sends every host lookup to the resolver `/etc/resolv.conf` names, `127.0.0.1`, which is
+NetworkManager's dnsmasq. One line in dnsmasq's configuration directory forwards the `local`
+domain to [`kdos-mdnsd`]{.idx} on UDP port 5380:
+
+<!-- kfs:include fs/etc/NetworkManager/dnsmasq.d/kdos-mdns.conf -->
+
+`kdos-mdnsd` asks this daemon for each `A` or `AAAA` question, over Avahi's simple-protocol
+socket `/run/avahi-daemon/socket`, and answers with the address at a ten-second TTL, or with an
+empty answer when Avahi has none within three seconds; dnsmasq caches both. It runs as `nobody`,
+started by its own service script after this one:
+
+<!-- kfs:include fs/etc/init.d/45_mdns.sh -->
+
+Its answers, and why a miss is never `NXDOMAIN`, are in
+[kdos-mdnsd](../../kdos/04-programs/daemons.md#kdos-mdnsd).
+
 ### Who may change the daemon's host name
 
 Any user may browse, resolve and publish through the daemon. Its D-Bus policy,
@@ -110,9 +129,20 @@ the local network, to root and the members of `wheel`, the group the avahi port'
    machine with libvirt's `default` network started answers with `192.168.122.1`, the address of
    its `virbr0` bridge.
 
-2. Use the address, or give the name to a program that resolves through Avahi itself, such as
-   Dolphin's `smb://` or `sftp://`. `ping printer.local` and `ssh printer.local` fail, because they resolve through
-   the C library. For a machine you reach often, put its address in `/etc/hosts`.
+2. Or give the name to any program: `ping printer.local`, `ssh kdos@pi.local` and
+   `http://printer.local` in a browser resolve through the C library, dnsmasq and `kdos-mdnsd`
+   (see [.local names through DNS](#local-names-through-dns)). Check the path with:
+
+   ```bash
+   getent hosts printer.local
+   service status mdns
+   ```
+
+   Every program that connects through libcups — `cupsd`, `lpadmin`, `lpstat`, cups-browsed and
+   System Settings' **Printers** page — also asks Avahi itself when the C library cannot answer,
+   because of the cups port's `local-names-through-avahi.patch`, so a printer is added by its
+   `.local` name on a machine without NetworkManager too. There, for anything else, use the
+   address `avahi-resolve-host-name` prints, or put it in `/etc/hosts`.
 
 ### Publishing a service
 
@@ -151,7 +181,8 @@ sudo service stop avahi
 ```
 
 Printers and scanners on the network are then not discovered, Dolphin's network view finds only
-the machines that answer NetBIOS or WS-Discovery, and no program resolves a `.local` name. UDP 5353 stays
+the machines that answer NetBIOS or WS-Discovery, `45_mdns` is skipped at the next boot, and no
+program resolves a `.local` name. UDP 5353 stays
 accepted by the base firewall rules until you edit `/etc/nftables.conf`.
 
 ## Tips
@@ -199,18 +230,33 @@ machine on another subnet is never listed; reach it by its address. A machine th
 whose own firewall drops UDP 5353, does not answer either.
 
 **`ping name.local` fails.** It prints `ping: name.local: Name does not resolve`, and
-`getent hosts name.local` prints nothing.
-That is expected; see [Resolving a .local name](#resolving-a-local-name).
+`getent hosts name.local` prints nothing after about three seconds. Check each step of the path:
+
+1. `avahi-resolve-host-name -4 name.local` answers: if it does not, the machine is not on this
+   network or not announcing, and nothing below can help.
+2. `service status mdns` reports `[ OK ] mdns`; its log is `/run/kdos-svc.mdns.log`.
+3. `drill -p 5380 name.local @127.0.0.1` asks `kdos-mdnsd` directly, and `drill name.local`
+   asks dnsmasq. When the first answers and the second does not, dnsmasq has not read
+   `/etc/NetworkManager/dnsmasq.d/kdos-mdns.conf`: NetworkManager is not running with
+   `dns=dnsmasq`, or the network is run by `30_network`'s dhcpcd, whose resolver knows nothing of
+   `.local`.
+
+A host whose only IPv6 address is link-local resolves to its IPv4 address alone, because a DNS
+record cannot say which interface a link-local address belongs to.
 
 ## Known gaps
 
 - [The list of Windows shares on the network is whatever answered a broadcast](../../kdos/06-reference/known-gaps.md#the-list-of-windows-shares-on-the-network-is-whatever-answered-a-broadcast):
   a Windows machine announces itself with WS-Discovery, which nothing here speaks, and not with
   mDNS
+- [`.local` names resolve only through NetworkManager's dnsmasq](../../kdos/06-reference/known-gaps.md#local-names-resolve-only-through-networkmanagers-dnsmasq):
+  on the dhcpcd fallback `ping`, `ssh` and the rest take an address
 
 ## See also
 
-- [Services](../../kdos/02-user-guide/administration.md#services): `45_avahi` in the boot order
+- [Services](../../kdos/02-user-guide/administration.md#services): `45_avahi` and `45_mdns` in the
+  boot order
+- [kdos-mdnsd](../../kdos/04-programs/daemons.md#kdos-mdnsd): the DNS bridge to this daemon
 - [The firewall](../../kdos/02-user-guide/administration.md#the-firewall): the base rules, which accept UDP 5353
 - [File sharing](file-sharing.md), [Printing and scanning](printing-and-scanning.md),
   [Firewall](firewall.md), [SSH server](ssh-server.md), [Services](services.md)

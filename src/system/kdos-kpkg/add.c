@@ -185,6 +185,11 @@ typedef struct {
 	char **taken;
 	char **taken_from;
 	int ntaken, taken_cap;
+	/* The installed version and release are the ones going in: a facet
+	 * restore or a forced reinstall. place() then keeps an unchanged file
+	 * where it is; `kept` counts them. */
+	int same;
+	int kept;
 } Ctx;
 
 static void take_note(Ctx *x, const char *rel, const char *from)
@@ -403,6 +408,61 @@ static int copy_across(const char *src, const char *dst)
 	return 0;
 }
 
+/* Both paths are symlinks with the same target text. */
+static int same_link(const char *src, const char *dst)
+{
+	char a[4096], b[4096];
+	ssize_t na = readlink(src, a, sizeof(a));
+	ssize_t nb = readlink(dst, b, sizeof(b));
+	return na >= 0 && na < (ssize_t)sizeof(a) && na == nb &&
+	       memcmp(a, b, (size_t)na) == 0;
+}
+
+/* `dst` is a regular file with the staged file's size, mode, owner and
+ * bytes. */
+static int same_file(const char *src, const char *dst)
+{
+	struct stat ss, ds;
+	if (lstat(src, &ss) != 0 || lstat(dst, &ds) != 0 ||
+	    !S_ISREG(ss.st_mode) || !S_ISREG(ds.st_mode) ||
+	    ss.st_size != ds.st_size || ss.st_mode != ds.st_mode ||
+	    ss.st_uid != ds.st_uid || ss.st_gid != ds.st_gid)
+		return 0;
+	FILE *a = fopen(src, "rb");
+	FILE *b = a ? fopen(dst, "rb") : NULL;
+	int same = a && b;
+	char ba[65536], bb[65536];
+	while (same) {
+		size_t na = fread(ba, 1, sizeof(ba), a);
+		size_t nb = fread(bb, 1, sizeof(bb), b);
+		if (na != nb || memcmp(ba, bb, na) != 0 || ferror(a) ||
+		    ferror(b))
+			same = 0;
+		else if (na == 0)
+			break;
+	}
+	if (a)
+		fclose(a);
+	if (b)
+		fclose(b);
+	return same;
+}
+
+/* A link to a directory on the root is never replaced: the root's
+ * directories are reached through it (/lib -> usr/lib, an icon theme's
+ * 16@2x -> 16), and putting a file or a different link there would cut off
+ * everything below it. A staged link with the same target is the link the
+ * root already has, whether this package or another put it there, and is
+ * dropped without a word; any other staged entry is reported by its path on
+ * the root and left out.
+ *
+ * A same-version install (Ctx.same: a facet restore, a forced reinstall)
+ * keeps a regular file that already has the staged file's size, mode, owner
+ * and bytes, and drops the staged copy. Renamed over, the file would get a
+ * new inode with the same contents: every running program that maps it then
+ * maps a deleted file, and the restarts check behind kdos-notice tells the
+ * user to log out after an install that changed nothing. Every other install
+ * replaces the file, whatever it holds. */
 static int place(const char *rel, void *u)
 {
 	Ctx *x = u;
@@ -412,13 +472,20 @@ static int place(const char *rel, void *u)
 
 	struct stat ds;
 	if (lstat(dst, &ds) == 0 && S_ISLNK(ds.st_mode) && kb_is_dir(dst)) {
-		kp_msg("Skipping %s (structure mismatch with host %s)", rel, dst);
+		if (same_link(src, dst))
+			unlink(src);
+		else
+			kp_msg("Skipping /%s (a link to a directory on the "
+			       "root; the package ships something else there)",
+			       rel);
 	} else if (lstat(dst, &ds) == 0 && S_ISDIR(ds.st_mode) &&
 		   !S_ISLNK(ds.st_mode)) {
 		kp_err("Conflict: %s is a file in package but a directory on "
 		       "system", rel);
+	} else if (x->same && same_file(src, dst)) {
+		unlink(src);
+		x->kept++;
 	} else {
-		kp_msg("Installing %s -> %s", rel, dst);
 		if (rename(src, dst) < 0) {
 			/* The staging dir is on the target fs so that placing a
 			 * file is a rename — but the target fs is not one
@@ -443,6 +510,48 @@ static int place(const char *rel, void *u)
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
+
+/* The one root check of kpkgadd, kpkgdel and kpkg facets --strip. The test
+ * is "is this a directory I can write", not "am I uid 0": a build installs
+ * into a sysroot it owns without being root, and a uid check would refuse
+ * it. A root that is missing or is not a directory is a mistyped path and
+ * reads "no such directory", as `kpkg list` says it; access() alone passes a
+ * writable regular file, which would then fail at the database lock with a
+ * message naming a path under a file. The rest of the message follows errno,
+ * since a read-only root is not a permission problem and telling root to run
+ * as root hides the typo; the three commands share it so that their messages,
+ * and the pages that list them, agree. */
+int kp_root_unwritable(const char *root)
+{
+	struct stat st;
+	int e;
+	if (stat(root, &st) == 0 && !S_ISDIR(st.st_mode))
+		e = ENOTDIR;
+	else if (access(root, W_OK) == 0)
+		return 0;
+	else
+		e = errno;
+	if (e == ENOENT || e == ENOTDIR)
+		kp_err("no such directory: %s", root);
+	else if (e == EROFS)
+		kp_err("%s is read-only", root);
+	else if (e == EACCES || e == EPERM)
+		kp_err("cannot write to %s — run as root", root);
+	else
+		kp_err("cannot write to %s: %s", root, strerror(e));
+	return 1;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+void kp_db_shown(const KpConf *c, char *buf, size_t cap)
+{
+	size_t n = strlen(c->root);
+	while (n && c->root[n - 1] == '/')
+		n--;
+	snprintf(buf, cap, "%.*s%s%s", (int)n, c->root,
+		 c->pkgdb_dir[0] == '/' ? "" : "/", c->pkgdb_dir);
+}
 
 int add_main(int argc, char **argv)
 {
@@ -500,13 +609,8 @@ int add_main(int argc, char **argv)
 		kp_msg("Signature good (key %s)", signer);
 
 	const char *root = c.root[0] ? c.root : "/";
-	/* The test is "can I write here", not "am I uid 0": a build installs
-	 * into a sysroot it owns without being root, and a uid check would
-	 * refuse it. */
-	if (access(root, W_OK) != 0) {
-		kp_err("cannot write to %s — run as root", root);
+	if (kp_root_unwritable(root))
 		return 1;
-	}
 
 	char name[256], ver[128], rel[128];
 	if (split_pkgname(kb_basename(pkgfile), name, ver, rel, sizeof(name))) {
@@ -540,6 +644,17 @@ int add_main(int argc, char **argv)
 	KbArgv x = {0};
 	kb_argv_add(&x, "tar");
 	/*
+	 * ONE DECODER THREAD, or a package fails to install on a small machine.
+	 * xz decodes a multi-block file with a thread per core by default, and
+	 * every thread of a -9 package with 32 MiB blocks holds about 100 MB, so
+	 * a large package on a 4 GB live session is killed by kdos-oomd after
+	 * anything else has used the memory. One thread holds the 64 MiB
+	 * dictionary and little more. tar splits the compressor on spaces
+	 * itself; there is no shell involved.
+	 */
+	kb_argv_add(&x, "--use-compress-program=xz -T1");
+	kb_argv_add(&x, "--quoting-style=literal");
+	/*
 	 * `-p` OR EVERY SETUID BIT IN EVERY PACKAGE IS SILENTLY DROPPED.
 	 *
 	 * GNU tar restores permissions in full only for the superuser unless
@@ -550,14 +665,25 @@ int add_main(int argc, char **argv)
 	 * until something needs the privilege, in a program that has no way
 	 * to say why it cannot have it.
 	 */
-	kb_argv_add(&x, "--quoting-style=literal");
 	kb_argv_add(&x, "-xpvf");
 	kb_argv_add(&x, pkgfile);
 	kb_argv_add(&x, "-C");
 	kb_argv_add(&x, tmpl);
 	kb_argv_end(&x);
 	KbBuf listing = {0};
-	if (kb_run_capture_buf(&x, &listing) != 0) {
+	/* tar's and xz's stderr reach ours, so a failed extraction says why
+	 * (a killed decoder, a short file, a full disk) beside the line below;
+	 * the -v listing goes to the capture, not to the terminal. */
+	int was_verbose = kb_proc_verbose;
+	kb_proc_verbose = 1;
+	/* Flushed first: a piped stdout holds the Installing line in its buffer,
+	 * and the log would read tar's complaint before the package it is
+	 * about. */
+	fflush(stdout);
+	fflush(stderr);
+	int xrc = kb_run_capture_buf(&x, &listing);
+	kb_proc_verbose = was_verbose;
+	if (xrc != 0) {
 		kp_err("Failed to extract %s", pkgfile);
 		kb_buf_free(&listing);
 		kb_rmtree(tmpl);
@@ -616,12 +742,16 @@ int add_main(int argc, char **argv)
 	char replaces[1024];
 	read_replaces(&c, name, replaces, sizeof(replaces));
 	Ctx ctx = { tmpl, root, 0, NULL, NULL, name, replaces,
-		    NULL, NULL, 0, 0 };
+		    NULL, NULL, 0, 0,
+		    upgrade && !strcmp(iver, ver) && !strcmp(irel, rel), 0 };
 
 	int lock = kp_db_lock(&c);
 	if (lock < 0) {
-		kp_err("cannot lock the package database %s: %s", db,
-		       strerror(errno));
+		int e = errno;
+		char shown[1100];
+		kp_db_shown(&c, shown, sizeof(shown));
+		kp_err("cannot lock the package database %s: %s", shown,
+		       strerror(e));
 		kb_rmtree(tmpl);
 		return 1;
 	}
@@ -673,6 +803,9 @@ int add_main(int argc, char **argv)
 		close(lock);
 		return 1;
 	}
+	if (ctx.kept)
+		kp_msg("Keeping %d unchanged file%s in place", ctx.kept,
+		       ctx.kept == 1 ? "" : "s");
 
 	KpTriggers trig = {0};
 
@@ -849,6 +982,13 @@ int add_main(int argc, char **argv)
 		kb_argv_add(&h, hook_kept);
 		kb_argv_end(&h);
 		setenv("PKG_ROOT", root, 1);
+		/* The version this install replaced, "<version>-<release>",
+		 * empty on a first install: a hook compares it with its own
+		 * $version-$release to tell a same-version reinstall. */
+		char old[260] = "";
+		if (upgrade)
+			snprintf(old, sizeof(old), "%s-%s", iver, irel);
+		setenv("PKG_OLD_VERSION", old, 1);
 		/* The hook inherits stdio: whatever it prints belongs in the
 		 * build log, the same way it did when a shell ran it. */
 		if (kb_run_tty(&h) != 0)

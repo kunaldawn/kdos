@@ -1,0 +1,2 @@
+/dev/vda2 / ext4 rw 0 0
+overlay /var/lib/containers/x overlay rw 0 0

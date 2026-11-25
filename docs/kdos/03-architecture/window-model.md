@@ -52,9 +52,17 @@ commit is tiny — would keep its top-left at the centre of the screen and grow 
 under the panel. The window memory script centres such a window again when it takes its real size,
 inside the usable area, within two seconds of opening and only while nobody has moved it. A window
 with no record that a program sizes larger than the usable area — Chromium's first window is taller
-than the screen — is moved and shrunk into the area in the same two seconds. A program
-whose first window is only as large as its widgets' minimum keeps that size; see
-[Known gaps](../06-reference/known-gaps.md#some-programs-open-their-first-window-at-their-minimum-size).
+than the screen — is moved and shrunk into the area in the same two seconds. A KXmlGui program
+with no saved size opens its first window at its widgets' minimum (Kate about 640x510, Dolphin
+760x580, with labels cut off), so a resizable top-level window with no record whose first real size
+is under half the usable area in either direction is grown to at least 60% of its width and 70% of
+its height, never past it, and centred on the screen it opened on. Dialogs, windows that cannot be
+resized, borderless windows (a splash, a frameless notice, a program drawing its own title bar) and
+the programs whose small window is their design (KCalc, Kalk, Qalculate, KColorChooser,
+KCharSelect, KTeaTime, KTimer) keep their own size. A splash that does carry a border is grown on
+the launch that has no record, the one case where nothing yet tells it from the window after it.
+The grown rectangle is recorded when the window closes like any other, so once the person resizes
+it their size wins.
 
 ## Window memory
 

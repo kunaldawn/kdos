@@ -18,6 +18,9 @@
  *   matchtest zeal                  "yes" when this build searches docsets
  *   matchtest fuzz FILE             every line of FILE as a query to both
  *                                   sides, and the JSON reader over FILE
+ *   matchtest chapters DIR          a book of three pages under DIR, one
+ *                                   heading in two of them: each row names
+ *                                   its chapter, built and from the cache
  *
  * The sources it links are the runner's own, every one but main.c; the
  * tests in run.sh drive this with tree.sh's fixture home and root.
@@ -37,6 +40,59 @@ static long long usec(void)
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (long long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+/* The book's rows for "firewall" as `text|subtext` lines, in rank order. */
+static void chapter_rows(KbBuf *b)
+{
+	RnList l = { 0 };
+
+	rn_library_reset();
+	rn_library_collect("firewall", 1, &l);
+	for (int i = 0; i < l.n; i++)
+		if (!strncmp(l.v[i].url, "file://", 7))
+			kb_buf_printf(b, "%s|%s\n", l.v[i].text, l.v[i].subtext);
+	rn_list_free(&l);
+}
+
+/* Two chapters share `The firewall`, and each row of it carries its
+ * chapter in its title; the third is titled `Firewall`, a page's own
+ * heading, which no other row shares and which names the book alone. */
+static int chapters(const char *dir)
+{
+	static const char *const want =
+		"Firewall|KDOS book\n"
+		"The firewall in Administration|Administration · KDOS book\n"
+		"The firewall in Security model|Security model · KDOS book\n";
+	char p[1024];
+	KbBuf a = { 0 }, b = { 0 };
+	int bad;
+
+	snprintf(p, sizeof(p), "%s/root/usr/share/doc/kdos/02", dir);
+	if (kb_mkdir_p(p) != 0)
+		return 1;
+	snprintf(p, sizeof(p), "%s/root/usr/share/doc/kdos/02/admin.html", dir);
+	kb_write_file(p, "<h1 id=\"administration\">Administration</h1>\n"
+			 "<h2 id=\"the-firewall\">The firewall</h2>\n");
+	snprintf(p, sizeof(p), "%s/root/usr/share/doc/kdos/02/security.html", dir);
+	kb_write_file(p, "<h1 id=\"security-model\">Security <em>model</em></h1>\n"
+			 "<h2>Other</h2><h3 id=\"the-firewall\">The firewall</h3>\n");
+	snprintf(p, sizeof(p), "%s/root/usr/share/doc/kdos/02/fw.html", dir);
+	kb_write_file(p, "<h1 id=\"firewall\">Firewall</h1>\n");
+	snprintf(p, sizeof(p), "%s/root", dir);
+	setenv("KDOS_RUNNER_ROOT", p, 1);
+	snprintf(p, sizeof(p), "%s/cache", dir);
+	setenv("XDG_CACHE_HOME", p, 1);
+	setenv("HOME", dir, 1);
+	chapter_rows(&a);
+	chapter_rows(&b);
+	bad = !a.p || strcmp(a.p, want) || !b.p || strcmp(b.p, want);
+	if (bad)
+		printf("want:\n%sbuilt:\n%sfrom the cache:\n%s", want,
+		       a.p ? a.p : "", b.p ? b.p : "");
+	kb_buf_free(&a);
+	kb_buf_free(&b);
+	return bad;
 }
 
 static void print(RnList *l)
@@ -91,6 +147,8 @@ int main(int argc, char **argv)
 			rn_list_free(&l);
 		}
 		printf("%lld\n", worst);
+	} else if (argc == 3 && !strcmp(argv[1], "chapters")) {
+		return chapters(argv[2]);
 	} else if (argc >= 3 && !strcmp(argv[1], "fuzz")) {
 		char *text = kb_read_whole(argv[2], NULL), *save = NULL;
 		char s[256];
@@ -111,7 +169,7 @@ int main(int argc, char **argv)
 		}
 		free(text);
 	} else {
-		fprintf(stderr, "usage: matchtest query|library|ask|run|time|fuzz ...\n");
+		fprintf(stderr, "usage: matchtest query|library|ask|run|time|fuzz|chapters ...\n");
 		return 2;
 	}
 	rn_list_free(&l);

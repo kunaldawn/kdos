@@ -15,3 +15,4 @@ cd openmsx-$version
 install -d "$PKG/usr/share/games/openttd/baseset/openmsx"
 install -m644 *.mid openmsx.obm license.txt readme.txt changelog.txt \
 	"$PKG/usr/share/games/openttd/baseset/openmsx/"
+install -Dm644 license.txt "$PKG/usr/share/licenses/$name/license.txt"
