@@ -1588,26 +1588,42 @@ freeze_list() {
 
 # release_by_tag_any <tag> [<payload.json>] — set REL_ID and REL_DRAFT (1 or
 # 0) for the release of <tag> on $KDOS_REPO. A DRAFT is invisible to the
-# by-tag lookup, so the listing is searched instead. With a payload, a tag
-# that has no release gets one created from it; without one, it is an error.
+# by-tag lookup, so the listing is searched instead. GitHub may list a draft
+# as `untagged-<hex>` in place of the tag it was created with, so a draft of
+# that form carrying the payload's name is taken when no release carries the
+# tag; missing it would create a second draft and upload every asset again.
+# With a payload, a tag that has no release gets one created from it; without
+# one, it is an error.
 REL_DRAFT=0
 release_by_tag_any() {
-    local tag=$1 page=1 hit=""
+    local tag=$1 page=1 hit="" alt="" name=""
     REL_ID=""
+    [ -z "${2:-}" ] || name=$(grep -o '"name":"[^"]*"' "$2" | head -1 | cut -d'"' -f4)
     while [ -z "$hit" ] && [ "$page" -le 20 ]; do
         gh GET "$GH_API/repos/$KDOS_REPO/releases?per_page=100&page=$page"
         [ "$HTTP" = 200 ] || die "listing releases on $KDOS_REPO: HTTP $HTTP"
         grep -q '"tag_name"' "$TMP/body" || break
-        hit=$(awk -v tag="$tag" '
+        hit=$(awk -v tag="$tag" -v name="$name" '
             BEGIN { RS = "\"url\": *\"[^\"]*/releases/" }
             /^[0-9]+"/ && match($0, /"tag_name": *"[^"]*"/) {
                 t = substr($0, RSTART, RLENGTH); sub(/^"tag_name": *"/, "", t); sub(/"$/, "", t)
-                if (t != tag) next
+                rest = substr($0, RSTART + RLENGTH)
+                n = ""
+                if (match(rest, /"name": *"[^"]*"/)) {
+                    n = substr(rest, RSTART, RLENGTH); sub(/^"name": *"/, "", n); sub(/"$/, "", n)
+                }
                 id = $0; sub(/".*/, "", id)
-                print id, ($0 ~ /"draft": *true/) ? 1 : 0; exit
-            }' "$TMP/body")
+                draft = ($0 ~ /"draft": *true/) ? 1 : 0
+                if (t == tag) { print id, draft; found = 1; exit }
+                if (draft && name != "" && n == name && t ~ /^untagged-/ && alt == "") alt = id " 1 alt"
+            }
+            END { if (!found && alt != "") print alt }' "$TMP/body")
+        case $hit in
+            *" alt") [ -n "$alt" ] || alt=${hit% alt}; hit="" ;;
+        esac
         page=$((page + 1))
     done
+    [ -n "$hit" ] || hit=$alt
     if [ -n "$hit" ]; then
         read -r REL_ID REL_DRAFT <<< "$hit"
         return 0

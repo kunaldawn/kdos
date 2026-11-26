@@ -925,7 +925,8 @@ Six conditions make the build a release:
 The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`. A
 tag that is also a branch name on `origin` is refused: GitHub creates its draft untagged, so a rerun
 cannot find it and the release would go public with no tag. Release from a tag no branch is named
-after.
+after. GitHub may still list a draft as `untagged-<hex>`, so a draft of that form named `KDOS <tag>`
+is taken as the tag's when no release carries the tag itself; `--publish` then sets its tag.
 
 **A release ISO is one asset.** The build itself fails a base ISO larger than 1,900 MiB
 (`KDOS_ISO_MAX`): `110_iso.sh` stops after writing it and prints the size, the limit and the top
