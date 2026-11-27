@@ -123,18 +123,37 @@ static const char *SKIP_BASENAMES[] = {
 	"assistant", "designer", "linguist",
 	"bleachbit-root", "breezestyleconfig", "kcm_breezedecoration",
 	"ktelnetservice6", "org.kde.kded6", "org.kde.kiod6", "org.kde.kwalletd6",
-	"codium-url-handler", "gnome-disk-image-mounter", "gnome-disk-image-writer",
+	"com.visualstudio.CodeOSS.UrlHandler", "gnome-disk-image-mounter",
+	"gnome-disk-image-writer",
 	"python3.13", "calibre-lrfviewer", "com.github.FontManager.FontViewer",
-	"org.kicad.eeschema", "org.kicad.gerbview", "org.kicad.pcbnew", NULL
+	"org.kicad.eeschema", "org.kicad.gerbview", "org.kicad.pcbnew",
+	/* A DEPENDENCY'S ENTRY IS NOT THE PACK'S APPLICATION. Every entry in
+	 * the flattened image is read, so what a dependency drops into
+	 * /usr/share/applications reaches the menu under the pack that pulled
+	 * it in: xterm's two under Grace and GRASS, tkcon's under DS9. Beside
+	 * those, a second entry for one program: ParaView's plain `paraview`
+	 * beside its reverse-DNS one, and ZynAddSubFX's ALSA, OSS and
+	 * multi-channel variants beside the JACK one a box reaches the host's
+	 * PipeWire through. */
+	"debian-xterm", "debian-uxterm", "tkcon-console", "paraview",
+	"zynaddsubfx-alsa", "zynaddsubfx-oss", "zynaddsubfx-jack-multi", NULL
 };
 
+/* `in.lsp_plug.` is one entry per LSP plugin, 185 of them, each a JACK host
+ * for one effect; the plugins are used from a host program, and a Start menu
+ * holding all of them buries every other application. */
 static const char *SKIP_PREFIXES[] = {
 	"krita_", "carla", "org.kicad.bitmap2component",
-	"org.kicad.pcbcalculator", "cups", "display-im", "mediainfo-gui", NULL
+	"org.kicad.pcbcalculator", "cups", "display-im", "mediainfo-gui",
+	"in.lsp_plug.", NULL
 };
 
 /* Short names for upstream ids: the shim on $PATH and the alien-apps table's
- * key, which `kdos app`, the shims and the docs all spell this way. */
+ * key, which `kdos app`, the shims and the docs all spell this way. A row is
+ * matched against the entry's desktop id and, failing that, against the
+ * program its Exec runs, so `codium` is `vscodium` whatever the desktop file
+ * is called: VSCodium's own is com.visualstudio.CodeOSS, a name upstream
+ * changes without notice and the `deb` row follows the newest release. */
 static const char *RENAME[][2] = {
 	{ "firefox-esr", "firefox" },
 	{ "org.xfce.mousepad", "mousepad" },
@@ -201,8 +220,11 @@ static const char *RENAME[][2] = {
 
 /*
  * Extra argv an app needs to work inside the container / on this compositor,
- * appended after the upstream Exec. All three VSCodium flags were established
- * by launching it in a booted VM and reading why it died:
+ * appended after the upstream Exec. KEYED ON THE PROGRAM the Exec runs, never
+ * on the desktop id: the program is the thing that needs the flags, and a
+ * renamed desktop file would otherwise ship a launcher that does not start.
+ * All three VSCodium flags were established by launching it in a booted VM
+ * and reading why it died:
  *   --no-sandbox                chrome-sandbox wants a setuid helper and
  *                               CLONE_NEWUSER, gets neither as a non-root user
  *                               in an unprivileged podman container, and exits
@@ -215,7 +237,7 @@ static const char *RENAME[][2] = {
  *                               this is the smaller hammer.
  */
 static const char *EXEC_EXTRA[][2] = {
-	{ "vscodium",
+	{ "codium",
 	  "--no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing" },
 	{ NULL, NULL }
 };
@@ -260,10 +282,14 @@ static const char *COMMANDS[] = {
  * only this side knows how to spell.
  *
  * Only emitted where the image actually carries the binary, the same rule
- * COMMANDS keeps.
+ * COMMANDS keeps. A STORE BOX HAS NO usr/bin TO PROBE — only its desktop
+ * entries and icons are copied out of the image — so there `pkg`, the Debian
+ * package that installs the binary, stands in for it: the entry is written
+ * for a catalogue row that names that package itself (add_catalogue_entries).
  */
 static const struct {
 	const char *bin;
+	const char *pkg;
 	const char *name;
 	const char *generic;
 	const char *cats;
@@ -272,11 +298,29 @@ static const struct {
 	const char *icon;
 	const char *exec;
 } ENTRIES[] = {
-	{ "surf", "Surf", "Web Browser", "Network;WebBrowser;",
+	{ "surf", "surf", "Surf", "Web Browser", "Network;WebBrowser;",
 	  "text/html;application/xhtml+xml;x-scheme-handler/http;"
 	  "x-scheme-handler/https;",
 	  "web;browser;http;suckless;surf;", "gtk-network", "surf %u" },
-	{ NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
+};
+
+/*
+ * THE X11 CLASS OF A BOXED PROGRAM THAT HAS NO WAYLAND PATH. A Wayland window
+ * is matched to its launcher by the id kdos-boxsock tags its socket with; an
+ * Xwayland window carries no tag, and the Task Manager matches it by its
+ * WM_CLASS against the entry's StartupWMClass. Java and Tk programs name their
+ * own class and their entries do not say it, so without a row here the window
+ * shows a generic icon beside a pin that never lights. An upstream entry that
+ * carries StartupWMClass is believed; a row here wins over it. Keyed on the
+ * shim name, the class measured from the running window.
+ */
+static const char *WMCLASS[][2] = {
+	{ "imagej", "ij-ImageJ" },
+	{ "jmol", "org-openscience-jmol-app-jmolpanel-JmolPanel" },
+	{ "pymol", "PyMOL" },
+	{ "surf", "Surf" },
+	{ NULL, NULL }
 };
 
 static const char *X11_FORCING[] = {
@@ -313,6 +357,7 @@ typedef struct {
 	char mime[2048];
 	char keywords[512];
 	char generic[160];
+	char wmclass[128];	/* the X11 class its window has, "" if unknown */
 	char pack[96];		/* the pack that provides it, or "" for an image */
 	char lid[128];		/* its launcher id, "" until assign_ids()       */
 	char root[1024];	/* the pack's root, where its icons are         */
@@ -592,9 +637,11 @@ static void parse_dir(const char *srcdir)
 		 * firefox); a program name that is reserved, empty or odd falls
 		 * back to the lowercased id, which is unique by construction.
 		 */
-		const char *ren = lookup(RENAME, base);
 		char key[128];
 		app_exec_key(ex, key, sizeof(key));
+		const char *ren = lookup(RENAME, base);
+		if (!ren && key[0])
+			ren = lookup(RENAME, key);
 		if (ren) {
 			kb_strlcpy(a->id, ren, sizeof(a->id));
 		} else if (key[0] && !in_list(RESERVED, key) &&
@@ -616,6 +663,8 @@ static void parse_dir(const char *srcdir)
 			   sizeof(a->keywords));
 		kb_strlcpy(a->generic, kxdg_get(&e, "GenericName", ""),
 			   sizeof(a->generic));
+		kb_strlcpy(a->wmclass, kxdg_get(&e, "StartupWMClass", ""),
+			   sizeof(a->wmclass));
 		kb_strlcpy(a->root, root, sizeof(a->root));
 		/* R, octave-cli and the like say `Terminal=true`, and the Start
 		 * menu runs such an entry in Konsole. Written as false, the
@@ -625,7 +674,7 @@ static void parse_dir(const char *srcdir)
 
 		char cleaned[1024];
 		clean_exec(ex, cleaned, sizeof(cleaned));
-		const char *extra = lookup(EXEC_EXTRA, a->id);
+		const char *extra = key[0] ? lookup(EXEC_EXTRA, key) : NULL;
 		if (extra) {
 			char *pct = strchr(cleaned, '%');
 			if (!pct) {
@@ -657,6 +706,23 @@ static void parse_dir(const char *srcdir)
 		}
 }
 
+static void add_entry(int i, const char *pack, const char *root)
+{
+	Launcher *a = app_new();
+
+	kb_strlcpy(a->pack, pack, sizeof(a->pack));
+	kb_strlcpy(a->id, ENTRIES[i].bin, sizeof(a->id));
+	kb_strlcpy(a->base, ENTRIES[i].bin, sizeof(a->base));
+	kb_strlcpy(a->name, ENTRIES[i].name, sizeof(a->name));
+	kb_strlcpy(a->generic, ENTRIES[i].generic, sizeof(a->generic));
+	kb_strlcpy(a->cats, ENTRIES[i].cats, sizeof(a->cats));
+	kb_strlcpy(a->mime, ENTRIES[i].mime, sizeof(a->mime));
+	kb_strlcpy(a->keywords, ENTRIES[i].keywords, sizeof(a->keywords));
+	kb_strlcpy(a->exec, ENTRIES[i].exec, sizeof(a->exec));
+	kb_strlcpy(a->icon, ENTRIES[i].icon, sizeof(a->icon));
+	kb_strlcpy(a->root, root, sizeof(a->root));
+}
+
 static void add_commands(const char *srcdir)
 {
 	char root[1024];
@@ -683,22 +749,8 @@ static void add_commands(const char *srcdir)
 
 		snprintf(probe, sizeof(probe), "%s/usr/bin/%s", root,
 			 ENTRIES[i].bin);
-		if (!kb_path_exists(probe))
-			continue;
-		Launcher *a = app_new();
-
-		kb_strlcpy(a->pack, cur_pack, sizeof(a->pack));
-		kb_strlcpy(a->id, ENTRIES[i].bin, sizeof(a->id));
-		kb_strlcpy(a->base, ENTRIES[i].bin, sizeof(a->base));
-		kb_strlcpy(a->name, ENTRIES[i].name, sizeof(a->name));
-		kb_strlcpy(a->generic, ENTRIES[i].generic, sizeof(a->generic));
-		kb_strlcpy(a->cats, ENTRIES[i].cats, sizeof(a->cats));
-		kb_strlcpy(a->mime, ENTRIES[i].mime, sizeof(a->mime));
-		kb_strlcpy(a->keywords, ENTRIES[i].keywords,
-			   sizeof(a->keywords));
-		kb_strlcpy(a->exec, ENTRIES[i].exec, sizeof(a->exec));
-		kb_strlcpy(a->icon, ENTRIES[i].icon, sizeof(a->icon));
-		kb_strlcpy(a->root, root, sizeof(a->root));
+		if (kb_path_exists(probe))
+			add_entry(i, cur_pack, root);
 	}
 }
 
@@ -974,7 +1026,16 @@ static void write_launchers(const char *dir, const char *data)
 		kb_buf_printf(&b, "Keywords=%s%sbox;\n", a->keywords,
 			      a->keywords[0] && !ends_with(a->keywords, ";")
 			      ? ";" : "");
-		kb_buf_printf(&b, "StartupWMClass=%s\n", leafid);
+		/* The launcher id is what a tagged Wayland window carries as its
+		 * class; an X11 window brings its own, and a known one is what
+		 * the entry has to name for that window to find it. */
+		{
+			const char *wm = lookup(WMCLASS, a->id);
+
+			if (!wm)
+				wm = a->wmclass[0] ? a->wmclass : leafid;
+			kb_buf_printf(&b, "StartupWMClass=%s\n", wm);
+		}
 		if (a->pack[0])
 			kb_buf_printf(&b, "X-KDOS-Box=%s\nX-KDOS-Upstream=%s\n",
 				      a->pack, a->base);
@@ -1270,6 +1331,62 @@ static int add_catalogue_commands(const char *id)
 }
 
 /*
+ * A STORE BOX'S WRITTEN ENTRIES ARE ITS ROW'S OWN PACKAGES. With no usr/bin
+ * copied out of the image, an ENTRIES row is taken when the catalogue row
+ * names its package — `app.surf` installs `surf`, so the box has /usr/bin/surf
+ * — and only the row's own list counts, never its parents': a runtime's
+ * packages are what every application on it shares, not what it offers. An
+ * entry the probe already wrote for this pack is not written twice.
+ */
+static int entry_named(const CatPack *p, int i)
+{
+	size_t pl = strlen(ENTRIES[i].pkg);
+
+	for (const char *w = p->packages; *w; ) {
+		size_t wl = strcspn(w, " \t");
+
+		if (wl == pl && !strncmp(w, ENTRIES[i].pkg, pl))
+			return 1;
+		w += wl;
+		w += strspn(w, " \t");
+	}
+	return 0;
+}
+
+int launcher_entry_rows(const char *id)
+{
+	const CatPack *p = cat_count() ? cat_find(id) : NULL;
+	int n = 0;
+
+	if (!p || !p->packages)
+		return 0;
+	for (int i = 0; ENTRIES[i].bin; i++)
+		n += entry_named(p, i);
+	return n;
+}
+
+static int add_catalogue_entries(const char *id, const char *root)
+{
+	const CatPack *p = cat_count() ? cat_find(id) : NULL;
+	int n = 0;
+
+	if (!p || !p->packages)
+		return 0;
+	for (int i = 0; ENTRIES[i].bin; i++) {
+		int named = entry_named(p, i), have = 0;
+
+		for (int k = 0; k < napps && named && !have; k++)
+			have = !strcmp(apps[k].pack, id) &&
+			       !strcmp(apps[k].id, ENTRIES[i].bin);
+		if (named && !have) {
+			add_entry(i, id, root);
+			n++;
+		}
+	}
+	return n;
+}
+
+/*
  * TWO TREES, AND WHICH ONE IS WHOSE DECISION.
  *
  * The ROOT tree — /etc/skel, /usr/share/kdos/alien-apps, /usr/local/bin — is
@@ -1319,6 +1436,7 @@ static int genlaunchers_dirs(const char *root)
 			add_commands(dir);
 			cur_pack[0] = 0;
 		}
+		cmds += add_catalogue_entries(*s, sub);
 		if (cmds || kb_is_dir(dir))
 			packs++;
 		free(dir);

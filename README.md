@@ -15,7 +15,7 @@ that boots into its own KDE Plasma desktop, made KDOS from the boot menu to the 
 </p>
 
 <p align="center">
-<sub>a live ISO to download · about 2,400 native ports, every one prebuilt for the release · all of KDE Gear · 70 boxed applications · Linux 7.2.11</sub>
+<sub>a live ISO to download · about 2,400 native ports, every one prebuilt for the release · all of KDE Gear · 69 boxed applications · Linux 7.2.11</sub>
 </p>
 
 <p align="center">
@@ -240,7 +240,7 @@ the default Bone accent.
 | The desktop | KDE Plasma 6.8 on KWin, with three desks to choose from at first login, eight accents that repaint Plasma, the terminals and the lock screen at once and the login screen, the consoles, the splash and the boot menu the next time each shows, an optional Phosphor mode with a CRT pass over the whole screen, KDOS pages in System Settings (boxes, the firewall, health, the look, the system's versions), a KRunner runner for the `kdos` verbs and an offline library, privacy lamps that name the box holding the camera, and Discover over native ports, packs, boxes, firmware and system updates |
 | On the ISO | The Plasma session; Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager, Yakuake and ISO Image Writer, with the KIO workers and thumbnailers they use; Haruna, KolourPaint, Skanpage, Filelight, KFind, KCharSelect, KClock and KWalletManager; VLC, which Elisa plays through; the Orca screen reader and BRLTTY; Firefox ESR, NetworkManager, PipeWire, CUPS and scanning, podman and the box stack, Python and Perl, and every KDOS tool and daemon |
 | One download away | The rest of about 2,400 native ports, every one prebuilt for the release: all of KDE Gear (Kdenlive, digiKam, KMail, Krita and the rest), LibreOffice, GIMP, Inkscape, Blender, Thunderbird, Chromium, LibreWolf, OBS Studio, QGIS, FreeCAD, KiCad, TeX Live, Wine, Rust, Go, Node.js, Zig, Haskell, cross toolchains for ARM, RISC-V and AVR, and SDR and FPGA tooling, one at a time or in groups, among them `build-tools` (GCC's assembler and linker, make, CMake, Meson and the rest), `lang-zh`, `lang-ja` and `lang-ko` (input methods and CJK fonts) |
-| Boxed | 70 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and [exportable as one file](docs/kdos/02-user-guide/applications.md#carrying-a-set-to-another-machine) that installs on another machine offline |
+| Boxed | 69 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and [exportable as one file](docs/kdos/02-user-guide/applications.md#carrying-a-set-to-another-machine) that installs on another machine offline |
 | Boot and install | A boot splash that hands over to the login screen, an optionally encrypted root, A/B root slots filled by signed whole-slot images with deltas, and an installer with a graphical front end and a text-mode one over one backend, which also runs unattended from an answer file |
 | Its own software | 9 C libraries written for this system, the package manager and the installer, and 43 recipes of its own: 21 parts of the Plasma desktop, six root daemons, the box tools, the `kdos` command and its subcommands, and the artwork |
 

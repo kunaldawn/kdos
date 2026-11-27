@@ -40,3 +40,8 @@ default, and the menu entry for the GTK window.
   scheme, so it is not offered as the handler for `.torrent` files or magnet links.
 - The ExtJS library inside the web interface ships as upstream built it; see
   [What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
+
+- **`runtime = python3-mako`.** The web interface, `deluge-web`, renders its pages with Mako
+  (`deluge/ui/web/common.py`), a submodule the [run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read.
+  [python3-mako](#port-python3-mako) is a build-only port, so without the word a prebuilt install
+  would leave it out and `deluge-web` would stop at start; the GTK client does not import it.

@@ -45,3 +45,8 @@ The desktop entry is KDOS's own, written over upstream's. Picard sets its deskto
 so its Wayland app id, to `org.musicbrainz.Picard`, which `StartupWMClass` repeats. It claims no
 MIME type: [strawberry](#port-strawberry) is the program audio files open in, and Picard opens
 folders from inside.
+
+`runtime = python3-tomlkit`: exporting and importing an option profile reads and writes TOML
+through `picard/profiles/exporter.py`, a submodule the [run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read.
+[python3-tomlkit](#port-python3-tomlkit) is a build-only port, so without the word a prebuilt
+install would leave it out and the profile export would fail.

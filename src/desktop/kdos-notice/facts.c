@@ -7,7 +7,10 @@
  * ---------------------------------
  *   facts.c — what the system says, asked the way a person would ask it
  *
- *   kdos restarts --json       processes still running replaced code
+ *   kdos restarts --json       processes still running replaced code; a
+ *                              process whose code was removed and not
+ *                              replaced (`"replaced": false`) is left out,
+ *                              since restarting it starts nothing newer
  *   kdos cve --json            installed packages with known CVEs
  *   kdos-bootctl status --json the slots, the trial, the failed slot; read
  *                              from /run/kdos/bootstate.json when this user
@@ -74,6 +77,10 @@ int kn_parse_restarts(const char *json, KnRestarts *out)
 	     e = json_next(e)) {
 		KnProc *p = &out->p[out->n];
 
+		const char *rp = json_get(e, "replaced");
+
+		if (rp && !strncmp(json_ws(rp), "false", 5))
+			continue;
 		p->pid = (int)json_int(json_get(e, "pid"), 0);
 		json_str(json_get(e, "comm"), p->comm, sizeof(p->comm));
 		json_str(json_get(e, "exe"), p->exe, sizeof(p->exe));

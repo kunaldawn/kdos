@@ -208,6 +208,23 @@ tooltip from it; the custom-colour indicator is named "Custom accent color" and 
 "Choose a custom accent color…", which is also its tooltip. It adds no colour. It is to be offered
 upstream as a merge request against plasma/plasma-workspace.
 
+`region-rows.patch` makes the Region & Language page, in
+`kcms/region_language/optionsmodel.cpp`, read each row's setting from the row's own entry rather
+than from its number. The row list holds Address, Name Style and Phone Numbers only where the C
+library defines `LC_ADDRESS`, which musl does not, so on KDOS every row after Paper Size is three
+places earlier than its `SettingType`: Data and Storage Sizes, row 6, was taken for Address, whose
+case is compiled out, and showed no example, and changing it signalled a row that does not exist.
+Data and Storage Sizes is always the last row, and its subtitle is empty rather than unreachable.
+It is to be offered upstream.
+
+`timezone-no-region.patch` lets the time-zone selector, in
+`components/timezoneselector/TimezoneSelector.qml`, take a zone with no `/`, such as `UTC`, which a
+live medium and an install that kept the default run in. Upstream splits every id at its first
+slash, so `UTC` became the region `UT` and the location box was handed a region the table does not
+have; the next line threw a `TypeError` in the desktop and the mobile layout. A zone with no slash
+is now a region with no location, and an unknown region gives the location box an empty list. It
+is to be offered upstream.
+
 ## Notes
 
 `build.sh` builds the two generated headers `shell/qwayland-plasma-shell.h` and

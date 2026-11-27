@@ -66,3 +66,9 @@ upstream's `uhd-usrp.rules`, installed under `/usr/lib/uhd/utils`, is not used.
 The recipe's `series` key keeps `ports/update` offering only releases on the line it names. The
 next line, 4.11, moves the RPC transport of the MPM devices (N3xx, E3xx, X4xx) onto gRPC and
 Protobuf, and its host build needs gRPC, which is not a port.
+
+`runtime = python3-mako`: `rfnoc_image_builder` and the rest of `uhd.rfnoc_utils` render the
+FPGA image's Verilog and YAML from Mako templates, imported from submodules that the
+[run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read. [python3-mako](#port-python3-mako) is a build-only
+port, so without the word a prebuilt install would leave it out and the image builder would stop
+on its first import.

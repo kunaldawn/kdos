@@ -432,28 +432,42 @@ static char *user_table(void)
 }
 
 /*
- * The click that installs is the click that opens. The shim is what actually
- * runs it — a launcher's own name in `~/.local/bin`, written by genlaunchers —
- * so this resolves the id to a shim and execs it.
+ * The click that installs is the click that opens. The user's name-to-command
+ * table, written by genlaunchers, names what to run: `name`, `command`, then
+ * the optional `pack` and `launcher` columns. A row is the id's when its
+ * pack column — cut at the next tab, since a launcher column may follow — is
+ * the id.
+ *
+ * A ROW WITH A LAUNCHER IS RUN THE WAY ITS MENU ENTRY RUNS IT, `kdos-appbox
+ * -b <pack> -l <launcher> run <command>`: the shim in `~/.local/bin` is not
+ * written for a name the host already carries, and the launcher id is what
+ * the window's app id must be for the Task Manager to match it. Of several
+ * launchers, the one whose launcher id is the pack id (a pack's only one) or
+ * whose name is the id less `app.` goes first. A command row, which has no
+ * launcher, runs through its shim.
  */
+#define LAUNCH_ROW 512
+
 static int cmd_launch(const char *id)
 {
 	char *text = catalogue_text(), *line, *save;
 	char state[32] = "";
 	char *ut, *buf;
-	char shim[128] = "", first[128] = "";
+	char best[LAUNCH_ROW] = "", gui[LAUNCH_ROW] = "", any[LAUNCH_ROW] = "";
 	const char *want = !strncmp(id, "app.", 4) ? id + 4 : id;
 	char path[512];
+	char *f[4];
+	int nf = 0;
 
 	if (!text)
 		return 2;
 	for (line = strtok_r(text, "\n", &save); line;
 	     line = strtok_r(NULL, "\n", &save)) {
-		char *f[CAT_FIELDS];
+		char *c[CAT_FIELDS];
 
-		if (split_row(line, f) < CAT_FIELDS || strcmp(f[0], id))
+		if (split_row(line, c) < CAT_FIELDS || strcmp(c[0], id))
 			continue;
-		kb_strlcpy(state, f[5], sizeof(state));
+		kb_strlcpy(state, c[5], sizeof(state));
 		break;
 	}
 	free(text);
@@ -476,30 +490,73 @@ static int cmd_launch(const char *id)
 	if (kb_read_file(ut, buf, 1 << 18) > 0)
 		for (line = strtok_r(buf, "\n", &save); line;
 		     line = strtok_r(NULL, "\n", &save)) {
-			char *tab = strchr(line, '\t'), *tab2;
-			if (*line == '#' || !tab || !(tab2 = strchr(tab + 1, '\t')))
+			char row[LAUNCH_ROW], *r[4];
+			int n = 0;
+
+			if (*line == '#' || strlen(line) >= sizeof(row))
 				continue;
-			*tab = 0;
-			if (strcmp(tab2 + 1, id))
+			kb_strlcpy(row, line, sizeof(row));
+			r[n++] = row;
+			for (char *p = row; *p && n < 4; p++)
+				if (*p == '\t') {
+					*p = 0;
+					r[n++] = p + 1;
+				}
+			if (n < 3 || strcmp(r[2], id) || !*r[0])
 				continue;
-			if (!first[0])
-				snprintf(first, sizeof(first), "%s", line);
-			if (!strcmp(line, want)) {
-				snprintf(shim, sizeof(shim), "%s", line);
-				break;
-			}
+			if (!any[0])
+				kb_strlcpy(any, line, sizeof(any));
+			if (n < 4 || !*r[3])
+				continue;
+			if (!gui[0])
+				kb_strlcpy(gui, line, sizeof(gui));
+			if (!best[0] && (!strcmp(r[3], id) || !strcmp(r[0], want)))
+				kb_strlcpy(best, line, sizeof(best));
 		}
 	free(buf);
 	free(ut);
-	if (!shim[0])
-		snprintf(shim, sizeof(shim), "%s", first);
-	if (!shim[0]) {
+	if (!best[0])
+		kb_strlcpy(best, gui[0] ? gui : any, sizeof(best));
+	if (!best[0]) {
 		fprintf(stderr, "kdos app: %s carries no launcher — it is a "
 				"command; see `kdos app info %s`\n", id, id);
 		return 1;
 	}
-	snprintf(path, sizeof(path), "%s/.local/bin/%s", kb_home_dir(), shim);
-	execl(path, shim, (char *)NULL);
+	f[nf++] = best;
+	for (char *p = best; *p && nf < 4; p++)
+		if (*p == '\t') {
+			*p = 0;
+			f[nf++] = p + 1;
+		}
+	if (nf == 4 && *f[3]) {
+		KbArgv a = {0};
+		char store[LAUNCH_ROW];
+		const char *w[64];
+		int nw;
+
+		kb_argv_add(&a, "kdos-appbox");
+		kb_argv_add(&a, "-b");
+		kb_argv_add(&a, f[2]);
+		kb_argv_add(&a, "-l");
+		kb_argv_add(&a, f[3]);
+		kb_argv_add(&a, "run");
+		/* The command column is an Exec value, quoted per word by
+		 * genlaunchers: split it the way an Exec is read, or a quoted
+		 * path keeps its quotes and `sh -c "…"` falls into fragments.
+		 * No file is picked, so every field code vanishes. */
+		nw = kxdg_exec_split(f[1], NULL, 0, store, sizeof(store), w, 64);
+		for (int i = 0; i < nw && a.n < KB_MAX_ARGV - 1; i++)
+			kb_argv_add(&a, w[i]);
+		if (a.n == 6)
+			kb_argv_add(&a, f[0]);
+		kb_argv_end(&a);
+		execvp(a.v[0], (char *const *)a.v);
+		fprintf(stderr, "kdos app: cannot run kdos-appbox: %s\n",
+			strerror(errno));
+		return 1;
+	}
+	snprintf(path, sizeof(path), "%s/.local/bin/%s", kb_home_dir(), f[0]);
+	execl(path, f[0], (char *)NULL);
 	fprintf(stderr, "kdos app: cannot run %s: %s\n", path, strerror(errno));
 	return 1;
 }

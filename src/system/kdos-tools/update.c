@@ -2019,12 +2019,15 @@ static int cmd_check_human(const KpConf *c)
 
 /* ── fetch ─────────────────────────────────────────────────────────────── */
 
-enum { GOT_OK, GOT_FAIL, GOT_OFFLINE, GOT_ABSENT };
+enum { GOT_OK, GOT_FAIL, GOT_OFFLINE, GOT_ABSENT, GOT_TIMEOUT };
 
 /* curl's exit codes for "never reached a server": a name that did not resolve
  * (5, 6), and a connection refused or unroutable (7) or a timeout (28) on a
- * machine with no default route (kdt_have_route); with one, 7 and 28 are a
- * server that did not answer, a failure of that copy. 22 is a
+ * machine with no default route (kdt_have_route); with one, 7 is a server
+ * that did not answer, a failure of that copy, and 28 (GOT_TIMEOUT) a
+ * server that did not answer within --connect-timeout or a transfer that
+ * stalled under the KDT_STALL_* rate, which the progress bar on the
+ * terminal leaves curl's stdout no room to tell apart. 22 is a
  * server that answered with an error — for a file that should be there, it is
  * not; 37 is a file:// path with nothing at it. Anything else reached
  * somebody, and is a failure of that copy.
@@ -2046,6 +2049,10 @@ static int download(const char *url, const char *out, int quiet)
 	kb_argv_add(&a, "2");
 	kb_argv_add(&a, "--connect-timeout");
 	kb_argv_add(&a, "30");
+	kb_argv_add(&a, "--speed-limit");
+	kb_argv_add(&a, KDT_STALL_BYTES);
+	kb_argv_add(&a, "--speed-time");
+	kb_argv_add(&a, KDT_STALL_SECS);
 	kb_argv_add(&a, "-o");
 	kb_argv_add(&a, out);
 	kb_argv_add(&a, "--");
@@ -2058,6 +2065,8 @@ static int download(const char *url, const char *out, int quiet)
 	if (rc == 5 || rc == 6 ||
 	    ((rc == 7 || rc == 28) && !kdt_have_route()))
 		return GOT_OFFLINE;
+	if (rc == 28)
+		return GOT_TIMEOUT;
 	return rc == 22 || rc == 37 ? GOT_ABSENT : GOT_FAIL;
 }
 
@@ -2221,6 +2230,11 @@ static int tree_fetch(const KpConf *c, const char *from, int quiet)
 		snprintf(url, sizeof(url), "%s/%s", base, TREE_FILE);
 		got = download(url, tar, quiet);
 	}
+	if (got == GOT_TIMEOUT)
+		return fetch_fail("fetch-failed", stage, "%s timed out: the "
+				  "server did not answer in 30 seconds, or less "
+				  "than " KDT_STALL_BYTES " bytes a second "
+				  "arrived for " KDT_STALL_SECS " seconds", url);
 	if (got != GOT_OK)
 		return got == GOT_OFFLINE
 			? fetch_fail("no-network", stage, "the network could "
@@ -2913,6 +2927,7 @@ static int image_fetch(const char *from, int quiet)
 		snprintf(msg, sizeof(msg), "no trusted key in %s can verify a "
 			 "release index", keyring_dir());
 		state_set("image", "no-key", msg);
+		fprintf(stderr, "kdos update: slot image: %s\n", msg);
 		return 1;
 	}
 	image_base(from, base, sizeof(base));
@@ -2930,9 +2945,18 @@ static int image_fetch(const char *from, int quiet)
 			[KDT_IMAGE_UNVERIFIED] = "unverified",
 		};
 		state_set("image", code[how], why);
+		/* Every outcome is said: the line above announced the fetch,
+		 * and a prompt coming back after it with nothing reads as a
+		 * hang cut short. No image is the binhost's turn, not a fault. */
 		if (how == KDT_IMAGE_UNVERIFIED)
 			fprintf(stderr, "kdos update: %s — it was not kept\n",
 				why);
+		else if (how == KDT_IMAGE_ABSENT) {
+			if (!quiet)
+				printf("slot image: none published; updates "
+				       "come from the binary host\n");
+		} else
+			fprintf(stderr, "kdos update: slot image: %s\n", why);
 		return how == KDT_IMAGE_ABSENT ? 0 : 1;
 	}
 	snprintf(msg, sizeof(msg), "image %s, signed by %s",
@@ -6977,6 +7001,7 @@ static int cmd_groups(const KpConf *c, int argc, char **argv)
 }
 
 static int cmd_install(const KpConf *c, int argc, char **argv);
+static int of_image(const KpConf *c, const char *name);
 /* Set by install_index() when its fetch of the release index failed. */
 static int index_fetch_refused;
 /* Set by install_index() when its fetch left no index in the cache:
@@ -7921,6 +7946,11 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			kb_strlcpy(ord->order[ord->n++], name,
 				   sizeof(ord->order[0]));
 	}
+	/* Read before anything is installed: the loop below writes origin
+	 * lines, and a line it failed to write would make a package new to
+	 * this system read as one of the image's and keep it off the world
+	 * set. */
+	int imaged = kp_installed(c, name) && of_image(c, name);
 	st = kb_calloc((size_t)ord->n + 1, sizeof(*st));
 	route = kb_calloc((size_t)ord->n + 1, sizeof(*route));
 	int need = 0, nbad = 0, npre = 0, nsrc = 0;
@@ -8054,7 +8084,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	if (build_check(c, built, nbuilt, 0, "; nothing was downloaded") != 0)
 		goto out;
 	if (!need) {
-		if (!installing_group && world_add(name) != 0) {
+		if (!installing_group && !imaged && world_add(name) != 0) {
 			fprintf(stderr, "kdos update: %s is installed and could "
 					"not be added to %s\n", name,
 				WORLD_FILE);
@@ -8156,7 +8186,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	unsetenv("KPKG_KEYRING");
 	unsetenv("KPKG_FETCH");
 	unsetenv("KPKG_FACETS");
-	if (rc == 0 && world_add(name) != 0) {
+	if (rc == 0 && !imaged && world_add(name) != 0) {
 		fprintf(stderr, "kdos update: %s is installed and could not be "
 				"added to %s; the next update removes it\n",
 			name, WORLD_FILE);
@@ -8181,11 +8211,14 @@ out:
 
 /*
  * WHAT A PERSON MAY REMOVE: a package in the world set, which somebody
- * installed on purpose (`kdos update install`, Discover), that no installed
- * package depends on, and a package LEFT BY A REMOVAL. Every other package is
- * part of the system: a package of the running image is updated and replaced
- * with the slot, and a package an installed one depends on would leave that
- * one unable to run.
+ * installed on purpose (`kdos update install`, Discover), that is not of the
+ * image and that no installed package depends on, and a package LEFT BY A
+ * REMOVAL. Every other package is part of the system: a package of the
+ * running image is updated and replaced with the slot, a world line
+ * included, and a package an installed one depends on would leave that one
+ * unable to run. An install of a package of the image writes no world line
+ * (of_image), so asking for one already there changes nothing a removal
+ * reads.
  *
  * A PACKAGE OF THE IMAGE is one with no line in the origin record, or one
  * whose database entry the root's image record (IMAGE_RECORD, the manifest
@@ -8442,6 +8475,20 @@ static int rm_of_image(char **origin, char **image, const char *name)
 	return !strv_has(origin, name) || strv_has(image, name);
 }
 
+/* 1 when installed `name` is a package of the image (rm_of_image). An
+ * install leaves such a package off the world set: it is the image's, it
+ * leaves with the system version, and a world line would pin it into every
+ * later slot. */
+static int of_image(const KpConf *c, const char *name)
+{
+	char **origin = origin_names();
+	char **image = image_packages(c, origin);
+	int r = rm_of_image(origin, image, name);
+	kb_strv_free(image);
+	kb_strv_free(origin);
+	return r;
+}
+
 /*
  * The packages a removal of `start` takes, in the order they are removed,
  * `start` first. A CANDIDATE is an installed package with an origin line,
@@ -8642,7 +8689,8 @@ static int cmd_removable(const KpConf *c, int argc, char **argv)
 	kb_buf_str(&lf, "");
 	for (int i = 0; i < nw; i++) {
 		if (!rm_installed(&g, world[i]) ||
-		    in_world(world, i, world[i]))
+		    in_world(world, i, world[i]) ||
+		    rm_of_image(origin, image, world[i]))
 			continue;
 		const char *by = rm_needed_by(&g, world[i]);
 		if (!json && !by) {
@@ -8690,17 +8738,16 @@ static int cmd_removable(const KpConf *c, int argc, char **argv)
 }
 
 /* Why `name` may not be removed, said on stderr, or 0 when it may: it is
- * installed, in the world set or left by removals (an origin line and not of
- * the image), and nothing installed depends on it. */
-static int rm_refused(const RmGraph *g, char **world, int nw, char **origin,
-		      char **image, const char *name)
+ * installed, not of the image (a world line does not make an image package
+ * removable), and nothing installed depends on it. */
+static int rm_refused(const RmGraph *g, char **origin, char **image,
+		      const char *name)
 {
 	const char *by = rm_needed_by(g, name);
 	if (!rm_installed(g, name))
 		fprintf(stderr, "kdos update: refused: %s is not installed\n",
 			name);
-	else if (!in_world(world, nw, name) &&
-		 rm_of_image(origin, image, name))
+	else if (rm_of_image(origin, image, name))
 		fprintf(stderr, "kdos update: refused: %s is part of the "
 				"system: it came with this version of KDOS or "
 				"with a package that needs it, and leaves "
@@ -8749,7 +8796,7 @@ static int cmd_remove(const KpConf *c, int argc, char **argv)
 	char **world = world_load(&nw);
 	char **origin = origin_names();
 	char **image = image_packages(c, origin);
-	rc = rm_refused(&g, world, nw, origin, image, name);
+	rc = rm_refused(&g, origin, image, name);
 	char **take = rc ? NULL
 			 : rm_closure(&g, world, nw, origin, image, name, &nr);
 	kb_strv_free(world);
@@ -8776,7 +8823,7 @@ static int cmd_remove(const KpConf *c, int argc, char **argv)
 	world = world_load(&nw);
 	origin = origin_names();
 	image = image_packages(c, origin);
-	rc = rm_refused(&g, world, nw, origin, image, name);
+	rc = rm_refused(&g, origin, image, name);
 	take = rc ? NULL
 		  : rm_closure(&g, world, nw, origin, image, name, &nr);
 	kb_strv_free(world);

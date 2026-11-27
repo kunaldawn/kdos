@@ -104,7 +104,7 @@ These come before the command word, and apply only under the name `kdos-appbox`.
 |---|---|
 | `-b NAME`, `--box NAME` | Run in the box `NAME` instead of the application's own box |
 | `-l ID`, `--launcher ID` | The launcher id the launch's windows take: the box, or the box and one more component. Every generated launcher passes one; see [The launch path](#the-launch-path) |
-| `-v`, `--verbose` | Let the container engine print to standard error. By default a child's standard error is discarded, so a click never sprays container messages at the desktop |
+| `-v`, `--verbose` | Let the container engine print to standard error, and a store build print its steps and `RUN` output to the terminal. By default a child's standard error is discarded, so a click never sprays container messages at the desktop, and a store build's output goes to its build log |
 | `-h`, `--help` | Print the usage summary to standard error and exit 0 |
 
 An unknown option exits 1 with a message. With no command, or with a command it does not know,
@@ -259,7 +259,7 @@ so it runs in a build container. `testing/selftest.sh` runs it against
 `testing/fixtures/catalogue/catalogue` and then reads the shipped catalogue with and without
 `--groups`. See [Testing](../05-developer/testing.md).
 
-The shipped catalogue carries 70 `app` rows and 2 `data` rows, built on 2 base rows (`alpine` and
+The shipped catalogue carries 69 `app` rows and 2 `data` rows, built on 2 base rows (`alpine` and
 `base`) and 7 runtimes (`rt-gtk`, `rt-qt`, `rt-kde`, `rt-media`, `rt-sci`, `rt-electron`,
 `rt-wine`), and groups them into 7 named groups: `essential`, `office`, `creative`, `dev`,
 `science`, `make` and `games`. Every runtime sits on `base` except `rt-kde`, which sits on `rt-qt`.
@@ -294,14 +294,35 @@ building. It tracks what the same run has already covered, so a preview of two G
 shows the runtime once, as a real install would build it.
 
 Before it builds anything, install asks whether the build fits. Every row of the chain still to
-build counts: twice its `meta` size (the downloaded packages sit beside the unpacked ones), or
-384 MiB for a row that carries no size. The base and runtime rows carry sizes measured by building
-each one on trixie: what its image adds on disk over its parent's, and for a base its whole image. When that is more than the free space
+build counts: twice its `meta` size (the downloaded packages sit beside the unpacked ones, and the
+commit writes a copy of the layer) plus 128 MiB for what the packages' maintainer scripts write
+and the caches the layer copies up from its parent, or 384 MiB for a row that carries no size. A row's size is what its image adds on disk over its
+parent's, and for a base its whole image. The base and runtime sizes were measured with `du` of each
+built image on trixie; the application and data sizes are the summed `Installed-Size` of every
+package the row's chain installs and its parent's chain does not, as `apt-get install -s
+--no-install-recommends` resolves them at the catalogue's snapshot, and for the `deb` row the
+package's own `Installed-Size` as well. `testing/catsizes.py` computes them and, with `--write`,
+rewrites the application and data rows' `meta` lines. When that is more than the free space
 where podman keeps its images (`$XDG_DATA_HOME/containers/storage`, or the nearest directory of it
 that exists), install builds nothing for that application and prints `<id>: not enough room — the
 build needs about <N> and <M> is free where podman keeps its images`; on a live session, where that
-is the memory overlay, the sentence adds that everything the session writes shares it. A
+is the memory overlay, the sentence adds that everything the session writes shares it, and to
+install it on an installed system, on a live session with a persistent store (`kdos persist`), or
+on a machine with more memory. A
 `deb:<package>` install asks the same of its base row.
+
+The check is an estimate from sizes measured on one day's snapshot, so a build can still run out of
+room, most often on a live session. Each row's build writes both of the container engine's output
+streams to `~/.cache/kdos-appbox/build-<id>.log` (under `$XDG_CACHE_HOME` when that is set),
+replaced by the next build of that row: the steps and every `RUN`'s output from standard output, and
+podman's final `Error:` line, which names the reason, from standard error. When a build fails,
+install prints `the build's last lines (all of it: <log>)` and the last eight lines of the log on
+standard error, which hold apt's or podman's own reason, such as a package with no installation
+candidate or `no space left on device`, before `<id>: <row> did not build`. A line longer than 300
+characters is printed as its first 100 and its last 180, joined by `…`: podman's `Error:` line
+repeats the whole `RUN` and puts its reason at the end. Under `-v` the build draws on the terminal
+as it runs instead, and no log is written. When the log cannot be created, install says so, with
+the reason, and runs the build on the terminal the same way.
 
 Nothing rolls back. Six applications where the fourth fails to build leaves the other five's images
 built and names the fourth: what one application built is not harmed by a later one failing, and
@@ -482,7 +503,7 @@ and counts it as a failure.
 | `list` | Every container, its image, its state, and `custom` or `default` depending on whether a profile file exists |
 | `apps` | Every row of both name-to-command tables: the name, `baked` (the system table) or `user`, then the command and, when the row has one, the pack it runs in |
 | `warmup` | Composes and starts the boxes your favourites file names, each with its keeper. See [Warmup and collection](#warmup-and-collection) |
-| `status` | What the pack daemon reports, then the state of the box named with `-b`, which defaults to the placeholder name `kdos-apps`, and the `state :` lines of the boundary its last launch recorded (see [Confinement](#confinement)). When the daemon refuses, the first line is its reason, `packd : <reason>`: a user who is neither root nor in `wheel` sees `packd : not permitted`, and a refusal with no reason prints `packd : refused`. `packd : not answering` means only that no daemon answered on the socket, or its reply could not be read |
+| `status` | What the pack daemon reports, then the state of the box named with `-b` as `box   : created (<state>)` or `box   : not created (first launch will) (absent)`, and the `state :` lines of the boundary its last launch recorded (see [Confinement](#confinement)). With no `-b` it lists every box made from a store image instead, one `store : <box> (<state>)` line each, or `store : none`, followed by the box line only when the placeholder box `kdos-apps` exists; when podman cannot be asked it prints the placeholder's line as with `-b`. When the daemon refuses, the first line is its reason, `packd : <reason>`: a user who is neither root nor in `wheel` sees `packd : not permitted`, and a refusal with no reason prints `packd : refused`. `packd : not answering` means only that no daemon answered on the socket, or its reply could not be read |
 
 ### store --selftest
 
@@ -506,7 +527,7 @@ tagline may contain one.
 | `image` | `image <base-id> <ref>` | A base built `FROM` that image instead of `debian:trixie-slim`. `alpine` is `alpine:3.24.1` |
 | `env` | `env <id> NAME=VALUE` | A variable for every launch of a store box whose chain contains this row, and an `env =` line in an exported pack's metadata. See [The environment a box gets](#the-environment-a-box-gets) |
 | `needs` | `needs <app-id> <data-id> …` | Data rows installed together with the application |
-| `deb` | `deb <id> <releases-api-url> <asset-pattern>` | A package Debian does not carry: the first download URL in the API's answer that matches the pattern is fetched and handed to apt. The shipped row, `app.vscodium`, asks the API for the latest release |
+| `deb` | `deb <id> <releases-api-url> <asset-pattern>` | A package Debian does not carry: the first download URL in the API's answer that ends in the pattern (so `amd64.deb` never takes the `amd64.deb.sha256` beside it) is fetched, checked with `dpkg-deb --info` and handed to apt. An answer with no such URL — the query failed, GitHub refused it (it answers 60 unauthenticated queries an hour from one address), or the release has none — stops the build with `<id>: no release asset ends in <pattern>. The query failed, was refused (GitHub answers 60 unauthenticated queries an hour) or lists none: <url>`, which the build's last lines show. The pattern may hold only letters, digits and `. _ + -`; another character, or a `'` in the URL, makes no Containerfile. The shipped row, `app.vscodium`, asks the API for the latest release |
 | `about` | `about <id> <licence>\|<author>\|<homepage>\|<description>` | What Discover shows on the page of an application no Debian component describes, such as a `deb` row's; a component fills only the fields it leaves empty. The description is the rest of the line, as plain text. Read by Discover alone, in any position; kdos-appbox, `kinstall` and `kdos app` skip it |
 | `cmd` | `cmd <id> <name>` | A command the application provides. Each becomes a shim and a table row when your launchers are regenerated from the store boxes, and a `command =` line in an exported pack |
 | `graft`, `boxgraft` | `graft <id> <from> <to>`, `boxgraft <id> <from> <to>` | Where a data row's files land, on the host and inside a box. They travel as `graft =` and `boxgraft =` lines in the data row's exported pack, and `kdos-packd` lands them when `import` installs that pack; a data row the store builds is an image and is grafted nowhere |
@@ -882,7 +903,9 @@ whose id is the box's name.
 A store box (`base=image:kdos/<id>`, named after its catalogue row) has no vendor label to carry
 the fact, so it gets the catalogue's `env <row> NAME=VALUE` rows for its whole chain, base first:
 `rt-qt` sets `QT_QPA_PLATFORMTHEME=gtk3` and `QT_STYLE_OVERRIDE=Fusion`, `rt-kde` sets
-`QT_QPA_PLATFORMTHEME=kde`, `app.heaptrack` sets the `rt-qt` pair again, `rt-media` points
+`QT_QPA_PLATFORMTHEME=kde`, `app.heaptrack` sets the `rt-qt` pair again (`rt-qt` carries the
+Breeze GTK theme that `gtk3` platform theme reads; without it the theme falls back to a light
+palette), `rt-media` points
 `LD_LIBRARY_PATH` at PipeWire's JACK library, and `app.surf` sets `GDK_BACKEND=x11`.
 
 Any other image box is themed from its image's labels: `QT_QPA_PLATFORMTHEME=kde` when it carries
@@ -1002,8 +1025,8 @@ name. A generated entry carries upstream's `Name`, `Categories`, `GenericName`, 
 `Terminal`, upstream's `Keywords` with `box` added (so the boxed copy of a program the host also
 carries can be told apart in KRunner), an `Icon` naming the exported icon (upstream's own name when
 no icon file could be copied), a `Comment` of `<generic name> — in the box <pack>`, the rewritten
-`Exec`, `StartupWMClass=<launcher-id>`, and for a pack application `X-KDOS-Box=<pack>` and
-`X-KDOS-Upstream=<upstream desktop id>`.
+`Exec`, a `StartupWMClass` (see the naming rules), and for a pack application `X-KDOS-Box=<pack>`
+and `X-KDOS-Upstream=<upstream desktop id>`.
 
 ### Naming rules
 
@@ -1021,12 +1044,19 @@ no icon file could be copied), a `Comment` of `<generic name> — in the box <pa
   exactly that name; under upstream's id every boxed window would show a generic icon beside a pin
   that never lights. It also keeps a boxed copy and a host copy of one program apart, which the
   Start menu and Open With need.
-- `StartupWMClass` is the launcher id as well, since an X11 application under Xwayland is matched
-  to its entry by it.
+- `StartupWMClass` names the class an X11 window of the program has, since an X11 application under
+  Xwayland carries no socket tag and the Task Manager matches its window to an entry by its
+  `WM_CLASS`: the `WMCLASS` table's class for the program, otherwise upstream's own
+  `StartupWMClass`, otherwise the launcher id. A tagged Wayland window is matched by its launcher
+  id whatever this says. KWin adds the box's host name to an X11 window's title, as
+  `ImageJ <@app.imagej.<host>>`: a box's host name is `<box>.<host>`, which differs from the
+  machine's, and KWin shows a window's client machine whenever it differs. A Wayland window's
+  title carries no suffix.
 - A shim is named after the program its entry runs, through the one function that decides which
   program a command line runs (it skips an `env` prefix and looks inside an `sh -c` wrapper). A
   reverse-DNS entry therefore gets a shim named after the real program. The `RENAME` table wins
-  where upstream's name is not the one people use, and a reserved name, a name a host program in
+  where upstream's name is not the one people use, matched against the desktop id and then against
+  the program, and a reserved name, a name a host program in
   `/usr/bin` already answers to, or one with characters outside `A-Z a-z 0-9 . _ + -`, falls back to
   the lower-cased desktop id.
 - A terminal entry stays one. The generated launcher keeps upstream's `Terminal=` flag, and the
@@ -1040,18 +1070,21 @@ These live in `launchers.c`.
 | Table | Holds |
 |---|---|
 | `COMMANDS` | `wine`, `winecfg`, `winetricks`: programs used as commands, which get a table row and a shim but deliberately no desktop entry, because a launcher for `wine` with no arguments opens nothing. Written only where `usr/bin/<name>` exists three directories above the applications directory being read |
-| `ENTRIES` | Applications that ship no desktop entry at all, with the entry written here: `surf`, which then claims `text/html`, `application/xhtml+xml`, `http` and `https`. A browser with no launcher claims no URL scheme, so installing it would change nothing about what opens a link. Written only where the binary is present, by the same rule |
-| `RENAME` | 60 upstream ids people do not use, mapped to the names they do: `firefox-esr` → `firefox`, `org.inkscape.Inkscape` → `inkscape`, `codium` → `vscodium`, and 57 more |
+| `ENTRIES` | Applications that ship no desktop entry at all, with the entry written here: `surf`, which then claims `text/html`, `application/xhtml+xml`, `http` and `https`. A browser with no launcher claims no URL scheme, so installing it would change nothing about what opens a link. Written only where the binary is present, by the same rule, or, for a store box, where the catalogue row's own package list names the package that installs it (`surf`) |
+| `RENAME` | 60 upstream ids or programs people do not use, mapped to the names they do: `firefox-esr` → `firefox`, `org.inkscape.Inkscape` → `inkscape`, the program `codium` → `vscodium`, and 57 more |
+| `WMCLASS` | The X11 class of a boxed program whose entry does not name it, by shim name: `imagej` → `ij-ImageJ`, `jmol` → `org-openscience-jmol-app-jmolpanel-JmolPanel`, `pymol` → `PyMOL`, `surf` → `Surf` |
 | `RESERVED` | Names no shim may take and the sweep must not delete: shell and system tools, `kdos`, `konsole`, the native `git`, `gnuplot` and `mpv`, SoX's `sox`, `soxi`, `play` and `rec`, the package tools, several KDOS commands, and this program's own three names |
-| `EXEC_EXTRA` | Arguments needed only because the application is containerised, inserted before any field code: VSCodium gets `--no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing` |
+| `EXEC_EXTRA` | Arguments needed only because the application is containerised, inserted before any field code and keyed on the program the `Exec` runs, not on the desktop id, which upstream renames: the program `codium` (VSCodium, whose entry is `com.visualstudio.CodeOSS.desktop`) gets `--no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing` |
 | `SKIP_HOST_ONLY` | `org.kde.spectacle`. Spectacle captures through KWin's screenshot interface on the session bus, which a box's bus filter hides, so a boxed copy opens on an error; the host's Spectacle is the screenshot tool |
 | `SKIP_ROOTLESS_INERT` | GParted, GSmartControl, GNOME Disks, TestDisk, Baobab-as-root and Timeshift: they need raw block devices, which a rootless container cannot give. Use the native recovery tools instead |
-| `SKIP_PREFIXES`, `SKIP_BASENAMES` | Entries that are not applications: settings panels, helpers, URL handlers, secondary tools of a suite, and KDE's own daemons' entries |
+| `SKIP_PREFIXES`, `SKIP_BASENAMES` | Entries that are not applications: settings panels, helpers, URL handlers (VSCodium's `com.visualstudio.CodeOSS.UrlHandler`), secondary tools of a suite, and KDE's own daemons' entries; the entries a dependency drops into the image (`debian-xterm` and `debian-uxterm` from xterm under Grace and GRASS, `tkcon-console` under DS9); a second entry for one program (ParaView's plain `paraview`, ZynAddSubFX's ALSA, OSS and multi-channel variants); and the 185 `in.lsp_plug.*` entries, one JACK host per LSP plugin |
 | `X11_FORCING` | `GDK_BACKEND=x11`, `CLUTTER_BACKEND=x11`, `QT_QPA_PLATFORM=xcb`, `SDL_VIDEODRIVER=x11`, `MOZ_ENABLE_WAYLAND=0`, `ELECTRON_OZONE_PLATFORM_HINT=x11`, stripped from an `env` prefix on an `Exec` line. The catalogue's `env` rows are where an application that has a Wayland backend but must not use it records so (`app.surf` sets `GDK_BACKEND=x11`); see [Box profiles](#box-profiles) |
 
 Both `COMMANDS` and `ENTRIES` need the binary in the tree being read, as an installed pack has it.
-A store install copies only `usr/share/applications` out of the image, so a store
-box gets neither the `wine` shims nor the `surf` entry.
+A store install copies only `usr/share/applications` and the icons out of the image, so a store box
+has no `usr/bin` to probe: it gets an `ENTRIES` entry when its catalogue row's own package list names
+the entry's package, which is how `app.surf` gets its launcher, shim and URL handler, and it never
+gets the `wine` shims, which would shadow the host's own `wine` on the path.
 
 `RESERVED` is consulted when shims are swept as well as when they are written. The sweep removes
 every symbolic link in the shim directory whose target is relative (the system tree) or is

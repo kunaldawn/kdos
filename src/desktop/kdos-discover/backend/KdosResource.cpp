@@ -29,7 +29,6 @@
 #include <KShell>
 
 #include <QDir>
-#include <QDirIterator>
 #include <QFileInfo>
 #include <QIcon>
 #include <QProcess>
@@ -335,23 +334,22 @@ bool KdosResource::isRemovable() const
     }
 }
 
-// The launcher genlaunchers wrote for this box: `Exec=kdos-appbox -b <box> run
-// ...` in the user's applications directory, marked X-KDOS-Alien.
-static KService::Ptr boxedLauncher(const QString &box)
+QHash<QString, BoxLauncher> boxLaunchers()
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
-    QDirIterator it(dir, {u"*.desktop"_s}, QDir::Files);
-    while (it.hasNext()) {
-        const QString path = it.next();
+    QHash<QString, BoxLauncher> out;
+    const QDir dir(QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation));
+    const QStringList files = dir.entryList({u"*.desktop"_s}, QDir::Files, QDir::Name);
+    for (const QString &f : files) {
+        const QString path = dir.filePath(f);
         KDesktopFile df(path);
         const KConfigGroup g = df.desktopGroup();
         if (!g.readEntry("X-KDOS-Alien", false) || df.noDisplay())
             continue;
         const QStringList args = KShell::splitArgs(g.readEntry("Exec"));
-        if (args.size() >= 3 && args[0] == "kdos-appbox"_L1 && args[1] == "-b"_L1 && args[2] == box)
-            return KService::Ptr(new KService(path));
+        if (args.size() >= 3 && args[0] == "kdos-appbox"_L1 && args[1] == "-b"_L1 && !out.contains(args[2]))
+            out.insert(args[2], BoxLauncher{path, df.readIcon()});
     }
-    return {};
+    return out;
 }
 
 bool KdosResource::canExecute() const
@@ -362,6 +360,9 @@ bool KdosResource::canExecute() const
         return !QStandardPaths::findExecutable(u"konsole"_s).isEmpty();
     if (m_entry.lane == Lane::Port || m_entry.lane == Lane::PortSource)
         return !m_entry.desktopId.isEmpty();
+    // A row whose box gives the host only commands has no window to launch.
+    if (m_entry.launcher.isEmpty() && !m_entry.commands.isEmpty())
+        return false;
     return !m_entry.box.isEmpty() && m_entry.kind != "data"_L1;
 }
 
@@ -394,7 +395,12 @@ void KdosResource::invokeApplication() const
                 break;
         }
     } else {
-        service = boxedLauncher(m_entry.box);
+        // The launcher the last refresh saw, else one written since.
+        QString path = m_entry.launcher;
+        if (path.isEmpty() || !QFileInfo::exists(path))
+            path = boxLaunchers().value(m_entry.box).path;
+        if (!path.isEmpty())
+            service = KService::Ptr(new KService(path));
     }
     if (!service) {
         Q_EMIT backend()->passiveMessage(i18n("%1 has no launcher yet. Run “kdos-appbox genlaunchers --packs --user” and try again.", name()));
@@ -458,6 +464,13 @@ QString KdosResource::kdosNotice() const
     const Entry &e = m_entry;
     switch (e.lane) {
     case Lane::Catalogue:
+        if (e.state != EntryState::None && e.launcher.isEmpty() && !e.commands.isEmpty() && !e.box.isEmpty())
+            return e.commands.size() == 1
+                ? i18n("%1 is a command, not a window: type %2 in a terminal and it runs in the box “%3”.", e.name, e.commands.first(), e.box)
+                : i18n("%1 gives commands, not a window: type %2 in a terminal and each runs in the box “%3”.",
+                       e.name,
+                       e.commands.join(i18nc("@info separator of command names", ", ")),
+                       e.box);
         if (e.state != EntryState::None)
             return {};
         if (e.packOrigin == "store"_L1)
@@ -472,7 +485,13 @@ QString KdosResource::kdosNotice() const
             return {};
         return i18n("Built on this computer from the Debian package %1, in a box of its own. This needs a network connection.", e.packages.value(0));
     case Lane::Set:
-        return i18np("Installs one application from the KDOS catalogue.", "Installs %1 applications from the KDOS catalogue, one after another.", int(e.members.size()));
+        if (e.vendorDeb)
+            return i18np("Builds one application of the KDOS catalogue on this computer, in a box of its own, from Debian packages and its publisher's own .deb release. This needs a network connection.",
+                         "Builds %1 applications of the KDOS catalogue on this computer, one after another, each in a box of its own, from Debian packages and, for some, their publisher's own .deb release. This needs a network connection.",
+                         int(e.members.size()));
+        return i18np("Builds one application of the KDOS catalogue on this computer, in a box of its own, from Debian packages. This needs a network connection.",
+                     "Builds %1 applications of the KDOS catalogue on this computer, one after another, each in a box of its own, from Debian packages. This needs a network connection.",
+                     int(e.members.size()));
     case Lane::Pack:
         if (e.packOrigin == "medium"_L1)
             return i18n("On the KDOS medium. Installing copies it into the pack store, where kdos-packd checks it.");

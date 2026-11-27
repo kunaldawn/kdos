@@ -84,7 +84,7 @@ to open a window, and nothing in a package says which toolkit a program draws wi
 is at most `tagged`, and `x11 = no` is what confines one. [`kdos-appbox`]{.idx} sets `DISPLAY` and
 the cookie itself (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=561-570 pin=bd6bddc350ab -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=563-572 pin=bd6bddc350ab -->
 
 It also exports `QT_QPA_PLATFORM=wayland;xcb` and `SDL_VIDEODRIVER=wayland,x11` into every box,
 because Qt 5 and SDL 2 would otherwise take `DISPLAY` over the tagged Wayland socket; a catalogue
@@ -94,7 +94,7 @@ When `kdos-appbox` writes launchers for a boxed application, it removes from the
 line the assignments that would force X11, so an application whose distribution entry asks for
 X11 runs on Wayland:
 
-<!-- kfs:include src/system/kdos-appbox/launchers.c lines=282-286 pin=9b7f3a80babb -->
+<!-- kfs:include src/system/kdos-appbox/launchers.c lines=326-330 pin=9b7f3a80babb -->
 
 ## Usage
 
@@ -186,6 +186,11 @@ the box's own Mesa: an X11 client in a box draws with its box's libraries. Compa
   does, is answered by PowerDevil, so the screen does not dim during playback.
 - An X11 window from a box carries no box tag, so it has no box colour on its title bar and none
   of the box's restrictions at KWin. That is why a box is handed the display only when it needs it.
+  Its title ends in the box's host name, as `ImageJ <@app.imagej.<host>>`: KWin shows an X11
+  window's client machine when it differs from this one's, and a box's host name is
+  `<box>.<host>`. The Task Manager finds its launcher by the window's class, which the generated
+  launcher's `StartupWMClass` names; see
+  [Naming rules](../../kdos/04-programs/kdos-appbox.md#naming-rules).
 - The on-screen keyboard never rises by itself for an X11 window, which does not speak the
   text-input protocol; show it from the system tray.
 - `kdos why /usr/bin/Xwayland` names the package and recipe it came from.

@@ -1,0 +1,8 @@
+{
+  "truncated": false,
+  "processes": [
+    {"pid": 4100, "comm": "kmail", "exe": "/usr/bin/kmail", "replaced": false, "packages": []},
+    {"pid": 4101, "comm": "akonadiserver", "exe": "/usr/bin/akonadiserver", "replaced": false, "packages": []}
+  ],
+  "count": 2
+}

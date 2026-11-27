@@ -147,7 +147,9 @@ kdos restarts
 ```
 
 It lists each running process that still maps a library or program an upgrade replaced, with the
-packages concerned. Restart each one, or log out and back in for the desktop's own. Exit 0, with
+packages concerned. Restart each one, or log out and back in for the desktop's own. A process
+still running a program that was removed, not replaced, is listed with `removed, no newer
+version`: closing it is all there is to do. Exit 0, with
 `Nothing is running deleted code.`, means nothing is running old code, and exit 1 means something
 is. A process whose memory map the caller cannot read is skipped, so run `sudo kdos restarts` to
 cover the daemons and every other account's processes.

@@ -37,10 +37,13 @@ case "$1" in
         # console logging off when it opens the kernel log, and a verbose
         # boot would go silent on the screen here. 20_dmesg.sh is the other
         # half of that rule.
+        # -T stamps every line with syslogd's own local time: musl's
+        # syslog() writes its timestamp in UTC, so on any other time zone
+        # a program's lines would sit an offset away from the kernel's.
         _keep=()
         grep -qw quiet /proc/cmdline 2>/dev/null || _keep=(-l)
         mkdir -p /run/syslogd
-        supervise "$NAME" "$DAEMON" -F -8 "${_keep[@]}" -P /run/syslogd/syslogd.pid
+        supervise "$NAME" "$DAEMON" -F -8 -T "${_keep[@]}" -P /run/syslogd/syslogd.pid
         ;;
     stop)
         stop_service "$NAME"

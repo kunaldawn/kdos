@@ -356,7 +356,8 @@ own C, a client of `org.freedesktop.Notifications` linked to basu, started by
 | "This computer's hardware needs firmware-nvidia", with the device in the body and Install | `kdos firmware sync --dry-run --json` | yes |
 
 A notice is posted once per change of what it is about. Each kind reduces its facts to a key (the
-set of processes running replaced code, the set of findings, the boot and its slot, the failed
+set of processes running replaced code, which leaves out a process still running a program that
+was removed and not replaced, the set of findings, the boot and its slot, the failed
 slot, the installer's pending selections and groups, the firmware ports named) and posts only when the key differs from the last one posted, which
 `$XDG_STATE_HOME/kdos/notice` keeps across logins: the same vulnerability list is not announced at
 every login, and a changed one replaces the old notification. A notice whose state ends is

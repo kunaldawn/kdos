@@ -78,6 +78,33 @@ static bool rootStep(const Step &step)
     return step.program == "pkexec"_L1;
 }
 
+// How pkexec ended a root step at the password, told by its exit and the
+// line it prints. Only before the helper's first line, which the step stays
+// in SetupStatus until: once the helper runs as root, an exit of 126 or 127
+// is its own.
+//   Dismissed      126: the dialog was closed. The person's own no.
+//   NotAuthorized  127, "...: Not authorized": the KDE agent's Cancel answers
+//                  this way, and so does polkit refusing the account. The
+//                  step ends Cancelled, and a passive message names both,
+//                  since the exit cannot tell them apart.
+//   anything else  a failure with pkexec's own line, "No authentication
+//                  agent found." among them: no dialog was ever shown.
+enum class Refusal { None, Dismissed, NotAuthorized };
+
+static Refusal refusedAtPassword(int code, const QStringList &stderrTail, Transaction::Status status)
+{
+    if (status != Transaction::SetupStatus)
+        return Refusal::None;
+    if (code == 126)
+        return Refusal::Dismissed;
+    if (code == 127
+        && std::any_of(stderrTail.cbegin(), stderrTail.cend(), [](const QString &l) {
+               return l == "Error executing command as another user: Not authorized"_L1;
+           }))
+        return Refusal::NotAuthorized;
+    return Refusal::None;
+}
+
 KdosTransaction::~KdosTransaction()
 {
     if (m_process && m_process->state() != QProcess::NotRunning) {
@@ -200,6 +227,18 @@ void KdosTransaction::runStep()
         }
         if (how != QProcess::NormalExit) {
             fail(i18n("%1 stopped before it finished.", p->program()));
+            return;
+        }
+        const Refusal refusal = code != 0 && rootStep(m_plan.steps.at(m_step)) ? refusedAtPassword(code, m_stderrTail, status())
+                                                                                 : Refusal::None;
+        if (refusal == Refusal::NotAuthorized)
+            Q_EMIT passiveMessage(role() == RemoveRole
+                                      ? i18n("%1 was not removed: the password was not given, or this account may not change the system.",
+                                             resource()->name())
+                                      : i18n("%1 was not installed: the password was not given, or this account may not change the system.",
+                                             resource()->name()));
+        if (refusal != Refusal::None) {
+            finish(CancelledStatus);
             return;
         }
         if (code != 0) {

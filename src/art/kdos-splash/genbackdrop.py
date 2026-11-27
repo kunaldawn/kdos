@@ -48,8 +48,8 @@
 # which is why the plate is opaque rather than the artwork being moved.
 #
 # AND THE CAPTIONS ARE DROPPED. At this height the two lines of small print
-# are three pixels tall: including them costs the wordmark a third of its own
-# height to render something nobody can read.
+# are three pixels tall, nothing anybody can read. They are blacked out
+# rather than cropped away, because they sit beside the penguin's legs.
 #
 # THE INK IS THE MAX CHANNEL, NOT THE LUMINANCE. The wordmark is phosphor
 # green — (57, 255, 20) — which Rec.601 puts at 169 while the penguin's white
@@ -99,9 +99,14 @@ SIZE = (1920, 1080)
 # the opaque plate shows as a box on this floor. Change one, change both.
 FLOOR = (10, 10, 9)
 
-# THE INK OF THE PENGUIN AND THE LETTERS, measured in the 960x280 source.
-# The ruled frame and the two caption lines are left out — see the header.
-CROP = (67, 38, 754, 182)
+# THE INK OF THE PENGUIN AND THE LETTERS, measured in the 960x280 source:
+# the whole penguin, feet included, and the wordmark beside it. The ruled
+# frame is outside the box. The two caption lines sit under the wordmark
+# inside it, so CAPTIONS, in the same coordinates, is blacked out before
+# anything else — see the header. A box that stopped above the captions
+# would cut the penguin off at the waist.
+CROP = (60, 34, 758, 258)
+CAPTIONS = (250, 186, 758, 258)
 
 # What the border ring measures at, and what is subtracted to take it to zero.
 BLACK_POINT = 64
@@ -119,7 +124,9 @@ HERO_PEAK = 235
 
 
 def build() -> Image.Image:
-    src = Image.open(SRC).convert("RGB").crop(CROP)
+    src = Image.open(SRC).convert("RGB")
+    src.paste((0, 0, 0), CAPTIONS)
+    src = src.crop(CROP)
 
     # The largest channel, floored at the border's own level and stretched to
     # the peak. int32, NOT int16: the stretch multiplies by HERO_PEAK before

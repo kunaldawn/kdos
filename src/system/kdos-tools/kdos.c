@@ -2497,7 +2497,8 @@ static int cmd_notify(int argc, char **argv)
  * -h or --help, many on stderr and with 2, because it is the same message a
  * wrong argument earns. Those are run as they are, with stderr on stdout,
  * and answer 0 whatever they returned. The verbs below have no usage message that
- * --help reaches — `why` would look up a port named --help, `toggle` a
+ * --help reaches — `help` would refuse it as a wrong argument, `why` would
+ * look up a port named --help, `toggle` a
  * toggle, `settings` would open System Settings — and print their line from
  * here instead, without being run at all. A verb added to kdos_main()
  * belongs in this table unless its first-argument --help prints its usage
@@ -2506,6 +2507,7 @@ static int cmd_notify(int argc, char **argv)
 static const struct {
 	const char *verb, *usage;
 } USAGE[] = {
+	{ "help", "usage: kdos help [--keys] [--pager]\n" },
 	{ "status", "usage: kdos status [--bar]\n" },
 	{ "toggle", "usage: kdos toggle [<name> [on|off]]\n"
 		    "       names: stay-awake, night-light, dnd, "
@@ -2536,8 +2538,7 @@ int kdos_main(int argc, char **argv)
 	const char *cmd = argc > 1 ? argv[1] : "help";
 	int rc;
 
-	if (argc > 2 && is_help_arg(argv[2]) && strcmp(cmd, "help") &&
-	    !is_help_arg(cmd)) {
+	if (argc > 2 && is_help_arg(argv[2]) && !is_help_arg(cmd)) {
 		int saved;
 
 		for (size_t i = 0; i < sizeof(USAGE) / sizeof(USAGE[0]); i++)

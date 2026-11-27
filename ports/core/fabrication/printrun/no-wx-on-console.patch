@@ -1,3 +1,5 @@
+Subject: Import settings without wxPython, for the console client
+
 --- a/printrun/settings.py
 +++ b/printrun/settings.py
 @@ -20,10 +20,24 @@
@@ -10,12 +12,12 @@
 -from .gui.widgets import get_space
 +
 +# wx IS A GUI DEPENDENCY AND THIS MODULE IS ON THE CONSOLE PATH. pronsole
-+# imports Settings from here, and an unguarded `import wx` therefore makes the
-+# terminal client refuse to start on a machine with no wxPython — which is
-+# every machine that has only the console client installed. Every use of wx in
-+# this file is inside a method that builds a widget, so the import is deferred
-+# to that point: a GUI build reaches it exactly as before, and a console
-+# session never does.
++# imports Settings from here, so anything this module evaluates at import
++# time must not need wx, or the terminal client refuses to start on a machine
++# with no wxPython. Every use of wx and get_space is inside a method that
++# builds a widget, ComboSetting's default width included, which is worked out
++# when its widget is built rather than as a default argument: a GUI build
++# reaches each exactly as before, and a console session never does.
 +try:
 +    import wx
 +    from .gui.widgets import get_space
@@ -27,3 +29,22 @@
  
  def setting_add_tooltip(func):
      @wraps(func)
+@@ -199,13 +213,16 @@
+ class ComboSetting(wxSetting):
+ 
+     def __init__(self, name, default, choices, label = None, help = None,
+-                 group = None, size = 7 * get_space('settings')):
++                 group = None, size = None):
+-        # size: Default length is set here, can be overwritten on creation.
++        # size: None takes the default length when the widget is built; a
++        # caller may pass its own on creation.
+         super().__init__(name, default, label, help, group)
+         self.choices = choices
+         self.size = size
+ 
+     def get_specific_widget(self, parent):
++        if self.size is None:
++            self.size = 7 * get_space('settings')
+         readonly = isinstance(self.choices, tuple)
+         if readonly:
+             # wx.Choice drops its list on click, no need to click down arrow

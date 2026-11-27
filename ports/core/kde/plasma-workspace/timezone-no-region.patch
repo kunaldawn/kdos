@@ -1,0 +1,41 @@
+Subject: time zone selector: accept a zone with no region, such as UTC
+
+split() assumed every zone id has a slash, so "UTC" became the region
+"UT" and the location "UTC", and the location combo box was given
+areasByRegion["UT"], which is undefined; the next line's indexOf then
+threw a TypeError in both the desktop and the mobile layout. A zone
+with no slash is now its own region with no location, and a region the
+table does not have gives the location box an empty list.
+
+diff --git a/components/timezoneselector/TimezoneSelector.qml b/components/timezoneselector/TimezoneSelector.qml
+index dad1bb1..a33bc2e 100644
+--- a/components/timezoneselector/TimezoneSelector.qml
++++ b/components/timezoneselector/TimezoneSelector.qml
+@@ -94,6 +94,9 @@ Item {
+     // This splits "a/b/c_d" to ["a", "b, c d"]
+     function split(id: string): list<string> {
+         let i = id.indexOf("/")
++        if (i < 0) {
++            return [root.understandable(id), ""]
++        }
+         return [root.understandable(id.slice(0, i)), root.understandable(id.slice(i + 1))]
+     }
+ 
+@@ -154,7 +157,7 @@ Item {
+                 target: root
+                 function onSelectedTimeZoneChanged() {
+                     let [prefix, suffix] = root.split(root.selectedTimeZone)
+-                    mobileLocationComboBox.model = root.areasByRegion[prefix]
++                    mobileLocationComboBox.model = root.areasByRegion[prefix] ?? []
+                     mobileLocationComboBox.currentIndex = mobileLocationComboBox.model.indexOf(suffix)
+                 }
+             }
+@@ -391,7 +394,7 @@ Item {
+                         target: root
+                         function onSelectedTimeZoneChanged() {
+                             let [prefix, suffix] = root.split(root.selectedTimeZone)
+-                            locationComboBox.model = root.areasByRegion[prefix]
++                            locationComboBox.model = root.areasByRegion[prefix] ?? []
+                             locationComboBox.currentIndex = locationComboBox.model.indexOf(suffix)
+                         }
+                     }

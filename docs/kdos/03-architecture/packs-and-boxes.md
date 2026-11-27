@@ -77,7 +77,7 @@ counts every line kind in the shipped file:
 |---|---|---|
 | `base` | A whole root filesystem | 2 |
 | `runtime` | A layer over the base, shared by many applications | 7 |
-| `app` | One application, as a difference over a runtime or the base | 70 |
+| `app` | One application, as a difference over a runtime or the base | 69 |
 | `data` | A dataset, mounted but never composed into a container | 2 |
 | `image` | A base that names its own container image, `image <base> <ref>` | 1 |
 | `snapshot` | Which Debian archive date the packages come from | 1 |
@@ -116,7 +116,7 @@ with a missing parent) while the other members still install.
 
 **`meta` is optional.** Its form is `meta <id> <name>|<category>|<bytes>|<tagline>`, separated by
 pipes because a tagline contains spaces. In the shipped file every `app` and `data` row has one,
-which is why `kdos app list --all` prints 72 entries: the 70 applications and the 2 data rows. A
+which is why `kdos app list --all` prints 71 entries: the 69 applications and the 2 data rows. A
 row without one presents as its own id, category `Other`, no tagline and size 0, so adding software
 is a one-line change. The size is an estimate and every surface labels it as one: what apt resolves
 on the day depends on the snapshot.

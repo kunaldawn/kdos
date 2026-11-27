@@ -1,0 +1,21 @@
+Subject: webshortcuts KCM: a page just loaded has nothing to save
+
+FilterOptions::load() sets the default engine, the two check boxes and
+the delimiter, and each of those widgets' change signals is connected to
+markAsChanged(). Loading the page therefore marked it changed: Reset
+and Apply were enabled as soon as Web Search Keywords opened, and
+leaving it asked about changes nobody made. load() now ends by
+clearing the flag, as save() does after writing.
+
+diff --git a/kcms/webshortcuts/ikwsopts.cpp b/kcms/webshortcuts/ikwsopts.cpp
+index f5c16b0..f487858 100644
+--- a/kcms/webshortcuts/ikwsopts.cpp
++++ b/kcms/webshortcuts/ikwsopts.cpp
+@@ -353,6 +353,7 @@ void FilterOptions::load()
+ 
+     const QString delimiter = group.readEntry("KeywordDelimiter", ":");
+     setDelimiter(delimiter.at(0).toLatin1());
++    setNeedsSave(false);
+ }
+ 
+ char FilterOptions::delimiter()

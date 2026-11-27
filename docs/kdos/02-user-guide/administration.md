@@ -907,10 +907,13 @@ gives that group the device. Neither works alone. The KDOS rules live in `/etc/u
 | `70-kdos-gamepad.rules` | Game controllers' raw HID, for SDL's HIDAPI drivers | `input` |
 | `70-kdos-i2c.rules` | The DDC/CI line of a display controller, for `ddcutil` | `video` |
 
-Two more files there grant no group. `70-kdos-live-medium.rules` hides the medium a live session
+Three more files there grant no group. `70-kdos-live-medium.rules` hides the medium a live session
 is running from, the device mounted at `/mnt/iso` and the partitions of its disk, from udisks
 (`UDISKS_IGNORE`), so it is not offered for opening or ejecting; another KDOS stick plugged in is
-listed like any stick. `99-qemu-tablet.rules` marks QEMU's emulated USB tablet as a plain pointer,
+listed like any stick. `70-kdos-floppy.rules` hides the drives of the legacy floppy controller
+(`fd0`, `fd1`) from udisks: the controller cannot tell whether a disk is in, so an empty drive, as
+QEMU's default machine has, would be offered for mounting; a USB floppy is a SCSI disk and stays
+listed, and `/dev/fd0` is still reachable by its path. `99-qemu-tablet.rules` marks QEMU's emulated USB tablet as a plain pointer,
 so in a virtual machine the pointer is handled as a mouse rather than as a graphics tablet or a
 joystick.
 
@@ -1472,6 +1475,9 @@ The limit matters on the live medium, where `/var/log` is in RAM and an unbounde
 memory rather than disk. Emergency messages are also written to every logged-in terminal.
 `syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
 that a plain `grep` reads; only ASCII control characters are rewritten, as `^x`.
+It runs with `-T` as well, so every line carries the time it was logged in the machine's own
+time zone: musl's `syslog()` stamps a message in UTC, which would otherwise put a program's lines
+an offset away from the kernel's.
 
 Eight more places hold what the system log does not, or what it missed while `syslogd` was not
 running:

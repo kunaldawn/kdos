@@ -206,6 +206,10 @@ int why_main(int argc, char **argv)
 	}
 	why_colours();
 	const char *subject = argv[1];
+	/* A name that is neither a port, an installed package nor the subject
+	 * of a reason is a typo, and says so with 1: printing it as a heading
+	 * with no reason would read as "this port needs no explaining". */
+	int known = 1;
 
 	/* An absolute path gets the provenance half first. */
 	if (subject[0] == '/') {
@@ -239,7 +243,20 @@ int why_main(int argc, char **argv)
 		if (o)
 			kp_owned_free(o);
 	} else {
+		KpConf c;
+		char ver[64] = "", rel[32] = "";
+
+		kp_conf_load(&c);
 		printf("%s%s%s\n", C_ACC, subject, C_OFF);
+		if (kp_installed_version(&c, subject, ver, sizeof(ver), rel,
+					 sizeof(rel)) == 0)
+			printf("  package  %s %s-%s\n", subject, ver, rel);
+		char *pd = kp_port_dir(&c, subject);
+		if (pd) {
+			printf("  recipe   %s/kpkgbuild\n", pd);
+			free(pd);
+		}
+		known = ver[0] || pd;
 	}
 
 	int n = 0;
@@ -258,6 +275,11 @@ int why_main(int argc, char **argv)
 	}
 	kb_strv_free(files);
 
+	if (!hits && !known) {
+		printf("\n  %sno such port or package, and no recorded reason "
+		       "names it.%s\n", C_DIM, C_OFF);
+		return 1;
+	}
 	if (!hits)
 		printf("\n  %sno recorded reason names it.%s\n", C_DIM,
 		       C_OFF);

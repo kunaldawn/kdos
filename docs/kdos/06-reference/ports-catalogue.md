@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,402 recipes under `ports/core` and the
-44 recipes KDOS writes itself under `src/`, 2,446 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,403 recipes under `ports/core` and the
+44 recipes KDOS writes itself under `src/`, 2,447 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -109,7 +109,7 @@ leaving out any an earlier phase installed.
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 9 | 15 |
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
-| `40_lang` | Languages | `packages.d/`, 13 files | 185 | 185 |
+| `40_lang` | Languages | `packages.d/`, 13 files | 186 | 186 |
 | `41_system` | System | `packages.d/`, 98 files | 1,048 | 1,048 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
@@ -117,10 +117,10 @@ leaving out any an earlier phase installed.
 | `50_desktop` | Desktop | `packages.txt` | 92 | 92 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,451 | 2,446 |
+| Total | | | 2,452 | 2,447 |
 
-The lists hold 2,451 lines naming 2,442 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,446 ports, every recipe in the tree.
+The lists hold 2,452 lines naming 2,443 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,447 ports, every recipe in the tree.
 `ports/unbuilt` names the recipes kept for `kpkg install` that no phase builds, each to be
 marked `not built` in their tables; it lists 0. `testing/bookcounts.py` fails on any other recipe
 no phase builds.
@@ -264,7 +264,7 @@ Every recipe, counted by where it lives.
 | [`hamradio`](#hamradio) | 26 |
 | [`ai`](#ai) | 7 |
 | [`python`](#python) | 37 |
-| [`python-libs`](#python-libs) | 71 |
+| [`python-libs`](#python-libs) | 72 |
 | [`python-net`](#python-net) | 25 |
 | [`python-sci`](#python-sci) | 13 |
 | [`python-gui`](#python-gui) | 17 |
@@ -275,7 +275,7 @@ Every recipe, counted by where it lives.
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
 | [`src/daemons`](#srcdaemons) | 7 |
-| Total | 2,446 |
+| Total | 2,447 |
 
 ## The shelves
 
@@ -5271,11 +5271,12 @@ Notes:
 ### python-libs
 
 General-purpose python3-* runtime libraries: text, templating, markup, parsing, config, CLI, system,
-files, crypto, imaging. 71 ports, under `ports/core/python-libs/`.
+files, crypto, imaging. 72 ports, under `ports/core/python-libs/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `python3-attrs` | 26.1.0 | Classes without boilerplate: declared attributes, validators and converters for Python | `40_lang` |
+| `python3-cattrs` | 26.2.1 | Structuring and unstructuring of attrs classes and dataclasses to and from plain Python data | `40_lang` |
 | `python3-automat` | 25.4.16 | Finite-state machines for Python, declared as states, inputs and outputs on a class | `40_lang` |
 | `python3-bcrypt` | 5.0.0 | The bcrypt password hash for Python, in Rust | `40_lang` |
 | `python3-click` | 8.5.0 | Composable command-line interfaces for python programs | `40_lang` |

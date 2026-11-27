@@ -47,7 +47,8 @@ snapshot = auto
 #
 # QT_STYLE_OVERRIDE is only safe where a platform theme is present — Fusion
 # with none falls back to Qt's built-in LIGHT palette, which is worse than
-# leaving it alone. rt-qt has qgtk3, so it is safe there; rt-kde needs no
+# leaving it alone. rt-qt has qgtk3 and the Breeze GTK theme it reads, so it
+# is safe there, for every Qt application on it; rt-kde needs no
 # override, because Breeze reads the same kdeglobals `kdos theme` writes.
 env rt-qt   QT_QPA_PLATFORMTHEME=gtk3
 env rt-qt   QT_STYLE_OVERRIDE=Fusion
@@ -72,8 +73,9 @@ env rt-media LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/pipewire-0.3/jack
 env app.surf GDK_BACKEND=x11
 
 # `deb <pack> <releases-api> <asset-pattern>` — for an application Debian does
-# not carry. The newest asset matching the pattern is fetched and handed to
-# apt, so its dependencies resolve normally.
+# not carry. The first asset of the release whose URL ENDS in the pattern is
+# fetched and handed to apt, so its dependencies resolve normally; the
+# pattern is a plain file-name tail, letters, digits and `. _ + -`.
 deb app.vscodium https://api.github.com/repos/VSCodium/vscodium/releases/latest amd64.deb
 
 # `cmd <pack> <name>` — for software that is a COMMAND rather than an
@@ -101,11 +103,10 @@ cmd app.openfoam simpleFoam
 cmd app.openfoam blockMesh
 cmd app.quantum-espresso pw.x
 cmd app.xtb xtb
-# Five more base-runtime packs that are commands: a translator, a VHDL
-# compiler, an emulator driven by its own key bindings, rr, and RTKLIB's tools.
+# Four more base-runtime packs that are commands: a translator, a VHDL
+# compiler, rr, and RTKLIB's tools.
 cmd app.apertium apertium
 cmd app.ghdl ghdl
-cmd app.desmume desmume
 cmd app.rr rr
 cmd app.rtklib rnx2rtkp
 cmd app.rtklib rtkrcv
@@ -192,8 +193,12 @@ runtime rt-gtk    base     libgtk-3-0t64 libgtk-4-1 libadwaita-1-0 gtk-update-ic
 # built with no GLX. The qgtk3 platform THEME is what gives them a palette,
 # the one of the GTK theme the shared home's GTK settings name — which is why
 # GTK is pulled in here, and it is 95 MB against plasma-integration's 284.
+# THE GTK THEME qgtk3 READS HAS TO BE HERE TOO, for rt-gtk's reason: the
+# launch exports the session's GTK theme name (Breeze), and qgtk3 with no
+# Breeze GTK theme in the box falls back to Adwaita's light palette, which
+# Fusion then draws under every accent. breeze-gtk-theme is that theme.
 # xfonts-base: grass opens an xterm, which needs core X fonts under Xwayland.
-runtime rt-qt     base     libqt5widgets5t64 libqt6widgets6 qt6-wayland qtwayland5 qt5-gtk-platformtheme qt6-gtk-platformtheme xfonts-base
+runtime rt-qt     base     libqt5widgets5t64 libqt6widgets6 qt6-wayland qtwayland5 qt5-gtk-platformtheme qt6-gtk-platformtheme breeze-gtk-theme xfonts-base
 
 # The KDE applications' own layer. plasma-integration is what makes
 # QT_QPA_PLATFORMTHEME=kde work at all, and kio-extras with the two
@@ -332,7 +337,11 @@ app app.gmic             rt-gtk       gmic
 app app.hugin            rt-gtk       hugin luminance-hdr entangle
 app app.aegisub          rt-gtk       aegisub subtitleeditor
 app app.audio-plugins   rt-media     lsp-plugins x42-plugins calf-plugins zynaddsubfx drumgizmo
-app app.qpwgraph        rt-media     qpwgraph qt6-wayland
+# qpwgraph is a Qt 6 program that speaks PipeWire's own protocol, so it sits
+# on rt-qt, which gives it a platform theme and a palette, and not on
+# rt-media, whose JACK route it does not take: there Qt finds no platform
+# theme and draws its built-in light palette.
+app app.qpwgraph         rt-qt        qpwgraph
 app app.sonicpi          rt-media     sonic-pi supercollider csound puredata
 app app.vorta            rt-qt        vorta
 
@@ -383,9 +392,6 @@ app app.sioyek          rt-qt        sioyek
 # entry with the same name and nothing to tell the two apart. Spectacle is not
 # a row either: on Wayland it needs KWin's own screenshot interface, and
 # screenshots are the host's `kdos-shot`, where the capture globals are.
-
-# Games and emulators. SDL rather than a toolkit, so they sit on `base`.
-app app.desmume         base         desmume
 
 # Small GNOME games, one row each
 app app.gnome-chess     rt-gtk       gnome-chess
@@ -496,10 +502,18 @@ group games       app.gnome-chess
 # unpacked files of the packages its build installs; a base's is its whole
 # image, the image it starts FROM included. The base and runtime sizes were
 # measured by building each row's generated Containerfile on trixie and
-# taking `du -sxb /` of the image against its parent's. They are what makes
-# a first install's estimate honest: Discover adds every row up the chain
-# whose image is not built yet (`kdos-appbox catalogue --chain`), and the
-# install's room check counts them.
+# taking `du -sxb /` of the image against its parent's. The app and data
+# sizes are the summed Installed-Size of every package the row's chain
+# installs and its parent's chain does not, as `apt-get install -s
+# --no-install-recommends` resolves them at the snapshot, a `deb` row's own
+# package included: `testing/catsizes.py --write` rewrites them, and is run
+# again whenever the snapshot or a row's packages change. The package's own
+# size alone, without what it pulls in, undershoots by two to four times.
+# They are what makes a first install's estimate honest: Discover adds every
+# row up the chain whose image is not built yet (`kdos-appbox catalogue
+# --chain`), and the install's room check counts them — a figure that
+# undershoots lets a build start that fills a live session's memory overlay
+# at its commit.
 #
 # `about <id> <licence>|<author>|<homepage>|<description>` — for a row that no
 # Debian component describes, such as a `deb` row's publisher release. Only
@@ -510,82 +524,81 @@ group games       app.gnome-chess
 meta alpine                   Alpine base|System|8411047|A minimal musl and busybox userland
 meta base                     Debian base|System|548939987|The Debian userland every catalogue box is built on
 meta rt-gtk                   GTK runtime|System|98357767|GTK 3, GTK 4 and libadwaita, with the Breeze GTK theme
-meta rt-qt                    Qt runtime|System|178508316|Qt 5 and Qt 6 widgets on Wayland, with the GTK platform theme
+meta rt-qt                    Qt runtime|System|180171292|Qt 5 and Qt 6 widgets on Wayland, with the GTK platform theme
 meta rt-kde                   KDE runtime|System|457474005|KDE Frameworks, KIO and Breeze, on the Qt runtime
 meta rt-media                 Media runtime|System|323452835|FFmpeg, GStreamer and PipeWire's JACK and Pulse clients
 meta rt-sci                   Scientific Python runtime|System|411788044|Python 3 with NumPy, SciPy and Matplotlib
 meta rt-electron              Electron runtime|System|7204171|The libraries an Electron application loads
 meta rt-wine                  Wine runtime|System|1612276954|Wine, 64-bit and 32-bit
-meta app.aegisub             Aegisub|AudioVideo|73260353|A free, cross-platform open source tool for creating and modifying subtitles
-meta app.apertium             Apertium|Office|24838994|Rule-based machine translation between related languages
-meta app.arduino              Arduino IDE|Development|336719721|Open-source electronics prototyping platform
-meta app.astrometry           Astrometry.net|Science|48128859|Plate-solve a sky photograph: find where in the sky it points
-meta app.audio-plugins        Calf Plugin Pack for JACK|AudioVideo|60209088|Process and produce sounds using a set of plugins with JACK interface
-meta app.baobab               Disk Usage Analyzer|System|1774929|Check folder sizes and available disk space
-meta app.bleachbit            BleachBit|System|36108790|Free space and maintain privacy
+meta app.aegisub             Aegisub|AudioVideo|187214848|A free, cross-platform open source tool for creating and modifying subtitles
+meta app.apertium             Apertium|Office|48976896|Rule-based machine translation between related languages
+meta app.arduino              Arduino IDE|Development|793009152|Open-source electronics prototyping platform
+meta app.astrometry           Astrometry.net|Science|85181440|Plate-solve a sky photograph: find where in the sky it points
+meta app.audio-plugins        Calf Plugin Pack for JACK|AudioVideo|171304960|Process and produce sounds using a set of plugins with JACK interface
+meta app.baobab               Disk Usage Analyzer|System|2246656|Check folder sizes and available disk space
+meta app.bleachbit            BleachBit|System|52411392|Free space and maintain privacy
 meta app.claws-mail           Claws Mail|Network|11681792|A lightweight GTK email client
-meta app.colmap               COLMAP|Graphics|24900535|Structure-from-Motion and Multi-View Stereo
-meta app.cp2k                 CP2K|Science|217379656|Quantum chemistry and solid-state molecular simulation
-meta app.desmume              DeSmuME|Game|6849359|Nintendo DS emulator
-meta app.drawing              Drawing|Graphics|25676649|Edit screenshots or memes
-meta app.ds9                  SAOImage DS9|Education|124676004|Astronomical Data Visualization Application
-meta app.easyeffects          Easy Effects|AudioVideo|21886980|Audio Effects for PipeWire Applications
-meta app.eccodes              ecCodes and CDO|Science|301548411|Read, write and process GRIB and NetCDF weather and climate data
-meta app.f3d                  F3D|Graphics|262518214|A fast and minimalist 3D viewer
-meta app.fityk                Fityk|Science|51259392|Curve fitting and peak analysis, with Engauge Digitizer for reading data off a plot
-meta app.foliate              Foliate|Office|169059851|Read e-books in style
-meta app.gerbv                Gerbv Gerber File Viewer|Development|4658759|Gerber file viewer for PCB design
-meta app.ghdl                 GHDL|Development|5149510|VHDL simulator
-meta app.ghex                 GHex|Development|1733919|Inspect and edit binary files
-meta app.gmic                 G'MIC|Graphics|122102600|Image processing framework with hundreds of filters
-meta app.gmt                  GMT|Science|246281029|Generic Mapping Tools: maps and plots of geographic data, with GSHHG coastlines
-meta app.gnome-chess          Chess|Game|2180476|Play the classic two-player board game
-meta app.grace                Grace|Science|25864939|WYSIWYG 2D plotting of numerical data
-meta app.grass                GRASS GIS 8|Education|163715981|Open Source Geographic Information System
-meta app.gromacs              GROMACS and LAMMPS|Science|333730655|Molecular dynamics simulation
-meta app.grsync               Grsync|System|4541751|Synchronize files and folders (a GTK GUI for rsync)
-meta app.gwyddion             Gwyddion|Science|13864070|Program for SPM (scanning probe microscopy) data visualization and analysis
-meta app.heaptrack            Heaptrack|Development|3704828|A heap memory profiler for Linux
-meta app.hugin                Hugin|Graphics|948849664|Panorama stitching, with Luminance HDR and Entangle for tethered capture
-meta app.hexchat              HexChat|Network|5537523|IRC Client
-meta app.igv                  Integrative Genomics Viewer|Science|191418197|desktop genome vizualisation tool
-meta app.imagej               ImageJ|Graphics|102488017|Image processing and analysis
-meta app.jmol                 Jmol|Development|217396121|Java molecular viewer for three-dimensional chemical structures
-meta app.kstars               KStars|Education|51489441|Desktop Planetarium
-meta app.maxima               wxMaxima|Education|176230490|A graphical user interface for Maxima, a powerful computer algebra system
-meta app.mesa-utils          mesa-utils|Development|12000000|glxgears, glxinfo and es2gears — what a GL problem is diagnosed with
-meta app.meld                 Meld|Development|27420076|Compare and merge your files
-meta app.meshlab              MeshLab|Graphics|21299497|View and process meshes
-meta app.mousepad             Mousepad|Utility|27109392|Simple text editor for the Xfce desktop environment
-meta app.nanovna-saver        NanoVNASaver|Development|132036605|Tool for reading, displaying and saving data from the NanoVNA
-meta app.nwchem               NWChem|Science|172651342|Computational chemistry from molecules to periodic solids
-meta app.okteta               Okteta|Utility|11835288|Hex editor
-meta app.openfoam             OpenFOAM|Science|313987950|Computational fluid dynamics toolbox
-meta app.paraview             ParaView|Science|638795766|Data analysis and visualization
-meta app.pcmanfm              PCMan File Manager|System|5022734|Browse the file system and manage the files
-meta app.pdfarranger          PDF Arranger|Office|35959437|Merge, shuffle, and crop PDFs
-meta app.pspp                 GNU PSPP|Science|13106664|Statistical analysis of sampled data
-meta app.pulseview            PulseView|Development|20521522|Logic analyzer, oscilloscope and MSO GUI
-meta app.qpwgraph             qpwgraph|AudioVideo|34401364|A PipeWire Graph Qt GUI Interface
-meta app.quadrapassel         Quadrapassel|Game|5420687|Fit falling blocks together
-meta app.quantum-espresso     Quantum ESPRESSO|Science|272638816|Electronic-structure calculations and materials modelling with plane waves
-meta app.rr                   rr|Development|32154432|Record a program's execution and replay it deterministically under gdb
-meta app.rtklib               RTKLIB|Science|5923727|GNSS positioning: RTK and PPP processing of receiver data
-meta app.scilab               Scilab|Science|337266491|Scientific software for numerical computations
-meta app.scipy-stack          Jupyter Notebook|Development|173446126|Interactive notebooks with pandas, SymPy and scikit-learn
-meta app.scribus              Scribus|Graphics|194802512|Open Source Page Layout and Desktop Publishing (DTP)
-meta app.seaview              SeaView|Science|5481472|Edits multiple sequence alignments and prints them in PostScript format.
-meta app.simple-scan          Document Scanner|Graphics|61777196|Make a digital copy of your photos and documents
-meta app.sioyek               Sioyek|Office|67424790|A PDF viewer for research papers and technical books
-meta app.siril                Siril|Science|39508199|Astronomical image processor
-meta app.sonicpi              SuperCollider IDE|AudioVideo|265815844|realtime computer music system
-meta app.surf                 Surf|Network|275196928|Simple web browser by the suckless community
-meta app.vorta                Vorta|Utility|33146013|Backup client
-meta app.vscodium             VSCodium|Development|371281015|Code editor: VS Code built from its open-source repository, without telemetry
+meta app.colmap               COLMAP|Graphics|47547392|Structure-from-Motion and Multi-View Stereo
+meta app.cp2k                 CP2K|Science|682205184|Quantum chemistry and solid-state molecular simulation
+meta app.drawing              Drawing|Graphics|32686080|Edit screenshots or memes
+meta app.ds9                  SAOImage DS9|Education|285658112|Astronomical Data Visualization Application
+meta app.easyeffects          Easy Effects|AudioVideo|44315648|Audio Effects for PipeWire Applications
+meta app.eccodes              ecCodes and CDO|Science|670423040|Read, write and process GRIB and NetCDF weather and climate data
+meta app.f3d                  F3D|Graphics|616217600|A fast and minimalist 3D viewer
+meta app.fityk                Fityk|Science|51250176|Curve fitting and peak analysis, with Engauge Digitizer for reading data off a plot
+meta app.foliate              Foliate|Office|324323328|Read e-books in style
+meta app.gerbv                Gerbv Gerber File Viewer|Development|40034304|Gerber file viewer for PCB design
+meta app.ghdl                 GHDL|Development|8855552|VHDL simulator
+meta app.ghex                 GHex|Development|2511872|Inspect and edit binary files
+meta app.gmic                 G'MIC|Graphics|272735232|Image processing framework with hundreds of filters
+meta app.gmt                  GMT|Science|376076288|Generic Mapping Tools: maps and plots of geographic data, with GSHHG coastlines
+meta app.gnome-chess          Chess|Game|3939328|Play the classic two-player board game
+meta app.grace                Grace|Science|36485120|WYSIWYG 2D plotting of numerical data
+meta app.grass                GRASS GIS 8|Education|344668160|Open Source Geographic Information System
+meta app.gromacs              GROMACS and LAMMPS|Science|1034507264|Molecular dynamics simulation
+meta app.grsync               Grsync|System|1945600|Synchronize files and folders (a GTK GUI for rsync)
+meta app.gwyddion             Gwyddion|Science|40542208|Program for SPM (scanning probe microscopy) data visualization and analysis
+meta app.heaptrack            Heaptrack|Development|8252416|A heap memory profiler for Linux
+meta app.hugin                Hugin|Graphics|949478400|Panorama stitching, with Luminance HDR and Entangle for tethered capture
+meta app.hexchat              HexChat|Network|33311744|IRC Client
+meta app.igv                  Integrative Genomics Viewer|Science|312945664|desktop genome vizualisation tool
+meta app.imagej               ImageJ|Graphics|212652032|Image processing and analysis
+meta app.jmol                 Jmol|Development|441469952|Java molecular viewer for three-dimensional chemical structures
+meta app.kstars               KStars|Education|193717248|Desktop Planetarium
+meta app.maxima               wxMaxima|Education|462189568|A graphical user interface for Maxima, a powerful computer algebra system
+meta app.mesa-utils          mesa-utils|Development|11134976|glxgears, glxinfo and es2gears — what a GL problem is diagnosed with
+meta app.meld                 Meld|Development|36488192|Compare and merge your files
+meta app.meshlab              MeshLab|Graphics|35347456|View and process meshes
+meta app.mousepad             Mousepad|Utility|55964672|Simple text editor for the Xfce desktop environment
+meta app.nanovna-saver        NanoVNASaver|Development|232258560|Tool for reading, displaying and saving data from the NanoVNA
+meta app.nwchem               NWChem|Science|385960960|Computational chemistry from molecules to periodic solids
+meta app.okteta               Okteta|Utility|28682240|Hex editor
+meta app.openfoam             OpenFOAM|Science|701276160|Computational fluid dynamics toolbox
+meta app.paraview             ParaView|Science|1468859392|Data analysis and visualization
+meta app.pcmanfm              PCMan File Manager|System|7753728|Browse the file system and manage the files
+meta app.pdfarranger          PDF Arranger|Office|54761472|Merge, shuffle, and crop PDFs
+meta app.pspp                 GNU PSPP|Science|34804736|Statistical analysis of sampled data
+meta app.pulseview            PulseView|Development|38709248|Logic analyzer, oscilloscope and MSO GUI
+meta app.qpwgraph             qpwgraph|AudioVideo|14527488|A PipeWire Graph Qt GUI Interface
+meta app.quadrapassel         Quadrapassel|Game|9833472|Fit falling blocks together
+meta app.quantum-espresso     Quantum ESPRESSO|Science|546312192|Electronic-structure calculations and materials modelling with plane waves
+meta app.rr                   rr|Development|46336000|Record a program's execution and replay it deterministically under gdb
+meta app.rtklib               RTKLIB|Science|8186880|GNSS positioning: RTK and PPP processing of receiver data
+meta app.scilab               Scilab|Science|576863232|Scientific software for numerical computations
+meta app.scipy-stack          Jupyter Notebook|Development|252770304|Interactive notebooks with pandas, SymPy and scikit-learn
+meta app.scribus              Scribus|Graphics|382471168|Open Source Page Layout and Desktop Publishing (DTP)
+meta app.seaview              SeaView|Science|2868224|Edits multiple sequence alignments and prints them in PostScript format.
+meta app.simple-scan          Document Scanner|Graphics|144034816|Make a digital copy of your photos and documents
+meta app.sioyek               Sioyek|Office|94712832|A PDF viewer for research papers and technical books
+meta app.siril                Siril|Science|84750336|Astronomical image processor
+meta app.sonicpi              Sonic Pi|AudioVideo|447133696|Live-coding music synthesiser, with SuperCollider and Pure Data
+meta app.surf                 Surf|Network|248466432|Simple web browser by the suckless community
+meta app.vorta                Vorta|Utility|52883456|Backup client
+meta app.vscodium             VSCodium|Development|686511104|Code editor: VS Code built from its open-source repository, without telemetry
 about app.vscodium            MIT|VSCodium|https://vscodium.com/|VSCodium is a community-driven, freely licensed binary distribution of Microsoft's editor VS Code, built from its open source repository without Microsoft's telemetry and branding.
-meta app.xarchiver            Xarchiver|Utility|5275935|Create, extract and modify archives
-meta app.xournalpp            Xournal++|Office|13530622|Take handwritten notes
-meta app.xtb                  xtb|Science|4281157|Semi-empirical extended tight-binding quantum chemistry
-meta app.zathura              Zathura|Office|8969283|A minimalistic document viewer
-meta data.kicad-packages3d    KiCad 3D models|Development|1169343364|3D models of footprints for the KiCad 3D viewer
-meta data.tesseract-langs     Tesseract languages|Office|10658768|OCR language data: German, French, Spanish, Hindi, Simplified Chinese and Japanese, with English
+meta app.xarchiver            Xarchiver|Utility|8986624|Create, extract and modify archives
+meta app.xournalpp            Xournal++|Office|25592832|Take handwritten notes
+meta app.xtb                  xtb|Science|6637568|Semi-empirical extended tight-binding quantum chemistry
+meta app.zathura              Zathura|Office|27887616|A minimalistic document viewer
+meta data.kicad-packages3d    KiCad 3D models|Development|5022056448|3D models of footprints for the KiCad 3D viewer
+meta data.tesseract-langs     Tesseract languages|Office|15237120|OCR language data: German, French, Spanish, Hindi, Simplified Chinese and Japanese, with English

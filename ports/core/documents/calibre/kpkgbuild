@@ -10,7 +10,7 @@
 
 name        = calibre
 version     = 9.15.0
-release     = 2
+release     = 3
 _html5parser = 0.4.12
 source      = https://download.calibre-ebook.com/$version/$name-$version.tar.xz
 source      = https://files.pythonhosted.org/packages/source/h/html5-parser/html5-parser-$_html5parser.tar.gz
@@ -21,6 +21,7 @@ description = E-book library manager, converter, viewer and editor
 homepage    = https://calibre-ebook.com/
 license     = GPL-3.0-only
 depends     = python3 python3-pip python3-setuptools python3-wheel python3-hatchling python3-flit-core python3-poetry-core python3-cython python3-setuptools-scm python3-sip python3-pyqt-builder python3-pyqt6 python3-pyqt6-sip python3-pyqt6-webengine python3-lxml python3-pillow python3-psutil python3-pygments python3-dateutil python3-six python3-html5lib python3-webencodings python3-typing-extensions fonttools pkgconf cmake qt6-qtbase qt6-qtsvg qt6-qtimageformats qt6-qtwebengine qt6-qtspeech qt6-qtwayland hunspell hyphen icu sqlite snowball uchardet openssl freetype2 fontconfig libmtp libusb podofo ffmpeg libxml2 poppler libjpeg-turbo xxhash udisks2 xdg-utils chmlib optipng brotli
+runtime     = fonttools
 vendoring   = python
 pyrequirements = no
 pyruntime   = no

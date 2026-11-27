@@ -1,0 +1,8 @@
+# KDOS — the legacy floppy controller's drives, kept out of the desktop.
+#
+# A drive on the PC floppy controller (fd0, fd1) is listed by udisks whether
+# or not a disk is in it, because the controller cannot report a medium, so
+# Dolphin's Places and the Device Notifier offer "Floppy Disk" with nothing
+# to mount. QEMU's default machine has such a drive, empty. A USB floppy is
+# an sdX disk and is not matched; /dev/fd0 stays usable by its path.
+SUBSYSTEM=="block", KERNEL=="fd[0-9]*", ENV{UDISKS_IGNORE}="1"

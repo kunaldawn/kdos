@@ -807,6 +807,29 @@ static void test_base(void)
 	eq_str(all.p + all.n - 7, "100000\n", "and the last line is intact");
 	kb_buf_free(&all);
 
+	/* A build log holds the child's progress AND its verdict: podman
+	 * prints its STEP lines on stdout and its final `Error:` on stderr,
+	 * and a log of one stream alone reads as a build that stopped for no
+	 * reason. */
+	{
+		KbArgv fb = {0};
+		char *logp = kb_path_join(dir, "feed.log");
+		char text[128] = "";
+
+		kb_argv_add(&fb, "sh");
+		kb_argv_add(&fb, "-c");
+		kb_argv_add(&fb, "cat; echo verdict >&2; exit 3");
+		kb_argv_end(&fb);
+		ok(kb_run_feed_to_file(&fb, "progress\n", 9, logp) == 3,
+		   "feed_to_file returns the child's status");
+		kb_read_file(logp, text, sizeof(text));
+		eq_str(text, "progress\nverdict\n",
+		       "and the file holds stdin's echo and stderr, in order");
+		ok(kb_run_feed_to_file(&fb, "", 0, "/nonexistent-dir/x.log") == -1,
+		   "a log that cannot be created is -1, not a child exit");
+		free(logp);
+	}
+
 	kb_rmtree(dir);
 	ok(!kb_path_exists(dir), "rmtree removes the tree");
 

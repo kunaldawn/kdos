@@ -63,7 +63,9 @@ ca::ctrlaltdel:/sbin/shutdown -r now
 # Runlevels 0 and 6. init first sends TERM, and KILL 3 s later, to every
 # entry above that the runlevel does not list (the consoles, and with tty1
 # SDDM and every session under it), then runs these in order, each to
-# completion. rcK stops the services while the filesystems they save to are
+# completion. kc clears the console the screen shows and hides its cursor,
+# so sysvinit's `shutdown`, which always broadcasts that the system is going
+# down, leaves no text on the screen the desktop gave back. rcK stops the services while the filesystems they save to are
 # writable; killprocs signals every process still alive; killpower may tell a
 # UPS to cut the power, so every filesystem is read-only before it runs.
 #
@@ -73,6 +75,7 @@ ca::ctrlaltdel:/sbin/shutdown -r now
 # making it read-only, the overlay root refuses a read-only remount, and the
 # store would be left writable at reboot with its journal to replay. With no
 # store mounted there it does nothing.
+kc:06:wait:/bin/sh -c 'printf "\033[H\033[2J\033[?25l" > /dev/tty0'
 k0:06:wait:/etc/init.d/rcK
 k1:06:wait:/etc/init.d/killprocs
 k2:06:wait:/sbin/swapoff -a

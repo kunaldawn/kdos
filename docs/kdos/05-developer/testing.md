@@ -78,6 +78,7 @@ tested by building the distribution with them.
 | A chapter added, removed or reordered | `python3 testing/booknav.py --write`, after editing `docs/kdos/README.md`'s contents for this book |
 | A recipe, a patch, a `kfs.md`, a phase list, `kdos.config` or a script a page of *KDOS from Scratch* includes | `python3 testing/kfscheck.py`, then `make book-stamp` when it reports the stamp stale and `kfscheck.py --repin` when it reports an include range moved |
 | Nothing, but a build finished and a phase is about to be built with `--port-jobs` | `python3 testing/depdrift.py` in the development image |
+| A Python port's `depends` or `runtime =`, or a port moved into `ports/buildonly`, once built | `python3 testing/pyimports.py` |
 | A recipe's flags, `depends` or installed files, once its port is built | `make debuginfo`, `make linkcheck` and `make entrycheck`, from a container or as root; `70_image` runs the last two and stops on them |
 
 Each offline check has a make target of its own name: `make preflight`, `make selftest`,
@@ -1408,6 +1409,7 @@ names, and the script reports the target's world set, its package count and its
 | `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. Before it starts it reads the payload and the installer's own figure from the `payload` and `install needs` lines of `kinstall --dump probe`, and the disk's size with `blockdev`, and refuses with exit status 2, printing both in MB, when the disk is smaller than the payload plus 768 MiB plus 2 GiB, the rule `kinstall`'s Prepare step applies; a payload, figure or disk size it cannot read refuses too. The copy writes about the whole payload (47661 MB on the current tree), so a qcow2 target grows on the host by that much, and `vnc-shot.py` refuses an install run whose qcow2 could outgrow the host's free space. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. `INSTALL_DISK` names the target (default `/dev/vda`); `INSTALL_LUKS=1` makes the same run with an encrypted root, with the passphrase in `INSTALL_LUKS_PASS` (default `kdosdisk`). It then opens what it wrote: the ESP with its `limine.conf` and the A/B boot state, the volumes of the LVM group `kdos`, the fstab with the pack store's bind line, the `kdos` account, SDDM's autologin file, and the shared pack store under `/home/.kdos/packs`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
 | `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. It waits `KDOS_BIOS_SECS` seconds (default 90), saves the screen as `build/shots/bios-screen.ppm` and the serial console as `build/shots/bios-serial.log`, then reads the log for `Found KDOS media` and `Switching to new root`. The stick is read-only, so the run never writes the image and can run while rig VMs have it attached: it prints `bios-boot: ok` and exits 0 when both are there, and `bios-boot: FAILED` with exit status 1 when either is missing. QEMU itself is killed rather than shut down, so its own exit status means nothing |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim (a terminal program in Konsole, as Kickoff launches it), wait for KWin's window list (`kdos hey list`) to name its window and its box, photograph it, and remove the box. An X11 window has no box, since its Wayland client is Xwayland, so it is matched by its class against the shim's name and the row says so. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
+| `catsizes.py` | On the host, needs podman or Docker (`--engine`) and the network | What each catalogue `app` and `data` row adds over its parent: in a `debian:trixie-slim` container pinned to the catalogue's snapshot, the summed `Installed-Size` of every package `apt-get install -s --no-install-recommends` installs for the row's chain and not for its parent's, a `deb` row's release asset fetched and counted with it. Prints each row's `meta` figure beside the measured one; `--write` rewrites the `meta` bytes of the measured rows, `--rows ID,…` limits it. Base and runtime rows are measured with `du` of a built image: the script never measures them, and `--rows` ignores their ids. Run it after a snapshot or a row's packages change, since the store's room check and Discover's size read the figures |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |
 | `appbox-smoke.sh` | In the session, as the desktop user (`su - kdos -c 'WAYLAND_DISPLAY=wayland-1 testing/appbox-smoke.sh'`) | Does every boxed application's launcher start something: a cheap `command -v` pass (`--probe`), then real launches; names on the command line limit it to those |
 | `hostcheck.sh` | In the guest | Whether the shipped binary a caller resolves by name is the one that can do the job, for example which `blkid` answers first on the search path, asked against a real LUKS container |
@@ -1472,6 +1474,49 @@ classified:
 It is advisory and preflight does not run it, because it needs a built tree. Exit status is 0
 unless `--strict` is given and a `DRIFT` line was printed. A dependency loaded with `dlopen`, run
 as a program or included only as a header is invisible to it.
+
+### Python imports a prebuilt install leaves unmet
+
+`testing/pyimports.py` reads a built tree and names every Python import a package makes that a
+prebuilt install of it may not satisfy. Run it from the repository root after a build:
+
+```sh
+python3 testing/pyimports.py --root build/fs      # --pkg <name> for one package, --all to read tests and examples, --strict to fail
+```
+
+Every `.py` file a package owns, and every executable script of it whose `#!` names a Python, is
+parsed with `ast`, and each absolute import, at module level or inside a function, is read for its
+top-level name. An import is skipped when it is guarded: inside a `try` that catches
+`ImportError`, `ModuleNotFoundError`, `NameError`, `Exception` or everything, in a
+`with suppress(ImportError)`, under `if TYPE_CHECKING`, or under an `if` that tests the platform
+or the Python version. A name resolves to the package itself, then to the tree's standard library and
+the interpreter's built-in modules, the importing file's own directory, and the `site-packages`
+directories the file runs with: the system one, a private prefix's own when the file sits under
+one (Spyder's venv, Sphinx's and Radicale's prefixes), and every directory a `.pth` file in either
+adds. `distutils` is setuptools' wherever setuptools is. The package's own names are its top-level
+modules and packages on those directories, together with those of a directory inside one of them
+that the program puts on `sys.path` itself: a vendor directory, one holding a `.dist-info`, or one
+with no `__init__.py`. Files under a private prefix outside all of them count by basename and by
+every directory above them. Any other name in the package counts as its own only when no `sys.path`
+directory provides it, so `scikit_build_core/setuptools/` does not hide an `import setuptools`. The
+owner found is placed against the importing package's recipe:
+
+| Class | Means | Fix |
+|---|---|---|
+| `CUT` | The owner is in the package's `depends` closure only through a port of `ports/buildonly` that no package on the path records as a run-time need, so a prebuilt `kdos update install` leaves it out ([the binhost's `N:` line](../03-architecture/packaging.md#the-binary-host)) | Name the port in the importing recipe's [`runtime =`](writing-ports.md#keys-the-package-manager-reads), as well as in `depends` |
+| `UNDECLARED` | The owner is outside the `depends` closure, so only the build tree's install order put it there | Add it to `depends`, or leave it where the import is an optional backend |
+| `MISSING` | Nothing on the tree provides the name | A module no port carries, another platform's module, or one the host program registers in-process (Blender's `mathutils`, GDB's `gdb`) |
+
+A package's recorded needs are its `.needs` record resolved to their owners, plus the `runtime =`
+words of its recipe as the tree now has it, so a recipe fixed since the build reads as fixed. Each
+line prints the import's scope: `mod` runs when the file is imported, `cond` under another `if`,
+`fn` only when a function runs. Most findings are optional features: a GUI backend, a plugin, a
+Sphinx extension, a helper script. The ones that matter are the imports a program's start or a
+documented feature reaches, and those are fixed in the recipe. Files under a `tests`, `examples`,
+`docs` or `benchmarks` directory and under `usr/share/doc` are left out unless `--all` is given.
+It is advisory and preflight does not run it, because it needs a built tree; exit status is 0
+unless `--strict` is given and a `CUT` or `UNDECLARED` import at `mod` scope was found. An import
+by a string (`importlib.import_module`, `__import__`) is invisible to it.
 
 ### Recipe metadata and switched-off features
 

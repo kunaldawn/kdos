@@ -110,8 +110,11 @@ before the daemon has ever run:
    route	not yet used
    packs	0 installed, 0 available, 0 mounted
    boxes	0 composed
-   box   : not created (first launch will) (absent)
+   store : none
    ```
+
+   The `store :` lines name every box built from the application store, with its state; `-b <box>`
+   asks about one box instead.
 
    `packd : not answering` means the daemon is not running, or refused you; see
    [Troubleshooting](#troubleshooting).

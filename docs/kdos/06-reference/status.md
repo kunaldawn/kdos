@@ -72,7 +72,7 @@ end to end on a booted machine that holds packs, exercised by a harness that rep
 its reason rather than passing silently.
 
 The natively ported applications are mostly unproved. The lists of the userland phases,
-`40_lang` to `44_apps`, name 2,188 recipes for the languages, the system, the graphical stacks,
+`40_lang` to `44_apps`, name 2,189 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed. On the live ISO under QEMU,
 Dolphin, Konsole, Discover and System Settings start and draw; no other application has been
 started on an image, and none has been installed from a published binhost under a harness. A package in the build tree is current when its recipe's `kp_recipe_hash`
@@ -88,7 +88,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,446 recipes, 2,402 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,447 recipes, 2,403 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted, and a staged tree that breaks a packaging rule is refused with that rule's message |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry of a failed phase, the jobserver and the merge of `build/snapshots/timings.json`, with the machine each figure is filed under. The KDE ports of `43_toolkits`, `44_apps` and `50_desktop` have not been through a full build |
@@ -97,15 +97,15 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
 | The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port, and `kdos update` installing only what a signed index covers is asserted against a fixture binhost. `make build KDOS_MAKE_BINHOST=1` writes a signed one to `build/binhost/` with its release index, and `ports/publish --release` publishes it sharded across releases of at most 1,000 assets, the v0.2 binhost among them. The self-test asserts `kdos update install` against a fixture binhost: a port prebuilt, a port planned as a build here, a group by its members, an install into another root (prebuilt only), the installer's pending record, and a package whose origin is `source` counted as a build rather than looked for in the index. No machine has installed a port from the published binhost under a harness |
 | Updates | In progress | The self-test signs a slot image, rebuilds it from a seed root and its delta, refuses a tampered one, carries a machine's configuration into an armed slot, writes a newer image into the inactive slot, and arms only a slot an acquire filled. The release index is asserted to split 2,001 files 1,000, 1,000 and 1 in path order, to find a slot image through its sharded, signed form, and to be refused unsigned, signed by an untrusted key, edited, for another release, with no `releases` root, or naming a file of other bytes; a binhost index or manifest it does not name is never offered. `kdos-sysupdated` is driven over fixture slots the way Discover calls it, its API diffed against Discover's own. `kpkg fetch`'s archive-then-upstream order and its refusal of a copy with the wrong hash are asserted. The self-test also asserts that a slot image carries the base alone, and that a port installed on purpose which the release's binhost does not hold refuses the image lane before the slot is written unless it was built here. v0.2 is the first release to publish a binhost and a slot image, so there is no later release for an installed machine to update to, and no update has been applied on one. See [Known gaps](known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree) |
-| The application catalogue | Stable | 70 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
+| The application catalogue | Stable | 69 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,446 recipes, 0 are absent from the build tree's package
+- **The ports tree.** Of the 2,447 recipes, 0 are absent from the build tree's package
   database once a build has run every phase, and the database holds no name that no recipe gives.
   Every port is installed by a package phase, as a name on its list or as a dependency of one
   that no earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
-  list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 185 by `40_lang`,
+  list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 186 by `40_lang`,
   1,048 by `41_system`, 189 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 92 by
   `50_desktop` and 2 by `60_kernel`; `python3 testing/phaseclosure.py` prints these figures, and
   `testing/bookcounts.py` fails on a recipe that no phase installs unless `ports/unbuilt` names it.
@@ -223,8 +223,8 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,446 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,402 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,447 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,403 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/system` | 8 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 8 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 21 | `find src/desktop -name kpkgbuild \| wc -l` |
@@ -232,7 +232,7 @@ a clean checkout and you should get the same number.
 | Shelves | 102 | `grep -cvE '^(#\|$)' ports/shelves` |
 | Archived source files | 2,614 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
 | Native groups | 15 | `grep -c '^group ' ports/groups` |
-| Catalogue applications | 70 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
+| Catalogue applications | 69 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
 | Catalogue datasets | 2 | `grep -c '^data ' src/system/kdos-appbox/catalogue` |
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/system/kdos-appbox/catalogue` |
 | Catalogue base packs | 2 | `grep -c '^base ' src/system/kdos-appbox/catalogue` |

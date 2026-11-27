@@ -1274,7 +1274,7 @@ With no catalogue the page lists the native groups alone, and with no groups of 
 that nothing can be chosen; the Packs step is skipped when nothing of either kind is chosen.
 
 **It lists groups, not applications.** Seven named bundles is something to read during an
-install; the shipped catalogue's 70 applications is not. The catalogue
+install; the shipped catalogue's 69 applications is not. The catalogue
 (`src/system/kdos-appbox/catalogue`, described in [The
 catalogue](../03-architecture/packs-and-boxes.md#the-catalogue)) defines these groups:
 

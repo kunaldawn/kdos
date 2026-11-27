@@ -51,7 +51,7 @@ built and who maintains it:
 |---|---|---|---|
 | Core | `ports/core/`, about 2,400 recipes | musl, the GNU userland, sysvinit, the toolchains, the libraries, the services, KDE Plasma and its frameworks, the kernel and its firmware, and the natively ported applications, KDE Gear among them | Compiled here from upstream source archives, each pinned by its sha256 |
 | Desktop | `src/`, a few dozen recipes | KDOS's own software: the package manager, the `kdos` command, the root daemons, the installer, the pack and box tools, the Plasma components that reach them (settings pages, plasmoids, the Discover backend, KWin effects and the look packages) and the nine C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two bootstrap scripts |
-| Outer | `src/system/kdos-appbox/catalogue` | 70 graphical and command-line applications over 7 shared runtimes | Declared as Debian packages and built by podman on the machine that asks for them |
+| Outer | `src/system/kdos-appbox/catalogue` | 69 graphical and command-line applications over 7 shared runtimes | Declared as Debian packages and built by podman on the machine that asks for them |
 
 The core ring starts from [musl](https://musl.libc.org/), the small C library KDOS uses in place
 of glibc, and the GNU tools (coreutils, grep, sed, gawk, findutils), each a program of its own,
@@ -223,7 +223,7 @@ built on this computer*. There is no Flathub and no "Get New…": everything Dis
 described in this repository and built from it, or, for a boxed application, from Debian packages
 the catalogue names.
 
-The outer ring is a catalogue of 70 applications. Each is declared as a chain of packages rather
+The outer ring is a catalogue of 69 applications. Each is declared as a chain of packages rather
 than shipped as bytes: an application row sits on one of 7 shared runtimes (GTK, Qt, KDE, media,
 scientific Python, Electron and Wine) or directly on the base, and podman builds the chain on
 the machine that asks for it, storing each runtime once however many applications share it. An
@@ -309,12 +309,12 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 | Plasma's own modules left out | 13, each because it needs systemd, KDE Frameworks 5, Flatpak, GRUB, Plymouth or another firewall, or is a shell for phones and televisions |
 | KDE Gear modules left out | 4: kjournald, kmag, kmousetool and plasma-settings |
 | Kernel | Linux 7.2.11 |
-| Applications in the catalogue | 70 |
+| Applications in the catalogue | 69 |
 | Shared runtimes beneath them | 7 |
 | Catalogue bases | 2 (Debian trixie and Alpine 3.24.1) |
 | Catalogue data sets | 2 |
 | Catalogue groups offered by the installer and the store | 7 |
-| Boxed commands with no graphical launcher | 25 rows across 16 applications |
+| Boxed commands with no graphical launcher | 24 rows across 15 applications |
 | Distinct source files the recipes name | 2,572 (44 carried in git; 2,528, about 39.3 GiB, fetched from the source archive or upstream) |
 
 ## What is not built from source
@@ -521,7 +521,7 @@ part is always the version the tree builds.
 
 ### The application catalogue is Debian
 
-The 70 applications, the 7 runtimes and the default base beneath them are Debian trixie
+The 69 applications, the 7 runtimes and the default base beneath them are Debian trixie
 packages, built on `debian:trixie-slim`, with one exception: VSCodium comes from the `.deb` its
 upstream publishes on GitHub, fetched by a `deb` row in the catalogue and handed to apt so that its
 dependencies resolve from Debian. The catalogue also carries a second, empty base on

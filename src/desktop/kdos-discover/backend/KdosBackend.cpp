@@ -343,6 +343,9 @@ static void runTool(QObject *owner, const QString &program, const QStringList &a
     timer->start(ToolTimeoutMs);
 }
 
+static QHash<QString, QList<HostFace>> catalogueNames(const Catalogue &cat);
+static QHash<QString, QString> catalogueByPackage(const Catalogue &cat);
+
 KdosBackend::KdosBackend(QObject *parent)
     : AbstractResourcesBackend(parent)
     , m_updater(new StandardBackendUpdater(this))
@@ -356,6 +359,8 @@ KdosBackend::KdosBackend(QObject *parent)
     QFile cat(cataloguePath());
     if (cat.open(QIODevice::ReadOnly))
         m_catalogue = parseCatalogue(cat.readAll());
+    m_catalogueNames = catalogueNames(m_catalogue);
+    m_catalogueByPackage = catalogueByPackage(m_catalogue);
     m_context.catalogue = &m_catalogue;
     m_context.mediumPacks = mediumPacksDir();
 
@@ -585,9 +590,8 @@ static QString packageStem(const QString &pkg)
 // first two segments of the path (github.com/flatpak/flatpak,
 // apps.kde.org/kalk), and empty with no path at all: two programs called
 // Notes that both live on github.com are not the same program.
-static QString homepageHost(const AppStream::Component &c)
+static QString homepageHost(const QUrl &url)
 {
-    const QUrl url = c.url(AppStream::Component::UrlKindHomepage);
     QString host = url.host().toCaseFolded();
     if (host.startsWith("www."_L1))
         host = host.mid(4);
@@ -601,6 +605,11 @@ static QString homepageHost(const AppStream::Component &c)
     if (segments.isEmpty())
         return {};
     return host + u'/' + segments.mid(0, 2).join(u'/');
+}
+
+static QString homepageHost(const AppStream::Component &c)
+{
+    return homepageHost(c.url(AppStream::Component::UrlKindHomepage));
 }
 
 // Files a host desktop application under its case-folded name.
@@ -637,6 +646,51 @@ static QString hostTwinByName(const QHash<QString, QList<HostFace>> &names, cons
             return face.package;
     }
     return {};
+}
+
+// The catalogue's application rows as hostTwinByName compares a Debian
+// component with them: under the row's case-folded name, a face for each of
+// its packages, which names the row. A row packs its program with what the
+// program needs (app.sonicpi is sonic-pi with supercollider, csound and
+// puredata), and Debian lists the program by a package of its own beside
+// those (supercollider-ide), which no row names: by its name and a package
+// stem the row's share it is the row's program, and never a second
+// resource of the same name in a box.
+static QHash<QString, QList<HostFace>> catalogueNames(const Catalogue &cat)
+{
+    QHash<QString, QList<HostFace>> names;
+    for (const CatalogueRow &row : cat.rows) {
+        if (row.kind != "app"_L1 || row.name.isEmpty())
+            continue;
+        const QString host = homepageHost(QUrl(row.homepage));
+        for (const QString &p : row.packages)
+            names[row.name.toCaseFolded()].append({row.id, packageStem(p), host});
+    }
+    return names;
+}
+
+// Each package the catalogue's rows pack, naming the first row in the file
+// that packs it.
+static QHash<QString, QString> catalogueByPackage(const Catalogue &cat)
+{
+    QHash<QString, QString> rows;
+    for (const CatalogueRow &row : cat.rows) {
+        for (const QString &p : row.packages) {
+            if (!rows.contains(p))
+                rows.insert(p, row.id);
+        }
+    }
+    return rows;
+}
+
+QString KdosBackend::catalogueRowOf(const AppStream::Component &c) const
+{
+    const QString row = m_catalogueByPackage.value(c.packageNames().value(0));
+    if (!row.isEmpty())
+        return row;
+    if (c.kind() != AppStream::Component::KindDesktopApp)
+        return {};
+    return hostTwinByName(m_catalogueNames, c);
 }
 
 // Whether kdos-discover-catalog read a component from a bare desktop entry
@@ -973,6 +1027,31 @@ static QString iconOf(const AppStream::Component &c)
     return stock.isEmpty() ? file : stock;
 }
 
+// The launcher's Icon= is the icon the Start menu draws the application by:
+// a file, a name the icon theme has, or the name of a file genlaunchers
+// exported into the user's hicolor, which a theme read before the export
+// does not see (hicolorFile). It replaces only a stand-in, the icon of a
+// category or a kind: a pack's own icon or a component's stays.
+void KdosBackend::applyLauncher(Entry *e, bool iconIsStandIn) const
+{
+    if (e->box.isEmpty())
+        return;
+    const auto l = m_launchers.constFind(e->box);
+    if (l == m_launchers.constEnd())
+        return;
+    e->launcher = l->path;
+    if (!iconIsStandIn || l->icon.isEmpty())
+        return;
+    if (QDir::isAbsolutePath(l->icon)) {
+        if (QFileInfo::exists(l->icon))
+            e->icon = l->icon;
+    } else if (QIcon::hasThemeIcon(l->icon)) {
+        e->icon = l->icon;
+    } else if (const QString file = hicolorFile(l->icon); !file.isEmpty()) {
+        e->icon = file;
+    }
+}
+
 void KdosBackend::enrichFromComponent(Entry *e, const AppStream::Component &c) const
 {
     if (e->summary.isEmpty())
@@ -1047,7 +1126,8 @@ Entry KdosBackend::describeDebian(const AppStream::Component &c) const
     e.name = c.name();
     e.appstreamId = QString(); // kept off appstream://, which names host software
     enrichFromComponent(&e, c);
-    if (e.icon.isEmpty())
+    const bool standIn = e.icon.isEmpty();
+    if (standIn)
         e.icon = categoryIcon(e.categories);
     const QString box = boxNameForDebian(e.id);
     const auto b = m_context.boxes.constFind(box);
@@ -1059,6 +1139,7 @@ Entry KdosBackend::describeDebian(const AppStream::Component &c) const
         e.boxAccent = b->accent;
         e.boxPersistence = b->persistence;
         e.categories << u"kdos-box"_s;
+        applyLauncher(&e, standIn);
     }
     return e;
 }
@@ -1108,12 +1189,6 @@ QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
     if (!filter.origin.isEmpty() && filter.origin != "kdos-store"_L1)
         return out;
 
-    QSet<QString> claimed;
-    for (const CatalogueRow &row : std::as_const(m_catalogue.rows)) {
-        for (const QString &p : row.packages)
-            claimed.insert(p);
-    }
-
     const AppStream::ComponentBox box = filter.search.isEmpty() ? m_pool->componentsByCategories(filter.category->involvedCategories())
                                                                 : m_pool->search(filter.search);
     const QStringList words = filter.search.toCaseFolded().split(u' ', Qt::SkipEmptyParts);
@@ -1126,9 +1201,10 @@ QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
             continue;
         // A program the host has natively is never offered again in a box,
         // whether Debian lists it by the host's id or under the same name
-        // (isHostComponent, hostTwinByName).
+        // (isHostComponent, hostTwinByName), nor one a catalogue row is
+        // (catalogueRowOf).
         const QString pkg = c.packageNames().value(0);
-        if (!isDebianPackage(pkg) || claimed.contains(pkg) || isHostComponent(m_hostIds, c)
+        if (!isDebianPackage(pkg) || !catalogueRowOf(c).isEmpty() || isHostComponent(m_hostIds, c)
             || !hostTwinByName(m_hostNames, c).isEmpty() || m_debianExclude.contains(pkg))
             continue;
         out << debianResource(c);
@@ -1312,6 +1388,7 @@ static void applyBox(Entry *e, const BoxRow &b)
 
 void KdosBackend::apply(const Snapshot &snap)
 {
+    m_launchers = boxLaunchers();
     // What the plans are made against.
     QHash<QString, PackRow> stored, medium;
     for (const PackRow &p : snap.packs) {
@@ -1366,6 +1443,7 @@ void KdosBackend::apply(const Snapshot &snap)
         if (pending)
             e.categories << u"kdos-pending"_s;
         e.packages = row.packages;
+        e.commands = row.commands;
         e.size = l.bytes;
         e.sizeIsEstimate = true;
         e.icon = categoryIcon(l.category);
@@ -1394,6 +1472,11 @@ void KdosBackend::apply(const Snapshot &snap)
             }
         }
         e.packOrigin = inStore ? u"store"_s : (m != medium.constEnd() ? u"medium"_s : QString());
+        // A data row reaches its program only as a pack, which kdos-packd
+        // grafts where the program looks; built by the store it is an image
+        // nothing reads, so one with no pack is offered only to be removed.
+        if (e.kind == "data"_L1 && e.packOrigin.isEmpty() && !l.installed)
+            continue;
         // A row with no pack anywhere is built here, and the first build on a
         // base or runtime builds that image too: its measured size counts.
         if (e.packOrigin.isEmpty() && !l.installed)
@@ -1422,6 +1505,7 @@ void KdosBackend::apply(const Snapshot &snap)
         // package's before KDOS packed it.
         if (snap.packIcons.contains(l.id))
             e.icon = snap.packIcons.value(l.id);
+        applyLauncher(&e, !snap.packIcons.contains(l.id) && e.icon == categoryIcon(l.category));
         upsert(e, &seen);
     }
 
@@ -1434,6 +1518,22 @@ void KdosBackend::apply(const Snapshot &snap)
         e.summary = g.description;
         e.members = g.members;
         e.icon = u"package-x-generic"_s;
+        // KDOS gathers a set; its applications are each their own
+        // publisher's, and the set is under every licence its applications
+        // read above name. One whose licence nobody gives adds none.
+        e.author = i18nc("@info the author of a catalogue set", "KDOS");
+        QStringList licences;
+        for (const QString &mid : g.members) {
+            const KdosResource *member = m_resources.value(u"catalogue/"_s + mid);
+            const QString l = member ? member->entry().license : QString();
+            if (!l.isEmpty() && !licences.contains(l))
+                licences << l;
+        }
+        e.license = licences.size() > 1 ? u"("_s + licences.join(u") AND ("_s) + u')' : licences.value(0);
+        for (const QString &mid : g.members) {
+            if (m_catalogue.rows.value(mid).vendorDeb)
+                e.vendorDeb = true;
+        }
         e.categories = {u"kdos-set"_s, u"kdos-set:"_s + g.id};
         if (m_chosenAtInstall.contains(g.id))
             e.categories << u"kdos-pending"_s;
@@ -1499,6 +1599,7 @@ void KdosBackend::apply(const Snapshot &snap)
         if (b != m_context.boxes.constEnd()) {
             applyBox(&e, *b);
             claimedBoxes.insert(boxName);
+            applyLauncher(&e, !snap.packIcons.contains(id));
         }
         if (s == stored.constEnd())
             e.state = EntryState::None;
@@ -1531,6 +1632,7 @@ void KdosBackend::apply(const Snapshot &snap)
         e.icon = categoryIcon(QString());
         e.state = EntryState::Installed;
         applyBox(&e, b);
+        applyLauncher(&e, true);
         upsert(e, &seen);
     }
 
@@ -2051,8 +2153,8 @@ QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
             }
         }
         // An appstream:// link to an application only Debian's DEP-11 knows,
-        // as KRunner's software results give: the catalogue row that packs
-        // its package when there is one, else the Debian lane's resource.
+        // as KRunner's software results give: the catalogue row it is
+        // (catalogueRowOf) when there is one, else the Debian lane's resource.
         // One the host has under the same name (hostTwinByName) is that
         // host port, as debianFor never lists it.
         if (found.isEmpty() && m_poolReady) {
@@ -2073,14 +2175,9 @@ QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
                             continue;
                         }
                     }
-                    KdosResource *res = nullptr;
-                    for (const CatalogueRow &row : std::as_const(m_catalogue.rows)) {
-                        if (row.packages.contains(pkg)) {
-                            res = m_resources.value(u"catalogue/"_s + row.id);
-                            break;
-                        }
-                    }
-                    if (!res && c.kind() == AppStream::Component::KindDesktopApp && !m_debianExclude.contains(pkg))
+                    const QString row = catalogueRowOf(c);
+                    KdosResource *res = row.isEmpty() ? nullptr : m_resources.value(u"catalogue/"_s + row);
+                    if (row.isEmpty() && c.kind() == AppStream::Component::KindDesktopApp && !m_debianExclude.contains(pkg))
                         res = debianResource(c);
                     if (res && !found.contains(StreamResult{res, 0}))
                         found << StreamResult{res, 0};

@@ -345,9 +345,10 @@ constraints below, and each prevents something that would look like a rendering 
   screen while the margin does not; it has to clear 100 pixels on the tallest screen it will be
   seen on. 6.3% is 68 pixels at 1080 lines and 90 at 1440, the largest resolution the tree
   references, and the plate starts covering it above about 1580.
-- **The captions are dropped.** At this height the two lines of small print would be three pixels
-  tall; including them would cost the wordmark a third of its own height to render something
-  illegible.
+- **The captions are dropped, the penguin's feet are not.** At this height the two lines of small
+  print would be three pixels tall. They sit under the wordmark and beside the penguin's legs, so
+  the generator blacks out their area and then crops the whole penguin and the wordmark: a crop
+  that stopped above the captions would cut the penguin off at the waist.
 - **The ink is the maximum channel, not the luminance.** The wordmark is phosphor green,
   `(57,255,20)`, which Rec.601 luminance puts at 169 while the penguin's white lands at 249, so a
   plain greyscale conversion leaves the letters visibly duller than the mascot beside them.
@@ -1816,7 +1817,9 @@ password does not open it.
 `poweroff`, `reboot`, `shutdown`, `telinit 0` or `telinit 6` asks init for runlevel 0 or 6, and
 `Ctrl+Alt+Del` at a text console runs `shutdown -r now`. Plasma's Shut Down and Restart, and the
 login screen's, ask elogind, which runs `/sbin/poweroff` or `/sbin/reboot`; outside runlevels 0 and
-6 those hand the request to `shutdown`, so a shutdown from the desktop takes the same path. Each of
+6 those hand the request to `shutdown`, so a shutdown from the desktop takes the same path. elogind's
+own broadcast before it does so is off: `40_elogind` sets login1's `EnableWallMessages` to false once
+elogind holds its bus name, the only place that setting lives. Each of
 them reaches init as a request written to `/run/initctl`, the FIFO init creates itself, again on the
 tmpfs `rcS` mounts over `/run`. Init then sends `TERM`, and `KILL` three seconds later, to every
 `/etc/inittab` entry the new runlevel does not list, which is every console and, with tty1, SDDM and
@@ -1825,6 +1828,7 @@ completion:
 
 | Entry | Does |
 |---|---|
+| `printf … > /dev/tty0` | Clears the console on screen and hides its cursor, so the screen the desktop gives back shows no text: `shutdown` always broadcasts that the system is going down, to every terminal with a login, and has no switch to stop it |
 | `/etc/init.d/rcK` | Takes the scripts `rcS` would run (executable, no marker under `/etc/service.disabled`) and runs each with `stop` in reverse order, then `sync` |
 | `/etc/init.d/killprocs` | `TERM` to every process left, up to three seconds for them to exit, then `KILL` and `sync` |
 | `swapoff -a` | |
