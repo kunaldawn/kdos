@@ -198,6 +198,7 @@ kdos/
 │   ├── visible-entries.allow the visible desktop entries preflight accepts though they read
 │   │                         like helpers
 │   ├── depdrift.py           link dependencies a package uses but its recipe does not declare
+│   ├── pyimports.py          Python imports a prebuilt install of a package may not meet
 │   ├── debuginfo.py          fails a built tree that ships more than 1 MiB of debug information
 │   ├── unowned.py, linkcheck.py, entrycheck.py
 │   │                         the gates 70_image runs on the image: files nothing owns, run-time
@@ -221,6 +222,7 @@ kdos/
 │   ├── packlane.sh           exercise the pack lane (installing a signed pack into a box)
 │   │                         on a booted machine
 │   ├── appsweep.sh, appbox-smoke.sh, appreport.sh   launch catalogue applications and report
+│   ├── catsizes.py           what each catalogue application row adds, from apt's sizes
 │   ├── oomd-fire.sh          make the memory-pressure killer fire in a guest
 │   ├── usability.sh, usability.md   drive the desktop the way a person does, and its checklist
 │   ├── prepare_base.py, test_runner.py, mini_build.py, report_gen.py, Dockerfile.base

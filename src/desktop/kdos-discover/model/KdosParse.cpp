@@ -32,7 +32,7 @@ QString originOf(Lane lane, const QString &packOrigin)
             return u"medium"_s;
         return packOrigin == "store"_L1 ? u"kdos-packs"_s : u"kdos-store"_s;
     case Lane::Set:
-        return u"kdos-packs"_s;
+        return u"kdos-store"_s;
     case Lane::Pack:
         return packOrigin == "medium"_L1 ? u"medium"_s : u"kdos-packs"_s;
     case Lane::Debian:
@@ -95,12 +95,13 @@ Catalogue parseCatalogue(const QByteArray &text)
 {
     static const QStringList packKinds{u"base"_s, u"runtime"_s, u"app"_s, u"data"_s};
     Catalogue cat;
-    // `deb` and `about` rows are applied once the whole file is read: the
-    // shipped file puts every `deb` row above the pack row it names, and
-    // kdos-appbox reads a `deb` row wherever it stands; an `about` row, which
-    // only Discover reads, may stand anywhere.
+    // `deb`, `cmd` and `about` rows are applied once the whole file is read:
+    // the shipped file puts every `deb` and `cmd` row above the pack row it
+    // names, and kdos-appbox reads either wherever it stands; an `about` row,
+    // which only Discover reads, may stand anywhere.
     QStringList debIds;
     QList<QPair<QString, QString>> abouts;
+    QList<QPair<QString, QString>> cmds;
 
     for (const QByteArray &raw : lines(text)) {
         const QString line = QString::fromUtf8(raw).trimmed();
@@ -138,6 +139,8 @@ Catalogue parseCatalogue(const QByteArray &text)
             it->tagline = f.mid(3).join(u'|').trimmed();
         } else if (w[0] == "deb"_L1) {
             debIds << w[1];
+        } else if (w[0] == "cmd"_L1 && w.size() >= 3) {
+            cmds.append({w[1], w[2]});
         } else if (w[0] == "about"_L1 && w.size() >= 3) {
             abouts.append({w[1], line.section(QRegularExpression(u"\\s+"_s), 2)});
         } else if (w[0] == "group"_L1 && w.size() >= 3) {
@@ -167,6 +170,11 @@ Catalogue parseCatalogue(const QByteArray &text)
         auto it = cat.rows.find(id);
         if (it != cat.rows.end())
             it->vendorDeb = true;
+    }
+    for (const auto &c : std::as_const(cmds)) {
+        auto it = cat.rows.find(c.first);
+        if (it != cat.rows.end() && !it->commands.contains(c.second))
+            it->commands << c.second;
     }
     // `about <id> <licence>|<author>|<homepage>|<description>`: the
     // description is the rest of the line, so it may carry a pipe.

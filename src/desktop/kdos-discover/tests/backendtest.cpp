@@ -87,6 +87,8 @@ private Q_SLOTS:
     void portRemovedOnRequest();
     void cancelClosesHelperStdin_data();
     void cancelClosesHelperStdin();
+    void passwordRefusedIsCancel_data();
+    void passwordRefusedIsCancel();
     void shippedExclusions();
     void searchRanking();
     void featuredIcons();
@@ -247,7 +249,20 @@ esac)");
     // root's cannot: it ignores SIGTERM, leaves only when its standard input
     // closes, and marks the file named when it has. Its first line is
     // KDOS_TEST_FIRST's, the package named after it.
-    writeTool(u"pkexec"_s, R"sh(if [ -n "$KDOS_TEST_BLOCK" ]; then
+    // With KDOS_TEST_PKEXEC_EXIT it is pkexec answering at the password,
+    // before the helper runs: 126 for a dismissed dialog, 127 for a password
+    // not given, noagent for no polkit agent and other for a 127 without
+    // pkexec's line; helper and helper126 are the helper exiting 127 or 126
+    // after its first line.
+    writeTool(u"pkexec"_s, R"sh(case "$KDOS_TEST_PKEXEC_EXIT" in
+126) exit 126 ;;
+127) echo "Error executing command as another user: Not authorized" >&2; echo "" >&2; echo "This incident has been reported." >&2; exit 127 ;;
+noagent) echo "Error executing command as another user: No authentication agent found." >&2; exit 127 ;;
+other) echo "pkexec: something else" >&2; exit 127 ;;
+helper) echo "==> $KDOS_TEST_FIRST $3 (built here)"; echo "Error executing command as another user: Not authorized" >&2; exit 127 ;;
+helper126) echo "==> $KDOS_TEST_FIRST $3 (built here)"; echo "kpkg: not executable" >&2; exit 126 ;;
+esac
+if [ -n "$KDOS_TEST_BLOCK" ]; then
 	trap '' TERM
 	echo "==> $KDOS_TEST_FIRST $3 (built here)"
 	cat > /dev/null
@@ -306,6 +321,21 @@ esac)sh");
     qputenv("XDG_CACHE_HOME", m_dir.filePath(u"home/.cache"_s).toUtf8());
     qputenv("XDG_DATA_HOME", m_dir.filePath(u"home/.local/share"_s).toUtf8());
 
+    // The launcher genlaunchers wrote for kcalc's box, and the icon it
+    // exported into the user's hicolor; app.tool's box has none, as a row of
+    // commands never does.
+    QVERIFY(QDir().mkpath(m_dir.filePath(u"home/.local/share/applications"_s)));
+    QVERIFY(QDir().mkpath(m_dir.filePath(u"home/.local/share/icons/hicolor/48x48/apps"_s)));
+    {
+        QFile launcher(m_dir.filePath(u"home/.local/share/applications/app.kcalc.desktop"_s));
+        QVERIFY(launcher.open(QIODevice::WriteOnly));
+        launcher.write("[Desktop Entry]\nType=Application\nName=KCalc\nExec=kdos-appbox -b app.kcalc -l app.kcalc run kcalc\n"
+                       "Icon=app.kcalc\nX-KDOS-Box=app.kcalc\nX-KDOS-Alien=true\n");
+        QFile icon(m_dir.filePath(u"home/.local/share/icons/hicolor/48x48/apps/app.kcalc.png"_s));
+        QVERIFY(icon.open(QIODevice::WriteOnly));
+        icon.write("png");
+    }
+
     m_backend = new KdosBackend(this);
     m_backend->setName(u"kdos-backend"_s);
     QVERIFY(m_backend->isValid());
@@ -326,6 +356,19 @@ void BackendTest::catalogueRows()
     QVERIFY(kcalc->hasCategory(u"kdos-box"_s));
     QVERIFY(kcalc->canExecute());
     QVERIFY(kcalc->verifiedMessage().contains(u"app.kcalc"_s));
+    // No component describes it, so it is drawn by the icon its launcher
+    // names, not its category's; the launch is that launcher.
+    QVERIFY(kcalc->entry().icon.endsWith(u"/icons/hicolor/48x48/apps/app.kcalc.png"_s));
+    QVERIFY(kcalc->entry().launcher.endsWith(u"/applications/app.kcalc.desktop"_s));
+
+    // A row whose box gives the host only commands has nothing to launch,
+    // and its page names the commands.
+    KdosResource *tool = resource(u"catalogue"_s, u"app.tool"_s);
+    QVERIFY(tool);
+    QCOMPARE(tool->state(), AbstractResource::Installed);
+    QCOMPARE(tool->entry().commands, (QStringList{u"toolx"_s, u"tooly"_s}));
+    QVERIFY(!tool->canExecute());
+    QVERIFY(tool->kdosNotice().contains(u"toolx, tooly"_s));
 
     // A row with its pack in the store and a newer one on the medium, no box:
     // installable offline, and described by its Debian package's component.
@@ -339,15 +382,18 @@ void BackendTest::catalogueRows()
     QVERIFY(!scribus->sizeDescription().contains(u"estimate"_s));
 
     // No pack anywhere: the store lane, and it says it needs the network.
-    KdosResource *tess = resource(u"catalogue"_s, u"data.tess"_s);
-    QVERIFY(tess);
-    QCOMPARE(tess->type(), AbstractResource::ApplicationSupport);
-    QVERIFY(tess->kdosNotice().contains(u"network"_s));
-    QVERIFY(tess->kdosNotice().contains(u"estimate"_s));
-    QCOMPARE(tess->origin(), u"kdos-store"_s); // built by the store lane
-    QVERIFY(tess->sizeDescription().startsWith(u"About "_s));
+    KdosResource *ocr = resource(u"catalogue"_s, u"app.ocr"_s);
+    QVERIFY(ocr);
+    QCOMPARE(ocr->type(), AbstractResource::Application);
+    QVERIFY(ocr->kdosNotice().contains(u"network"_s));
+    QVERIFY(ocr->kdosNotice().contains(u"estimate"_s));
+    QCOMPARE(ocr->origin(), u"kdos-store"_s); // built by the store lane
+    QVERIFY(ocr->sizeDescription().startsWith(u"About "_s));
     // Built here, on a base this machine has not built: the base counts.
-    QCOMPARE(tess->size(), quint64(30000000 + 200000000));
+    QCOMPARE(ocr->size(), quint64(30000000 + 200000000));
+    // A data row with no pack would be built into an image nothing grafts:
+    // it is not offered.
+    QVERIFY(!resource(u"catalogue"_s, u"data.tess"_s));
     QCOMPARE(scribus->origin(), u"kdos-packs"_s); // its pack is in the store
 
     // A size nobody knows is no size at all: Discover spins beside a 0 that
@@ -388,6 +434,12 @@ void BackendTest::sets()
     QCOMPARE(office->entry().members, (QStringList{u"app.scribus"_s, u"app.kcalc"_s, u"data.tess"_s}));
     QCOMPARE(office->memberNames(), (QStringList{u"Scribus"_s, u"KCalc"_s, u"Tesseract languages"_s}));
     QCOMPARE(office->state(), AbstractResource::None); // scribus is not installed
+    // The store lane builds every member, pack or none: the set is its
+    // origin, KDOS its author, and its licences are its members'.
+    QCOMPARE(office->origin(), u"kdos-store"_s);
+    QCOMPARE(office->author(), u"KDOS"_s);
+    QCOMPARE(office->entry().license, u"GPL-2.0-or-later"_s);
+    QVERIFY(office->kdosNotice().contains(u"network"_s));
     QVERIFY(office->hasCategory(u"kdos-set:office"_s));
     // The members' estimates, plus the one base data.tess is built on;
     // scribus has a pack and kcalc is installed, so neither adds a chain.
@@ -507,6 +559,12 @@ void BackendTest::debianLane()
     QVERIFY(scribusLink);
     QCOMPARE(scribusLink->entry().lane, Lane::Catalogue);
     QCOMPARE(scribusLink->entry().id, u"app.scribus"_s);
+    // A Debian program a row packs under another package of its stem and
+    // the row's name is that row too, as search and categories never list
+    // it beside the row.
+    KdosResource *ngLink = byUrl(u"appstream://net.scribus.ScribusNg"_s);
+    QVERIFY(ngLink);
+    QCOMPARE(ngLink->entry().id, u"app.scribus"_s);
     KdosResource *inkLink = byUrl(u"appstream://org.inkscape.Inkscape"_s);
     QVERIFY(inkLink);
     QCOMPARE(inkLink->entry().lane, Lane::Debian);
@@ -1102,14 +1160,14 @@ void BackendTest::packFile()
 
 void BackendTest::installMetered()
 {
-    // data.tess has no pack: `kdos-appbox install`, metered by its chain
-    // (base, data.tess) and the closing line.
-    KdosResource *tess = resource(u"catalogue"_s, u"data.tess"_s);
-    QVERIFY(tess);
+    // app.ocr has no pack: `kdos-appbox install`, metered by its chain
+    // (base, app.ocr) and the closing line.
+    KdosResource *ocr = resource(u"catalogue"_s, u"app.ocr"_s);
+    QVERIFY(ocr);
     clearLog();
     QList<int> progress;
-    QCOMPARE(runToEnd(m_backend->installApplication(tess), &progress), Transaction::DoneStatus);
-    QVERIFY(toolLog().contains(u"kdos-appbox install data.tess"_s));
+    QCOMPARE(runToEnd(m_backend->installApplication(ocr), &progress), Transaction::DoneStatus);
+    QVERIFY(toolLog().contains(u"kdos-appbox install app.ocr"_s));
     QCOMPARE(progress, (QList<int>{33, 66, 100}));
 
     // The stored pack becomes a box without the store lane.
@@ -1123,10 +1181,10 @@ void BackendTest::installMetered()
 
 void BackendTest::installFails()
 {
-    KdosResource *tess = resource(u"catalogue"_s, u"data.tess"_s);
-    QVERIFY(tess);
+    KdosResource *ocr = resource(u"catalogue"_s, u"app.ocr"_s);
+    QVERIFY(ocr);
     qputenv("KDOS_TEST_FAIL", "1");
-    Transaction *t = m_backend->installApplication(tess);
+    Transaction *t = m_backend->installApplication(ocr);
     QVERIFY(t);
     QSignalSpy txSaid(t, &Transaction::passiveMessage);
     QCOMPARE(runToEnd(t), Transaction::DoneWithErrorStatus);
@@ -1139,12 +1197,12 @@ void BackendTest::installFails()
     // Discover shows that message only behind a generic error, so the page's
     // notice says it, through the refresh the failure caused, until the next
     // install of the resource starts.
-    QCOMPARE(tess->kdosNoticeType(), int(InlineMessage::Error));
-    QCOMPARE(tess->kdosNotice(), txSaid.first().first().toString());
-    QVERIFY(tess->kdosNotice().startsWith(tess->name() + u" was not installed: "_s));
-    QCOMPARE(runToEnd(m_backend->installApplication(tess)), Transaction::DoneStatus);
-    QVERIFY(!tess->kdosNotice().contains(u"was not installed"_s));
-    QCOMPARE(tess->kdosNoticeType(), int(InlineMessage::Information));
+    QCOMPARE(ocr->kdosNoticeType(), int(InlineMessage::Error));
+    QCOMPARE(ocr->kdosNotice(), txSaid.first().first().toString());
+    QVERIFY(ocr->kdosNotice().startsWith(ocr->name() + u" was not installed: "_s));
+    QCOMPARE(runToEnd(m_backend->installApplication(ocr)), Transaction::DoneStatus);
+    QVERIFY(!ocr->kdosNotice().contains(u"was not installed"_s));
+    QCOMPARE(ocr->kdosNoticeType(), int(InlineMessage::Information));
 }
 
 void BackendTest::removeRuns()
@@ -1296,6 +1354,52 @@ void BackendTest::cancelClosesHelperStdin()
     QVERIFY(goneWhenCancelled);
     QVERIFY(statuses.contains(Transaction::DownloadingStatus));
     QVERIFY(statuses.indexOf(Transaction::CommittingStatus) > statuses.indexOf(Transaction::DownloadingStatus));
+}
+
+void BackendTest::passwordRefusedIsCancel_data()
+{
+    QTest::addColumn<QByteArray>("code");
+    QTest::addColumn<int>("status");
+    QTest::addColumn<QString>("said");
+    QTest::newRow("dismissed") << QByteArray("126") << int(Transaction::CancelledStatus) << QString();
+    QTest::newRow("not authorized") << QByteArray("127") << int(Transaction::CancelledStatus) << u"password was not given"_s;
+    QTest::newRow("no agent") << QByteArray("noagent") << int(Transaction::DoneWithErrorStatus) << u"No authentication agent found"_s;
+    QTest::newRow("127 without pkexec's line") << QByteArray("other") << int(Transaction::DoneWithErrorStatus) << u"something else"_s;
+    QTest::newRow("127 from the helper") << QByteArray("helper") << int(Transaction::DoneWithErrorStatus) << u"Not authorized"_s;
+    QTest::newRow("126 from the helper") << QByteArray("helper126") << int(Transaction::DoneWithErrorStatus) << u"not executable"_s;
+}
+
+void BackendTest::passwordRefusedIsCancel()
+{
+    // Cancel in the password dialog is the person's own no: the install ends
+    // Cancelled with no failure on the page, and a "Not authorized", which a
+    // refusing polkit also answers, says so in a passive message. Any other
+    // pkexec exit, or one after the helper's first line, is a failure.
+    QFETCH(QByteArray, code);
+    QFETCH(int, status);
+    QFETCH(QString, said);
+    KdosResource *addons = resource(u"port"_s, u"kdos-addons"_s);
+    QVERIFY(addons);
+    qputenv("KDOS_TEST_PKEXEC_EXIT", code);
+    Transaction *t = m_backend->installApplication(addons);
+    QVERIFY(t);
+    QSignalSpy txSaid(t, &Transaction::passiveMessage);
+    const Transaction::Status ended = runToEnd(t);
+    qunsetenv("KDOS_TEST_PKEXEC_EXIT");
+    QCOMPARE(int(ended), status);
+    if (said.isEmpty()) {
+        QCOMPARE(txSaid.count(), 0);
+    } else {
+        QCOMPARE(txSaid.count(), 1);
+        QVERIFY2(txSaid.at(0).at(0).toString().contains(said), qPrintable(txSaid.at(0).at(0).toString()));
+    }
+    if (status == Transaction::CancelledStatus) {
+        QVERIFY(!addons->kdosNotice().contains(u"was not installed"_s));
+        QCOMPARE(addons->kdosNoticeType(), int(InlineMessage::Information));
+    } else {
+        QVERIFY(addons->kdosNotice().contains(u"was not installed"_s));
+        addons->setFailure({});
+    }
 }
 
 void BackendTest::offlineRefuses()

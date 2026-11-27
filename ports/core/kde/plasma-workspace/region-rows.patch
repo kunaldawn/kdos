@@ -1,0 +1,48 @@
+Subject: region KCM: read each row's setting from its own entry
+
+The options model built its row list with Address, Name Style and Phone
+Numbers only when LC_ADDRESS is defined, but read every row back by
+casting the row number to SettingType. On a C library with no
+LC_ADDRESS, such as musl, the rows after Paper Size are three short, so
+"Data and Storage Sizes" (row 6) was read as Address, whose case is
+compiled out, and showed no example; its change signal named row 9,
+which does not exist. Each row now carries its own SettingType, which
+the switches read, and Data and Storage Sizes is always the last row.
+
+diff --git a/kcms/region_language/optionsmodel.cpp b/kcms/region_language/optionsmodel.cpp
+index 50dd03c..433eee7 100644
+--- a/kcms/region_language/optionsmodel.cpp
++++ b/kcms/region_language/optionsmodel.cpp
+@@ -121,7 +121,7 @@ QVariant OptionsModel::data(const QModelIndex &index, int role) const
+     case Name:
+         return m_staticNames.at(row).first;
+     case Subtitle: {
+-        switch (static_cast<SettingType>(row)) {
++        switch (m_staticNames.at(row).second) {
+         case Language:
+             Q_ASSERT(false); // shouldn't happen
+             return {};
+@@ -170,12 +170,12 @@ QVariant OptionsModel::data(const QModelIndex &index, int role) const
+             break;
+ #endif
+         case BinaryDialect:
+-            Q_UNREACHABLE();
++            return {};
+         }
+         return {}; // implicit locale
+     }
+     case Example: {
+-        switch (static_cast<SettingType>(row)) {
++        switch (m_staticNames.at(row).second) {
+         case Language:
+             Q_ASSERT(false); // shouldn't happen
+             return {};
+@@ -300,7 +300,7 @@ void OptionsModel::setBinaryDialect(QVariant value)
+     m_binaryDialect = static_cast<KFormat::BinaryUnitDialect>(i);
+     updateBinaryDialectExample();
+ 
+-    const auto idx = createIndex(SettingType::BinaryDialect, 0);
++    const auto idx = createIndex(int(m_staticNames.size()) - 1, 0);
+     Q_EMIT dataChanged(idx, idx, {Subtitle, Example});
+     Q_EMIT binaryDialectChanged();
+ }

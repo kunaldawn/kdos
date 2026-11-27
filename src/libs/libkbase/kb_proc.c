@@ -158,7 +158,7 @@ int kb_run_to_file(const KbArgv *a, const char *path)
  * kill the CALLER, which takes whatever it was in the middle of down with it.
  */
 static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
-			bool keep_stdout)
+			bool keep_stdout, bool err_to_out)
 {
 	int fd[2];
 	pid_t pid;
@@ -189,6 +189,8 @@ static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
 		}
 		if (outfd >= 0) {
 			dup2(outfd, STDOUT_FILENO);
+			if (err_to_out)
+				dup2(outfd, STDERR_FILENO);
 			close(outfd);
 		}
 		kb_child_reset_signals();
@@ -219,12 +221,33 @@ static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
 static int feed(const KbArgv *a, const char *in, size_t n, int outfd,
 		bool keep_stdout)
 {
-	return reap(feed_start(a, in, n, outfd, keep_stdout));
+	return reap(feed_start(a, in, n, outfd, keep_stdout, false));
 }
 
 int kb_run_feed(const KbArgv *a, const char *in, size_t n)
 {
 	return feed(a, in, n, -1, false);
+}
+
+/*
+ * Fed on stdin, with BOTH of the child's output streams written to a file —
+ * a build log. A program that prints its progress on stdout and its verdict
+ * on stderr (podman build: the STEP lines, then `Error: …`) would lose the
+ * verdict to any variant that keeps only one, and the verdict is the line a
+ * reader of the log came for. The file is created here, truncated, so a
+ * failure to create it is reported as itself and not as a child exit.
+ */
+int kb_run_feed_to_file(const KbArgv *a, const char *in, size_t n,
+			const char *path)
+{
+	int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	int rc;
+
+	if (fd < 0)
+		return -1;
+	rc = reap(feed_start(a, in, n, fd, false, true));
+	close(fd);
+	return rc;
 }
 
 /*
@@ -257,7 +280,7 @@ int kb_run_feed_capture(const KbArgv *a, const char *in, size_t n, char *buf,
 	 * ever reaps it. */
 	fcntl(fd[0], F_SETFD, FD_CLOEXEC);
 
-	pid = feed_start(a, in, n, fd[1], false);
+	pid = feed_start(a, in, n, fd[1], false, false);
 	close(fd[1]);
 	for (;;) {
 		ssize_t r = read(fd[0], buf + o, cap - 1 - o);

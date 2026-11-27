@@ -163,8 +163,8 @@ sudo kdos update remove kdenlive
 `kdos update remove` takes out a port somebody installed, one that has a line in the world set
 (`/var/lib/kdos/world`) and that no installed package depends on; Discover's Remove button for host
 software runs the same command, and shows the button only for such a port. A port of the image is
-part of the system and refused, since it has no world line unless `kdos update install` named it,
-and one an installed package needs is refused with the name of that package. The removal runs `kpkg
+part of the system and refused, world line or not, and `kdos update install` of a port the image
+already carries writes no world line; one an installed package needs is refused with the name of that package. The removal runs `kpkg
 remove`, which uninstalls the port and takes it out of the world set and the origin record, so the
 next update does not bring it back. The packages the port brought go with it: each package an
 install added (one with a line in `/var/lib/kdos/origin`) that is not in the world set, is not a
@@ -719,11 +719,11 @@ source; each source below reaches the network only when you press a button that 
 
 | Origin | Lists | Installing |
 |---|---|---|
-| `kdos-packs` | The catalogue's groups, every pack in the pack store, and the catalogue's applications whose pack is there | A box over that pack, offline |
+| `kdos-packs` | Every pack in the pack store, and the catalogue's applications whose pack is there | A box over that pack, offline |
 | `medium` | The packs and application sets on the boot medium, and the catalogue's applications whose pack is only there | Offline, verified as each pack mounts |
-| `kdos-store` | The catalogue's applications with no pack anywhere, and Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image, less those that cannot work in a box | Built from Debian packages in a box of its own, over the network, and each says so before it starts; a Debian application's box is `deb.<package>` |
+| `kdos-store` | The catalogue's applications with no pack anywhere, the catalogue's groups, and Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image, less those that cannot work in a box | Built from Debian packages in a box of its own, over the network, and each says so before it starts; a Debian application's box is `deb.<package>` |
 | `kdos-boxes` | Boxes that no application above accounts for, such as one you made with `kdos-box create` | Removal only |
-| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Discover removes a port installed on request that nothing installed needs; a port with no world line, as the image's are, or one another installed package needs, is part of the system and has no Remove; see [Removing a port](#removing-a-port) |
+| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Discover removes a port installed on request that nothing installed needs; a port of the image, one with no world line or one another installed package needs is part of the system and has no Remove; see [Removing a port](#removing-a-port) |
 | `kdos-ports-source`, shown as *KDOS, built on this computer* | Each port the binhost holds that is not installed, as a second origin of the same application | Built on the machine from its recipe, by `kdos update install --source`, with an administrator's password every time; what it lacks comes prebuilt or is built too, as System Settings › System Versions › Installing software says |
 | The system update | The next KDOS release, as an A/B update (see [Keeping it current](administration.md#keeping-it-current)) | Written into the other slot; **Restart** starts it |
 | Firmware | Firmware updates fwupd knows for this machine's devices, from the metadata snapshot each release carries | Applied by fwupd; system firmware at the next restart |
@@ -742,7 +742,8 @@ never installs anything by itself. On the live medium the tray says nothing abou
 update, which could not be kept there; it still shows a running update job or a pending restart.
 
 `kdos app` is the same catalogue from a prompt; see [Finding and installing](#finding-and-installing).
-Discover's **Sets** are the catalogue's sets of boxed applications; a [native
+Discover's **Sets** are the catalogue's sets of boxed applications, each built from Debian packages
+over the network, member by member, as `kdos app install <group>` builds it; a [native
 group](#native-groups) of ports is not in Discover and is installed with
 `sudo kdos update install <group>` or in the installer.
 
@@ -783,12 +784,12 @@ Counted in the shipped file:
 
 | Row kind | Count |
 |---|---|
-| Applications (`app`) | 70 |
+| Applications (`app`) | 69 |
 | Shared runtimes (`runtime`) | 7 |
 | Bases (`base`) | 2 |
 | Data sets (`data`) | 2 |
 | Groups (distinct names on `group` rows) | 7 |
-| Commands meant to be typed (`cmd`) | 25, in 16 applications |
+| Commands meant to be typed (`cmd`) | 24, in 15 applications |
 
 The runtimes are `rt-gtk`, `rt-qt`, `rt-kde` (built on `rt-qt`), `rt-media`, `rt-sci`,
 `rt-electron` and `rt-wine`. Each application is built on one runtime, or directly on a base, and
@@ -906,7 +907,7 @@ Two limits apply before you start:
 ### In Discover
 
 Discover shows the same catalogue with a window, each row under `kdos-packs`, `medium` or
-`kdos-store` by where its pack is: each application with its
+`kdos-store` by where its pack is, and each group under `kdos-store`: each application with its
 summary, the runtime it is built on and an estimate of its size, its groups as categories, and a
 page per application with **Install** and **Remove** (see [Discover](#discover)). The estimate
 counts the base and runtime the application is built on when this computer has not built them yet,
@@ -914,7 +915,10 @@ which on a first install is several hundred megabytes. Discover builds
 nothing itself: an install, an import or a removal runs `kdos-appbox` and `kdos-packd` with the
 same arguments `kdos app` uses, one at a time, so the command line and Discover cannot disagree
 about what installing means. An install that has to build from Debian packages says so, and that
-it needs the network, before it starts.
+it needs the network, before it starts. A data row is offered only while its pack is in the pack
+store or on the medium, the one way its data reaches the program that reads it; and an application
+whose box gives you only commands (a `cmd` row and no launcher) has no **Launch** button: its page
+names the commands to type instead.
 
 ## Carrying a set to another machine
 

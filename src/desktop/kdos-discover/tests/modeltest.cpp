@@ -64,7 +64,12 @@ private Q_SLOTS:
 void ModelTest::catalogueFile()
 {
     const Catalogue cat = parseCatalogue(fixture("catalogue"));
-    QCOMPARE(cat.offered, (QStringList{u"app.kcalc"_s, u"app.maxima"_s, u"app.early"_s, u"app.loop"_s, u"app.scribus"_s, u"data.tess"_s}));
+    QCOMPARE(cat.offered,
+             (QStringList{u"app.kcalc"_s, u"app.maxima"_s, u"app.early"_s, u"app.loop"_s, u"app.scribus"_s, u"app.ocr"_s, u"app.tool"_s, u"data.tess"_s}));
+    // `cmd` rows, read wherever they stand, each command once.
+    QCOMPARE(cat.rows.value(u"app.kcalc"_s).commands, QStringList{u"kcalc"_s});
+    QCOMPARE(cat.rows.value(u"app.tool"_s).commands, (QStringList{u"toolx"_s, u"tooly"_s}));
+    QVERIFY(cat.rows.value(u"app.scribus"_s).commands.isEmpty());
     QVERIFY(cat.rows.contains(u"rt-kde"_s));
     QCOMPARE(cat.rows.value(u"base"_s).parent, QString());
     QCOMPARE(cat.rows.value(u"alpine"_s).packages, QStringList());
@@ -93,7 +98,9 @@ void ModelTest::catalogueFile()
     QCOMPARE(early.author, u"Early Ltd"_s);
     QCOMPARE(early.description, u"kept: an about row may stand above its row"_s);
     QVERIFY(!kcalc.vendorDeb);
-    QVERIFY(kcalc.license.isEmpty() && kcalc.description.isEmpty());
+    QCOMPARE(kcalc.license, u"GPL-2.0-or-later"_s);
+    const CatalogueRow scribus = cat.rows.value(u"app.scribus"_s);
+    QVERIFY(scribus.license.isEmpty() && scribus.description.isEmpty());
 
     QCOMPARE(cat.groups.size(), 2);
     const CatalogueGroup *office = cat.group(u"office"_s);
@@ -124,7 +131,7 @@ void ModelTest::catalogueChains()
 void ModelTest::catalogueListing()
 {
     const QList<CatalogueListing> l = parseCatalogueListing(fixture("catalogue.tsv"));
-    QCOMPARE(l.size(), 3);
+    QCOMPARE(l.size(), 5);
     QCOMPARE(l[0].id, u"app.kcalc"_s);
     QVERIFY(l[0].installed);
     QCOMPARE(l[0].parent, u"rt-kde"_s);
@@ -515,7 +522,9 @@ void ModelTest::smallRules()
     QCOMPARE(originOf(Lane::Catalogue, u"store"_s), u"kdos-packs"_s);
     QCOMPARE(originOf(Lane::Catalogue, u"medium"_s), u"medium"_s);
     QCOMPARE(originOf(Lane::Catalogue), u"kdos-store"_s);
-    QCOMPARE(originOf(Lane::Set), u"kdos-packs"_s);
+    // A set is built by the store lane, member by member, whatever packs
+    // its members have.
+    QCOMPARE(originOf(Lane::Set), u"kdos-store"_s);
 }
 
 static PlanContext context(const Catalogue *cat)

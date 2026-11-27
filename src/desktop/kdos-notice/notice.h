@@ -115,7 +115,9 @@ typedef struct {
 	char reason[KN_FW_PORTS][192];
 } KnFirmware;
 
-/* Parse the commands' JSON; 0 when the document is not theirs. */
+/* Parse the commands' JSON; 0 when the document is not theirs. Restarts
+ * keeps only the processes `kdos restarts` marks `"replaced"` (an entry
+ * without the key counts as replaced). */
 int kn_parse_restarts(const char *json, KnRestarts *out);
 int kn_parse_cve(const char *json, KnCve *out);
 int kn_parse_boot(const char *json, KnBoot *out);

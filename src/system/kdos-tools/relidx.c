@@ -393,9 +393,12 @@ static int ri_class(int rc)
 }
 
 /* `the server at <host> did not answer` into `why` for a FAILED refusal or
- * timeout, with the host and port of `url` and no scheme or path; 0 when
- * curl's `rc` is not one of those, and `why` is left alone. */
-static int ri_unanswered(const char *url, int rc, char *why, size_t wcap)
+ * timeout, with the host and port of `url` and no scheme or path, or `the
+ * download from <host> stalled` for a timeout from a server that had sent
+ * its answer (`answered`: an HTTP status arrived); 0 when curl's `rc` is
+ * not one of those, and `why` is left alone. */
+static int ri_unanswered(const char *url, int rc, int answered, char *why,
+			 size_t wcap)
 {
 	if ((rc != 7 && rc != 28) || ri_class(rc) != KDT_GOT_FAILED)
 		return 0;
@@ -407,16 +410,26 @@ static int ri_unanswered(const char *url, int rc, char *why, size_t wcap)
 		n -= (size_t)(at + 1 - h);
 		h = at + 1;
 	}
-	snprintf(why, wcap, "the server at %.*s did not answer", (int)n, h);
+	if (rc == 28 && answered)
+		snprintf(why, wcap, "the download from %.*s stalled: less "
+			 "than " KDT_STALL_BYTES " bytes a second arrived for "
+			 KDT_STALL_SECS " seconds", (int)n, h);
+	else
+		snprintf(why, wcap, "the server at %.*s did not answer",
+			 (int)n, h);
 	return 1;
 }
 
 /* curl into `out`, continuing a partial `out` when `resume` is set (`-C -`,
- * a Range request from its size). The exit status in `*rc`; `out` is left
- * as curl left it. */
-static int ri_curl(const char *url, const char *out, int resume, int *rc)
+ * a Range request from its size). The exit status in `*rc`, and in
+ * `*answered` whether the server sent an HTTP status, which is what tells a
+ * stalled transfer from a server that never answered when both end in a
+ * timeout; `out` is left as curl left it. */
+static int ri_curl(const char *url, const char *out, int resume, int *rc,
+		   int *answered)
 {
 	KbArgv a = {0};
+	char code[64];
 	kb_argv_add(&a, "curl");
 	kb_argv_add(&a, "-fsSL");
 	kb_argv_add(&a, "--proto");
@@ -427,6 +440,12 @@ static int ri_curl(const char *url, const char *out, int resume, int *rc)
 	kb_argv_add(&a, "2");
 	kb_argv_add(&a, "--connect-timeout");
 	kb_argv_add(&a, "30");
+	kb_argv_add(&a, "--speed-limit");
+	kb_argv_add(&a, KDT_STALL_BYTES);
+	kb_argv_add(&a, "--speed-time");
+	kb_argv_add(&a, KDT_STALL_SECS);
+	kb_argv_add(&a, "-w");
+	kb_argv_add(&a, "%{http_code}");
 	if (resume) {
 		kb_argv_add(&a, "-C");
 		kb_argv_add(&a, "-");
@@ -436,7 +455,11 @@ static int ri_curl(const char *url, const char *out, int resume, int *rc)
 	kb_argv_add(&a, "--");
 	kb_argv_add(&a, url);
 	kb_argv_end(&a);
-	*rc = kb_run(&a);
+	*rc = kb_run_capture(&a, code, sizeof(code));
+	/* A retried transfer writes one status per try; the last is the one
+	 * that ended it. */
+	size_t cl = strlen(code);
+	*answered = cl >= 3 && atoi(code + cl - 3) > 0;
 	return ri_class(*rc);
 }
 
@@ -444,8 +467,8 @@ static int ri_curl(const char *url, const char *out, int resume, int *rc)
  * a failure removes: KDT_GOT_*, as ri_class() reads the exit status. */
 int kdt_relidx_curl(const char *url, const char *out)
 {
-	int rc;
-	int got = ri_curl(url, out, 0, &rc);
+	int rc, ans;
+	int got = ri_curl(url, out, 0, &rc, &ans);
 	if (got != KDT_GOT_OK)
 		unlink(out);
 	return got;
@@ -474,17 +497,17 @@ KdtRelIdx *kdt_relidx_fetch(const char *place, const char *dir,
 	snprintf(sn, sizeof(sn), "%s.new", sp);
 	snprintf(op, sizeof(op), "%s/ORIGIN", dir);
 	snprintf(url, sizeof(url), "%s/" KDT_RELIDX_FILE ".sig", place);
-	int rc;
-	int got = ri_curl(url, sn, 0, &rc);
+	int rc, ans;
+	int got = ri_curl(url, sn, 0, &rc, &ans);
 	if (got == KDT_GOT_OK) {
 		snprintf(url, sizeof(url), "%s/" KDT_RELIDX_FILE, place);
-		got = ri_curl(url, in, 0, &rc);
+		got = ri_curl(url, in, 0, &rc, &ans);
 	}
 	if (got != KDT_GOT_OK) {
 		unlink(in);
 		unlink(sn);
 		*how = got;
-		if (!ri_unanswered(url, rc, why, wcap))
+		if (!ri_unanswered(url, rc, ans, why, wcap))
 			snprintf(why, wcap, got == KDT_GOT_ABSENT
 				 ? "no release index is published at %s"
 				 : got == KDT_GOT_OFFLINE
@@ -559,7 +582,7 @@ static int ri_take(const KdtRelIdx *ix, const char *path, const char *out,
 {
 	char url[1600], sha[65], part[1100];
 	long long size;
-	int rc;
+	int rc, ans;
 
 	if (kdt_relidx_url(ix, path, url, sizeof(url), sha, &size) != 0) {
 		snprintf(why, wcap, "the signed release index names no %s", path);
@@ -575,10 +598,10 @@ static int ri_take(const KdtRelIdx *ix, const char *path, const char *out,
 		unlink(part);
 		had = 0;
 	}
-	int got = ri_curl(url, part, had > 0, &rc);
+	int got = ri_curl(url, part, had > 0, &rc, &ans);
 	if (got != KDT_GOT_OK && had > 0 && rc == 33) {
 		unlink(part);
-		got = ri_curl(url, part, 0, &rc);
+		got = ri_curl(url, part, 0, &rc, &ans);
 	}
 	if (got != KDT_GOT_OK) {
 		/* A full disk fails curl the way a broken link does; the room
@@ -607,16 +630,24 @@ static int ri_take(const KdtRelIdx *ix, const char *path, const char *out,
 		}
 		if (cutp)
 			*cutp = cut;
-		if (cut > 0)
+		if (cut > 0 && rc == 28)
+			snprintf(why, wcap, "%s stalled at %lld of %lld bytes: "
+				 "less than " KDT_STALL_BYTES " bytes a second "
+				 "arrived for " KDT_STALL_SECS " seconds", out,
+				 cut, size);
+		else if (cut > 0)
 			snprintf(why, wcap, "%s was cut off at %lld of %lld "
 				 "bytes (curl exit %d)", out, cut, size, rc);
-		else if (!ri_unanswered(url, rc, why, wcap))
+		else if (!ri_unanswered(url, rc, ans, why, wcap))
 			snprintf(why, wcap, got == KDT_GOT_OFFLINE
 				 ? "the network could not be reached for %s"
 				 : "%s could not be downloaded", path);
 		/* A file the index names and the release lacks is a broken
-		 * release, not one that publishes nothing. */
-		return got == KDT_GOT_ABSENT ? KDT_GOT_FAILED : got;
+		 * release, not one that publishes nothing; and bytes that
+		 * arrived came over a network that was there. */
+		return got == KDT_GOT_ABSENT ||
+		       (cut > 0 && got == KDT_GOT_OFFLINE) ? KDT_GOT_FAILED
+							   : got;
 	}
 	if (!ri_matches(part, sha, size)) {
 		unlink(part);

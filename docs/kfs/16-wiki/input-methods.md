@@ -108,7 +108,7 @@ service:
 A boxed application reaches fcitx5 through KWin, never directly. `kdos-appbox` sets one variable
 for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=482-494 pin=afbe7df0b3c1 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=484-496 pin=afbe7df0b3c1 -->
 
 ## Usage
 

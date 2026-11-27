@@ -50,7 +50,10 @@ function addMeter(panel, plugin, total) {
 // stack at every login of an account that uses no KDE PIM program; enabled
 // from the tray's settings it works as upstream ships it. The tray matches a
 // status item by its StatusNotifierItem id, and plasma-pa publishes the
-// microphone as plasmashell_microphone; a bare "microphone" hides nothing. The
+// microphone as plasmashell_microphone; a bare "microphone" hides nothing.
+// Plasma's Input Method applet is hidden because Fcitx 5's own status item is
+// the tray's one entry for input methods: shown together they are two items
+// of one name, and only fcitx's shows which engine is on and switches it. The
 // tray enables a default-on applet it has not seen yet, so each kept-off
 // applet is taken out of extraItems if the new tray already enabled it and
 // written into knownItems so it is never enabled later. readConfig needs the
@@ -61,7 +64,7 @@ function addTray(panel) {
     var off = ["org.kde.plasma.cameraindicator", "org.kde.merkuro.contact.applet"];
     var tray = panel.addWidget("org.kde.plasma.systemtray");
     tray.currentConfigGroup = ["General"];
-    tray.writeConfig("hiddenItems", ["plasmashell_microphone"]);
+    tray.writeConfig("hiddenItems", ["plasmashell_microphone", "org.kde.plasma.manage-inputmethod"]);
     var extra = [].concat(tray.readConfig("extraItems", []));
     tray.writeConfig("extraItems", extra.filter(function (id) { return off.indexOf(id) == -1; }));
     var known = [].concat(tray.readConfig("knownItems", []));

@@ -72,3 +72,9 @@ site-packages that re-exports `PyQt5.sip`. Without it such a flow graph stops at
 The last lines of `build.sh` stop the build when `gnuradio-companion`, the `konsole` line in
 `grc.conf`, or the compiled Python modules of `gnuradio.gr` and `gnuradio.qtgui` are missing from
 the package.
+
+`runtime = python3-mako`: GRC renders every block's generated code from Mako templates, and
+`grc/core/blocks/_templates.py` imports `mako` when `gnuradio-companion` starts. The import sits in
+a submodule, which the [run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read, and
+[python3-mako](#port-python3-mako) is a build-only port, so without the `runtime =` word a prebuilt
+install would leave it out and GRC would stop at start with `No module named 'mako'`.

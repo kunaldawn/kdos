@@ -154,3 +154,4 @@ kde-mimeapps.list	Default Applications	image/x-xcf	gimp.desktop	kdos	Raster: GIM
 kde-mimeapps.list	Default Applications	image/wmf	org.inkscape.Inkscape.desktop	kdos	Vector: Inkscape
 kde-mimeapps.list	Default Applications	image/x-canon-cr3	org.darktable.darktable.desktop	kdos	Photo: darktable
 kde-mimeapps.list	Default Applications	image/x-sun-raster	org.kde.kolourpaint.desktop	kdos	Simple formats: KolourPaint
+haruna/haruna.conf	Playback	HWDecoding	no	vm	software decoding in a guest

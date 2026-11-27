@@ -87,3 +87,10 @@ one that carries `StartupWMClass=blender` and starts `blender --offline-mode`. T
 disallows internet access for the run whatever Blender's "Allow Online Access" preference holds,
 and leaves the preference itself as it is, so the extensions platform offers nothing that needs
 the network.
+
+The Extensions platform and the remote asset libraries (`bl_pkg`, registered at every start
+whatever `--offline-mode` says) import `cattrs`, `attrs`, `requests` and `urllib3` from
+`_bpy_internal`. With `-DWITH_PYTHON_INSTALL_REQUESTS=OFF` none is bundled, so all four are ports in
+`depends` ([python3-cattrs](#port-python3-cattrs), [python3-attrs](#port-python3-attrs),
+[python3-requests](#port-python3-requests), [python3-urllib3](#port-python3-urllib3)); without them
+the add-on fails to register at start.

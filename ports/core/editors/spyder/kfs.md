@@ -55,3 +55,10 @@ itself stays, because Spyder lists it to offer languages.
 `/usr/lib/spyder` prefix, in `share`, where no desktop search path reaches; `build.sh` removes that
 directory and writes its own `spyder.desktop` and PNG icons rasterised from
 `spyder/images/spyder.svg` under `/usr/share`.
+
+`runtime = python3-sphinx`: Spyder's configuration imports its Help pane's renderer,
+`spyder/plugins/help/utils/sphinxify.py`, which imports `sphinx`, on every start. Sphinx lives in
+its own prefix and reaches Spyder through the `.pth` file `build.sh` writes, so the
+[run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record holds no edge to it, and [python3-sphinx](#port-python3-sphinx) is a
+build-only port: without the word a prebuilt install would leave it out and `spyder` would stop at
+start with `No module named 'sphinx'`.

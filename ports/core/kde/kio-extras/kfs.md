@@ -58,6 +58,14 @@ Preferences and Web Search Keywords pages of System Settings.
   the thumbnailer reads the preview a JPEG or camera raw file carries instead of decoding the whole
   picture.
 
+## Patches
+
+`webshortcuts-load-unchanged.patch` ends the Web Search Keywords page's `FilterOptions::load()`, in
+`kcms/webshortcuts/ikwsopts.cpp`, by clearing the page's needs-save flag. Loading sets the default
+engine, the two check boxes and the delimiter, and each of those widgets' change signals marks the
+page changed, so upstream's page opened with Reset and Apply enabled and asked about unsaved changes
+on leaving it. It is to be offered upstream.
+
 ## Notes
 
 The `man:/` worker renders pages with its own man2html converter and runs no formatter. The DjVu

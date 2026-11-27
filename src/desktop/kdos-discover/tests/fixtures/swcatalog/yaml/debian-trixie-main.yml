@@ -138,3 +138,19 @@ Keywords:
     - Video
 Icon:
   stock: video-x-generic
+---
+Type: desktop-application
+ID: net.scribus.ScribusNg
+Package: scribus-ng
+Name:
+  C: Scribus
+Summary:
+  C: Open source desktop publishing, the development series
+Description:
+  C: >-
+    <p>Scribus lays out pages, from its development series.</p>
+Categories:
+  - Office
+  - Publishing
+Icon:
+  stock: scribus-ng

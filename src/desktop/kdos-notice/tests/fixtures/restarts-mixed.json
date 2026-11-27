@@ -1,0 +1,8 @@
+{
+  "truncated": false,
+  "processes": [
+    {"pid": 4100, "comm": "kmail", "exe": "/usr/bin/kmail", "replaced": false, "packages": []},
+    {"pid": 3300, "comm": "mpd", "exe": "/usr/bin/mpd", "replaced": true, "packages": ["ffmpeg"]}
+  ],
+  "count": 2
+}

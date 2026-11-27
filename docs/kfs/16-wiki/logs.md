@@ -110,7 +110,8 @@ print.
    `Oct 21 19:10:29 kdos kdos-powerd: [KDOS] (kdos-powerd) Starting: /usr/sbin/kdos-powerd`.
    `syslogd` runs with `-8`, so a message in UTF-8, such as `kdos-oomd`'s kill line with its `—`,
    is written as it was sent and the file stays text. ASCII control characters in a message are
-   still written as `^x`.
+   still written as `^x`. It runs with `-T` too, so the time is the machine's local time when the
+   line was logged, not the sender's own stamp, which musl's `syslog()` writes in UTC.
 
 3. Authentication is kept apart, in a file of its own:
 

@@ -4,13 +4,12 @@ python-lsp-ruff is a `pylsp` plugin that runs [ruff](#port-ruff) inside the
 actions, and its formatter. The plugin calls the `ruff` program from the ruff port.
 
 ## Flags
-- `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CATTRS=26.2.1` — `cattrs` takes its version from
-  version-control metadata through hatch-vcs; this variable hands it the version instead, for
-  `cattrs` alone.
-- `lsprotocol` — `lsprotocol` and `cattrs`, named before `.`, are the plugin's own dependencies;
-  nothing else in the tree imports them, so they come from the
+- `lsprotocol` — named before `.`, the plugin's one dependency that nothing else in the tree
+  imports, so it comes from the
   [Python vendor bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)
-  and install into this package.
+  and installs into this package. cattrs, which lsprotocol converts its messages with, is imported
+  by Blender too, so it is a port of its own, [python3-cattrs](#port-python3-cattrs), in
+  `depends`.
 
 ## Notes
 The bundle unpacks into `$SRC_ROOT/vendor`, outside the source tree. The plugin keeps its code at

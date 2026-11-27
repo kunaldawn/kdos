@@ -10,7 +10,7 @@
 
 name        = deluge
 version     = 2.2.0
-release     = 1
+release     = 2
 source      = https://files.pythonhosted.org/packages/source/d/deluge/deluge-$version.tar.gz
 sha256      = f0fc64e052334ef294ca3951975dd926f129d62813f6c909bb523d914abe6537  deluge-2.2.0.tar.gz
 sha256      = e126657d75080ce560236bb690b4f5d4459dab5bb984c6b11adc23998edbcc33  deluge-vendor-2.2.0.tar.xz
@@ -18,6 +18,7 @@ description = BitTorrent client with a daemon, a GTK 3 interface, a web UI and a
 homepage    = https://deluge-torrent.org/
 license     = GPL-3.0-or-later
 depends     = python3 python3-pip python3-setuptools python3-wheel python3-hatchling python3-hatch-vcs python3-setuptools-scm python3-versioneer python3-cython python3-packaging python3-attrs python3-typing-extensions python3-idna python3-twisted python3-zope-interface python3-cryptography python3-mako python3-pyxdg python3-distro python3-pillow python3-gobject python3-cairo libtorrent-rasterbar gtk3 librsvg xdg-utils hicolor-icon-theme
+runtime     = python3-mako
 vendoring   = python
 pyrequirements = no
 pyruntime   = no

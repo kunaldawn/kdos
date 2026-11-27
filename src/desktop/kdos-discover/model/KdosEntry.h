@@ -69,10 +69,12 @@ struct Entry {
     QStringList members; // what a Set or an Archive installs
     QString kind; // a pack's kind: app, runtime, base or data; for a Port or PortSource, the AppStream kind of the component it is listed by (desktop-application, console-application, addon, ...)
     QString packOrigin; // store or medium, for a Pack or a Catalogue row; empty for none
-    bool vendorDeb = false; // a Catalogue row built from its publisher's own .deb release (a `deb` row)
+    bool vendorDeb = false; // a Catalogue row built from its publisher's own .deb release (a `deb` row); a Set with such a member
     QString signature; // what kdos-pack verify answered, for a PackFile
     QString path; // the file behind an Archive or a PackFile
     QString box; // the box the resource runs in; empty for none
+    QString launcher; // the desktop entry genlaunchers wrote for the box; empty for none
+    QStringList commands; // the commands a Catalogue row's `cmd` rows give the host
     QString boxBase; // pack:<id> or image:<ref>
     QString boxState; // podman's state, or "not created"
     QString boxAccent;
@@ -80,11 +82,12 @@ struct Entry {
 };
 
 // The origin Discover filters and groups by, and names on the Install
-// button. The names are the plan's: a set, a pack in the store and a
-// catalogue row whose pack is there are kdos-packs; a pack, or a catalogue
-// row whose pack, is seen only on the boot medium is medium; a catalogue
-// row with no pack anywhere, which the store lane builds, and the Debian
-// archive outside the catalogue are kdos-store. A host port is kdos-ports,
+// button. The names are the plan's: a pack in the store and a catalogue row
+// whose pack is there are kdos-packs; a pack, or a catalogue row whose pack,
+// is seen only on the boot medium is medium; a catalogue row with no pack
+// anywhere, which the store lane builds, a set, every member of which
+// `kdos-appbox install <group>` builds the same way, and the Debian archive
+// outside the catalogue are kdos-store. A host port is kdos-ports,
 // and the same port built on this computer is kdos-ports-source.
 QString originOf(Lane lane, const QString &packOrigin = {});
 

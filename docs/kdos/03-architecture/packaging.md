@@ -73,13 +73,13 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,402 | Upstream software, filed on 102 shelves |
+| `/ports/core` | `ports/core/` | 2,403 | Upstream software, filed on 102 shelves |
 | `/kdos/src/system` | `src/system/` | 8 | KDOS's own `kdos` command and tools, the packer, the box runtime, its init and its Wayland socket holder, the installer, and the two books: `kdos-doc`, the KDOS book on the image, and `kdos-kfs`, *KDOS from Scratch*, which is not on the image and installs with `sudo kdos update install kdos-kfs` |
 | `/kdos/src/art` | `src/art/` | 8 | KDOS's own theme generator, icon themes, wallpapers, sounds, login screen, boot splash, offline add-ons and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 21 | KDOS's own Plasma code and data: the global themes and Plasma style, the settings pages, widgets, KWin effects and scripts, the KRunner runner, the Discover backend, the welcome pages, the kded module and the graphical installer |
 | `/kdos/src/daemons` | `src/daemons/` | 7 | KDOS's own root daemons, and `kdos-mdnsd` |
 
-That is 2,446 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,447 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -184,7 +184,7 @@ as one list. A phase has one or the other, never both.
 | `20_selfhost` | `packages.txt` | 9 | 15 |
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
-| `40_lang` | `packages.d/`, 13 files | 185 | 185 |
+| `40_lang` | `packages.d/`, 13 files | 186 | 186 |
 | `41_system` | `packages.d/`, 98 files | 1,048 | 1,048 |
 | `42_graphics` | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | `packages.d/`, 56 files | 344 | 344 |
@@ -193,8 +193,8 @@ as one list. A phase has one or the other, never both.
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,442 distinct ports and install 2,446:
-2,402 of the 2,402 in `ports/core`, and every recipe under `src/`. `ports/unbuilt` is where a
+that no earlier phase did. Between them the lists name 2,443 distinct ports and install 2,447:
+2,403 of the 2,403 in `ports/core`, and every recipe under `src/`. `ports/unbuilt` is where a
 recipe kept for `kpkg install` and built by no phase would be named, removed from the image by the
 orphan sweep if an earlier build left it installed; it names none. Any other recipe no list
 reaches would never be built, so `testing/bookcounts.py`, run by `testing/docscheck.sh`, refuses
@@ -1090,9 +1090,16 @@ a submodule runs only when a program asks for that submodule, and read, it would
 optional feature as a need (`lxml.html.html5parser` imports `html5lib`, `urllib3.contrib`
 imports `cryptography`); a test module and a file of the documentation facet are not read; and a
 module of the standard library, or one a program carries beside itself, is in no
-`site-packages`, so an edge to it is not recorded at all. A `py` edge to a module installed after
-the package is not seen either: the solver installs a recipe's dependencies first, so what is
-missed is an import its recipe does not declare.
+`site-packages`, so an edge to it is not recorded at all; nor is a module that reaches a program
+through a `.pth` file from a private prefix. A `py` edge to a module installed after the package
+is not seen either. What the record misses costs nothing for a port reached by an ordinary
+`depends =` edge, which a prebuilt install always follows; a port of `ports/buildonly` is
+followed only where the record names it (the binhost's `N:` line, below), so a build-only port
+that a submodule imports at run time is named in the recipe's `runtime =`, or a prebuilt install
+leaves it out (`gnuradio`'s `python3-mako`, `spyder`'s `python3-sphinx`, `matplotlib`'s
+`fonttools`). `testing/pyimports.py` reads every import of a built tree, guarded ones aside, and
+lists those, with the imports whose module is outside the importer's `depends` closure; see
+[Testing](../05-developer/testing.md#python-imports-a-prebuilt-install-leaves-unmet).
 
 | Command | What it prints |
 |---|---|
@@ -2170,7 +2177,10 @@ The rules every install keeps:
 - **A cut download is continued.** The bytes that arrived stay in the cache as `<file>.part`, the
   install exits 1 saying where it was cut off and that the same command continues it, and that
   command asks for the rest with a Range request; the joined file is checked against the signed
-  index's hash like any other.
+  index's hash like any other. A download that stalls is cut the same way: every download ends
+  when less than 1024 bytes a second arrive for 60 seconds (curl's `--speed-limit` and
+  `--speed-time`), is tried twice more, and then says it `stalled at <n> of <size> bytes`, so a
+  connection that stops sending holds no install for ever.
 - **The download must fit.** Before anything is downloaded, its size is compared with the free
   space of the filesystem the cache is on; when it does not fit, the install prints `kdos update:
   the packages to download take <size> and <cache> has <size> free; nothing was downloaded` and

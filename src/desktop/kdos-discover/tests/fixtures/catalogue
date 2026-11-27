@@ -1,6 +1,7 @@
 # A trimmed KDOS catalogue, in the shipped file's shapes.
 snapshot = auto
 meta app.early   Early|Office|1|dropped: above its own row
+cmd app.tool toolx
 deb app.maxima   https://api.github.com/repos/example/maxima/releases/latest amd64.deb
 about app.early  GPL-2.0-or-later|Early Ltd|https://early.example/|kept: an about row may stand above its row
 image   alpine    alpine:3.24.1
@@ -14,9 +15,12 @@ app app.maxima    rt-sci   maxima wxmaxima
 app app.early     base     early
 app app.loop      app.loop loop
 app app.scribus   rt-gtk   scribus
+app app.ocr       base     tesseract-ocr
+app app.tool      base     tool
 data data.tess    base     tesseract-ocr-eng
 env rt-qt   QT_QPA_PLATFORMTHEME=gtk3
 cmd app.kcalc kcalc
+cmd app.tool tooly
 graft data.tess usr/share/tesseract-ocr/5/tessdata tesseract-ocr/5/tessdata
 group office      Documents, spreadsheets and reading
 group office      app.scribus app.kcalc notaword
@@ -25,4 +29,7 @@ group games       Games and emulators
 meta app.kcalc    KCalc|Utility;Office;|4200000|Scientific calculator # a hash in a tagline
 meta app.scribus  Scribus|Office|99000000|Page layout|with a pipe
 meta data.tess    Tesseract languages|Office|30000000|OCR models
+meta app.ocr      OCR|Office|30000000|Text recognition
+meta app.tool     Tool|Utility|1000|Two commands
+about app.kcalc  GPL-2.0-or-later|KDE|https://apps.kde.org/kcalc/|A calculator
 about app.maxima MIT|Maxima Team|https://maxima.example/|A computer algebra system|with a pipe

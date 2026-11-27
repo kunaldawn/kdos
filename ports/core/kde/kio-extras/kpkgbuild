@@ -10,7 +10,7 @@
 
 name        = kio-extras
 version     = 26.08.2
-release     = 1
+release     = 2
 source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
 sha256      = b5fc98552eea1f9279fb1f03c7e3ffb36a46ffddd0bf0bba9868331d8c461e6e  kio-extras-26.08.2.tar.xz
 description = Extra KIO workers, thumbnailers and settings modules: SMB, SFTP, archives, man pages, MTP and iOS devices, recent files, file previews

@@ -1620,14 +1620,27 @@ int main(void)
 	bad |= !code("7f00-7f10 r--p 00000000 08:01 44 /usr/lib/libfoo.so.1 (deleted)", NULL) << 3;
 	bad |= !code("7f00-7f10 r-xp 00000000 00:01 45 /memfd:jit (deleted)", NULL) << 4;
 	bad |= !code("7f00-7f10 r-xp 00001000 08:01 46 /usr/lib/libbar.so.2", NULL) << 5;
+	/* Replaced is a file at the path again, or at a shorter version of a
+	 * library's name; removed is nothing there. */
+	const char *root = getenv("RS_ROOT");
+	bad |= !restarts_replaced(root, "/usr/lib/libssl.so.3.0.15") << 6;
+	bad |= !restarts_replaced(root, "/usr/bin/kmail") << 7;
+	bad |= restarts_replaced(root, "/usr/bin/akonadiserver") << 8;
+	bad |= restarts_replaced(root, "/usr/lib/libgone.so.1.2") << 9;
+	bad |= restarts_replaced(root, "/usr/bin/python3.12") << 10;
 	return bad;
 }
 EOF
+mkdir -p "$OUT/rs-root/usr/lib" "$OUT/rs-root/usr/bin"
+: > "$OUT/rs-root/usr/lib/libssl.so.3"
+: > "$OUT/rs-root/usr/bin/kmail"
+: > "$OUT/rs-root/usr/bin/python3"
 if $CC $STD $WARN $INC -Isrc/libs/libkbuild -Isrc/system/kdos-tools \
     -o "$OUT/restarts-maps" "$OUT/restarts-maps.c" src/libs/libkbase/*.c \
     src/libs/libkpkg/*.c src/libs/libkbuild/kb_json.c 2> "$OUT/restarts-maps.err" \
-    && "$OUT/restarts-maps"; then
+    && RS_ROOT="$OUT/rs-root" "$OUT/restarts-maps"; then
     echo "  r-xp deleted under /usr and /opt counts; r--p, memfd and a live file do not"
+    echo "  a path with a file again, or a library's soname, is replaced; an empty one is removed"
 else
     echo "  the maps classifier is wrong (bitmask $?)"; cat "$OUT/restarts-maps.err"; exit 1
 fi
@@ -4569,26 +4582,40 @@ iv --root "$NE/stage" --full "$NE/root" --verify --all > "$NE/verify.log" \
     && grep -qxF 'unmeasured needy' "$NE/verify.log" \
     || { echo "  a package without a record failed, or was not reported unmeasured:"; cat "$NE/verify.log"; exit 1; }
 echo "  sonames, interpreters, QML and Python imports and runtime = recorded at install, printed, measured again, resolved; check and --strip unaffected; removed with the package; a base missing a provider fails, in the tree and in a stage"
-# The real tree: a port named by a recipe's runtime = is read at run time, so
-# ports/buildonly never lists it: the closure does not follow a dependency
+# The real tree: a port the base image carries never names a port of
+# ports/buildonly in its runtime =: the closure does not follow a dependency
 # into ports/buildonly, so the base image would drop the port and
-# imageset.py --verify would fail it. kdoctools' meinproc6 and the help worker read the DocBook DTD and
-# stylesheets on every handbook, and its runtime = names both.
+# imageset.py --verify would fail it. A port outside the base may name one;
+# its binhost N: line carries it to a prebuilt install. kdoctools' meinproc6
+# and the help worker read the DocBook DTD and stylesheets on every handbook,
+# and its runtime = names both.
 python3 -I - <<'EOF' || exit 1
-import glob, os
+import glob, os, sys
+sys.path.insert(0, "script/lib")
+import imageset
+errors = []
+ports = imageset.recipes(".")
+base = imageset.closure(ports, imageset.seeds(".", ports, errors),
+                        imageset.buildonly(".", ports, errors))
+if errors:
+    print("  imageset:", errors)
+    raise SystemExit(1)
 bo = set()
 for l in open("ports/buildonly"):
     bo.update(l.split("#", 1)[0].split())
 bad = []
 for p in glob.glob("ports/core/*/*/kpkgbuild") + glob.glob("src/*/*/kpkgbuild"):
+    name = os.path.basename(os.path.dirname(p))
+    if name not in base:
+        continue
     for l in open(p):
         k, _, v = l.partition("=")
         if k.strip() == "runtime":
-            bad += [f"{os.path.basename(os.path.dirname(p))} needs {w}" for w in v.split() if w in bo]
+            bad += [f"{name} needs {w}" for w in v.split() if w in bo]
 kd = [l.partition("=")[2].split() for l in open(glob.glob("ports/core/*/kdoctools/kpkgbuild")[0])
       if l.partition("=")[0].strip() == "runtime"]
 if bad or not kd or not {"docbook-xml", "docbook-xsl"} <= set(kd[0]):
-    print("  ports/buildonly lists a runtime = need, or kdoctools does not name the DocBook DTD and stylesheets:", bad, kd)
+    print("  a base port names a ports/buildonly port in runtime =, or kdoctools does not name the DocBook DTD and stylesheets:", bad, kd)
     raise SystemExit(1)
 EOF
 echo "  no runtime = need is build-only; kdoctools needs docbook-xml and docbook-xsl at run time"
@@ -5433,7 +5460,7 @@ for a; do [ "\$prev" = -o ] && out=\$a; prev=\$a; url=\$a; done
 "$(command -v curl)" "\$@" || exit \$?
 case \$url in *.tar.xz) [ -e "$UC/cut" ] || exit 0 ;; */PACKAGES) [ -e "$UC/cutidx" ] || exit 0 ;; *) exit 0 ;; esac
 head -c \$(( \$(stat -c %s "\$out") / 2 )) "\$out" > "\$out.cut" && mv "\$out.cut" "\$out"
-exit 18
+exit \${CUT_RC:-18}
 EOF
     printf '#!/bin/sh\nexit 1\n' > "$UC/shim/kpkg"
     chmod +x "$UC/shim/curl" "$UC/shim/kpkg"
@@ -5479,6 +5506,19 @@ EOF
     _cutinst
     cmp -s "$_pkf" "$UC/cache/tiny-1.0-1.tar.xz" \
         || { echo "  the cut download under Discover was not continued:"; cat "$UC/err"; exit 1; }
+    # A transfer that stalls under the rate limit is ended (curl exit 28),
+    # said as a stall, and kept and continued like any cut download.
+    grep -q -- '--speed-limit 1024 --speed-time 60 ' "$UC/curl.log" \
+        || { echo "  the download carries no stall limit:"; cat "$UC/curl.log"; exit 1; }
+    rm -f "$UC/cache/tiny-1.0-1.tar.xz" "$UC/cache/tiny-1.0-1.tar.xz.sig"
+    : > "$UC/cut"
+    CUT_RC=28 _cutinst
+    grep -qxF "kdos update: $UC/cache/tiny-1.0-1.tar.xz stalled at $((_pkn / 2)) of $_pkn bytes: less than 1024 bytes a second arrived for 60 seconds; nothing was installed — run the same command again to continue the download" "$UC/err" \
+        || { echo "  a stalled download was not said as one:"; cat "$UC/err"; exit 1; }
+    rm -f "$UC/cut"
+    _cutinst
+    cmp -s "$_pkf" "$UC/cache/tiny-1.0-1.tar.xz" \
+        || { echo "  the stalled download was not continued:"; cat "$UC/err"; exit 1; }
     # A failed build under kdos-ports-builder names the log it keeps; at a
     # terminal it says the log is above. The kpkg shim fetches and fails
     # every install.
@@ -6444,6 +6484,18 @@ rc=0; rmu remove --dry-run appc > "$RM/out" 2> "$RM/err" || rc=$?
 rc=0; rmu remove imgd > /dev/null 2> "$RM/err" || rc=$?
 [ "$rc" = 1 ] && grep -qF 'imgd is part of the system' "$RM/err" \
     || { echo "  remove of a package the image record names exited $rc:"; cat "$RM/err"; exit 1; }
+# A world line does not make a package of the image removable: remove
+# refuses it and removable lists it nowhere.
+printf 'appc\ncyca-extra\nimgd\nbasec\n' > "$RM/sys/var/lib/kdos/world"
+for p in imgd basec; do
+    rc=0; rmu remove "$p" > /dev/null 2> "$RM/err" || rc=$?
+    [ "$rc" = 1 ] && grep -qF "$p is part of the system" "$RM/err" \
+        || { echo "  remove of $p, of the image with a world line, exited $rc:"; cat "$RM/err"; exit 1; }
+done
+rmu removable --json > "$RM/rm" 2>&1
+! grep -q 'imgd\|basec' "$RM/rm" \
+    || { echo "  removable listed a package of the image:"; cat "$RM/rm"; exit 1; }
+printf 'appc\ncyca-extra\n' > "$RM/sys/var/lib/kdos/world"
 rmu removable > "$RM/rm" 2>&1
 [ "$(cat "$RM/rm")" = "$(printf 'appc\ncyca-extra\nleft by removals:\nappb\nliba')" ] \
     || { echo "  removable with a cycle and an image package:"; cat "$RM/rm"; exit 1; }
@@ -7725,6 +7777,36 @@ _ain gimp | grep -q 'kdos update install --dry-run gimp' \
     || { echo "  a name outside the catalogue got no port hint"; exit 1; }
 rm -rf "$_ai"
 echo "  absent rows up the chain are added and named; built ones and installed apps are not"
+
+# A four-column row (name, command, pack, launcher) is the pack's when its
+# pack column, cut at the launcher's tab, is the id, and it runs the way the
+# menu entry runs it; a command row of three runs its shim. The command
+# column is an Exec value, so a quoted word reaches the box as one argument
+# without its quotes.
+echo "==> kdos app launch runs a pack's launcher row, and a command row by its shim"
+_al=$(mktemp -d)
+mkdir -p "$_al/bin" "$_al/home/.local/bin" "$_al/home/.local/share/kdos"
+printf '%s\n' '#!/bin/sh' 'if [ "$1" = catalogue ]; then' \
+    "printf 'app.meld\tMeld\tDev\t1\t-\tinstalled\tm\napp.gmic\tG\tGfx\t1\t-\tinstalled\tg\napp.maxima\tMaxima\tSci\t1\t-\tinstalled\tx\napp.gsm\tG\tSys\t1\t-\tinstalled\ts\napp.wes\tW\tGame\t1\t-\tinstalled\tw\n'" \
+    'exit 0; fi' 'printf "<%s>" "$@" > "$AL_LOG"' > "$_al/bin/kdos-appbox"
+printf '#!/bin/sh\nprintf "shim %%s\\n" "$0" > "$AL_LOG"\n' > "$_al/home/.local/bin/gmic"
+chmod +x "$_al/bin/kdos-appbox" "$_al/home/.local/bin/gmic"
+printf '# name\tcommand[\tpack[\tlauncher]]\nmeld\tmeld %%F\tapp.meld\tapp.meld\ngmic\tgmic\tapp.gmic\nmaxima\tmaxima\tapp.maxima\nwxmaxima\twxmaxima %%F\tapp.maxima\tapp.maxima.wxmaxima\ngsm\t"/usr/bin/gsm root" %%U\tapp.gsm\tapp.gsm\nwes\tsh -c "wes >/dev/null 2>&1"\tapp.wes\tapp.wes\n' \
+    > "$_al/home/.local/share/kdos/alien-apps"
+_alr() { : > "$_al/log"; env HOME="$_al/home" XDG_DATA_HOME= AL_LOG="$_al/log" PATH="$_al/bin:$PATH" \
+    "$OUT/kdos" app launch "$1" > "$_al/out" 2>&1; cat "$_al/log"; }
+[ "$(_alr app.meld)" = "<-b><app.meld><-l><app.meld><run><meld>" ] \
+    || { echo "  a four-column row did not run as its launcher: $(cat "$_al/log" "$_al/out")"; exit 1; }
+[ "$(_alr app.gmic)" = "shim $_al/home/.local/bin/gmic" ] \
+    || { echo "  a command row did not run its shim: $(cat "$_al/log" "$_al/out")"; exit 1; }
+[ "$(_alr app.maxima)" = "<-b><app.maxima><-l><app.maxima.wxmaxima><run><wxmaxima>" ] \
+    || { echo "  the pack's launcher row did not win over its command row: $(cat "$_al/log" "$_al/out")"; exit 1; }
+[ "$(_alr app.gsm)" = "<-b><app.gsm><-l><app.gsm><run></usr/bin/gsm root>" ] \
+    || { echo "  a quoted command word did not reach the box as one argument: $(cat "$_al/log" "$_al/out")"; exit 1; }
+[ "$(_alr app.wes)" = "<-b><app.wes><-l><app.wes><run><sh><-c><wes >/dev/null 2>&1>" ] \
+    || { echo "  a sh -c command was not split as an Exec: $(cat "$_al/log" "$_al/out")"; exit 1; }
+rm -rf "$_al"
+echo "  the pack column is cut at the launcher's tab; a launcher row wins over a command row; the command splits as an Exec"
 
 #
 # A REMINDER IS DELIVERED ONCE, and that is the whole of what can go quietly
@@ -14296,6 +14378,38 @@ test ! -e "$PA/app.one.desktop" && test ! -e "$PD/icons/hicolor/48x48/apps/app.o
     && test -f "$PD/icons/hicolor/48x48/apps/someone-else.png" \
     || { echo "  FAIL  a gone pack's launcher and icons are swept, and only those"; exit 1; }
 echo "  ok    launcher ids, exported icons, the mime cache, the table and the rules agree"
+# The container flags follow the PROGRAM, not the desktop id: VSCodium's
+# release names its entry com.visualstudio.CodeOSS, and a lookup by id drops
+# all three flags and ships a launcher that does not start. Its NoDisplay URL
+# handler lends nothing; upstream's StartupWMClass is kept, and an X11
+# program in the WMCLASS table gets its measured class.
+PKV="$OUT/packsv"; FSV="$OUT/fsrootv"
+rm -rf "$PKV" "$FSV"
+mkdir -p "$PKV/app.vscodium/usr/share/applications" "$PKV/app.imagej/usr/share/applications" \
+         "$PKV/app.grace/usr/share/applications" "$FSV"
+printf '[Desktop Entry]\nType=Application\nName=VSCodium\nExec=/usr/share/codium/codium %%F\nStartupWMClass=VSCodium\nCategories=Development;\n' \
+    > "$PKV/app.vscodium/usr/share/applications/com.visualstudio.CodeOSS.desktop"
+printf '[Desktop Entry]\nType=Application\nName=VSCodium - URL Handler\nExec=/usr/share/codium/codium --open-url %%U\nNoDisplay=true\nMimeType=x-scheme-handler/vscodium;\n' \
+    > "$PKV/app.vscodium/usr/share/applications/com.visualstudio.CodeOSS.UrlHandler.desktop"
+printf '[Desktop Entry]\nType=Application\nName=ImageJ\nExec=imagej %%f\nCategories=Graphics;\n' \
+    > "$PKV/app.imagej/usr/share/applications/imagej.desktop"
+printf '[Desktop Entry]\nType=Application\nName=Grace\nExec=xmgrace %%f\nCategories=Science;\n' \
+    > "$PKV/app.grace/usr/share/applications/grace.desktop"
+printf '[Desktop Entry]\nType=Application\nName=XTerm\nExec=xterm\nCategories=System;\n' \
+    > "$PKV/app.grace/usr/share/applications/debian-xterm.desktop"
+"$OUT/kdos-appbox" genlaunchers --packs-dir "$PKV" "$FSV" >/dev/null 2>&1 \
+    || { echo "  genlaunchers --packs-dir failed"; exit 1; }
+PV="$FSV/etc/skel/.local/share/applications"
+grep -qx 'Exec=kdos-appbox -b app.vscodium -l app.vscodium run /usr/share/codium/codium --no-sandbox --ozone-platform-hint=auto --disable-gpu-compositing %F' \
+    "$PV/app.vscodium.desktop" \
+    && grep -qx 'StartupWMClass=VSCodium' "$PV/app.vscodium.desktop" \
+    && grep -q '^vscodium	' "$FSV/usr/share/kdos/alien-apps" \
+    && ! grep -q 'x-scheme-handler/vscodium' "$PV/mimeinfo.cache" \
+    || { echo "  FAIL  a renamed VSCodium entry keeps its flags and its shim name"; cat "$PV/app.vscodium.desktop"; exit 1; }
+grep -qx 'StartupWMClass=ij-ImageJ' "$PV/app.imagej.desktop" \
+    && test -f "$PV/app.grace.desktop" && ! grep -q '^xterm	' "$FSV/usr/share/kdos/alien-apps" \
+    || { echo "  FAIL  an X11 class from the table, and no launcher for a dependency's entry"; exit 1; }
+echo "  ok    the flags follow the program, a known X11 class is named, a dependency's entry is dropped"
 
 echo
 echo "==> a launch hands the box only its own sockets, or does not start"

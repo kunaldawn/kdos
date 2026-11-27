@@ -18,12 +18,14 @@ USB serial device, which the `dialout` group opens; the `kdos` user is in it thr
   lxml, puremagic, dbus-python); the console path imports only `serial`, `platformdirs` and
   `psutil`, which are ports in `depends`.
 
-## Patches
-
-- `no-wx-on-console.patch` — `printrun/settings.py` imports `wx` at module scope, and `pronsole` imports its settings from there, so the console client would refuse to start without wxPython, which this port does not depend on. The patch wraps the `wx` import, and the import of `get_space` from the GUI widgets, in a `try`; without wxPython, `wx` is `None` and `get_space` raises an `ImportError` only if something builds a settings widget. Every use of `wx` in the file is inside such a method, so a console session never reaches one.
-
 ## Notes
 
+- **The console imports no wx.** `pronsole` imports its settings from `printrun/settings.py`,
+  which upstream opens with `import wx` and whose `ComboSetting` takes its default width from the
+  GUI's `get_space` as a default argument, evaluated when the class is defined.
+  `no-wx-on-console.patch` makes the `wx` import optional and works the width out when the widget
+  is built, so the module imports, and `pronsole` starts, with no wxPython installed; a call that
+  builds a settings widget is the one place that still needs it.
 - **The graphical front ends are removed.** `pronterface.py` and `plater.py`, with their compiled
   caches, desktop entries and AppStream files, are deleted from the package. Their 3D and projector
   views import pyglet and puremagic, which the tree does not carry, so they would be commands on the

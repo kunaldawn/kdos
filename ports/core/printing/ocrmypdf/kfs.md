@@ -29,3 +29,9 @@ dependency missing from `depends` is not noticed until the program imports it. S
 `pydantic` is pinned in `pypackages` because its compiled half is the separate
 [python3-pydantic-core](#port-python3-pydantic-core) port, held with `series` at the one version
 that pydantic release requires. A bump of the pin here must move that port with it.
+
+`runtime = fonttools`: the default renderer, fpdf2, builds the text layer with the `fpdf`
+module this package carries, which imports `fontTools` on its first import. The import is in a
+submodule the [run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read, and [fonttools](#port-fonttools) is a
+build-only port, so without the word a prebuilt install would leave it out and every OCR run would
+stop with `No module named 'fontTools'`.

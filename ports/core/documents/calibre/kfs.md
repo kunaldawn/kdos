@@ -61,3 +61,9 @@ and editor scripts, MathJax, the hyphenation dictionaries, the iso-codes tables 
 `build.sh` writes the three desktop entries. Each program sets its Wayland app id from its entry's
 name, which the entries' `StartupWMClass` lines match. Only the viewer claims the e-book MIME types,
 so a book opens in the viewer and PDF stays with the document viewer.
+
+`runtime = fonttools`: calibre subsets the fonts it embeds in a converted book
+(`calibre/utils/fonts/subset.py` and `metadata.py` import `fontTools`), inside functions the
+[run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read. [fonttools](#port-fonttools) is a build-only port, so
+without the word a prebuilt install would leave it out and a conversion that embeds fonts would
+fail.

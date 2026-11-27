@@ -31,3 +31,9 @@ installed from those directories; the bundle itself stays as it was fetched.
 
 `test -x "$PKG/usr/bin/pylsp"` after the install stops the build if the server's entry point is
 missing.
+
+`runtime = python3-tomlkit`: the vendored pylint imports `tomlkit` from
+`pylint/config/arguments_manager.py` whenever it runs, as `pylint` or as the language server's
+pylint plugin. The import is in a submodule the [run-time needs](../../../../docs/kdos/03-architecture/packaging.md#run-time-needs) record does not read, and
+[python3-tomlkit](#port-python3-tomlkit) is a build-only port, so without the word a prebuilt
+install would leave it out and `pylint` would stop at start.

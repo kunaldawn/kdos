@@ -50,6 +50,14 @@ case "$1" in
         export SYSTEMD_REBOOT_TO_BOOT_LOADER_ENTRY=1
         supervise --restart-with dbus "$NAME" "$DAEMON"
         wait_bus_name org.freedesktop.login1
+        # No wall broadcast for a restart or power-off: elogind sends one
+        # to every login's terminal by default, and with the desktop gone
+        # it is printed on the text console the machine leaves on screen.
+        # The setting is only the bus property, so it is set once a
+        # supervised elogind holds the name, and again after a restart.
+        busctl set-property org.freedesktop.login1 /org/freedesktop/login1 \
+            org.freedesktop.login1.Manager EnableWallMessages b false \
+            >/dev/null 2>&1 || true
         ;;
     stop)
         stop_service "$NAME"

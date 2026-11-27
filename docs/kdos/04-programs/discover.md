@@ -23,9 +23,9 @@ Every resource in Discover carries an origin, which names the source it comes fr
 
 | Origin | What it lists | Backend |
 |---|---|---|
-| `kdos-packs` | Every set in the catalogue, the packs in the pack store, and each catalogue application whose pack is there | KDOS |
+| `kdos-packs` | The packs in the pack store, and each catalogue application whose pack is there | KDOS |
 | `medium` | Packs and `.ktar` sets on the boot medium, `/mnt/iso/packs`, and each catalogue application whose pack is only there | KDOS |
-| `kdos-store` | Catalogue applications with no pack anywhere, and Debian desktop applications no catalogue row names; each is built into a box on request | KDOS |
+| `kdos-store` | Catalogue applications with no pack anywhere, every set in the catalogue, and Debian desktop applications no catalogue row names; each is built into a box on request | KDOS |
 | `kdos-boxes` | Boxes that none of the above accounts for | KDOS |
 | `kdos-ports` | Host software: the ports installed, and those the release's signed binary host holds | KDOS |
 | `kdos-ports-source` | Each port the binary host holds and the machine has not installed, built on this computer instead | KDOS |
@@ -185,7 +185,13 @@ category
 ([The Plasma shell](plasma-shell.md#kdos-notice)).
 
 Each page under Sets is one group of the box catalogue, named after it, such as *Office set*, and installs that
-group's boxed applications. The backend has no resource for a native group of ports, the
+group's boxed applications. It runs `kdos-appbox install <group>`, which builds every member from
+Debian packages, or a `deb` row from its publisher's own release, whatever packs the members have,
+so a set's origin is `kdos-store` and its button reads "Install from Debian, built in a box"; its
+notice says it builds them one after another and needs a network connection, and names the
+publishers' own `.deb` releases when a member is a `deb` row. Its author is KDOS, and its licences
+are those its members' pages show, joined as `(<one>) AND (<other>)`; a member with no licence of
+its own adds none, and a set none of whose members has one shows no licence. The backend has no resource for a native group of ports, the
 `/ports/groups` lists `kdos update groups` shows: a native group is installed with
 `sudo kdos update install <group>` or in the installer, and Discover offers only each of its
 ports on its own page
@@ -193,8 +199,8 @@ ports on its own page
 
 An `appstream://` link, which KRunner's software results and other programs hand to Discover,
 opens the KDOS resource with that component id. For an application only Debian's catalogue knows,
-it opens the catalogue row that packs its package when there is one, and otherwise the Debian
-lane's resource. A link is answered once the backend has read the machine, and an `appstream://`
+it opens the catalogue row that application is when there is one (see
+[Debian applications](#debian-applications)), and otherwise the Debian lane's resource. A link is answered once the backend has read the machine, and an `appstream://`
 link once the AppStream pool has loaded as well, so Discover started on a link, or with its
 featured list cached, opens the application rather than "No entry".
 
@@ -204,7 +210,10 @@ An install or a removal is a list of argument vectors and kdos-packd requests, r
 transaction, one transaction at a time, with no shell. A catalogue row whose pack is already in the
 store or on the medium becomes a box over that pack, offline. Only a row with no pack anywhere is
 built by the store lane, which reaches the Debian archive, and the resource says so before it
-starts. The size such a row shows is an estimate: the catalogue's size of the application, plus
+starts. A data row is offered only while its pack is in the store or on the medium: kdos-packd
+grafts a data pack where its program looks (`graft` and `boxgraft` rows), and a data row the store
+built would be an image nothing reads. One the store already built stays listed, so it can be
+removed. The size such a row shows is an estimate: the catalogue's size of the application, plus
 the measured size of each base and runtime row up its chain whose image this machine has not built
 yet, as `kdos-appbox catalogue --chain` reports them. A set counts each such row once, however many
 of its applications sit on it. The notice says the size is an estimate that counts those rows.
@@ -270,7 +279,14 @@ that begins the other's or is begun by it: Debian's Schism Tracker (`schism`) is
 `schismtracker` port and Debian's MuseScore 3 (`musescore3`) the `musescore` port, and an
 `appstream://` link to either opens the port. The same name alone is not enough, so GNOME
 Calculator is still offered in a box beside Kalk; the cost is that a Debian build of another major
-version of a port's program is not offered while the port is. Nor, finally, is one whose package `/usr/share/kdos/discover/debian-exclude` names: one package a line,
+version of a port's program is not offered while the port is. Nor is one whose package a
+catalogue row names, or which has a catalogue application's name, case-folded, and either the
+same homepage host as the row's `about` homepage or a package stem that begins, or is begun by,
+the stem of one of the row's packages: a row packs its program with what the program needs, and
+Debian may list the program by a package the row does not name, as `supercollider-ide` beside
+the `app.sonicpi` row's `supercollider`; a search, a category and an `appstream://` link all give
+the row. GNUstep's Chess (`chess.app`) is a different program from the `app.gnome-chess` row of
+the same name and stays offered. Nor, finally, is one whose package `/usr/share/kdos/discover/debian-exclude` names: one package a line,
 each a program that cannot do its job from a box on KWin's Wayland session, such as KMag and
 KMouseTool, which work only on an X server's own screen, and firewall front ends such as Firewall
 Configuration and Gufw, which configure a firewall daemon the host does not run (the host's packet
@@ -297,7 +313,20 @@ exactly what was typed (KCalc for `kcalc`, the `htop` command for `htop`); a fuz
 match (KCalc for `galculator`) does not hold it back.
 A catalogue application with no AppStream icon shows its category's icon too: every catalogue
 category is a main desktop-entry category (AudioVideo, Development, Education, Game, Graphics,
-Network, Office, Science, Settings, System or Utility), and each has one.
+Network, Office, Science, Settings, System or Utility), and each has one. Once its box is
+installed, a catalogue application, a pack or a Debian application that would show its category's
+icon shows the `Icon=` of the launcher `kdos-appbox genlaunchers` wrote for its box instead, the
+icon Kickoff draws it by, read from the user's hicolor when the loaded icon theme has not seen it
+(installed VSCodium shows VSCodium's); a pack's own icon or a component's stays.
+
+Launch on a boxed application starts the launcher genlaunchers wrote for its box, through KIO. A
+catalogue row whose `cmd` rows give the host commands and whose box has no launcher, as G'MIC,
+GROMACS or mesa-utils, has no Launch button: its page says it is a command and names each one to
+type in a terminal. Launch on a row whose launcher is missing for any other reason says
+"<Name> has no launcher yet" and names `kdos-appbox genlaunchers --packs --user`. A program that
+exits as it starts, as a GTK 4 application on a virtual machine's software renderer does
+([known gaps](../06-reference/known-gaps.md#gtk-4-and-libadwaita-programs-in-a-box-crash-at-start-on-a-virtual-machines-software-renderer)),
+gives no message: KIO's launcher job ends once the program has started.
 
 ### Host software
 
@@ -313,13 +342,13 @@ two origins:
 | `kdos-ports-source` | KDOS, built on this computer | `kdos-ports-builder install <port>`, which runs `kdos update install --source <port>` | `io.kdos.ports.build`: an administrator's password, asked every time |
 
 **What is part of the system is decided by the world set.** `/var/lib/kdos/world` lists the packages
-somebody installed on purpose, and a package of the image has no line there unless `kdos update
-install` named it. An installed port is part of the system when it has no world line, or when an
-installed package depends on it (as `kdos update removable` reads the edges); it is updated with the system, its page says "Part of the
+somebody installed on purpose, and a package of the image has no line there: `kdos update install`
+of a port the image already carries writes none. An installed port is part of the system when it has
+no world line, when it is a package of the image, or when an installed package depends on it (as `kdos update removable` reads the edges); it is updated with the system, its page says "Part of the
 KDOS system: it is updated with the system and is not removed on its own", or "Needed by <package>"
-for a world port something needs, and it has no Remove button. A world port nothing installed
-depends on is removable, whatever brought it: LibreWolf installed from the binary host, a port built
-here, or a package of the image that `kdos update install` named. Its page says "Installed on
+for a world port something needs, and it has no Remove button. A world port that is not of the
+image and that nothing installed depends on is removable, whatever brought it: LibreWolf installed
+from the binary host, or a port built here. Its page says "Installed on
 request. Removing it also takes out what it brought that nothing else installed needs." The backend
 learns which at each refresh from `kdos update removable --json`, beside `kpkg list --json`; an
 answer that does not come leaves every port part of the system. Remove runs `kdos update remove
@@ -461,7 +490,14 @@ Downloading from then on, and Installing from the first `==> installing <pkg>` o
 the development files of <pkg>` line, since `kdos update install` fetches everything before it
 installs or builds anything. Its first line comes as the first download starts, `==> downloading
 <file> (<size>)`, so a slow download reads Downloading, not Waiting. Cancel, or closing the
-dialog, ends the install with nothing run. Cancel once the helper runs closes its standard input,
+dialog, ends the install with nothing run. Cancel in the password dialog ends it Cancelled too,
+with no error on the page. Before the helper's first line pkexec answers for itself: 126 when its
+dialog is dismissed, which ends the install Cancelled with nothing said, and 127 with "Error
+executing command as another user: Not authorized", which ends it Cancelled with a passive message
+that the password was not given or the account may not change the system, since KDE's agent
+answers Cancel with the same line polkit gives an account it refuses. Any other pkexec exit, "No
+authentication agent found." among them, fails the install with pkexec's line, and so does a 126
+or 127 the helper itself exits with after its first line. Cancel once the helper runs closes its standard input,
 the one stop a user can give a root process: the helper sends SIGTERM to the process group it
 runs `kdos update` in, so kpkg, the build and its compilers stop with it, then SIGKILL after 60
 seconds, and exits 130 without writing the catalogue. The packages installed before the stop stay
@@ -653,7 +689,9 @@ something: never for a `no-network` code, whose sentence says what its words say
 they name the URL the sentence names, so the URL is said once. `no-network` is recorded for a name
 that did not resolve, or for a refused or timed-out connection on a machine with no default route;
 a server that refused the connection or did not answer while a default route exists is a
-`fetch-failed` whose words are "the server at <host:port> did not answer", and
+`fetch-failed` whose words are "the server at <host:port> did not answer", one that answered and
+then sent less than 1024 bytes a second for 60 seconds a `fetch-failed` whose words are "the
+download from <host:port> stalled: less than 1024 bytes a second arrived for 60 seconds", and
 the page reads "The release's package index could not be fetched from https://10.0.2.2:18999.
 (the server at 10.0.2.2:18999 did not answer)". Each
 code `kdos update check` reports has its sentence: the fetch's `no-network`, `fetch-failed` and

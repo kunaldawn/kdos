@@ -38,6 +38,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -202,20 +203,53 @@ int store_containerfile(const CatPack *p, const CatPack *parent,
 	    !addf(out, n, "dpkg --add-architecture i386 && "))
 		return -1;
 
-	/* NOT EVERY APPLICATION IS IN DEBIAN. A `deb` row asks its release URL
+	/*
+	 * NOT EVERY APPLICATION IS IN DEBIAN. A `deb` row asks its release URL
 	 * (a `releases/latest` answer names the newest release), takes the
-	 * first asset whose download URL matches its pattern, and lets apt
+	 * first asset whose download URL ENDS in its pattern, and lets apt
 	 * resolve its dependencies, which is why the fetch is part of the same
-	 * RUN. A pattern that matches two assets gets whichever is listed
-	 * first. */
+	 * RUN. Ending in it, not containing it: a release lists `…amd64.deb`
+	 * beside `…amd64.deb.sha256`, and a checksum handed to apt is
+	 * "Unsupported file", whichever the API lists first.
+	 *
+	 * THE ANSWER IS CHECKED BEFORE apt SEES IT. /bin/sh has no pipefail, so
+	 * a refused API call (GitHub answers 60 unauthenticated requests an
+	 * hour) leaves the pipeline's status 0 and an empty URL; the RUN says
+	 * so in a sentence and fails there, and a download that is not a
+	 * Debian package fails on dpkg-deb rather than inside apt.
+	 */
 	have_deb = cat_deb(p->id, url, sizeof(url), pat, sizeof(pat)) == 0;
-	if (have_deb &&
-	    !addf(out, n,
-		  "curl -fsSL '%s' \\\n"
-		  "      | grep browser_download_url | grep '%s' | head -1 \\\n"
-		  "      | cut -d'\"' -f4 | xargs -r curl -fsSLo /tmp/pack.deb && ",
-		  url, pat))
-		return -1;
+	if (have_deb) {
+		char re[2 * sizeof(pat)];
+		size_t o = 0;
+
+		/* The URL and the pattern land inside single quotes, and the
+		 * pattern inside a regex too, so a quote in either or anything
+		 * but a plain file-name tail is no Containerfile at all. */
+		if (strchr(url, '\'') || !pat[0])
+			return -1;
+		for (const char *c = pat; *c; c++) {
+			if (!strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+				    "0123456789._+-", *c) || o + 3 > sizeof(re))
+				return -1;
+			if (*c == '.')
+				re[o++] = '\\';
+			re[o++] = *c;
+		}
+		re[o] = 0;
+		if (!addf(out, n,
+			  "u=$(curl -fsSL '%s' \\\n"
+			  "      | grep -o '\"browser_download_url\": *\"[^\"]*%s\"' \\\n"
+			  "      | head -1 | cut -d'\"' -f4) && \\\n"
+			  "    { [ -n \"$u\" ] || { echo '%s: no release asset ends "
+			  "in %s. The query failed, was refused (GitHub answers "
+			  "60 unauthenticated queries an hour) or lists none: "
+			  "%s' >&2; exit 1; }; } && \\\n"
+			  "    curl -fsSLo /tmp/pack.deb \"$u\" && "
+			  "dpkg-deb --info /tmp/pack.deb >/dev/null && \\\n    ",
+			  url, re, p->id, pat, url))
+			return -1;
+	}
 
 	/* ONE RUN, so the image has exactly two layers over its parent — the
 	 * ENV is free — and the top one is this row's own diff. */
@@ -268,11 +302,74 @@ static int done_this_run(const char *id)
 	return 0;
 }
 
+/*
+ * WHY A BUILD FAILED IS SAID, NOT ONLY THAT IT DID. Both of podman's streams
+ * go to a log of the row's own, ~/.cache/kdos-appbox/build-<id>.log, rewritten
+ * by each build of the row: the STEP lines and every RUN's output are on its
+ * stdout, and its verdict — `Error: … no space left on device`, a step's exit
+ * status — on its stderr, which `--logfile` does not capture. On a failure the
+ * log's last lines are printed, and Discover shows what this prints. Without
+ * them a failed build reads only "did not build", which names no cause and
+ * no next step.
+ *
+ * UNDER -v THE BUILD DRAWS ON THE TERMINAL INSTEAD, as it runs, and no log is
+ * written: a person watching a twenty-minute apt pass wants it live.
+ */
+static void build_log_path(const char *id, char *out, size_t n)
+{
+	const char *cache = getenv("XDG_CACHE_HOME");
+	char dir[MAX_LINE];
+
+	if (cache && *cache)
+		snprintf(dir, sizeof(dir), "%s/kdos-appbox", cache);
+	else
+		snprintf(dir, sizeof(dir), "%s/.cache/kdos-appbox",
+			 getenv("HOME") ? getenv("HOME") : "/tmp");
+	kb_mkdir_p(dir);
+	snprintf(out, n, "%s/build-%s.log", dir, id);
+}
+
+static void build_log_tail(const char *path, int lines)
+{
+	size_t len = 0;
+	char *text = kb_read_all(path, &len);
+	const char *start;
+	int seen = 0;
+
+	if (!text)
+		return;
+	while (len && (text[len - 1] == '\n' || text[len - 1] == '\r'))
+		text[--len] = '\0';
+	start = text + len;
+	while (start > text) {
+		if (start[-1] == '\n' && ++seen == lines)
+			break;
+		start--;
+	}
+	/* A long line keeps its head and its TAIL: podman's `Error:` repeats
+	 * the whole RUN it was building and puts its reason — the exit status,
+	 * "no space left on device" — at the very end. */
+	fprintf(stderr, "  the build's last lines (all of it: %s):\n", path);
+	for (const char *l = start; *l;) {
+		const char *nl = strchr(l, '\n');
+		int ll = nl ? (int)(nl - l) : (int)strlen(l);
+
+		if (ll > 300)
+			fprintf(stderr, "    %.100s … %.*s\n", l, 180,
+				l + ll - 180);
+		else
+			fprintf(stderr, "    %.*s\n", ll, l);
+		l = nl ? nl + 1 : l + ll;
+	}
+	free(text);
+}
+
 static int build_one(const CatPack *p, const CatPack *parent, int dry)
 {
 	char cf[16384];
-	char tag[MAX_LINE];
+	char tag[MAX_LINE], log[MAX_LINE + CAT_ID_MAX + 16];
 	KbArgv a = {0};
+	int rc;
 
 	if (store_containerfile(p, parent, store_snapshot(), cf, sizeof(cf))
 	    != 0) {
@@ -301,7 +398,22 @@ static int build_one(const CatPack *p, const CatPack *parent, int dry)
 	kb_argv_add(&a, "-");
 	kb_argv_add(&a, STORE_EMPTY_CTX);
 	kb_argv_end(&a);
-	return kb_run_feed(&a, cf, strlen(cf));
+	if (kb_proc_verbose)
+		return kb_run_feed_tty(&a, cf, strlen(cf));
+	build_log_path(p->id, log, sizeof(log));
+	rc = kb_run_feed_to_file(&a, cf, strlen(cf), log);
+	if (rc < 0) {
+		/* -1 is the log, not podman: nothing has run yet, so the build
+		 * still runs, on the terminal, rather than failing for want of
+		 * a cache directory. */
+		fprintf(stderr, "  %s: cannot write the build log %s (%s); "
+			"podman prints to the terminal instead\n", p->id, log,
+			strerror(errno));
+		return kb_run_feed_tty(&a, cf, strlen(cf));
+	}
+	if (rc != 0)
+		build_log_tail(log, 8);
+	return rc;
 }
 
 /* ── launchers ─────────────────────────────────────────────────────────── */
@@ -452,14 +564,16 @@ int store_launchers(int verbose)
 		}
 		if (!p || strcmp(p->kind, "app"))
 			continue;
-		/* A command-only row has no applications directory to copy
-		 * and is still a box with commands: extract_entries made its
-		 * directory, and genlaunchers takes its `cmd` rows. */
+		/* A command-only row, or one whose launcher is a written entry
+		 * (Surf), may have no applications directory to copy and is
+		 * still a box to write for: extract_entries made its
+		 * directory, and genlaunchers takes its `cmd` and entry rows. */
 		{
 			char cmds[1][64];
 
 			if (extract_entries(line, root) == 0 ||
-			    cat_cmds(line, cmds, 1) > 0)
+			    cat_cmds(line, cmds, 1) > 0 ||
+			    launcher_entry_rows(line) > 0)
 				n++;
 		}
 	}
@@ -487,13 +601,22 @@ int store_launchers(int verbose)
  * and on a live session the filesystem is the RAM overlay: the whole session
  * then runs out of memory to write to, with nothing having said so first.
  *
- * THE ESTIMATE IS EVERY ROW STILL TO BUILD. A row's `meta` size is its
- * installed size, and the build holds the downloaded packages beside the
- * unpacked ones, so it counts twice. The base and runtime rows carry measured
- * sizes too; a row with no size counts STORE_ROW_FLOOR, which is what one
- * measured on trixie (a base and rt-gtk under Mousepad took 692 MB together).
+ * THE ESTIMATE IS EVERY ROW STILL TO BUILD. A row's `meta` size is what its
+ * image adds over its parent's — measured with du for a base and a runtime,
+ * summed from apt's Installed-Size for an application (testing/catsizes.py)
+ * — and the build holds the downloaded packages beside the unpacked ones and
+ * then commits a copy of the layer, so it counts twice. The estimate is only
+ * as honest as those figures: one that undershoots lets a build start that
+ * then fills the overlay at its commit. Installed-Size leaves out what the
+ * packages' maintainer scripts write (byte-compiled Python, a JVM's class
+ * archive, regenerated icon, font and MIME caches, which the layer holds as
+ * whole copies of its parent's), so every row still to build adds
+ * STORE_ROW_SLACK on top. A row with no size counts STORE_ROW_FLOOR, which is
+ * what one measured on trixie (a base and rt-gtk under Mousepad took 692 MB
+ * together).
  */
 #define STORE_ROW_FLOOR (384ULL << 20)
+#define STORE_ROW_SLACK (128ULL << 20)
 
 static int store_room(const CatPack *const *chain, int n, const char *id)
 {
@@ -502,8 +625,9 @@ static int store_room(const CatPack *const *chain, int n, const char *id)
 
 	for (int i = 0; i < n; i++)
 		if (!row_built(chain[i]->id))
-			need += chain[i]->bytes ? 2 * chain[i]->bytes
-						: STORE_ROW_FLOOR;
+			need += chain[i]->bytes
+				? 2 * chain[i]->bytes + STORE_ROW_SLACK
+				: STORE_ROW_FLOOR;
 	if (!need)
 		return 0;
 	podman_storage_dir(dir, sizeof(dir));
@@ -515,7 +639,10 @@ static int store_room(const CatPack *const *chain, int n, const char *id)
 		kb_human_size(need), kb_human_size(have));
 	if (fs_in_memory(dir))
 		fprintf(stderr, ", which on this live session is the memory "
-			"overlay: everything the session writes shares it");
+			"overlay: everything the session writes shares it. "
+			"Install it on an installed system, on a live session "
+			"with a persistent store (kdos persist), or on a machine "
+			"with more memory");
 	fputs("\n", stderr);
 	return -1;
 }
@@ -1716,6 +1843,19 @@ int store_selftest(void)
 		const char *apt = strstr(buf, "apt-get -o");
 		cat_chk(fetch && apt && fetch < apt, "the deb is fetched before apt");
 	}
+	/* The asset is the one whose URL ENDS in the pattern, its dot taken
+	 * literally, so `….deb.sha256` listed first is never the one fetched;
+	 * and an empty answer stops the RUN with a sentence instead of
+	 * reaching apt as a missing file. */
+	cat_chk(strstr(buf, "[^\"]*amd64\\.deb\"'") != NULL,
+		"the deb pattern is anchored at the URL's end");
+	cat_chk(strstr(buf, "[ -n \"$u\" ] || { echo 'app.two: no release asset") != NULL &&
+		strstr(buf, "exit 1; }") != NULL,
+		"an empty API answer fails the RUN by name");
+	cat_chk(strstr(buf, "dpkg-deb --info /tmp/pack.deb") != NULL,
+		"the download is checked to be a package before apt");
+	cat_chk(strstr(buf, "xargs") == NULL,
+		"no xargs -r, whose empty input is a success");
 
 	/* ONE RUN, so the image has exactly two layers over its parent. */
 	runs = 0;

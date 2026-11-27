@@ -42,9 +42,9 @@ come from:
 
 An application row and its description, as an example:
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=332-332 pin=db241a9ade70 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=337-337 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=549-549 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=562-562 pin=99e82cb5ee08 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -430,6 +430,22 @@ home can hold a box's writable layer; its Containers and Desktop sections check 
   stay built. `kdos app install <id>` tries the box again without rebuilding them, and
   `kdos-box remove <id>` deletes the profile the failed create left. See
   [Installing an application](#installing-an-application).
+
+`<id>: <row> did not build`
+: The lines above it are the end of the build's log, `~/.cache/kdos-appbox/build-<row>.log`, which
+  holds both of podman's output streams; the reason is there, such as a package with no
+  installation candidate, `no space left on device`, or for VSCodium `no release asset ends in
+  amd64.deb`, which is GitHub refusing the release query (60 an hour from one address) or no
+  network. `kdos-appbox -v install <id>` shows the build as it runs.
+
+`<id>: not enough room`
+: The images still to build need about twice what the catalogue says they add, and that is more
+  than is free where podman keeps them. On a live session with no persistent store that is the
+  memory overlay, which a large application overruns: VSCodium's first install needs about
+  2.7G there and a 2 GB overlay refuses it. Install it on an installed system, on a live session with a persistent store
+  ([`kdos persist`](../../kdos/04-programs/kdos-command.md#kdos-persist)), or on a machine with
+  more memory. See
+  [install and uninstall](../../kdos/04-programs/kdos-appbox.md#install-and-uninstall).
 
 A launch does nothing
 : Run it from a terminal with the engine's messages shown: `kdos-appbox -v run <app>`. The

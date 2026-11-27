@@ -46,6 +46,8 @@
 
 const char *g_box = DEFAULT_BOX;
 const char *g_launcher;
+/* -b was given: `status` then reports that one box and lists no others. */
+static int box_given;
 
 /*
  * WHICH LAUNCHER A LAUNCH IS, which is the app id KWin gives its windows.
@@ -1141,6 +1143,47 @@ int cmd_warmup(void)
 	return 0;
 }
 
+/* `store : <box> (<state>)` for every container made from a store image,
+ * `store : none` when podman answers with none; 0 when podman cannot be
+ * asked, and then nothing is printed. */
+static int store_status(void)
+{
+	char buf[1 << 16] = "";
+	char *line, *save;
+	KbArgv a = {0};
+	int n = 0;
+
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "ps");
+	kb_argv_add(&a, "--all");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Names}}\t{{.Image}}\t{{.State}}");
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, buf, sizeof(buf)) != 0)
+		return 0;
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char *img = strchr(line, '\t'), *st;
+
+		if (!img)
+			continue;
+		*img++ = '\0';
+		st = strchr(img, '\t');
+		if (!st)
+			continue;
+		*st++ = '\0';
+		if (!strncmp(img, "localhost/", 10))
+			img += 10;
+		if (strncmp(img, STORE_IMG_PREFIX, sizeof(STORE_IMG_PREFIX) - 1))
+			continue;
+		printf("store : %s (%s)\n", line, st);
+		n++;
+	}
+	if (!n)
+		printf("store : none\n");
+	return 1;
+}
+
 int cmd_status(void)
 {
 	Profile p;
@@ -1163,7 +1206,17 @@ int cmd_status(void)
 	default:
 		printf("packd : not answering\n");
 	}
+	/*
+	 * WITH NO -b THERE IS NO ONE BOX TO ASK ABOUT. The placeholder name is
+	 * a box only on a machine that launched something with no pack of its
+	 * own, so its state alone reads "not created" beside a row of running
+	 * applications. Every box made from a store image is listed instead,
+	 * `store : <box> (<state>)`, and the placeholder only when it exists.
+	 */
 	box_state(g_box, state, sizeof(state));
+	if (!box_given && store_status() &&
+	    !strcmp(state, "absent"))
+		return 0;
 	printf("box   : %s (%s)\n",
 	       strcmp(state, "absent") ? "created"
 				       : "not created (first launch will)", state);
@@ -1209,7 +1262,8 @@ static void usage(void)
 "\n"
 "  -b, --box <name>       run in <name> instead of the app's own pack box\n"
 "  -l, --launcher <id>    the launcher id its windows take (<box>[.<stem>])\n"
-"  -v, --verbose          let podman print to stderr\n"
+"  -v, --verbose          let podman print to stderr, and a store build\n"
+"                         to the terminal instead of its log\n"
 "\n"
 "Boxes are kdos-box's: kdos-box list|create|enter|profile|remove ...\n",
 	      stderr);
@@ -1324,6 +1378,7 @@ int main(int argc, char **argv)
 			if (i + 1 >= argc)
 				kb_die("--box needs a name");
 			g_box = argv[++i];
+			box_given = 1;
 		} else if (!strcmp(argv[i], "-l") ||
 			   !strcmp(argv[i], "--launcher")) {
 			if (i + 1 >= argc)

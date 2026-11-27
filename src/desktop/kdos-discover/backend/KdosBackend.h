@@ -9,12 +9,12 @@
  *
  * WHAT IT SHOWS, BY ORIGIN:
  *
- *   kdos-packs   every set, the packs in the pack store, and each catalogue
- *                row whose pack is there
+ *   kdos-packs   the packs in the pack store, and each catalogue row whose
+ *                pack is there
  *   medium       packs and .ktar sets on the boot medium (/mnt/iso/packs),
  *                and each catalogue row whose pack is only there
- *   kdos-store   catalogue rows with no pack anywhere, and Debian desktop
- *                applications no catalogue row names, from the DEP-11
+ *   kdos-store   catalogue rows with no pack anywhere, every set, and Debian
+ *                desktop applications no catalogue row names, from the DEP-11
  *                catalogue in /usr/share/swcatalog less the packages
  *                /usr/share/kdos/discover/debian-exclude names; each is
  *                built in a box
@@ -69,6 +69,18 @@ namespace Kdos
 
 class KdosResource;
 class KdosTransaction;
+
+// A launcher kdos-appbox genlaunchers wrote: its file and its Icon= value.
+struct BoxLauncher {
+    QString path;
+    QString icon;
+};
+
+// The user's launchers that run in a box, by that box: `Exec=kdos-appbox -b
+// <box> run ...` in the applications directory, marked X-KDOS-Alien and
+// shown. A box with several, a suite's pack, is filed under the first by
+// file name.
+QHash<QString, BoxLauncher> boxLaunchers();
 
 // One host desktop application as a Debian component of the same name is
 // compared with it (hostTwinByName): its package, the package's stem (its
@@ -144,6 +156,13 @@ private:
     KdosResource *debianResource(const AppStream::Component &component);
     Entry describeDebian(const AppStream::Component &component) const;
     void enrichFromComponent(Entry *entry, const AppStream::Component &component) const;
+    // Gives a resource with a box the launcher genlaunchers wrote for it,
+    // and that launcher's icon in place of a stand-in of its category.
+    void applyLauncher(Entry *entry, bool iconIsStandIn) const;
+    // The catalogue row a Debian component is: the row that packs its
+    // package, or one of the same name of whose packages one is the same
+    // program (hostTwinByName over m_catalogueNames). Empty for none.
+    QString catalogueRowOf(const AppStream::Component &component) const;
 
     StandardBackendUpdater *m_updater;
     Catalogue m_catalogue;
@@ -170,6 +189,9 @@ private:
     QSet<QString> m_files; // .ktar and .kpack paths opened this session
     QSet<QString> m_chosenAtInstall; // /var/lib/kdos/apps-pending
     QSet<QString> m_debianExclude; // Debian packages the Debian lane never offers
+    QHash<QString, BoxLauncher> m_launchers; // the user's box launchers, by box, as of the last refresh
+    QHash<QString, QList<HostFace>> m_catalogueNames; // the catalogue's app rows by case-folded name, a face per package
+    QHash<QString, QString> m_catalogueByPackage; // the catalogue row that packs each package, by package
     mutable bool m_categoriesRead = false; // category() has answered once
     mutable bool m_listedBoxes = false; // and its answer had the Boxes page
 };

@@ -467,6 +467,36 @@ top of that composition, and when podman refuses on a live session it says that 
 needs an installed system, takes the composition down, and leaves the profile it wrote, which
 `kdos-box remove <name>` deletes.
 
+### A live session cannot build VSCodium or another large boxed application
+
+A boxed application's first install builds the catalogue's base image, its runtime and the
+application in the container store under the home directory. On a live session that store is on
+the boot overlay, which holds half the machine's memory: 2 GB on a 4 GB machine. The store's room
+check counts each unbuilt row twice and refuses the install before anything downloads when the
+overlay cannot hold it, which VSCodium (about 1.2 GB built, over a 550 MB base) exceeds on any
+machine under 8 GB. Install the system, or give the live medium a persistent store first
+([`kdos persist create`](../04-programs/kdos-command.md#kdos-persist)).
+
+### A boxed X11 window finds its launcher only when its class is known
+
+A boxed program that has no Wayland path draws through Xwayland, so its window carries no box tag. The Task Manager matches such a window to its launcher by its `WM_CLASS` against the launcher's `StartupWMClass`. `kdos-appbox genlaunchers` writes the class from its `WMCLASS` table (ImageJ, Jmol, PyMOL, Surf), or else upstream's own `StartupWMClass`, or else the launcher id. A Java, Tk or Xt program that is in neither source gets a generic icon, and its pin never lights. Such a window's title also ends in `<@<box>.<host>>`, because KWin shows an X11 window's client machine whenever it differs from the machine's own. It has no box colour either; see [Xwayland](../../kfs/16-wiki/xwayland-and-x11-apps.md).
+
+### A catalogue application's size is apt's, not its built layer's
+
+The `meta` bytes of `app` and `data` rows come from `testing/catsizes.py`, which sums each package's `Installed-Size` at the catalogue's snapshot. That sum leaves out what maintainer scripts write when a box is built (byte-compiled Python, a JVM's class archive, caches the layer copies up whole), so a built layer can be up to twice the figure (Jmol: about 441 MB counted, about 850 MB built). The store's room check adds 128 MiB per row to make up for it. VSCodium's `deb` row follows the newest release, so its figure is right only for the release that was measured (1.143.17232) until the script is run again.
+
+### Launching a boxed program from Discover says nothing when it exits at once
+
+Discover starts a boxed application through KIO's launcher job, which ends as soon as the program has started. A program that exits straight away, such as a GTK 4 application on a virtual machine's software renderer ([GTK 4 and libadwaita programs in a box crash at start on a virtual machine's software renderer](#gtk-4-and-libadwaita-programs-in-a-box-crash-at-start-on-a-virtual-machines-software-renderer)), opens no window and leaves no message. Run its launcher's command in a terminal to see why it stopped: `kdos-appbox -b <box> run <program>`.
+
+### A data row installed with `kdos app install` without its pack reaches no program
+
+`kdos-appbox install data.<id>` builds the row into an image, and nothing grafts it: KiCad's 3D models and Tesseract's languages arrive only through a data pack, which kdos-packd grafts where the program looks. Discover offers a data row only while its pack is in the pack store or on the medium. To get the data, export the row as a pack and import it (`kdos-appbox export`, then `kdos-appbox import`).
+
+### Discover cannot tell a cancelled password from a refused account
+
+pkexec ends with the same 127 and "Not authorized" line when KDE's polkit agent is cancelled and when polkit refuses the account outright. Discover ends both installs Cancelled and shows one passive message naming both causes. If no password dialog appeared, the account is not allowed to change the system: an administrator must be in the `wheel` group.
+
 ### The *Containers* menu entries have not been opened on a built image
 
 `kdos-podman-api` starts `podman system service` for `podman-tui` and `lazydocker`; what is
@@ -1109,6 +1139,10 @@ A root that has no `/boot/initramfs.modules` builds a new kernel's initramfs fro
 own initramfs carries, rather than from a list; that path has been exercised on test archives only.
 See [A new kernel](../03-architecture/boot-and-init.md#a-new-kernel).
 
+### `kdos restarts` tells replaced code from removed code by its path
+
+If an update moves a program's files to a new path, for example a new Python's `/usr/bin/python3.13` next to a running `python3.12`, the old process reads as removed (`"replaced": false`). `kdos-notice` then raises no restart notice for it, and it does not count toward the command's exit status. A library whose versioned file changes keeps working, because its soname link is checked too.
+
 ## Security
 
 The full statement is
@@ -1238,6 +1272,22 @@ change this short of a C library with `ifunc` support.
 a device node for an unprivileged client, so USB redirection from virt-manager reaches only the
 devices whose nodes a udev rule already gives you. Folder sharing (phodav) and smart card
 passthrough (libcacard) are enabled.
+
+### Some helper scripts import a module their package does not carry
+
+`testing/pyimports.py` names Python helper programs that stop at their first import on a machine without a module their recipe does not depend on. Each is a side tool, not the package's main program:
+
+| Port | Program | Needs |
+|---|---|---|
+| `bcftools` | `plot-vcfstats`, `guess-ploidy.py` | matplotlib |
+| `bcftools` | `gff2gff.py` | gffutils, which is not a port |
+| `libinput` | `libinput analyze`, `libinput measure`, `libinput replay` | python-libevdev, which is not a port, and python3-yaml |
+| `libvirt` | `virt-qemu-qmp-proxy`, `virt-qemu-sev-validate` | python3-libvirt (which depends on libvirt itself), python3-cryptography |
+| `llvm` | `opt-viewer`, `opt-diff`, `opt-stats` | python3-pygments, python3-yaml |
+| `texlive` | Asymptote's `xasy` editor | python3-pyside6, numpy, and cson, which is not a port |
+| `gettext` | `spit` | python3-requests |
+
+Installing the named port by hand makes the program run, apart from the ones that need a module that is not a port.
 
 ### Features whose library has no port
 
@@ -1426,9 +1476,14 @@ and Tk is not in the base (linkcheck fails the same script), and Mesa's `libclan
 `kdeplasma-addons`' two Qt WebEngine libraries are linked by packages built from older recipes,
 which the current recipes do not link. What the records cannot see: QML compiled into a program's resources, which
 is most of an application's; a library opened with `dlopen()` or a plugin found by directory that
-no recipe names in `runtime =`; a Python import inside a submodule, behind `try:` or of a module
-installed after the importer; and a module a host program registers in-process, such as KWin's
-`org.kde.kwin`, which the gate counts as met by nothing rather than failing.
+no recipe names in `runtime =`; a Python import inside a submodule, behind `try:`, through a `.pth`
+directory or of a module installed after the importer; and a module a host program registers
+in-process, such as KWin's `org.kde.kwin`, which the gate counts as met by nothing rather than
+failing. A port of `ports/buildonly` that such an import needs reaches a prebuilt install only when
+the importing recipe names it in `runtime =`; `testing/pyimports.py` lists every import of a built
+tree that would miss it, and the ones a program's start or a documented feature reaches are named
+(gnuradio, uhd, spyder, toot, matplotlib, deluge, calibre, ocrmypdf, picard, python3-lsp-server,
+scikit-build-core).
 
 ### No boot is timed per codec
 

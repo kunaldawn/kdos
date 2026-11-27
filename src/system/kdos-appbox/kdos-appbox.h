@@ -460,6 +460,11 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
  * shim counts: the `genlaunchers` verb's report. An install or a removal
  * regenerates quietly, and every warning prints either way. */
 
+/* How many written entries (an ENTRIES row whose package the catalogue row
+ * `id` installs itself) a store box of that row gets: a box with one has a
+ * launcher to write even when its image holds no applications directory. */
+int launcher_entry_rows(const char *id);
+
 /* A generated launcher of a box, read back: its launcher id, the in-box
  * command after `run`, and its MimeType. */
 typedef struct {

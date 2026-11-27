@@ -26,6 +26,11 @@
  *   firmware   "This computer's hardware needs        persistent: install
  *              firmware-nvidia"
  *
+ * The restarts notice names only programs whose code was REPLACED: a
+ * process still running a program that was removed (`kdos update remove`
+ * with it open) is on `kdos restarts` but on no notice, since there is no
+ * newer version for it to restart into and nothing was updated.
+ *
  * Only a notice that waits for a person to act stays until dismissed; the
  * rest expire, and Plasma keeps them in its history.
  *

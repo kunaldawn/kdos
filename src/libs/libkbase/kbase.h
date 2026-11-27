@@ -286,6 +286,12 @@ int kb_run_feed(const KbArgv *a, const char *in, size_t n);
  * child fed for what it does rather than what it prints, and would make
  * `kdos help --pager` render the help text into nothing. Same reason kb_run_tty exists beside kb_run. */
 int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
+/* Fed on stdin, with the child's stdout AND stderr written to `path`
+ * (created or truncated): a build log, which needs the progress on stdout and
+ * the verdict on stderr in one file and in the order they were printed.
+ * -1 when the file cannot be created, else the child's exit status. */
+int kb_run_feed_to_file(const KbArgv *a, const char *in, size_t n,
+			const char *path);
 /* Fed on stdin AND captured from stdout — a FILTER, which neither of the other
  * two serve. THE INPUT MUST FIT IN ONE PIPE BUFFER: nothing reads the output
  * until the whole input is written, so a child that fills its output pipe

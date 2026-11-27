@@ -3,9 +3,9 @@
 five things:
 
 - **`kdos-backend.so`**, a Discover backend in `/usr/lib/qt6/plugins/discover/`. It lists the
-  catalogue's sets, the packs in the pack store and the catalogue rows whose pack is there as
-  `kdos-packs`, the packs and `.ktar` sets on the boot medium and the rows whose pack is only there
-  as `medium`, the rows with no pack anywhere and the Debian desktop applications the catalogue does
+  packs in the pack store and the catalogue rows whose pack is there as `kdos-packs`, the packs and
+  `.ktar` sets on the boot medium and the rows whose pack is only there as `medium`, the rows with
+  no pack anywhere, the catalogue's sets and the Debian desktop applications the catalogue does
   not name as `kdos-store`, boxes nothing else accounts for as `kdos-boxes`, and host software as
   `kdos-ports`, with each binhost port not installed offered built here as `kdos-ports-source`, and it opens a `.ktar` or `.kpack` handed to Discover from a file manager. Every
   answer comes from the tool that owns it: `kdos-appbox catalogue` says what is installed,
@@ -116,7 +116,13 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   end of file or a hang-up on stdin (or SIGTERM, SIGINT, SIGHUP to itself) sends SIGTERM to that
   group, SIGKILL after 60 seconds, waits for the group to be gone, writes no catalogue and exits
   130 with `==> <port>: cancelled`. The transaction ends Cancelled only on the process's exit, so
-  the backend's refresh never meets a run still holding the package lock. A helper started with
+  the backend's refresh never meets a run still holding the package lock. Before the helper's
+  first line pkexec itself may end the step: 126 for a dismissed password dialog, which ends the
+  transaction Cancelled, and 127 with "Error executing command as another user: Not authorized",
+  which ends it Cancelled with a passive message: KDE's agent answers Cancel with that line, and so
+  does polkit refusing the account, so the message names both. Any other 127, "No authentication
+  agent found." among them, is a failure with pkexec's line, and the SetupStatus guard keeps a 126
+  or 127 from the helper itself a failure. A helper started with
   stdin on `/dev/null` cancels at once. The backend test's fake helper ignores SIGTERM, as a root
   one does, and leaves only when stdin closes.
 - **Host software is read from its two catalogue files, not from the AppStream pool.** The pool

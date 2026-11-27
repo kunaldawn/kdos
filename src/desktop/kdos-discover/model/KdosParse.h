@@ -54,6 +54,9 @@ struct CatalogueRow {
     QString author;
     QString homepage;
     QString description; // plain text
+    // The `cmd` rows naming this id: the commands its box gives the host,
+    // each a shim and no launcher.
+    QStringList commands;
 };
 
 struct CatalogueGroup {

@@ -62,7 +62,7 @@ and `/etc/inittab`, from `fs/etc/inittab`, turns all swap off again at power-off
 the services are stopped and before the persistence store is made read-only and the filesystems
 are unmounted:
 
-<!-- kfs:include fs/etc/inittab lines=76-81 pin=a753ee32329a -->
+<!-- kfs:include fs/etc/inittab lines=79-84 pin=a753ee32329a -->
 
 ## Usage
 

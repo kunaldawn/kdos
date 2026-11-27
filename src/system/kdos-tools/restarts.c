@@ -26,6 +26,17 @@
  *     cache or data file mapped for reading is not reported.
  *   - the desktop knows which of those processes has a window.
  *
+ * REPLACED IS TOLD FROM REMOVED by the path. An upgrade puts a new file where
+ * the old one was; a removal leaves nothing there. A process with at least
+ * one deleted code mapping whose path names a file again — in its own root,
+ * /proc/<pid>/root, since a boxed process maps its container's tree — runs
+ * code that has a newer version, and is `replaced`. One whose every such
+ * path is empty runs a program that was removed: restarting it starts
+ * nothing new, so kdos-notice says nothing of it. A library's versioned file
+ * (`libssl.so.3.0.15`) counts as replaced when any shorter version of its
+ * name (`libssl.so.3.0`, `libssl.so.3`) names a file, since an upgrade of a
+ * library changes the full version and keeps the soname link.
+ *
  * Prior art has the pieces and not the join: `needrestart` is Debian-only and
  * heuristic, `zypper ps` has had an open bug since 2018 asking it to say
  * "reboot needed", KDE has an open request for the notification alone, and
@@ -38,10 +49,12 @@
  */
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "kdos-tools.h"
 #include "kpkg.h"
@@ -55,6 +68,7 @@ struct hit {
 	char exe[256];
 	const char *pkgs[MAX_PKGS_PER_PROC];
 	int npkgs;
+	int replaced;		/* a deleted code path names a file again */
 };
 
 static struct hit hits[MAX_PROCS];
@@ -148,18 +162,52 @@ static int restarts_maps_code(const char *line, char *file, size_t len)
 	       !strncmp(file, "/opt/", 5);
 }
 
+/*
+ * 1 when `file`, a deleted mapping's path, names a file again under `root`
+ * (a process's /proc/<pid>/root): the path itself, or the path with its
+ * trailing `.<digits>` components taken off one at a time while what is
+ * left still ends in a `.so` name. A root that cannot be looked into
+ * answers 1: an upgrade is the case the notice is for, and a stat refused
+ * proves nothing was removed.
+ */
+static int restarts_replaced(const char *root, const char *file)
+{
+	char p[1400];
+	struct stat st;
+
+	int n = snprintf(p, sizeof(p), "%s%s", root, file);
+	if (n < 0 || (size_t)n >= sizeof(p))
+		return 1;
+	for (;;) {
+		if (stat(p, &st) == 0)
+			return 1;
+		if (errno != ENOENT && errno != ENOTDIR)
+			return 1;
+		char *dot = strrchr(p, '.');
+		char *slash = strrchr(p, '/');
+		if (!dot || (slash && dot < slash) || !dot[1] ||
+		    strspn(dot + 1, "0123456789") != strlen(dot + 1))
+			return 0;
+		*dot = '\0';
+		if (!strstr(slash ? slash : p, ".so"))
+			return 0;
+	}
+}
+
 /* One process. Returns 1 if it is running deleted code. */
 static int scan_proc(const char *pid_s, const KpOwned *owned, struct hit *h)
 {
-	char path[512], line[4096], file[1024];
+	char path[512], line[4096], file[1024], root[300];
 
 	snprintf(path, sizeof(path), "/proc/%s/maps", pid_s);
+	snprintf(root, sizeof(root), "/proc/%s/root", pid_s);
 	FILE *f = fopen(path, "r");
 	if (!f)
 		return 0;	/* another user's, or it exited mid-scan */
 
 	h->pid = atoi(pid_s);
 	h->npkgs = 0;
+	h->replaced = 0;
 	int found = 0;
 
 	while (fgets(line, sizeof(line), f)) {
@@ -168,6 +216,8 @@ static int scan_proc(const char *pid_s, const KpOwned *owned, struct hit *h)
 			continue;
 
 		found = 1;
+		if (!h->replaced)
+			h->replaced = restarts_replaced(root, file);
 		/* The database stores paths without the leading slash. */
 		const char *owner = owned ? kp_owned_owner(owned, file + 1) : NULL;
 		if (owner)
@@ -227,6 +277,16 @@ int restarts_main(int argc, char **argv)
 	}
 	closedir(d);
 
+	/* Exit 1 when something needs restarting, so this can gate a script
+	 * and so the update tray can call it without parsing anything. A
+	 * removed program has nothing newer to restart into and does not
+	 * count; a truncated scan does, since the processes past the limit
+	 * were never looked at. */
+	int nrep = 0;
+	for (int i = 0; i < nhits; i++)
+		nrep += hits[i].replaced;
+	int status = nrep || truncated;
+
 	if (json) {
 		KbBuf b = {0};
 		kb_buf_printf(&b, "{\n  \"truncated\": %s,\n  \"processes\": [",
@@ -238,6 +298,8 @@ int restarts_main(int argc, char **argv)
 			kb_json_str(&b, h->comm);
 			kb_buf_str(&b, ", \"exe\": ");
 			kb_json_str(&b, h->exe);
+			kb_buf_printf(&b, ", \"replaced\": %s",
+				      h->replaced ? "true" : "false");
 			kb_buf_str(&b, ", \"packages\": [");
 			for (int j = 0; j < h->npkgs; j++) {
 				if (j)
@@ -251,7 +313,7 @@ int restarts_main(int argc, char **argv)
 		fwrite(b.p, 1, b.n, stdout);
 		kb_buf_free(&b);
 		kp_owned_free(owned);
-		return nhits ? 1 : 0;
+		return status;
 	}
 
 	if (nhits == 0) {
@@ -268,7 +330,11 @@ int restarts_main(int argc, char **argv)
 		for (int i = 0; i < nhits; i++) {
 			const struct hit *h = &hits[i];
 			printf("  %-16s (pid %d)  ", h->comm, h->pid);
-			if (h->npkgs == 0) {
+			if (!h->replaced) {
+				/* Nothing is at its paths now: the program
+				 * was removed, not updated. */
+				printf("removed, no newer version");
+			} else if (h->npkgs == 0) {
 				/* Named as unowned rather than guessed at — see
 				 * the header. */
 				printf("no installed package owns it");
@@ -279,14 +345,21 @@ int restarts_main(int argc, char **argv)
 			}
 			printf("\n");
 		}
-		printf("\n%d process%s. Restarting them puts the new code in "
-		       "effect.\n", nhits, nhits == 1 ? "" : "es");
+		if (nrep)
+			printf("\n%d process%s. Restarting %s puts the new "
+			       "code in effect.\n", nhits,
+			       nhits == 1 ? "" : "es",
+			       nrep == nhits ? "them" : "the updated ones");
+		else
+			printf("\n%d process%s. %s removed, so there is no "
+			       "newer version to restart into.\n", nhits,
+			       nhits == 1 ? "" : "es",
+			       nhits == 1 ? "Its program was" :
+					    "Their programs were");
 		if (truncated)
 			printf("(stopped at %d — there are more)\n", MAX_PROCS);
 	}
 
 	kp_owned_free(owned);
-	/* Exit 1 when something needs restarting, so this can gate a script and
-	 * so the update tray can call it without parsing anything. */
-	return 1;
+	return status;
 }

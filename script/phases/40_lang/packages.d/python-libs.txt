@@ -55,6 +55,7 @@ python3-configobj
 python3-pytz
 python3-wcwidth
 python3-attrs
+python3-cattrs
 python3-pefile
 
 # orjson, which Gramps imports, builds through maturin as cryptography does.

@@ -683,7 +683,9 @@ Discover offers no system update, or `kdos update check` reports a problem
 : The server's name did not resolve, or the machine has no default route. Check the connection
   with `nmcli general status`, or fetch from a stick with `--from`. A server that refused the
   connection or did not answer while a route exists is `fetch-failed`, "the server at
-  <host:port> did not answer": the network is up and the server is not.
+  <host:port> did not answer": the network is up and the server is not. One that answered and
+  then stalled, less than 1024 bytes a second for 60 seconds, is `fetch-failed` too, "the download
+  from <host:port> stalled"; a package that stalls part way is kept and continued by the next run.
 
 `build-failed`
 : A package did not build, or, on a machine with two slots, the slot failed its `kpkg check`, the

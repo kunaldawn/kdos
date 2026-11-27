@@ -185,6 +185,13 @@ int kdt_relidx_holds(const KdtRelIdx *ix, const char *path, const char *file);
 int kdt_relidx_curl(const char *url, const char *out);
 /* 1 when /proc/net/route or /proc/net/ipv6_route holds a default route. */
 int kdt_have_route(void);
+/* Every curl a download runs ends a transfer that moves fewer than
+ * KDT_STALL_BYTES a second for KDT_STALL_SECS seconds (exit 28), which
+ * --retry then starts again. Without it a connection that stops sending
+ * after it is made holds the install, and Discover's transaction, for
+ * ever. */
+#define KDT_STALL_BYTES "1024"
+#define KDT_STALL_SECS "60"
 /* A producer's index over `files` in `dir`, each at `<lane>/<name>`. */
 int kdt_relidx_write(const char *dir, const char *lane, const char *version,
 		     char *const *files, int n, const char *key, char *why,
