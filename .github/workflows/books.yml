@@ -5,15 +5,39 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   books — both books on GitHub Pages, and KDOS from Scratch on each release
+#   books — kdos.dev on GitHub Pages: the homepage and both books; and
+#   KDOS from Scratch on each release
 # ---------------------------------
 #
-# ONE WORKFLOW, BOTH BOOKS. A push to main renders docs/kdos with kdos-doc's
-# mkbook.py --html and docs/kfs with `make book`, and deploys one site:
+# ONE WORKFLOW, ONE SITE. A push to main renders docs/kdos with kdos-doc's
+# mkbook.py --html and docs/kfs with `make book`, writes the homepage from
+# site/home.md with script/site/mksite.py, and deploys them together:
 #
-#   /              the KDOS book (docs/kdos), its README.html as index.html
+#   /              the homepage (site/home.md), with 404.html, robots.txt
+#                  and sitemap.xml
+#   /book/         the KDOS book (docs/kdos), its README.html as index.html
 #   /kfs/          KDOS from Scratch, chunked HTML
 #   /kfs/kfs.pdf   KDOS from Scratch, the one PDF
+#   /<page>.html   for every page of the KDOS book, a stub that sends the
+#                  reader on to /book/<page>.html with its #fragment: a link
+#                  to a book page at the site's root still lands
+#
+# Each book links the other on the site, not as Markdown on GitHub: KDOS from
+# Scratch is rendered with `--kdos-book https://kdos.dev/book/`, and the KDOS
+# book with `--site https://kdos.dev/`, which also sends its links to the
+# repository's README.md to the homepage, puts a line linking the homepage
+# above each of its pages and gives each its canonical address;
+# KDOS from Scratch gets the same link in its top bar from kfsrender's
+# `--home https://kdos.dev/`. The addresses are absolute because the same
+# render is the kfs-html.tar.zst a release carries.
+#
+# mksite.py runs last because it reads the two books it is given: it writes
+# a stub for each book page, lists both books in sitemap.xml, and stops the
+# run when a link from the KDOS book into KDOS from Scratch lands on no page
+# or id that book has, since two scripts name those pages. It runs with
+# --check, so a README.md that is not what site/home.md makes stops the run
+# before anything is deployed. The site's custom domain, kdos.dev, is set in
+# the repository's Pages settings.
 #
 # Pages must be set to deploy from GitHub Actions. With a branch as its
 # source it runs Jekyll over the whole repository instead, and the tree has
@@ -97,13 +121,17 @@ jobs:
           python3 --version
 
       - name: The KDOS book
-        run: python3 -B src/system/kdos-doc/mkbook.py --html docs "$RUNNER_TEMP/site"
+        run: python3 -B src/system/kdos-doc/mkbook.py --html docs "$RUNNER_TEMP/site/book" --site https://kdos.dev/
 
       - name: KDOS from Scratch
         run: |
-          make book BUILDFS= KFS_PANDOC=pandoc KFS_TYPST=typst
+          make book BUILDFS= KFS_PANDOC=pandoc KFS_TYPST=typst KFSGEN_ARGS="--kdos-book https://kdos.dev/book/" \
+            KFSRENDER_ARGS="--home https://kdos.dev/"
           cp -R build/kfs/html "$RUNNER_TEMP/site/kfs"
           cp build/kfs/kfs.pdf "$RUNNER_TEMP/site/kfs/kfs.pdf"
+
+      - name: The homepage
+        run: python3 -B script/site/mksite.py --check --out "$RUNNER_TEMP/site"
 
       - name: Site
         if: github.event_name != 'release' && github.ref == 'refs/heads/main'

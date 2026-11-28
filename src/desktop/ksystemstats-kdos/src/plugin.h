@@ -12,7 +12,7 @@
  *     kdos/energy/<app>[@<box>]/{name,app,box,impact,cpuTime,gpu}
  *     kdos/energy/all/{status,window,idleFloor,attributable,shortLived,domains}
  *     kdos/slot/{status,running,runningVersion,runningState,other,otherVersion,otherState,next,trial,attempts}
- *     kdos/look/phosphor
+ *     kdos/look/{phosphor,phosphorState}
  *
  * One container, `kdos`, whose object ids carry a `/` of their own:
  * ksystemstats splits a sensor path at its first and last `/`, so the object
@@ -141,6 +141,8 @@ private:
 
     /* slots */
     QString m_slotFile;
+    QString m_mountsFile;
+    QString m_osReleaseFile;
     QDateTime m_slotStamp;
     bool m_slotRead = false;
     KSysGuard::SensorObject *m_slot;
@@ -162,6 +164,7 @@ private:
     bool m_kwinrcRead = false;
     KSysGuard::SensorObject *m_look;
     KSysGuard::SensorProperty *m_phosphor;
+    KSysGuard::SensorProperty *m_phosphorState;
 };
 
 } // namespace Kdos

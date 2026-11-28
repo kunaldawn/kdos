@@ -1,0 +1,8 @@
+input	sha256
+src/libs/libkcolor/kcolor.h KCOL_SCHEMES	65a77d2db46ff085e7b3c935ac16947dd8d134dc46f49afb1d16e73613f4e5e9
+fs/usr/share/kdos/logo.txt	4fbeae94256e899ff32a5f3c1c1f1b27ba7913feb789c751b65edffa88337bb3
+src/art/kdos-splash/penguin.h	ce14871792aefb21b054b118b06587c461028dce43434dbd7a3ff7ffa63c3834
+kdos.png	076438845264f75882e06aa208931ce7e30084b721d5575eb1a1a7eea413d9b6
+src/art/kdos-icons/marks/tux-16.png	0bf29ec08a748301eb441cd0d62b80f3bd7c33106188da3c523d35d798181ec9
+src/art/kdos-icons/marks/tux-32.png	a7107f4bc458a6ab91bb6bf415d4f31819dba95ffef65c5c267e139b47b0c259
+src/art/kdos-icons/marks/tux-48.png	052eefcf3b6de58c9650d9fe3893637e27a8ae53de927490efbd977639ba6503

@@ -14,7 +14,7 @@
         "Id": "kdos_unfold",
         "License": "MIT",
         "Name": "KDOS Unfold",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-KDE-Ordering": 60,
     "X-KWin-Exclusive-Category": "toplevel-open-close-animation",

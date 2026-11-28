@@ -2,9 +2,9 @@
 [wxWidgets]{.idx} is a C++ toolkit that draws each widget with the platform's own: on Linux, GTK.
 This port builds it on [GTK 3](#port-gtk3) as shared libraries, with the `wx-config` script,
 `wxwin.m4` for autoconf projects and the CMake package. KiCad, PrusaSlicer, Audacity, Tenacity,
-FileZilla, VeraCrypt, OpenCPN and FreeDV are wx applications; like every toolkit it is for
-applications only, never the desktop (see
-[Toolkits are for applications, not the desktop](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
+FileZilla, VeraCrypt, OpenCPN and FreeDV are wx applications; it is for applications, and no
+part of the KDOS desktop links it (see
+[Applications bring their own toolkit](../../../../docs/kdos/01-philosophy/principles.md#applications-bring-their-own-toolkit)).
 
 ## Flags
 - `-DwxBUILD_TOOLKIT=gtk3` — the GTK 3 port of wx. It links `libX11` because GDK has an X11

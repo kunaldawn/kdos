@@ -99,7 +99,7 @@ runs, not under the image's BusyBox. It then runs that image with:
 | `--privileged` | The later phases mount `/proc`, `/sys` and bind mounts inside the target tree and `chroot` into it, which needs those privileges |
 | `--cpu-shares=256` | A weight, not a cap: an idle host gives the build every thread; under contention it yields to other containers and services, and on a systemd cgroup-v2 host shares the CPU evenly with the user session. `KDOS_CPU_SHARES` changes the weight. The environment every phase shares sets one job count, `KDOS_JOBS`, for make, `cmake --build` and cargo: the host's thread count, clamped to one job per 2 GiB of memory |
 | `--cpus=N`, only with `KDOS_JOBS=N` | Caps the container at the job count, and at the host's thread count, so cargo and go, which size themselves from the container's cgroup `cpu.max` (bind-mounted read-only into the chroot), follow a lowered `KDOS_JOBS` too; ninja is handed `-j$KDOS_JOBS` by `script/bin/ninja` |
-| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them; `LICENSE` for the MIT text the image installs |
+| `build/` mounted writable; `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makefile`, the `Dockerfile` and `LICENSE` read-only | A build cannot modify its own sources. `testing/` is there for the tree gates `70_image` runs, and nothing in it is installed; the `Makefile` and the `Dockerfile` for the listings *KDOS from Scratch* shows of them; `LICENSE` for the MIT text `10_bootstrap`'s `000_file_system.sh` installs into the tree |
 
 The container is a fixed, known starting point. Whatever distribution your machine runs, the
 compilers that start the bootstrap are the same ones, which is why a build on one developer's
@@ -137,8 +137,8 @@ So it can hold what older recipes named as well: `ports/publish --history` seeds
 old commits' recipes point at, a file no current port names kept as `attic--<file>` in the highest
 volume, so a checkout written against an older version can still be built. `ports/sources.idx` is
 read only in its format 2, whose first line is `# kdos-sources-index 2`; a hash it does not name
-comes from upstream. The current recipes name 2,572 distinct files; 44 of them are carried in
-git, and 2,528 are fetched. A complete cache holds those 2,528 files; its size is in
+comes from upstream. The current recipes name 2,877 distinct files; 46 of them are carried in
+git, and 2,831 are fetched. A complete cache holds those 2,831 files; its size is in
 [What a build costs](#what-a-build-costs).
 
 **Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
@@ -883,7 +883,7 @@ These figures come from the chapters that measure them:
 
 | Cost | Figure | Source |
 |---|---|---|
-| Upstream sources, fetched once | About 42.2 GB (39.3 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
+| Upstream sources, fetched once | About 43.1 GB (40.2 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
 | A build from nothing | More than a day; not measured with the KDE set | [Building from scratch](developing.md#building-from-scratch) |
 | A complete set of phase snapshots | Not yet measured for the eleven phases that take one. On a synthetic ten-phase tree of about 4.4 GB, layers took 1.86 GB against 7.99 GB for full snapshots, 23% | [Snapshots](build-system.md#layers-and-full-snapshots), [Developing](developing.md#what-a-development-machine-needs) |
 | One program rebuilt, with packaging | Not yet measured with the zstd image; most of it is writing the ISO, and `KDOS_ISO_COMP=zstd:3` shortens that part | [The fast loop](testing.md#the-fast-loop) |

@@ -640,7 +640,7 @@ def render_splash(w, h, sc, mark):
 # ─── the global themes ────────────────────────────────────────────────────
 
 AUTHOR = [{"Name": "KDOS"}]
-WEBSITE = "https://github.com/kunaldawn/kdos"
+WEBSITE = "https://kdos.dev/"
 
 # The fonts every accent applies. The UI face is Noto Sans, the fixed face
 # JetBrains Mono (plan defaults B17, D7). KLookAndFeelManager APPLIES the

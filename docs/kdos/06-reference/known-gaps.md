@@ -103,11 +103,12 @@ screen locker; nothing in KDOS changes them. See
 The CRT pass is a KWin effect that refuses to load on software rendering (llvmpipe), where a
 full-screen pass every frame would be the desktop's whole budget. A virtual machine with plain
 graphics, the rig among them, cannot turn Phosphor mode on: `kdos phosphor on` refuses before it
-changes anything. `make run-hw` and a GPU passed through to a guest can. An output in HDR gets the
-plain picture. With several outputs and the effect's full-screen pass off, while a full-screen
-window is active on one output, KWin may put the cursor or an overlay on a hardware plane above the
-pass on the others. None of it has been photographed. See
-[Phosphor mode](../04-programs/kwin.md#phosphor-mode).
+changes anything. `make run-hw`, a GPU passed through to a guest and VirtualBox's VMSVGA adapter
+with 3D acceleration can; on VirtualBox KWin's renderer is `SVGA3D`, and Phosphor mode has been
+turned on and photographed there. An output in HDR gets the plain picture. With several outputs
+and the effect's full-screen pass off, while a full-screen window is active on one output, KWin
+may put the cursor or an overlay on a hardware plane above the pass on the others. Neither of
+those has been photographed. See [Phosphor mode](../04-programs/kwin.md#phosphor-mode).
 
 ### A login that typed no password leaves the wallet locked
 
@@ -682,7 +683,7 @@ only](#build-times-and-snapshot-sizes-are-measured-for-part-of-the-build-only).
 
 Discover's Sets are the box catalogue's sets, which install boxed applications. The native groups
 of ports in `/ports/groups`, such as `office`, `graphics` and `internet`, have no resource in
-Discover, so a group is installed with `sudo kdos update install <group>` or in the installer
+Discover, so a group is installed with `sudo kdos update install <group>`, on Welcome Center's Make It Yours page or in the installer
 ([Native groups](../02-user-guide/applications.md#native-groups)); Discover installs each member
 from its own page.
 
@@ -905,7 +906,8 @@ The medium has Intel's, AMD's, MediaTek's and Realtek's firmware and SOF; NVIDIA
 Atheros', Broadcom's and the rest (`firmware-misc`, which holds the Cirrus Logic and TI amplifiers
 of many laptops' speakers) are prebuilt packages in the release's binary host. A live session on
 such hardware has, until `sudo kdos firmware sync` has run, no Wi-Fi on a Qualcomm or Broadcom
-card, software rendering on a Turing or later NVIDIA GPU, and silent speakers behind those
+card, software rendering on an NVIDIA GPU from second-generation Maxwell (the GeForce GTX 950) on,
+and silent speakers behind those
 amplifiers, and the command needs a network to fetch the packages: Ethernet, a USB-tethered phone,
 or a supported Wi-Fi card. The live session's notice names the port; the installer runs the
 command into the new disk when it has a network.
@@ -1041,6 +1043,49 @@ carry one medium id, and nothing on either tells them apart. The installer refus
 mounted one as the boot medium and the other as a copy of it, so neither can be chosen to install
 on while the other is attached.
 
+### A virtio-gpu machine is offered no suspend
+
+The kernel's virtio-gpu driver (Linux 7.2.11) has no freeze or restore hook. On a system suspend
+`virtio_pci` resets the device, and nothing recreates its queues, so after a resume the host never
+sees another command. The screen stays on QEMU's *Display output is not active* frame. KWin's next
+commit waits for ever on a fence. The next blocking console mode set, from a switch to a text
+console or a session ending, then stalls in `drm_atomic_helper_swap_state` holding the console
+lock, and init's reboot and power-off wait on that lock until the machine is reset. This was
+measured on QEMU with `virtio-vga` and S3 (`deep`); s2idle runs the same driver hooks. So
+`40_elogind.sh` writes `AllowSuspend=no` to `/run/elogind/sleep.conf.d/60-kdos-virtio-gpu.conf`
+whenever a virtio-gpu device is bound, and such a machine has no Sleep in Plasma, at the login
+screen or in PowerDevil's idle and lid actions. Every rig display is virtio-gpu, so
+`testing/flows/05-suspend-resume.sh` asserts that refusal, and the resume path (the flow probe's
+`suspend` check) is not run anywhere. Whether other display devices resume has not been measured.
+See [Power management](../../kfs/16-wiki/power-management.md#elogind).
+
+### VirtualBox's VBoxVGA and VBoxSVGA adapters reach no desktop
+
+On those two adapters vboxvideo names its one output `VGA-1`. KWin 6.8 skips the preferred mode
+of any output whose name contains `VGA` and takes the largest mode at 50 Hz or more: 1920x1080
+at 16 MB of video memory, 800x600 at 4 MB. That mode's scanout buffers do not fit beside the
+console's, every atomic commit fails with `Out of memory`, KWin never falls back to a smaller
+mode, and the screen stays on KSplash's last frame or black, with the session running behind it.
+At 128 MB the desktop appears, at 2560x1600. VMSVGA, VirtualBox's default for its Linux types,
+works. See [Running KDOS on VirtualBox](../../kfs/16-wiki/virtual-machines.md#running-kdos-on-virtualbox).
+
+### A VirtualBox guest does not follow its window
+
+KDOS ships no VirtualBox guest utilities (`VBoxClient`, `VBoxDRMClient`), so the host is told the
+guest cannot resize and greys out *Auto-resize Guest Display*. The guest's resolution stays where
+it is when the window changes size, and there is no shared clipboard, no drag and drop and no
+shared-folder automount. The `vboxguest` and `vboxsf` modules are built, but nothing uses them.
+Set the resolution in System Settings → Display Configuration, or with
+`kscreen-doctor output.<name>.mode.1920x1080@60` (`kscreen-doctor -o` names the output). QXL has
+the same limit, because no SPICE agent (`spice-vdagent`) is ported.
+
+### What a machine under the memory minimum does has not been measured
+
+KDOS needs 4 GB. Below 2.75 GiB of `MemTotal` the boot splash shows a failed
+`MEMORY <N> MIB, NEEDS 4 GB` stage and boots on. Whether a 1 GB or 512 MB machine reaches a usable
+desktop, now that `kdos-oomd` also kills with its zram swap exhausted and up to a quarter of memory
+available, has not been measured.
+
 ## Boot and updates
 
 ### A disk-encryption key is typed, not sealed in the TPM
@@ -1142,6 +1187,26 @@ See [A new kernel](../03-architecture/boot-and-init.md#a-new-kernel).
 ### `kdos restarts` tells replaced code from removed code by its path
 
 If an update moves a program's files to a new path, for example a new Python's `/usr/bin/python3.13` next to a running `python3.12`, the old process reads as removed (`"replaced": false`). `kdos-notice` then raises no restart notice for it, and it does not count toward the command's exit status. A library whose versioned file changes keeps working, because its soname link is checked too.
+
+### A package built here is not counted against the root before its build
+
+`kpkg index` writes each package's installed size as an `I:` line, and `kdos update install`
+refuses an install whose prebuilt packages would not fit on the root. A package built on the
+machine has no such line until it is built, so its room is checked only by the build-space
+estimate, and the development files restored to a package already installed are counted only as
+downloads.
+
+### The binary host cache is never pruned on an installed machine
+
+`/var/lib/kdos/binhost` keeps every package it downloaded, on the root slot, as delta bases. An
+install counts its new downloads against the root when the two share a filesystem, but nothing
+frees what earlier installs left there.
+
+### The installer's overall bar weighs Slot B by the live system
+
+Slot B's step measures slot A after the Packs step, so its own byte line and time left are right.
+The step's share of the whole bar is set before the install, from the live tree, so with native
+groups the bar spends longer in Slot B than its share says.
 
 ## Security
 
@@ -1497,16 +1562,6 @@ about 100 MiB smaller, and `KDOS_ISO_GATE=0` builds the same image as a develope
 was chosen from decompression measured on one core, not from a boot to Plasma timed under QEMU, so
 whether xz-bcj boots within 10% of zstd is not known.
 
-### A tagged image cannot take its own build's binhost
-
-A build from a clean checkout of a tagged commit names its release in `/ports/TREE`, but
-`70_image/010_binhost.sh` stamps `build/binhost`'s index with the commit cut to 12 characters, and
-`kdos update` refuses an index whose version is not the tree's (`the release index at <base> is
-for <commit>, and this tree is <tag>`). So `binhost =` pointing at `build/binhost`, or at a
-sources stick's `sources/binhost`, is refused on that image. The published release is unaffected:
-`ports/publish --release` writes the release's own index under the tag. See
-[The release tag](../05-developer/build-system.md#the-release-tag).
-
 ### An image update has not installed a whole package into a slot
 
 `017_stage.sh` strips every package of the base to its run-time
@@ -1615,11 +1670,18 @@ exact file. `KDOS_SOURCES_BASE` can point `make fetch` at another copy laid out 
 nothing publishes such a copy. See
 [Developing](../05-developer/developing.md#where-sources-come-from).
 
-### Two emulator cores may not go on sold media
+### Some packages may not go on sold media
 
-`libretro-snes9x` is under the Snes9x licence, which forbids commercial distribution, and
-`libretro-genesis-plus-gx`'s licence forbids selling it or using it in a commercial product. An
-image or a medium that is sold must leave both out.
+Six packages in the binhost are under terms that forbid commercial distribution, and an image or a medium that is sold must leave them out:
+
+- `libretro-snes9x`: the Snes9x licence forbids commercial distribution.
+- `libretro-genesis-plus-gx`: its licence forbids selling it or using it in a commercial product.
+- `devilutionx`: the Sustainable Use License allows distribution "only if you do so free of charge for non-commercial purposes".
+- `sideband`: under CC BY-NC-SA 4.0 and CC BY-NC-ND 4.0.
+- `celestia-content`: part of its textures is under CC BY-NC-SA 3.0 and CC BY-NC 3.0 IGO.
+- `sauerbraten`: three of its interface images (`guioverlay.png`, `guiskin.png`, `guislider.png`) are under CC BY-NC-SA.
+
+`mafft`'s ViennaRNA-based extensions (`license.extensions`) ask that anyone including them in a commercial product contact their authors first. The base image carries none of these packages; only a medium that also carries the binhost or the source archive is affected.
 
 ### A clone does not check what it pushes unless you enable the hook
 
@@ -1685,7 +1747,7 @@ synthetic, source-less ports, covering reproducible packaging, shared indexes, f
 recipe-hash skipping, binhost signing and package deltas. A package built twice to compare its
 bytes is that synthetic port, not a real one, and no test reconstructs a pack from a pack delta
 (`kdos-pack delta`; see [Deltas](../03-architecture/packs-and-boxes.md#deltas)). The real recipes
-can only be tested by building the whole distribution, which takes most of a day and a container;
+can only be tested by building the whole distribution, which takes a day or more and a container;
 see [What a build costs](../05-developer/how-kdos-is-built.md#what-a-build-costs).
 
 ### No harness exercises the source archive end to end
@@ -1711,20 +1773,6 @@ Its emulated sound card gives the guest no capture signal, so a recording level 
 even with the rig's `--audio` option on. Loading the `snd-aloop` kernel module in the guest, from a
 root script, gives it a loopback capture device to record from. See
 [Testing](../05-developer/testing.md#a-real-capture-device-with-no-emulator-flag).
-
-### Phosphor mode is not in any rig photograph
-
-The rig's virtual display puts KWin on software rendering, where the CRT effect refuses to load.
-A photograph of it needs the rig's GL option or `make run-hw`.
-
-### The suspend flow finds no screen after resume
-
-`testing/flows/05-suspend-resume.sh` fails on the rig. The kernel completes the suspend, the
-session comes back locked and the password unlocks it, but both photographs after resume are QEMU's
-*Display output is not active* frame, a pointer move and Shift do not bring the picture back, and
-the guest's DRM connector reports the output on throughout. Whether a resumed KDOS loses its
-display or the rig's `virtio-vga` loses its scanout over S3 has not been measured on real
-hardware. See [The login flows](../05-developer/testing.md#the-login-flows).
 
 ## Documentation
 

@@ -85,7 +85,6 @@ ac_add_options --disable-sndio
 
 ac_add_options --with-system-nspr
 ac_add_options --with-system-nss
-ac_add_options --with-system-icu
 ac_add_options --with-system-jpeg
 ac_add_options --with-system-webp
 ac_add_options --with-system-libvpx

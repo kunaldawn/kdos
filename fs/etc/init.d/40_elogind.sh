@@ -38,6 +38,25 @@ case "$1" in
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."
+        # NO SUSPEND ON virtio-gpu. Its kernel driver has no freeze or
+        # restore hook, so a resume resets the device and never recreates
+        # its queues: the display stays dark, the next console mode set
+        # (a VT switch, a session's end) blocks holding the console lock,
+        # and init's reboot and power-off then wait on that lock for ever.
+        # elogind reads [Sleep] drop-ins from /run/elogind/sleep.conf.d as
+        # well as /etc, so with this one CanSuspend answers `no` and
+        # Plasma, SDDM and PowerDevil offer no Sleep on such a machine. It
+        # is written before elogind starts, which reads it only then; a
+        # machine without the device keeps its suspend.
+        _drop=/run/elogind/sleep.conf.d/60-kdos-virtio-gpu.conf
+        if ls -d /sys/bus/virtio/drivers/virtio_gpu/virtio* >/dev/null 2>&1; then
+            mkdir -p "${_drop%/*}"
+            printf '[Sleep]\nAllowSuspend=no\n' > "$_drop"
+            echo "[KDOS] $NAME: suspend is off on virtio-gpu"
+        else
+            rm -f "$_drop"
+        fi
+        unset _drop
         # In the foreground (no --daemon), so the supervisor watches the
         # daemon itself; its comm is then `elogind`, the name kdos-oomd
         # protects.

@@ -314,6 +314,17 @@ private Q_SLOTS:
         QVERIFY(!kdosParseSlotState("not json").configured);
         QVERIFY(!kdosParseSlotState("").configured);
     }
+
+    void liveRootAndOsVersion()
+    {
+        QVERIFY(kdosRootIsLive("tmpfs /run tmpfs rw 0 0\noverlay / overlay rw,lowerdir=/x 0 0\n"));
+        QVERIFY(!kdosRootIsLive("/dev/vda2 / ext4 rw 0 0\noverlay /var/lib/containers overlay rw 0 0\n"));
+        QVERIFY(!kdosRootIsLive(""));
+        QCOMPARE(kdosOsVersion("NAME=\"KDOS\"\nVERSION_ID=\"0.2\"\n"), QStringLiteral("0.2"));
+        QCOMPARE(kdosOsVersion("VERSION_ID=0.2.14\n"), QStringLiteral("0.2.14"));
+        QVERIFY(kdosOsVersion("VERSION_ID=\"0.2; rm\"\n").isEmpty());
+        QVERIFY(kdosOsVersion("NAME=KDOS\n").isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(KdosStatsTest)

@@ -43,7 +43,7 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 installer writes its own lines, swap among them, ahead of the image's, in one of these two forms,
 from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2913-2922 pin=62a1ee6651cc -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2961-2970 pin=62a1ee6651cc -->
 
 The first is a swap partition, or on the A/B layout the `swap` volume beside the two root slots.
 The second, a swap file, is written only on a single-root layout: a file inside one slot's root
@@ -56,7 +56,7 @@ and goes on.
 `rcS` turns on every swap line of `/etc/fstab` once the filesystems are mounted, from
 `fs/etc/init.d/rcS`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=145-148 pin=99061a33a0a0 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=164-167 pin=99061a33a0a0 -->
 
 and `/etc/inittab`, from `fs/etc/inittab`, turns all swap off again at power-off and reboot, after
 the services are stopped and before the persistence store is made read-only and the filesystems

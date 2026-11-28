@@ -80,12 +80,20 @@ lists) are off, by build switch where one exists and by default prefs and polici
   PulseAudio sound backends, the second reaching [pipewire](#port-pipewire) through `libpulse`.
   `--disable-jack` and `--disable-sndio` leave out the JACK and sndio backends; sndio is not a
   port.
-- `--with-system-nspr` — and the `--with-system-*` switches after it (nss, icu, jpeg, webp, libvpx,
+- `--with-system-nspr` — and the `--with-system-*` switches after it (nss, jpeg, webp, libvpx,
   libevent, ffi, zlib, pixman, jsonc, bz2, pipewire, gbm, libdrm): link the tree's library instead
   of the copy in the source. `jsonc` and `bz2` are for librnp, the in-tree OpenPGP library, which
   runs on the in-tree Botan. PNG stays in-tree: Mozilla's configure refuses a system libpng without
   APNG support, which this one lacks. AV1 stays in-tree too, because `--with-system-av1` requires
   aom as well as [dav1d](#port-dav1d), and aom is not a port.
+  ICU stays in-tree as well, with no `--with-system-icu`. Mozilla's copy carries
+  `intl/icu-patches/bug-1790071-ICU-22132-standardize-vtzone-output.diff`, which writes the
+  `X-TZINFO:` property name before the zone id in `VTimeZone::write()`; the tree's
+  [icu](#port-icu) is upstream's and writes a bare `Europe/Berlin[2026a]` line there. The calendar
+  hands that text to ical.js for every zone but UTC, ical.js refuses the line, and calendar
+  startup fails, leaving the main window without account setup, tabs or a working menu in any
+  non-UTC time zone. Patching the tree's icu instead would rebuild `30_foundation` and everything
+  after it.
 - `MOZILLA_OFFICIAL` — unset, together with `MOZ_TELEMETRY_REPORTING`, so no telemetry upload code
   is compiled in.
 - `MAKEFLAGS` — unset after its job count is read off it: mach runs its own make, so the phase's

@@ -50,7 +50,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3997-4009 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=4067-4079 pin=d5c38affc180 -->
 
 `slot_b` is empty unless the installer made the A/B layout. `kdos-bootctl` writes every later
 version, under a header of its own
@@ -114,7 +114,7 @@ the init is written by a heredoc, and the generated script has a plain `$`.
 A boot is confirmed by two marks, both root's files under `/run/kdos/bless/`. The end of `rcS`,
 after every service script has run, writes the first:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=217-241 pin=de5053d13197 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=236-260 pin=de5053d13197 -->
 
 The second, `graphical`, is written by kdos-sysupdated when a Plasma session has answered for a
 minute: `/etc/xdg/autostart/kdos-session-good.desktop` runs `kdos-notice --bless` in the last

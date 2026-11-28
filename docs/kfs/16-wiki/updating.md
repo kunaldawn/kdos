@@ -393,9 +393,11 @@ time it builds.
    ```
 
    One line per package, `<pkg> prebuilt <file> <bytes>` or `<pkg> source <version>-<release>`,
-   then `total <prebuilt-count> <bytes> <source-count>`. When the download does not fit in the
-   free space where the cache is, the plan ends with `kdos update: the packages to download take
-   <size> and <cache> has <size> free`, and the dry run exits 1.
+   then `total <prebuilt-count> <bytes> <source-count>` and `installed <bytes>`, what the packages
+   take once installed. When the download does not fit in the free space where the cache is, the
+   plan ends with `kdos update: the packages to download take <size> and <cache> has <size> free`,
+   and when the installed packages would not fit on the root, with `kdos update: the packages take
+   <size> once installed and / has <size> free`; either way the dry run exits 1.
 
 3. Install:
 
@@ -633,6 +635,12 @@ Discover offers no system update, or `kdos update check` reports a problem
 : The install would not fit where its packages are cached, and nothing was downloaded. Free space
   there, or install fewer ports at once; on the live medium the cache is in RAM.
 
+`the packages take <size> once installed and / has <size> free`
+: The packages would not fit on the root once unpacked, with 128 MiB left over, and nothing was
+  downloaded; when the cache shares the root its downloads are counted too. Free space on the
+  root, or install fewer ports at once. A group is measured whole and refused before its first
+  member.
+
 `fetch-failed` on every fetch
 : A release that carries no `kdos-ports.tar.xz` fails at the download: the latest release is such
   a one, and `sudo kdos update fetch` with no `update.conf` prints
@@ -683,9 +691,9 @@ Discover offers no system update, or `kdos update check` reports a problem
 : The server's name did not resolve, or the machine has no default route. Check the connection
   with `nmcli general status`, or fetch from a stick with `--from`. A server that refused the
   connection or did not answer while a route exists is `fetch-failed`, "the server at
-  <host:port> did not answer": the network is up and the server is not. One that answered and
+  `<host:port>` did not answer": the network is up and the server is not. One that answered and
   then stalled, less than 1024 bytes a second for 60 seconds, is `fetch-failed` too, "the download
-  from <host:port> stalled"; a package that stalls part way is kept and continued by the next run.
+  from `<host:port>` stalled"; a package that stalls part way is kept and continued by the next run.
 
 `build-failed`
 : A package did not build, or, on a machine with two slots, the slot failed its `kpkg check`, the

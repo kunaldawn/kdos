@@ -19,7 +19,8 @@
 #
 #   a file under fs/etc/xdg the rulings do not put there. Allowed: kdeglobals
 #     (the global theme alone, for a process that reads /etc/xdg alone),
-#     konsolerc, fcitx5/config and fcitx5/conf/wayland.conf (fcitx5 reads one
+#     konsolerc, fcitx5/config, fcitx5/conf/wayland.conf and
+#     fcitx5/conf/classicui.conf (fcitx5 reads one
 #     file of each, not a cascade, and KWin starts it with whatever
 #     environment it has), mimeapps.list (the handlers that are not a
 #     desktop application's), and the two directories the XDG
@@ -53,7 +54,7 @@ esac
 fail=0
 bad() { echo "  FAIL  $*"; fail=1; }
 
-ALLOWED="kdeglobals konsolerc fcitx5/config fcitx5/conf/wayland.conf mimeapps.list"
+ALLOWED="kdeglobals konsolerc fcitx5/config fcitx5/conf/wayland.conf fcitx5/conf/classicui.conf mimeapps.list"
 n=0
 while IFS= read -r f; do
 	rel=${f#fs/etc/xdg/}

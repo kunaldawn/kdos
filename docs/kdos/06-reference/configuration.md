@@ -435,6 +435,7 @@ only Plasma:
 | `/etc/xdg/mimeapps.list` | The handlers for the types no desktop application opens, `kdos-openarchive` for comic books packed as 7z or rar, and the removed associations KDOS ships: Ark off the OpenDocument and Office Open XML types, which are zip files underneath, and Kate and Okular's text viewer off `text/calendar`, which both claim as plain text. Until an office program is installed, an office document opens the note of `kdos-nooffice.desktop`, which claims those types so that GLib, which honours a removed row only for the type it names, does not fall through to Ark's `application/zip`; until a calendar program is installed, an invitation shows the *Open With* chooser and Default Applications names no calendar. |
 | `/etc/xdg/fcitx5/config` | The keys that move between input-method groups, `Super+Alt+Space` and `Super+Alt+Shift+Space` |
 | `/etc/xdg/fcitx5/conf/wayland.conf` | `Allow Overriding System XKB Settings=False`, so fcitx5 never writes its group's layout into `~/.config/kxkbrc` and the layout list stays KWin's: the installer's, locale1's and the Keyboard page's |
+| `/etc/xdg/fcitx5/conf/classicui.conf` | `UseDarkTheme=True` with `DarkTheme=default-dark` and `UseAccentColor=True`, so the candidate window follows the portal's colour scheme (dark under the seven dark accents, light under Paper) and takes its highlight from the accent. A copy the Input Method page saves in `~/.config/fcitx5/conf/` replaces it whole |
 | `/etc/xdg/autostart/kdos-boxes-restore.desktop` | `kdos-appbox session restore` at login: the boxes that were running when the last session ended |
 | `/etc/xdg/autostart/kdos-session-good.desktop` | `kdos-notice --bless` at login: confirms the booted system version once Plasma has stayed up |
 | `/etc/xdg/autostart/kdos-mpris.desktop` | `kdos-mpctl mpris`, the bridge that puts mpd on the session bus for the media keys and the Media Player widget |
@@ -688,6 +689,7 @@ elogind's settings, as drop-ins over its own `logind.conf` and `sleep.conf`.
 | `HandlePowerKey` | `poweroff` | The power button shuts down |
 | `InhibitDelayMaxSec` | `5` | How long a program holding a delay lock may hold up a suspend |
 | `AllowHibernation`, `AllowSuspendThenHibernate`, `AllowHybridSleep` | `no` | Suspend to RAM only. KDOS swaps to zram, which is memory and holds nothing across a power-off, so there is no disk image to resume from; with these off, PowerDevil and the Leave menu offer no action that would lose the session |
+| `AllowSuspend` | `no` on a virtio-gpu display, unset elsewhere | Written by `40_elogind.sh` to `/run/elogind/sleep.conf.d/60-kdos-virtio-gpu.conf` before elogind starts. The kernel's virtio-gpu driver does not survive a resume, after which the console and a reboot hang, so such a machine is offered no Sleep |
 
 Applies at the next start of elogind, which is the next boot. Inside a Plasma session PowerDevil
 takes the lid and power-key inhibitors and its own settings decide; these keys apply at the login

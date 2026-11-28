@@ -501,10 +501,14 @@ QString KdosResource::kdosNotice() const
     case Lane::Box:
         return i18n("Removing a box keeps its profile and the files it wrote under ~/.local/share/kdos/boxes/%1.", e.id);
     case Lane::PortSource:
+        if (e.state == EntryState::None && kdosBackend()->planContext().live)
+            return i18n("Builds %1 on this computer from its recipe and installs it into this live session. It runs from memory and is gone when the machine restarts; install KDOS to keep it. Its sources are downloaded, and so is each dependency this system lacks unless the setting says to build those too. A build can take minutes or hours. Before it asks for the administrator password, which it does each time, it says how many packages it builds and how many it downloads.", e.name);
         if (e.state == EntryState::None)
             return i18n("Builds %1 on this computer from its recipe and installs it into this version of the system; the next system update builds it again. Its sources are downloaded, and so is each dependency this system lacks unless the setting says to build those too. A build can take minutes or hours. Before it asks for the administrator password, which it does each time, it says how many packages it builds and how many it downloads.", e.name);
         [[fallthrough]];
     case Lane::Port:
+        if (e.state == EntryState::None && kdosBackend()->planContext().live)
+            return i18n("Downloads the prebuilt package from the signed KDOS binary host into this live session. It runs from memory and is gone when the machine restarts; install KDOS to keep it. It downloads only what the binary host cache does not already hold; nothing is built. Before it asks for the administrator password it says how many packages it installs and how much of that it downloads.");
         if (e.state == EntryState::None)
             return i18n("Downloads the prebuilt package from the signed KDOS binary host into this version of the system, and the next system update keeps it. It downloads only what the binary host cache does not already hold; nothing is built. Before it asks for the administrator password it says how many packages it installs and how much of that it downloads.");
         if (e.removable)

@@ -853,8 +853,9 @@ hardware, the session raises a notice naming the port, with an **Install** butto
 `sudo kdos firmware sync` in Konsole (`su -c 'kdos firmware sync'`, with root's password, for an
 account outside `wheel`). The installer runs it into the new disk when it has a
 network. A live session on hardware whose firmware is not on the medium (a Qualcomm or Broadcom
-Wi-Fi card, a Turing or later NVIDIA GPU, the Cirrus or TI amplifiers of some laptops' speakers)
-lacks that device until the command has run, and needs another way onto a network for it (see
+Wi-Fi card, an NVIDIA GPU from second-generation Maxwell (the GeForce GTX 950) on, the Cirrus or
+TI amplifiers of some laptops' speakers) lacks that device, or for the GPU draws in software, until
+the command has run, and needs another way onto a network for it (see
 [Known gaps](../06-reference/known-gaps.md#the-installation-medium-carries-four-vendors-firmware)).
 The command is in [kdos firmware](../04-programs/kdos-command.md#kdos-firmware).
 
@@ -1401,10 +1402,10 @@ in [Applications](applications.md#native-groups).
 
 `kpkg info <port>` prints a package's licence as an SPDX expression on its `License:` line, and
 `/usr/share/licenses/<port>/` holds the licence texts it was distributed with. KDOS's own MIT text
-is `/usr/share/licenses/kdos/LICENSE`, and it covers every package KDOS wrote under MIT. The
-image links it as `LICENSE` into the directory of each such package it carries; one installed
-later with `kdos update` or `kpkg` gets no link, and the link belongs to no package, so
-`kpkg check --all` lists these links as unowned. A few sources carry no text at all, public-domain
+is `/usr/share/licenses/kdos/LICENSE`, and it covers every package KDOS wrote under MIT. Each such
+package carries a `LICENSE` link to it in its own directory, whether the image holds it or
+`kdos update` installed it later; the text itself belongs to no package, so `kpkg check --all`
+lists it as unowned. A few sources carry no text at all, public-domain
 or CC0 code and data such as `sqlite`, `debian-dep11` and `fwupd-snapshot`, and data such as
 `iana-etc`, and have no directory. `/usr/share/kdos/SOURCES` names the commit of
 the KDOS repository the system was built from and the archive releases that hold every upstream
@@ -1888,7 +1889,9 @@ fcitx5's, and switch with KWin's `Meta+Alt+K`: `/etc/xdg/fcitx5/conf/wayland.con
 fcitx5's *Allow Overriding System XKB Settings*, which would otherwise write fcitx5's own `us`
 into `~/.config/kxkbrc` at every start and on every input-method change, replacing the layouts the
 installer and the Keyboard page set. fcitx5 draws its candidate window beside the text
-being typed, in a program that tells it where the cursor is.
+being typed, in a program that tells it where the cursor is, dark under a dark accent and light
+under Paper, with its highlight in the accent: `/etc/xdg/fcitx5/conf/classicui.conf` turns on
+fcitx5's *Follow system light/dark color scheme* and *Follow system accent color*.
 
 Cloud pinyin is compiled out: it would send what you type to a remote service.
 

@@ -65,7 +65,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2891-2925 pin=3700d7bc6497 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2939-2973 pin=3700d7bc6497 -->
 
 So an installed `fstab` begins with the root by its filesystem UUID and the EFI system partition
 at `/boot/efi` with `umask=0077` and pass 2. On the A/B layout, which an erased disk under LVM gets
@@ -88,7 +88,7 @@ a non-zero pass except the root, `mount -a` mounts every entry, and a remount gi
 options its line names, such as `noatime`, which the initramfs's bare mount and `mount -a` both
 leave out; the live medium's overlay root has no line and is left as it is:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=79-110 pin=fca23847e6c1 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=98-129 pin=fca23847e6c1 -->
 
 **The daily trim**, [`/etc/kdos/timers.d/20-fstrim.timer`]{.idx}, from `fs/etc/kdos/timers.d/20-fstrim.timer`:
 

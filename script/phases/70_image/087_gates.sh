@@ -34,13 +34,11 @@
 #                          as unmeasured, never failed; an edge nothing in
 #                          either tree provides is counted, not failed.
 #   licence texts          every installed package that owns a file and has
-#                          no /usr/share/licenses/<name>, less the packages
-#                          of our own whose licence is MIT alone (105_ports.sh
-#                          links the repository's text for them; one under
-#                          MIT AND another licence is listed until its
-#                          build.sh installs the other text). A report,
-#                          never a failure: the ports in LICENCE_TEXTLESS
-#                          are listed apart, and any other name is a port
+#                          no /usr/share/licenses/<name>. A package of our
+#                          own whose licence names MIT carries its link to
+#                          KDOS's text from kpkg. A report, never a
+#                          failure: the ports in LICENCE_TEXTLESS are
+#                          listed apart, and any other name is a port
 #                          whose source keeps its text where kpkg does not
 #                          look, so its build.sh must install it.
 #   binhost N: lines       under KDOS_MAKE_BINHOST=1, a current package
@@ -60,8 +58,9 @@
 # RUNS AFTER the sweep and every index (the manual index, the font cache), so
 # what it reads is what the image carries, and before 090_initramfs.sh and
 # 110_iso.sh. What the later steps write into the tree (the initramfs and its
-# module list, the source offer, KDOS's licence text and the links to it) is
-# generated, and unowned.py subtracts it.
+# module list, the source offer) is generated, and unowned.py subtracts it,
+# as it does KDOS's licence text, which 10_bootstrap's 000_file_system.sh
+# installs.
 # The scripts read the repository's phase lists and recipes, so the working
 # directory is /kdos.
 
@@ -72,9 +71,8 @@ cd /kdos
 rc=0
 
 # Ports whose sources hold no licence text: public-domain and CC0 code and
-# data, data published under terms no file of the source carries, and code
-# published with no licence at all.
-LICENCE_TEXTLESS="sqlite snooze iana-etc debian-dep11 fwupd-snapshot librfnm"
+# data, and data published under terms no file of the source carries.
+LICENCE_TEXTLESS="sqlite snooze iana-etc debian-dep11 fwupd-snapshot"
 
 echo "[gates] unowned files"
 python3 testing/unowned.py --root / --fs /kdos/fs \
@@ -121,16 +119,6 @@ for p in /var/lib/kpkg/db/*; do
     n=${p##*/}
     [ -d "/usr/share/licenses/$n" ] && continue
     awk 'NR > 1 && /[^\/]$/ { found = 1; exit } END { exit !found }' "$p" || continue
-    r=
-    for k in /ports/core/*/"$n"/kpkgbuild /kdos/src/*/"$n"/kpkgbuild; do
-        [ -f "$k" ] && { r=$k; break; }
-    done
-    if [ -n "$r" ] && [ "$(awk '$1 == "license" { sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print }' "$r")" = MIT ]; then
-        case "$r" in
-            /kdos/src/*) continue ;;
-        esac
-        grep -qE '^source[[:space:]]*=[[:space:]]*[^[:space:]]' "$r" || continue
-    fi
     case " $LICENCE_TEXTLESS " in
         *" $n "*) expected="$expected $n" ;;
         *) nolicence="$nolicence $n" ;;

@@ -215,7 +215,8 @@ Hack, which KDOS does not ship. `/etc/fonts/conf.d/45-kdos-mono.conf` puts JetBr
 draw with, so a missing glyph costs a different fixed-width face and never a proportional one.
 `testing/monofont.py` measures each block against that chain. The Konsole profiles turn ligatures
 off: a terminal has to show what was typed, and JetBrains Mono would join `!=` or `->` into one
-glyph.
+glyph. They open a window of 120 columns by 31 rows, which holds the shipped fastfetch and its
+prompt whole and still fits a 1366x768 screen above the panel.
 
 Every global theme sets the same fonts, and carries the fonts in `[kdeglobals][WM]` as well as
 `[kdeglobals][General]`: Plasma applies a theme's fonts from the General group but decides whether
@@ -397,8 +398,8 @@ a live boot, and up to about four after the first greeter login of a boot
 | Stage | Drawn by | What it shows |
 |---|---|---|
 | Boot menu | Limine | The menu's text in the accent's palette, on a plate that is the KDOS artwork's neutral floor under every accent (Paper's dark text cannot be read on it, so Paper draws Bone's menu) |
-| Boot progress | `kdos-splash`, on the framebuffer | The mark fading in out of black, the name and release under it ("Kool Desktop Operating System 0.2.1"), then the boot stages under a segmented bar; at the end of `rcS` it holds its last frame until the login screen's compositor replaces it |
-| Login screen | SDDM, with the `kdos` theme on its own KWin | Breeze's login layout with the KDOS mark, the clock in the fixed face, the footer "KDOS 0.2.1 · Plasma by KDE" naming the release as `kdos version` does, over the accent's dark wallpaper dimmed toward the scheme's ground, its tint kept, until the greeter's text holds 4.5:1 on the picture's brightest pixel, fading in out of black and back to black on a login |
+| Boot progress | `kdos-splash`, on the framebuffer | The mark fading in out of black, the name and release under it ("Kool Desktop Operating System 0.2"), then the boot stages under a segmented bar; at the end of `rcS` it holds its last frame until the login screen's compositor replaces it |
+| Login screen | SDDM, with the `kdos` theme on its own KWin | Breeze's login layout with the KDOS mark, the clock in the fixed face, the footer "KDOS 0.2 · Plasma by KDE" naming the release as `kdos version` does, over the accent's dark wallpaper dimmed toward the scheme's ground, its tint kept, until the greeter's text holds 4.5:1 on the picture's brightest pixel, fading in out of black and back to black on a login |
 | Session start | KSplash, the global theme's own | `kdos-splash`'s last frame without its stage rows, at the same pixels (but for the rule and the bar, which move up two lines when the release had a line of its own): the mark and the wordmark, its lower half shaded from the scheme's roles, the two lines under them in Terminus's scalable face (the name without the release), then the segmented bar carried on from where the boot splash's stood at the handover: 99% and one segment short, its leading segment pulsing until the desktop is up, so it never moves backwards |
 | Desktop | Plasma | The KDOS desk in the accent |
 | Lock screen | `kscreenlocker`, with Plasma's lock screen as `plasma-desktop`'s patch draws it | Breeze's layout in the accent's colours and wallpaper, the clock in the fixed face in the band above the mark. The wallpaper is the accent's package, not dimmed, so the name and "Unlocking failed" over the penguin's pale belly hold about 3:1 |

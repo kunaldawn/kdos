@@ -14,5 +14,5 @@
   <description>
     <p>KDOS installs a system update into the root slot it is not running and starts it at the next restart, keeping the running version to go back to.</p>
   </description>
-  <url type="homepage">https://github.com/kunaldawn/kdos</url>
+  <url type="homepage">https://kdos.dev/</url>
 </component>

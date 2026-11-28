@@ -22,7 +22,7 @@
 
 [General]
 LogoPath=distributor-logo-kdos
-Website=https://github.com/kunaldawn/kdos
+Website=https://kdos.dev/
 UseOSReleaseVersion=true
 ShowBuild=true
 ExtraSoftwareData=/usr/libexec/kdos/about-slot;/usr/libexec/kdos/about-update;/usr/libexec/kdos/about-tree;/usr/libexec/kdos/about-accent;/usr/libexec/kdos/about-libc;/usr/libexec/kdos/about-boxes

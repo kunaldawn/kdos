@@ -29,6 +29,9 @@
 #     suspend [SECS]     arm the RTC to wake the machine SECS (20) from now,
 #                        suspend through logind, and wait for the kernel's
 #                        suspend counter to move: the machine slept and woke
+#     no-suspend         a virtio-gpu device is bound, logind's CanSuspend
+#                        answers no, `loginctl suspend` is refused, and the
+#                        suspend counter stays where it was (40_elogind.sh)
 #     vt N               tty N is the foreground VT. For the session's own VT
 #                        the session is Active, for any other it is not, and
 #                        tty2 has its getty
@@ -64,7 +67,7 @@ while [ $# -gt 0 ]; do
 	case $1 in
 	--user) user=$2; shift ;;
 	--timeout) limit=$2; shift ;;
-	-h | --help) sed -n '9,38p' "$0"; exit 0 ;;
+	-h | --help) sed -n '9,41p' "$0"; exit 0 ;;
 	-*) echo "flow-probe: unknown option $1" >&2; exit 64 ;;
 	*) break ;;
 	esac
@@ -286,6 +289,26 @@ suspend)
 		else
 			bad "no completed suspend within ${limit}s (suspend_stats/success stays $(counter))"
 			dmesg 2>/dev/null | grep -E 'PM: |ACPI: PM' | tail -n 10 | sed 's/^/      /'
+		fi
+	fi
+	;;
+no-suspend)
+	if ! ls -d /sys/bus/virtio/drivers/virtio_gpu/virtio* >/dev/null 2>&1; then
+		bad "no virtio-gpu device is bound; this check is for one"
+	else
+		ok "a virtio-gpu device is bound"
+		can=$(dbus-send --system --print-reply=literal --reply-timeout=10000 \
+			--dest=org.freedesktop.login1 /org/freedesktop/login1 \
+			org.freedesktop.login1.Manager.CanSuspend 2>&1 | tr -d ' ')
+		if [ "$can" = no ]; then ok "logind's CanSuspend answers no"
+		else bad "logind's CanSuspend answers '$can', not no"; fi
+		before=$(counter)
+		loginctl suspend 2>&1 | sed 's/^/      /'
+		sleep 5
+		if [ "$(counter)" = "$before" ]; then
+			ok "loginctl suspend did not suspend (suspend_stats/success stays $before)"
+		else
+			bad "the machine suspended (suspend_stats/success $before -> $(counter))"
 		fi
 	fi
 	;;

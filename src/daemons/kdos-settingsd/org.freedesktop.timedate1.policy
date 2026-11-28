@@ -19,7 +19,7 @@
 
 <policyconfig>
 	<vendor>KDOS</vendor>
-	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+	<vendor_url>https://kdos.dev/</vendor_url>
 
 	<action id="org.freedesktop.timedate1.set-time">
 		<description>Set the system time</description>

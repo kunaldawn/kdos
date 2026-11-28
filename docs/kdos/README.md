@@ -9,10 +9,11 @@ contents. Every chapter it lists describes the system as it is in this source tr
 
 KDOS is a Linux distribution for x86_64 machines, compiled in this repository from upstream source
 with a musl C library, sysvinit and no systemd init, and no Xorg server. Its desktop is KDE Plasma
-6.8 with all of KDE Gear, built unforked and made KDOS through its own settings pages, widgets,
-KWin effects, Discover backend, look and updates. The graphical applications people expect are
-ported natively, each with the toolkit it is written in (Qt, KDE Frameworks, GTK, wxWidgets, FLTK
-or Tk), or run beside them in containers called *boxes*.
+6.8 with KDE Gear (all but five modules that cannot run here), built unforked and made KDOS mostly
+through its own settings pages, widgets, KWin effects, Discover backend, look and updates, with a
+small set of patches, each explained in its port's note. The graphical applications people
+expect are ported natively, each with the toolkit it is written in (Qt, KDE Frameworks, GTK,
+wxWidgets, FLTK or Tk), or run beside them in containers called *boxes*.
 
 A release is a live ISO carrying the base system (Plasma, the core KDE applications, Firefox ESR,
 networking, printing, the box stack and the KDOS tools, with no compiler) and a signed package
@@ -288,7 +289,8 @@ example in a command.
 
 ## See also
 
-- [Repository README](../../README.md): the front door, and the shortest path to a running system
+- [Repository README](../../README.md): the front door, and the shortest path to a running system;
+  the same page as kdos.dev's homepage
 - [KDOS from Scratch](../kfs/README.md): the companion book: the build phase by phase, a page for
   every package, and the tasks of running a machine
 - [Why KDOS](01-philosophy/why-kdos.md): the first chapter, for a reader starting at the beginning

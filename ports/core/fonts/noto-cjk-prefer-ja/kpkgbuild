@@ -10,8 +10,8 @@
 
 name        = noto-cjk-prefer-ja
 version     = 1
-release     = 1
+release     = 2
 description = Noto Sans CJK JP first for sans-serif, serif and monospace — Japanese Han glyph forms
 homepage    = https://github.com/notofonts/noto-cjk
-license     = OFL-1.1
+license     = MIT
 depends     = noto-cjk

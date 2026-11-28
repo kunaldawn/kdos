@@ -235,6 +235,8 @@ KdosPlugin::KdosPlugin(QObject *parent, const QVariantList &args)
     , m_procRoot(envOr("KDOS_PROC_ROOT", QStringLiteral("/proc")))
     , m_energySocket(envOr("KDOS_ENERGYD_SOCKET", QStringLiteral("/run/kdos-energyd.sock")))
     , m_slotFile(envOr("KDOS_BOOTSTATE_PUB", QStringLiteral("/run/kdos/bootstate.json")))
+    , m_mountsFile(envOr("KDOS_MOUNTS", QStringLiteral("/proc/mounts")))
+    , m_osReleaseFile(envOr("KDOS_OS_RELEASE", QStringLiteral("/etc/os-release")))
 {
     /* A node of the sensor tree takes its title only from an object at its
      * exact path, and `box/<box>` and `energy/<app>` make `kdos/box` and
@@ -279,9 +281,14 @@ KdosPlugin::KdosPlugin(QObject *parent, const QVariantList &args)
     m_slotAttempts = makeProperty(m_slot, QStringLiteral("attempts"), i18nc("@title", "Trial Boots Left"), KSysGuard::UnitNone, QMetaType::Int);
 
     m_look = new KSysGuard::SensorObject(QStringLiteral("look"), i18nc("@title", "Look"), m_container);
-    m_phosphor = makeProperty(m_look, QStringLiteral("phosphor"), i18nc("@title", "Phosphor Mode"), KSysGuard::UnitNone, QMetaType::Int);
+    m_phosphor = makeProperty(m_look, QStringLiteral("phosphor"), i18nc("@title", "Phosphor Mode Flag"), KSysGuard::UnitNone, QMetaType::Int);
     m_phosphor->setDescription(i18nc("@info", "1 while Phosphor mode's CRT pass is switched on, else 0"));
     m_phosphor->setValue(0);
+    /* The same switch said in a word, for a card a person reads: the 0/1
+     * sensor above is what the KDOS Meters face tests for its scanlines,
+     * and a bare "0" on the System card says nothing. */
+    m_phosphorState = makeText(m_look, QStringLiteral("phosphorState"), i18nc("@title", "Phosphor Mode"));
+    m_phosphorState->setValue(i18nc("@info Phosphor mode is", "Off"));
     m_kwinrc = KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals);
     m_kwinrcPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QLatin1String("/kwinrc");
 
@@ -403,9 +410,24 @@ void KdosPlugin::updateSlots()
         s = kdosParseSlotState(f.read(64 * 1024));
     }
     if (!s.configured) {
-        m_slotStatus->setValue(i18nc("@info", "This machine boots one system; it has no A/B slots"));
+        /* No boot state: the live medium, or an install with one root. Each
+         * is said as what it is, and the version running is os-release's,
+         * since there is no slot to carry one. */
         for (auto *p : {m_slotRunning, m_slotRunningVersion, m_slotRunningState, m_slotOther, m_slotOtherVersion, m_slotOtherState, m_slotNext}) {
             p->setValue(QString());
+        }
+        QFile mounts(m_mountsFile);
+        const bool live = mounts.open(QIODevice::ReadOnly) && kdosRootIsLive(mounts.read(1024 * 1024));
+        QFile osRelease(m_osReleaseFile);
+        if (osRelease.open(QIODevice::ReadOnly)) {
+            m_slotRunningVersion->setValue(kdosOsVersion(osRelease.read(64 * 1024)));
+        }
+        if (live) {
+            m_slotStatus->setValue(i18nc("@info", "This is the live medium; it has no A/B slots"));
+            m_slotRunning->setValue(i18nc("@info the running system", "Live medium"));
+        } else {
+            m_slotStatus->setValue(i18nc("@info", "This machine boots one system; it has no A/B slots"));
+            m_slotRunning->setValue(i18nc("@info the running system", "One root"));
         }
         m_slotTrial->setValue(0);
         m_slotAttempts->setValue(0);
@@ -442,7 +464,9 @@ void KdosPlugin::updatePhosphor()
     }
     m_kwinrcRead = true;
     m_kwinrcStamp = stamp;
-    m_phosphor->setValue(m_kwinrc->group(QStringLiteral("Plugins")).readEntry("kdos_crtEnabled", false) ? 1 : 0);
+    const bool on = m_kwinrc->group(QStringLiteral("Plugins")).readEntry("kdos_crtEnabled", false);
+    m_phosphor->setValue(on ? 1 : 0);
+    m_phosphorState->setValue(on ? i18nc("@info Phosphor mode is", "On") : i18nc("@info Phosphor mode is", "Off"));
 }
 
 bool KdosPlugin::energyWanted() const

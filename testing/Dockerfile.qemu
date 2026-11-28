@@ -15,10 +15,16 @@
 #
 # `vnc-shot.py --gl` runs here too: virtio-vga-gl on an egl-headless display
 # needs QEMU's OpenGL module, virglrenderer and an EGL/GBM stack to render the
-# guest's GL on the host GPU. Without them QEMU refuses the device, and the
-# only Plasma a run can photograph is KWin on llvmpipe, which leaves Phosphor
-# mode's effect unloaded. The GPU itself comes in at `docker run` (--gpus all
-# and /dev/dri, as testing/session-cost.sh --gl passes them).
+# guest's GL on the host. Without them QEMU refuses the device, and the only
+# Plasma a run can photograph is KWin on llvmpipe, which leaves Phosphor mode's
+# effect unloaded. libepoxy aborts QEMU at start without libOpenGL, and glvnd's
+# libEGL renders nothing without a vendor, so Mesa's EGL vendor and its
+# drivers are named here: --no-install-recommends would leave both out. With
+# them, a container given only /dev/dri renders the guest's GL on Mesa, on the
+# host's llvmpipe when Mesa has no driver for its GPU, and the guest still sees
+# a virgl GPU, which is all Phosphor mode asks. The render node comes in at
+# `docker run` (/dev/dri, and --gpus all for NVIDIA's own EGL, as
+# testing/session-cost.sh --gl passes them).
 #
 # Built by testing/rig-image.sh, which is also what CLAUDE.md's `$R` line
 # assumes has been run. Keeping the definition here is what makes a rig
@@ -31,8 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qemu-system-modules-opengl \
         libvirglrenderer1 \
         libegl1 \
+        libegl-mesa0 \
         libgbm1 \
         libgles2 \
+        libopengl0 \
+        libgl1-mesa-dri \
+        mesa-libgallium \
         qemu-utils \
         ovmf \
         python3 \

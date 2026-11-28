@@ -35,7 +35,7 @@ step stops when that tag without its `v` is not the file's `VERSION_ID`, with
 line, so an image built from a tag whose file was not bumped would call itself the previous
 release everywhere. The record's `VERSION` is the one form `kdos version`, What's New, the boot
 menus, the splash (from the initramfs's copy), the installer's Welcome page and the greeter's
-footer show; About this System keeps KInfoCenter's own labelled fields, `Version: 0.2.1` and
+footer show; About this System keeps KInfoCenter's own labelled fields, `Version: 0.2` and
 `Build: <BUILD_ID>`. The root holds the copy `10_bootstrap`'s file-system step made of
 `fs/etc/os-release`, so a bump reaches a tree already built only when that step runs again.
 
@@ -58,8 +58,8 @@ Then the step writes [`/etc/kdos-release`]{.idx}, the record of which release th
 
 `VERSION` has the one form `kdos update` also writes when it fills a slot, so the two slots of a
 machine read alike in System Versions and on the logout screen: a release build gives the release
-without its tag's `v` (`0.2.1`), any other build `os-release`'s `VERSION_ID` with `+` and the build
-id (`0.2.1+4dc1f7f826a3-dirty`), the same name `kdos-bootctl` and `kdos-sysupdated` give a root
+without its tag's `v` (`0.2`), any other build `os-release`'s `VERSION_ID` with `+` and the build
+id (`0.2+4dc1f7f826a3-dirty`), the same name `kdos-bootctl` and `kdos-sysupdated` give a root
 without a record; `TREE` and `TREE_TIME` are the commit and its
 time; `INSTALLED_BY` says the root came from the medium. `kdos update` offers a slot image only
 when the image's time is later than `TREE_TIME`, so a root without the record is never offered

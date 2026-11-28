@@ -10,7 +10,7 @@
 
 name        = containers-common
 version     = 1
-release     = 1
+release     = 2
 description = /etc/containers — the engine, storage, registry and image-trust configuration podman, buildah and skopeo share
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT

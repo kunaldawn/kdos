@@ -315,19 +315,29 @@ host, use the firmware paths from [Running a guest with QEMU directly](#running-
 What the guest does differently from real hardware:
 
 - KWin renders with OpenGL through Mesa. On a virtio GPU with virgl (`-device virtio-vga-gl`) that
-  is the host's GPU; on a display device with no 3D, QEMU's standard VGA (`-vga std`), QXL, a
-  virtio GPU without virgl, VirtualBox's VBoxVGA or Hyper-V's synthetic video, Mesa falls back to
+  is the host's GPU, and on VirtualBox's VMSVGA with 3D acceleration it is VirtualBox's `SVGA3D`;
+  on a display device with no 3D, QEMU's standard VGA (`-vga std`), QXL, a virtio GPU without
+  virgl, VMSVGA without 3D acceleration or Hyper-V's synthetic video, Mesa falls back to
   `llvmpipe`, the software renderer. The desktop works there, more slowly, and Phosphor mode's
   CRT pass refuses to start. `qdbus6 org.kde.KWin /KWin supportInformation | grep -i renderer`
-  says which is in use.
+  says which is in use. VirtualBox's two other adapters do not reach a desktop; see
+  [Running KDOS on VirtualBox](#running-kdos-on-virtualbox).
 - In a virtual machine (`kdos in-vm`) the session puts `/usr/share/kdos/xdg-vm` first in
   `XDG_CONFIG_DIRS`, which turns off the idle dimming, the screen blanking, the timed lock, idle
   suspend and the lid's suspend, because over a viewer a desktop that blanked or slept looks like
   one that stopped. PowerDevil's own guest check asks systemd's manager, which KDOS does not run,
   so these keys are what keeps a guest awake; see
   [Session and environment](session-and-environment.md#where-the-kdos-defaults-live).
-- A viewer that resizes its window resizes the guest's screen when the guest has the virtio or
-  QXL display and the SPICE or virtio agent; KWin follows the new size.
+- A viewer that resizes its window resizes the guest's screen on QEMU's virtio GPU, which reports
+  the window's size to the guest as its display's preferred mode; KWin follows the new size. KDOS
+  ships no SPICE agent (`spice-vdagent`) and no VirtualBox guest utilities, so on QXL and on
+  VirtualBox the screen keeps its size, and the shared clipboard and drag and drop do not work.
+  Set the size in System Settings → Display Configuration, or with `kscreen-doctor`
+  (`kscreen-doctor -o` names the output, `kscreen-doctor output.<name>.mode.1920x1080@60` sets it).
+- On QEMU's virtio GPU the session offers no Sleep. The kernel's virtio-gpu driver does not survive
+  a resume, after which the screen stays dark and the console and a reboot hang, so `40_elogind.sh`
+  turns suspend off when that device is present; see
+  [Power management](power-management.md#elogind).
 - PipeWire runs a larger quantum under a hypervisor:
 
   <!-- kfs:include fs/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf lines=38-48 pin=3d3c189a4c9e -->
@@ -341,6 +351,38 @@ What the guest does differently from real hardware:
 - `smartd` finds no disk that answers SMART and stops: `service status smartd` shows `[DOWN]`.
   `kdos doctor`'s Hardware section reports the wireless regulatory check and the attached-device
   check as `skip`, for want of a radio and a device.
+
+A guest given too little memory stops right after the boot menu with the boot loader's own panic,
+`PANIC: High memory allocator: Out of memory` or `PANIC: linux: Failed to allocate memory for
+kernel`, followed by a stack trace: QEMU's default of 128 MiB is one of those, so pass `-m 4G`. A
+guest with enough to boot but well under the 4 GB minimum (under 2.75 GiB) shows a failed `MEMORY`
+stage on the boot splash naming its size, and boots on; its desktop may come up and close
+applications to stay up, or stall before its first frame.
+
+### Running KDOS on VirtualBox
+
+The ISO boots on VirtualBox 7 with these settings, chosen by hand in the New VM wizard:
+
+- **Type Linux, version Other Linux (64-bit).** VirtualBox cannot identify the ISO and guesses the
+  type from the machine's name, and a name containing `DOS`, such as `KDOS`, gives its DOS type: 32
+  MB of memory, no 64-bit mode and the VBoxVGA adapter, which stops after the boot menu with the
+  boot loader's out-of-memory panic.
+- **4096 MB of memory.** The Linux type's default of 512 MB is an eighth of the minimum.
+- **Graphics controller VMSVGA**, the default for the Linux types. On VBoxVGA and VBoxSVGA the
+  output is named `VGA-1`, and KWin passes over the preferred mode of an output with `VGA` in its
+  name for the largest one the adapter lists; at the default video memory that mode's buffers do
+  not fit, every commit fails with `Out of memory` in `~/.local/share/sddm/wayland-session.log`,
+  and the screen stays on the session splash or black. Enabling 3D acceleration on VMSVGA gives
+  KWin hardware OpenGL, and Phosphor mode runs.
+- **A SATA controller with as many ports as devices.** The wizard makes one port.
+  `VBoxManage storagectl <vm> --add sata` makes 30, and VirtualBox's AHCI probes empty ports one
+  at a time, most of a second each, which adds about 25 seconds under the boot splash's
+  `DEVICE MANAGER` stage; `--portcount 2` avoids it.
+- **EFI is optional.** The ISO boots on VirtualBox's BIOS and on its EFI firmware.
+
+KDOS ships no VirtualBox guest utilities: the screen does not follow the window (*Auto-resize Guest
+Display* stays greyed out), and there is no shared clipboard, drag and drop or shared-folder
+automount. The resolution is set inside the guest, as for QXL above.
 
 ## Tips
 

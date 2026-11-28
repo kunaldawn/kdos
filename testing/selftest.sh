@@ -1253,6 +1253,9 @@ if [ -n "$THEME_PNG" ]; then
         echo "  the Konsole profile does not name itself and its scheme"; exit 1; }
     [ "$(grep -lx 'WordModeCoding=false' "$TK/konsole"/*.profile | wc -l)" = "$_n" ] || {
         echo "  a Konsole profile leaves programming ligatures on"; exit 1; }
+    grep -qx 'TerminalRows=31' "$TK/konsole/KDOS-Bone.profile" &&
+        grep -qx 'TerminalColumns=120' "$TK/konsole/KDOS-Bone.profile" || {
+        echo "  a Konsole profile opens a window too small for the shipped fastfetch"; exit 1; }
     [ "$(grep -c '^\[Color[0-7]\(Faint\|Intense\)\?\]$' "$TK/konsole/KDOS-Bone.colorscheme")" = 24 ] || {
         echo "  a Konsole scheme lacks one of its 24 palette entries"; exit 1; }
     "$OUT/kdos-theme" qt5ct-colors "$TK/qt5ct"
@@ -3186,6 +3189,8 @@ cp "$PKS/app.orphan.kpack" "$_vf/forged.kpack"
 "$OUT/kdos-pack" keygen "$_vf/stranger/stranger" >/dev/null
 "$OUT/kdos-pack" sign "$_vf/forged.kpack" "$_vf/stranger/stranger.key" >/dev/null
 vrc "$_vf/forged.kpack"; want_rc 1 "a pack signed by a key outside the ring"
+grep -q 'carries a signature by key [0-9a-f]\{16\}, which .* does not hold' "$_vf/out" \
+    || { echo "  FAIL  the foreign pack signer's claimed key id is not named as one the ring lacks"; cat "$_vf/out"; exit 1; }
 cp "$PKS/app.orphan.kpack" "$_vf/unsigned.kpack"
 vrc "$_vf/unsigned.kpack"; want_rc 3 "an unsigned pack is not verified, and not failed"
 printf 'a package\n' > "$_vf/tiny-1.0-1.tar.xz"
@@ -3195,6 +3200,8 @@ cp "$_vf/stranger/stranger.pub" "$_vf/pkgkeys/"
 vrc "$_vf/tiny-1.0-1.tar.xz"; want_rc 0 "a package whose .sig a trusted key made"
 printf 'x' >> "$_vf/tiny-1.0-1.tar.xz"
 vrc "$_vf/tiny-1.0-1.tar.xz"; want_rc 1 "a package changed under its .sig"
+grep -q 'carries a signature by key [0-9a-f]\{16\} that does not verify against that key in' "$_vf/out" \
+    || { echo "  FAIL  a changed package's signer is not named as a key the ring holds"; cat "$_vf/out"; exit 1; }
 printf 'not ours\n' > "$_vf/plain.bin.sig"
 vrc "$_vf/plain.bin"; want_rc 3 "a .sig that is not a KDOS signature is not a verdict"
 mkdir -p "$_vf/rel"
@@ -3204,6 +3211,14 @@ printf 'a release\n' > "$_vf/rel/kdos.iso"
     || { echo "  FAIL  kpkg sign SHA256SUMS"; exit 1; }
 vrc "$_vf/rel/kdos.iso"; want_rc 0 "a file a signed SHA256SUMS lists"
 grep -q 'SHA256SUMS is signed by key' "$_vf/out" || { echo "  FAIL  the list's signature is not named"; cat "$_vf/out"; exit 1; }
+mkdir -p "$_vf/other"
+"$OUT/kdos-pack" keygen "$_vf/other/other" >/dev/null
+_venv_saved=$_venv
+_venv="PATH=$_vf/bin:$PATH VERIFY_TOAST=$_vf/toast KDOS_KEYS=$OUT/keys KPKG_KEYRING=$_vf/other"
+vrc "$_vf/rel/kdos.iso"; want_rc 1 "a SHA256SUMS signed by a key the ring does not hold"
+grep -q 'SHA256SUMS carries a signature by key [0-9a-f]\{16\}, which .* does not hold' "$_vf/out" \
+    || { echo "  FAIL  the list signer's claimed key id is not named as one the ring lacks"; cat "$_vf/out"; exit 1; }
+_venv=$_venv_saved
 printf '# edited\n' >> "$_vf/rel/SHA256SUMS"
 vrc "$_vf/rel/kdos.iso"; want_rc 1 "a SHA256SUMS changed under its .sig"
 echo "  ok    a pack's block, a package's .sig and a checksum list's: good, foreign key, changed, unsigned"
@@ -3685,6 +3700,34 @@ done
 grep -qxF 'pol-license: [unset]' "$PP/out" \
     || { echo "  the license key reached build.sh as \$license"; exit 1; }
 echo "  licences copied; HTML, PDF, non-English catalogs, handbooks and man pages and systemd unit pages pruned; English, the HTML programs open, both books and man5 avahi.service kept"
+
+# A recipe with no source whose licence names MIT is KDOS's own work: its
+# package carries usr/share/licenses/<name>/LICENSE as a link to KDOS's text.
+# MIT-0, a package of no file, and a LICENSE build.sh installed get none.
+for _o in "own|MIT|f|link" "own0|MIT-0|f|none" "ownand|MIT AND (BSD-2-Clause OR CC0-1.0)|f|link" \
+          "ownmeta|MIT|-|none" "ownmine|MIT|mine|mine"; do
+    IFS='|' read -r _on _ol _of _ow <<<"$_o"
+    mkdir -p "$PP/ports/$_on"
+    printf 'name        = %s\nversion     = 1\nrelease     = 1\ndescription = ours\nhomepage    = https://example.invalid/\nlicense     = %s\n' \
+        "$_on" "$_ol" > "$PP/ports/$_on/kpkgbuild"
+    case $_of in
+        f) printf 'mkdir -p "$PKG/usr/share/%s"; printf x > "$PKG/usr/share/%s/f"\n' "$_on" "$_on" ;;
+        mine) printf 'mkdir -p "$PKG/usr/share/%s" "$PKG/usr/share/licenses/%s"; printf x > "$PKG/usr/share/%s/f"; printf own > "$PKG/usr/share/licenses/%s/LICENSE"\n' "$_on" "$_on" "$_on" "$_on" ;;
+        -) printf ':\n' ;;
+    esac > "$PP/ports/$_on/build.sh"
+    ( cd "$PP/ports/$_on" &&
+      env PORT_REPO="$PP/ports" WORK_DIR="$PP/work" PACKAGE_DIR="$PP/pkgs" \
+          SOURCE_DIR=/nonexistent PKGDB_DIR=/dev/null KPKG_CONF=/nonexistent \
+          SOURCE_DATE_EPOCH=1735689600 "$OUT/kpkgbuild" >"$PP/out" 2>&1 ) \
+        || { echo "  the port $_on did not build:"; cat "$PP/out"; exit 1; }
+    _ln=$(tar -tvf "$PP/pkgs/$_on-1-1.tar.xz" "./usr/share/licenses/$_on/LICENSE" 2>/dev/null || true)
+    case $_ow in
+        link) case $_ln in l*" -> ../kdos/LICENSE") ;; *) echo "  $_on carries no link to KDOS's licence: [$_ln]"; exit 1 ;; esac ;;
+        none) [ -z "$_ln" ] || { echo "  $_on carries a licence it should not: $_ln"; exit 1; } ;;
+        mine) case $_ln in -*) ;; *) echo "  $_on lost the LICENSE its build.sh installed: [$_ln]"; exit 1 ;; esac ;;
+    esac
+done
+echo "  a sourceless MIT port links KDOS's licence; MIT-0, a meta package and a port's own text are left alone"
 if [ -n "$_pcc" ]; then
     rm -rf "$PP/x"; mkdir -p "$PP/x"
     tar -xf "$PP/pkgs/pol-1.0-1.tar.xz" -C "$PP/x" ./usr/bin/big ./usr/lib/libbig.a ./usr/lib/big.o
@@ -5218,6 +5261,11 @@ kpkg_bh kpkg index "$BH/repo" --sign "$BH/builder.key" >/dev/null 2>&1 \
 test -s "$BH/repo/PACKAGES.sig" || { echo "  no index signature"; exit 1; }
 test -s "$BH/repo/tiny-1.0-1.tar.xz.sig" || { echo "  no package sidecar"; exit 1; }
 grep -q "^E:" "$BH/repo/PACKAGES" || { echo "  no recipe hash in the index"; exit 1; }
+# I: is the package's unpacked size, read from the .xz file's own index, and
+# the same figure xz itself lists; no package database here measures more.
+_bhun=$(xz --robot --list "$BH/repo/tiny-1.0-1.tar.xz" | awk '$1 == "totals" { print $5 }')
+grep -qx "I:$_bhun" "$BH/repo/PACKAGES" \
+    || { echo "  the index's installed size is not the package's unpacked size ($_bhun)"; grep '^I:' "$BH/repo/PACKAGES"; exit 1; }
 
 # An empty keyring must REFUSE, not fall back to trusting the index.
 rc=0; kpkg_bh kpkg binhost "$BH/repo" tiny --dry-run >/dev/null 2>&1 || rc=$?
@@ -5378,6 +5426,33 @@ upd install --dry-run tiny > "$UC/inst" 2>&1 \
     || { echo "  a covered install dry run failed:"; cat "$UC/inst"; exit 1; }
 grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qE '^total 1 [0-9]+ 0$' "$UC/inst" \
     || { echo "  the install dry run is:"; cat "$UC/inst"; exit 1; }
+# The plan names what the packages take once installed, the index's I:, and
+# an install they would not fit on the root is refused before any download;
+# an index written without I: is checked for its downloads alone.
+grep -qx "installed $(sed -n 's/^I://p' "$UC/cache/PACKAGES")" "$UC/inst" \
+    || { echo "  the install dry run names no installed size:"; cat "$UC/inst"; exit 1; }
+# A changed PACKAGES is a new binhost: re-signed, and named by a release
+# index of its own, or the client refuses it as not the one the release names.
+_ucbh() {  # <sed expression>: the cache's binhost index, rewritten by it
+    rm -rf "$UC/bhx" && mkdir -p "$UC/bhx"
+    cp "$BH/repo/PACKAGES" "$UC/bhx/"
+    sed -i "$1" "$UC/bhx/PACKAGES"
+    kpkg_bh kpkg sign "$UC/bhx/PACKAGES" "$BH/builder.key" >/dev/null 2>&1
+    _bhidx "$UC/bhx" "$BH/builder.key" 0.2.14
+    cp "$UC/bhx/PACKAGES" "$UC/bhx/PACKAGES.sig" "$UC/cache/"
+    cp "$UC/bhx/kdos-update.idx" "$UC/cache/INDEX"
+    cp "$UC/bhx/kdos-update.idx.sig" "$UC/cache/INDEX.sig"
+}
+_ucbh 's/^I:[0-9]*$/I:9000000000000000/'
+rc=0; upd install --dry-run tiny > "$UC/inst" 2>&1 || rc=$?
+test "$rc" = 1 && grep -q '^kdos update: the packages take .* once installed and / has .* free$' "$UC/inst" \
+    || { echo "  an install that cannot fit on the root was not refused ($rc):"; cat "$UC/inst"; exit 1; }
+_ucbh '/^I:/d'
+upd install --dry-run tiny > "$UC/inst" 2>&1 && grep -qx 'installed 0' "$UC/inst" \
+    || { echo "  an index without I: lines no longer plans:"; cat "$UC/inst"; exit 1; }
+_ucbh ''
+rm -rf "$UC/bhx"
+echo "  an install is measured against the root: I: counted, too large refused, no I: still plans"
 # A check asks no server: with no fetch recorded it says so. A refusal over
 # the keys names the keys and the release key, in check and in install,
 # never the fetch that fails the same way until the keys change.
@@ -5771,6 +5846,10 @@ bo_upd install --dry-run --source tiny > "$BO/inst" 2>&1 \
     || { echo "  a source install with a build-only tool dependency failed:"; cat "$BO/inst"; exit 1; }
 grep -q '^app2 ' "$BO/inst" && ! grep -q '^boa ' "$BO/inst" \
     || { echo "  the build-tools plan is:"; cat "$BO/inst"; exit 1; }
+# A tool installed prebuilt for the build is measured against the root too.
+_bti=$(awk 'BEGIN { RS = "" } /(^|\n)P:app2(\n|$)/ { if (match($0, /I:[0-9]+/)) print substr($0, RSTART + 2, RLENGTH - 2) }' "$BO/cache/PACKAGES")
+[ "${_bti:-0}" -gt 0 ] && grep -qx "installed $_bti" "$BO/inst" \
+    || { echo "  the build tool's I: ($_bti) is not in the installed size:"; cat "$BO/inst"; exit 1; }
 rm -f "$BO/groups"
 rm -rf "$BO/ports/app2" "$BO/repo/app2-1.0-1.tar.xz" "$BO/sys"
 echo "  a slot apply takes the build-only ports its roots' N: lines name, a source build's and no other; so do the build tools"
@@ -5915,6 +5994,14 @@ upd install --dry-run smalls > "$UC/inst" 2>&1 \
     || { echo "  a group dry run failed:"; cat "$UC/inst"; exit 1; }
 grep -qxF '==> smalls: tiny (1 of 1)' "$UC/inst" && grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" \
     || { echo "  the group dry run is:"; cat "$UC/inst"; exit 1; }
+# A group is measured whole against the root before its first member.
+_ucbh 's/^I:[0-9]*$/I:9000000000000000/'
+rc=0; upd install --dry-run --prebuilt smalls > "$UC/inst" 2>&1 || rc=$?
+_ucbh ''
+rm -rf "$UC/bhx"
+test "$rc" = 1 && ! grep -q '^==> smalls' "$UC/inst" \
+    && grep -q '^kdos update: the packages take .* once installed and / has .* free; smalls does not fit$' "$UC/inst" \
+    || { echo "  a group that cannot fit on the root (exit $rc) prints:"; cat "$UC/inst"; exit 1; }
 # What the installer recorded because the binhost did not answer: --pending
 # takes it, and a dry run leaves the record where it is.
 upd install --dry-run --pending 2>&1 | grep -qxF 'nothing is pending' \
@@ -11238,8 +11325,34 @@ grep -q '^<6>kdos-splash: hold ended by text after .*; VT_PROCESS at never, EBUS
     || { echo "  kdos-getty's text mode logged: $(cat "$_sh/dev/kmsg")"; exit 1; }
 [ "$(tr -d '\000' < "$_sh/dev/fb0" | wc -c)" -gt 0 ] \
     || { echo "  a VT back in text mode had its framebuffer blanked under the console"; exit 1; }
+# A GPU driver loaded after switch_root replaces fb0 under the running splash:
+# the old descriptor answers ENODEV, and the picture moves to the new
+# framebuffer, laid out for its size, instead of staying in a dead mapping.
+rm -rf "$_sh/dev"; mkdir -p "$_sh/dev"
+head -c $((320 * 200 * 4)) /dev/zero > "$_sh/dev/fb0"
+: > "$_sh/dev/tty0"; : > "$_sh/dev/tty1"; : > "$_sh/dev/kmsg"
+env LD_PRELOAD="$_sh/shim.so" ASAN_OPTIONS=verify_asan_link_order=0 \
+    SPLASH_DEV="$_sh/dev" SPLASH_FONT="$SP/splash.psf" SPLASH_TIMESCALE=20 \
+    KDOS_SPLASH_CMDLINE="$_sh/cmdline" "$SP/kdos-splash" run &
+_hp=$!
+for _i in $(seq 1 100); do [ -p "$_sh/dev/.kdos-splash" ] && break; sleep 0.05; done
+mv "$_sh/dev/fb0" "$_sh/dev/fb0.old"
+sleep 0.3
+: > "$_sh/dev/fb-big"
+head -c $((640 * 400 * 4)) /dev/zero > "$_sh/dev/fb0.new"
+mv "$_sh/dev/fb0.new" "$_sh/dev/fb0"
+_f=0
+for _i in $(seq 1 100); do
+    [ "$(tail -c $((640 * 200 * 4)) "$_sh/dev/fb0" | tr -d '\000' | wc -c)" -gt 0 ] && { _f=1; break; }
+    sleep 0.05
+done
+kill -0 "$_hp" 2>/dev/null \
+    || { echo "  the splash exited when its framebuffer was replaced"; exit 1; }
+kill "$_hp" 2>/dev/null || true; wait "$_hp" 2>/dev/null || true
+[ "$_f" = 1 ] \
+    || { echo "  the splash did not draw the replacement framebuffer's lower half"; exit 1; }
 unset _sh _hp _i _f _t0 _ms
-echo "  the hold ends by the compositor's first frame, the margin or text mode after EBUSY with the frame blanked, and by text mode before EBUSY untouched, through a hung-up VT"
+echo "  the hold ends by the compositor's first frame, the margin or text mode after EBUSY with the frame blanked, and by text mode before EBUSY untouched, through a hung-up VT; a replaced framebuffer is reopened and drawn at its size"
 
 echo
 echo "==> the session splash's bar starts where the boot splash's handed over"
@@ -12134,6 +12247,20 @@ pwt=$(packs_w KDOS_NET_ROOT="$KINET/up" KDOS_UPDATE_BINHOST=)
 test "$pw0" = 20 && test "$pwe" -gt 20 && test "$pwt" = "$pwe" && test "$pwn" = 20 \
     || { echo "  Packs' weight does not follow the binhost and the network: none $pw0, env $pwe, TREE $pwt, offline $pwn"; exit 1; }
 echo "  Packs weighs the groups' ports only when a binhost is named"
+# SLOT B'S TOTAL IS SLOT A AS IT STANDS: the walk of a tree under a path that
+# is not / counts every name's blocks, a later hard-link name's bytes apart,
+# and the whole tree, a live account's home included; the live walk's
+# exclusions are the live medium's.
+rm -rf "$OUT/kiwalk" && mkdir -p "$OUT/kiwalk/usr/bin" "$OUT/kiwalk/home/kdos/x"
+head -c 65536 /dev/urandom > "$OUT/kiwalk/usr/bin/a"
+ln "$OUT/kiwalk/usr/bin/a" "$OUT/kiwalk/usr/bin/b"
+head -c 65536 /dev/urandom > "$OUT/kiwalk/home/kdos/x/c"
+kw=$("$KC" walk "$OUT/kiwalk") || { echo "  slot B's walk refused a tree"; exit 1; }
+kwant=$(du -skl "$OUT/kiwalk" | cut -f1)
+test "$kw" = "kb=$kwant links=65536 ok=1" \
+    || { echo "  slot B's walk of a tree: $kw, not kb=$kwant links=65536 ok=1"; exit 1; }
+"$KC" walk "$OUT/kiwalk/nothing" >/dev/null && { echo "  slot B's walk took a missing tree"; exit 1; }
+echo "  slot B's copy is measured on slot A's tree, every name and the whole of it"
 printf 'disk = kidisk\npassword = p\nautologin = yes\n' > "$OUT/ev2.conf"
 ev2rc=0
 (cd "$OUT" && "$KI" --dry-run --unattended --events json --config ev2.conf \
@@ -14086,7 +14213,33 @@ printf 'MemTotal:        4000000 kB\nMemFree:          100000 kB\nMemAvailable: 
 "$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt" \
     && grep -q "would kill kdosbuild (pid 950" "$OUT/oomd6.txt" \
     || { echo "  memory short and stalled, and no victim"; cat "$OUT/oomd6.txt"; exit 1; }
-echo "  a stall kills only when MemAvailable is at or under a tenth of MemTotal"
+# A machine under the minimum thrashes with its zram swap full and a fifth of
+# MemTotal still "available": the squashfs's own file pages, dropped and read
+# straight back. Exhausted swap raises the line to a quarter of MemTotal; half
+# of it free does not, exhausted swap with most of memory available (a copy
+# after the swap filled once) is still no kill, and no swap at all leaves the
+# tenth the only test.
+printf 'MemTotal:         453284 kB\nMemAvailable:      86552 kB\nSwapTotal:        226640 kB\nSwapFree:              88 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+"$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt" \
+    && grep -q "would kill kdosbuild (pid 950" "$OUT/oomd6.txt" \
+    || { echo "  a stall with swap exhausted chose no victim"; cat "$OUT/oomd6.txt"; exit 1; }
+printf 'MemTotal:         453284 kB\nMemAvailable:      86552 kB\nSwapTotal:        226640 kB\nSwapFree:          113320 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+if "$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt"; then
+    echo "  a stall with half of swap free and a fifth of memory available chose a victim"; cat "$OUT/oomd6.txt"; exit 1
+fi
+printf 'MemTotal:        4000000 kB\nMemAvailable:    3200000 kB\nSwapTotal:        226640 kB\nSwapFree:              88 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+if "$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt"; then
+    echo "  a stall with swap exhausted and 80% of memory available chose a victim"; cat "$OUT/oomd6.txt"; exit 1
+fi
+printf 'MemTotal:         453284 kB\nMemAvailable:      86552 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n' \
+    > "$OUT/oomd-mem/meminfo"
+if "$OUT/kdos-oomd" --fixture "$OUT/oomd-mem" > "$OUT/oomd6.txt"; then
+    echo "  a machine with no swap counted it as exhausted"; cat "$OUT/oomd6.txt"; exit 1
+fi
+echo "  a stall kills only when MemAvailable is at or under a tenth of MemTotal, or a quarter with swap exhausted"
 
 # …and the whole Plasma session is spared. testing/fixtures/oomd/session runs
 # every protected name, each larger than the one process it must choose and
@@ -14485,8 +14638,10 @@ lrun() {  # <boxsock mode> <mount source> — runs one launch of app.one
         DBUS_SESSION_BUS_ADDRESS="unix:path=$LX/nobus" KDOS_PACKD_SOCKET="$LX/nopackd" \
         KDOS_BOXSOCK="$LX/bin/boxsock" FAKE_LOG="$LX/log" FAKE_BOXSOCK="$1" \
         FAKE_MOUNT="$2" FAKE_CONMON="$FAKE_CONMON" LANG=C.UTF-8 \
+        KDOS_LOCALTIME="$LX/localtime" \
         "$OUT/kdos-appbox" -b app.one -l app.one run one 2>"$LX/log/stderr"
 }
+ln -sfn ../usr/share/zoneinfo/Europe/Berlin "$LX/localtime"
 LST="$LX/run/kdos/boxes/app.one.state"
 LPV="$LX/run/kdos/box/app.one"
 UIDN=$(id -u)
@@ -14507,6 +14662,8 @@ grep -qx "WAYLAND_DISPLAY=/run/user/$UIDN/wl@wayland-0" "$LX/log/exec.argv" \
     && grep -qx 'XDG_CURRENT_DESKTOP=KDE' "$LX/log/exec.argv" \
     && grep -qx 'DISPLAY=' "$LX/log/exec.argv" \
     || { echo "  FAIL  the application is pointed at the box's own sockets"; cat "$LX/log/exec.argv"; kill $FAKE_CONMON; exit 1; }
+grep -qx 'TZ=Europe/Berlin' "$LX/log/exec.argv" \
+    || { echo "  FAIL  the box is handed the host's time zone"; cat "$LX/log/exec.argv"; kill $FAKE_CONMON; exit 1; }
 test -S "$LPV/dbus-proxy" && test ! -e "$LPV/wayland-0" && test ! -e "$LPV/bus" \
     || { echo "  FAIL  the private directory holds the proxy and no session socket"; ls -la "$LPV"; kill $FAKE_CONMON; exit 1; }
 grep -qx -- '--filter' "$LX/log/proxy.args" \
@@ -14514,7 +14671,12 @@ grep -qx -- '--filter' "$LX/log/proxy.args" \
     || { echo "  FAIL  the keeper's proxy filters the session bus"; cat "$LX/log/proxy.args"; kill $FAKE_CONMON; exit 1; }
 grep -q " run app.one	one$" "$LX/log/ledger" \
     || { echo "  FAIL  the launch is in the box's ledger"; kill $FAKE_CONMON; exit 1; }
-echo "  ok    confined: its own runtime directory, a filtered bus, the private engine"
+ln -sfn ../usr/share/zoneinfo/../../../etc/shadow "$LX/localtime"
+lrun ok "$LPV" || { echo "  FAIL  a launch with a strange zone link ran"; kill $FAKE_CONMON; exit 1; }
+! grep -q '^TZ=' "$LX/log/exec.argv" \
+    || { echo "  FAIL  a zone link that leaves the zone database reached TZ"; cat "$LX/log/exec.argv"; kill $FAKE_CONMON; exit 1; }
+ln -sfn ../usr/share/zoneinfo/Europe/Berlin "$LX/localtime"
+echo "  ok    confined: its own runtime directory, a filtered bus, the private engine, the host's zone"
 printf 'base=pack:app.one\nwayland=yes\naudio=yes\n' > "$LX/home/.config/kdos/boxes/app.one.conf"
 : > "$LX/log/boxsock.calls"
 lrun ok "$LPV" || { echo "  FAIL  a default launch ran"; kill $FAKE_CONMON; exit 1; }
@@ -15436,10 +15598,24 @@ fa_run --from-plasma phosphor || true
     || { echo "  --from-plasma without --account did not reach the machine's half"; exit 1; }
 _rc=0; fa_run --from-plasma --account || _rc=$?
 [ "$_rc" = 2 ] || { echo "  --account with no accent exited $_rc, not 2"; exit 1; }
+# The image build's form: outside a session, into a skeleton whose cascade
+# holds no lock-screen picture (no /usr/share/kdos/xdg on it). The shipped
+# file decides what a login shows, so the home gets no copy of the key.
+rm -f "$FA/.config/kscreenlockerrc"
+fa_run ice || true
+[ -e "$FA/.config/kscreenlockerrc" ] \
+    && { echo "  outside a session, an empty cascade gave the home a lock-screen picture"; exit 1; }
 # The installer's form: `--account` alone, outside a session. The home's
-# half and the next login's global theme; the machine's half never.
+# half and the next login's global theme; the machine's half never. The
+# lock screen's wallpaper is the home's too, and no global theme carries
+# it: the shipped default's KDOS-Bone moves to the accent's.
 echo amber > "$FA/root/etc/kdos/accent"
+mkdir -p "$FA/xdg"
+printf '[Greeter][Wallpaper][org.kde.image][General]\nImage=file:///usr/share/wallpapers/KDOS-Bone/\n' \
+    > "$FA/xdg/kscreenlockerrc"
 fa_run --account ice || { echo "  --account outside a session failed: $(cat "$FA/out")"; exit 1; }
+grep -qx 'Image=file:///usr/share/wallpapers/KDOS-Ice/' "$FA/.config/kscreenlockerrc" 2>/dev/null \
+    || { echo "  --account outside a session left the lock screen on Bone"; exit 1; }
 [ "$(cat "$FA/.config/kdos/accent")" = ice ] \
     || { echo "  --account did not write the account's accent"; exit 1; }
 grep -q '^LookAndFeelPackage=org.kdos.ice.desktop$' "$FA/.config/kdeglobals" \
@@ -16664,6 +16840,36 @@ print("  long descriptions end at a clause or a word; the index needs no cut;"
 EOS
 
 echo
+echo "==> the published KDOS book names each KDOS from Scratch page as kfsgen does"
+# mkbook.py --site sends a link into docs/kfs to the page kfsgen.py renders it
+# as; the two scripts name those pages each by its own code, so every docs/kfs
+# page is held to kfsgen's Page id here, and a heading to `<id>--<anchor>`.
+python3 -B -I - "$PWD/src/system/kdos-doc" "$PWD/script/book" "$PWD/docs/kfs" <<'EOS' || exit 1
+import os, sys
+sys.path.insert(0, sys.argv[1])
+sys.path.insert(0, sys.argv[2])
+import kfsgen
+import mkbook
+kfs, fail, n = sys.argv[3], [], 0
+for d, dirs, files in os.walk(kfs):
+    dirs[:] = sorted(x for x in dirs if x != "data")
+    for f in sorted(files):
+        if not f.endswith(".md"):
+            continue
+        rel = os.path.relpath(os.path.join(d, f), kfs)
+        pid = kfsgen.Page(kfs, os.path.join(d, f)).id
+        want = "S/kfs/" + ("" if pid == "index" else pid + ".html")
+        if mkbook.kfs_url("S/", rel, "") != want or \
+                mkbook.kfs_url("S/", rel, "h") != want + "#" + pid + "--h":
+            fail.append(f"{rel}: {mkbook.kfs_url('S/', rel, 'h')}, kfsgen names {pid}")
+        n += 1
+if fail:
+    print("  A BOOK LINK KDOS FROM SCRATCH DOES NOT HAVE:\n    " + "\n    ".join(fail[:20]))
+    sys.exit(1)
+print(f"  {n} pages of docs/kfs: mkbook.py names each as kfsgen.py does")
+EOS
+
+echo
 echo "==> kdos-doc picks its viewer by session: display, terminal, or a path"
 # The viewers are stubs on PATH that record their arguments; a pty stands in
 # for a text console. KHelpCenter on a console has no display to open, and a
@@ -16718,26 +16924,27 @@ EOS
 rm -rf "$_kd"
 
 echo
-echo "==> unowned.py subtracts KDOS's licence text and the links to it, and nothing else"
-# 105_ports.sh installs usr/share/licenses/kdos/LICENSE and links
-# usr/share/licenses/<name>/LICENSE to ../kdos/LICENSE for a package of our
-# own. Both belong to no package; a LICENSE link pointing anywhere else is an
-# unowned file like any other.
+echo "==> unowned.py subtracts KDOS's licence text, and nothing else"
+# 10_bootstrap/000_file_system.sh installs usr/share/licenses/kdos/LICENSE,
+# which belongs to no package. The usr/share/licenses/<name>/LICENSE link to
+# it is in the package kpkg built it into; one no package owns is an unowned
+# file like any other, even when it points at KDOS's text.
 _lu="$OUT/unowned-licence"
 mkdir -p "$_lu/root/var/lib/kpkg/db" "$_lu/root/usr/bin" "$_lu/fs" \
     "$_lu/root/usr/share/licenses/kdos" "$_lu/root/usr/share/licenses/ours" \
     "$_lu/root/usr/share/licenses/stray"
-printf '1 1\n./\n./usr/\n./usr/bin/\n./usr/bin/ours\n' > "$_lu/root/var/lib/kpkg/db/ours"
+printf '1 1\n./\n./usr/\n./usr/bin/\n./usr/bin/ours\n./usr/share/\n./usr/share/licenses/\n./usr/share/licenses/ours/\n./usr/share/licenses/ours/LICENSE\n' \
+    > "$_lu/root/var/lib/kpkg/db/ours"
 : > "$_lu/root/usr/bin/ours"
 cp LICENSE "$_lu/root/usr/share/licenses/kdos/LICENSE"
 ln -s ../kdos/LICENSE "$_lu/root/usr/share/licenses/ours/LICENSE"
-ln -s ../../../bin/ours "$_lu/root/usr/share/licenses/stray/LICENSE"
+ln -s ../kdos/LICENSE "$_lu/root/usr/share/licenses/stray/LICENSE"
 _lurc=0
 python3 -B testing/unowned.py --root "$_lu/root" --fs "$_lu/fs" --all > "$_lu/out" 2>&1 || _lurc=$?
 [ "$_lurc" = 1 ] && grep -qx '    usr/share/licenses/stray/LICENSE' "$_lu/out" \
     && grep -q '^unowned: 1 paths' "$_lu/out" \
     || { echo "  unowned.py did not report exactly the stray licence link"; cat "$_lu/out"; exit 1; }
-echo "  the MIT text and its links are subtracted; a link elsewhere is reported"
+echo "  the MIT text is subtracted, an owned link is owned, a stray one is reported"
 
 echo
 echo "==> the greeter shows no Hibernate button while elogind refuses hibernation"

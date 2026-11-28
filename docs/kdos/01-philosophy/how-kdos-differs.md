@@ -39,7 +39,7 @@ where that line is drawn.
 | Init | systemd | sysvinit's `init` with runlevels, numbered shell scripts, and `ksvc` as the supervisor; elogind for seats and sessions |
 | Display | Wayland and Xorg, a display manager | Wayland only, KWin; rootless Xwayland for X11 clients; SDDM with a Wayland greeter |
 | Toolkits | GTK and Qt under the desktop and its applications | Qt 6 and KDE Frameworks under the desktop, and none under anything that runs as root or before the login; any toolkit for applications |
-| Desktop | GNOME, KDE Plasma, Xfce and others | KDE Plasma and all of KDE Gear, in KDOS's own look, with an opt-in CRT mode |
+| Desktop | GNOME, KDE Plasma, Xfce and others | KDE Plasma and KDE Gear, all but five modules that cannot run here, in KDOS's own look, with an opt-in CRT mode |
 | Packages | Prebuilt binaries from an archive | Compiled from about 2,400 recipes on the release's build host and published prebuilt in its signed binhost; the machine can build any of them itself |
 | Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a release archive checked by hash, built offline |
 | Graphical applications | Distribution packages, Flatpak or Snap | Native ports, a base on the medium and the rest prebuilt in the release's binhost or built on the machine, plus Debian packages in rootless podman containers, built on demand; Discover shows both |
@@ -204,7 +204,7 @@ means of repairing it. The cost is that the desktop's toolkits are larger than t
 ## The desktop
 
 Most distributions package one or more existing desktops and let you choose. KDOS ships one, KDE
-Plasma, with all of KDE Gear beside it, and no other.
+Plasma, with KDE Gear beside it, all but five modules that cannot run here, and no other.
 
 Most distributions that ship Plasma, Fedora's KDE edition and KDE's own KDE Linux among them, run
 it on systemd, with Plasma's processes started as systemd user units and applications offered as
@@ -289,7 +289,7 @@ first place that holds a copy with the right hash: the port directory, a local c
 source archive, and finally the upstream URL. The source archive is a set of GitHub releases in
 which each file is stored under its own hash and never replaced or removed, so a checkout from
 years ago still finds the exact bytes it names after upstream has moved them. The recipes name
-2,572 distinct files, about 39.3 GiB.
+2,877 distinct files, about 40.2 GiB.
 
 `make build` then runs its build container with `--network none`. A recipe that tries to download
 anything during its build therefore fails on the machine that added it. Language ecosystems that
@@ -520,7 +520,7 @@ hardware matrix. See [Known gaps](../06-reference/known-gaps.md#hardware-and-pla
 ## What you give up
 
 Each section above states its own cost. Some are not stated elsewhere. The first build from a
-clean checkout takes most of a day, and gigabytes more disk if it keeps phase snapshots; see
+clean checkout takes a day or more, and gigabytes more disk if it keeps phase snapshots; see
 [Developing](../05-developer/developing.md#the-first-build). Commercial software that assumes
 glibc and systemd on the host does not run there; it runs in a box or not at all. Of what a Plasma
 user elsewhere has, four things are missing: Flathub, because the catalogue's boxes fill its role

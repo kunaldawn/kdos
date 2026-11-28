@@ -11,10 +11,16 @@
 #
 #     anchorcheck.py [--root DIR] [--book DIR]... [FILE]...
 #
-# With no --book and no FILE it reads every page of docs/kdos and docs/kfs and
-# the repository's README.md and CLAUDE.md; --book narrows it to one book
-# (repeatable), and a FILE checks only that page's links. Exit status 1 when
-# any link fails.
+# With no --book and no FILE it reads every page of docs/kdos and docs/kfs,
+# every port's kfs.md, and the repository's README.md and CLAUDE.md; --book
+# narrows it to one book (repeatable; docs/kfs brings the kfs.md notes with
+# it), and a FILE checks only that page's links. Exit status 1 when any link
+# fails.
+#
+# A PORT'S kfs.md IS A PAGE OF docs/kfs once rendered, its package page, so
+# its links are read as a docs/kfs page's are, and a bare `#<page id>` (kfsgen's
+# id for a docs/kfs page: `index`, a part's directory, `<part>-<stem>`) is a
+# link to that page.
 #
 # README.md and CLAUDE.md are read by people before either book, so in them
 # an HTML `<img src="…">` must name a file that exists as well: the title
@@ -68,6 +74,20 @@ LINK_RE = re.compile(r"(!?)\[((?:[^\[\]]|\[[^\]]*\])*)\]\(\s*(<[^>]*>|[^()\s]+)(
 CODE_RE = re.compile(r"(`+)(?:(?!\1).)+?\1")
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 BOOKS = ["docs/kdos", "docs/kfs"]
+# A port's note, rendered into its package page of docs/kfs.
+NOTE = "kfs.md"
+NOTE_TOPS = ["ports/core"] + ["src/" + a for a in ("system", "art", "desktop", "daemons")]
+
+
+def notes(root):
+    """Every port's kfs.md, as a path under ROOT."""
+    out = []
+    for top in NOTE_TOPS:
+        for dp, dn, fn in os.walk(os.path.join(root, top)):
+            dn[:] = sorted(d for d in dn if not d.startswith("."))
+            if NOTE in fn and "kpkgbuild" in fn:
+                out.append(os.path.relpath(os.path.join(dp, NOTE), root))
+    return out
 
 
 def github_anchor(text):
@@ -156,6 +176,21 @@ class Generated:
         except OSError:
             pass
         self.shelves |= {"src-" + a for a in ("system", "art", "desktop", "daemons")}
+        # Each docs/kfs page's id, as kfsgen's Page gives it: a README is
+        # `index`, a part's intro.md the part, any other page `<part>-<stem>`.
+        self.pages = set()
+        kfs = os.path.join(root, "docs/kfs")
+        for dp, dn, fn in os.walk(kfs):
+            dn[:] = [d for d in dn if d != "data"]
+            for f in fn:
+                if not f.endswith(".md"):
+                    continue
+                d, stem = os.path.relpath(dp, kfs), f[:-3]
+                if d == ".":
+                    pid = "index" if stem == "README" else stem
+                else:
+                    pid = d if stem == "intro" else d + "-" + stem
+                self.pages.add(re.sub(r"[^A-Za-z0-9_.-]+", "-", pid).strip("-"))
 
     def why_not(self, frag):
         """None when the anchor exists, else what is wrong."""
@@ -180,7 +215,8 @@ def check_page(root, rel, gen, bad):
     path = os.path.join(root, rel)
     with open(path, encoding="utf-8", errors="replace") as f:
         text = f.read()
-    in_kfs = rel.startswith("docs/kfs/")
+    note = os.path.basename(rel) == NOTE
+    in_kfs = rel.startswith("docs/kfs/") or note
     here = os.path.dirname(path)
     for ln, line in prose_lines(text):
         for m in LINK_RE.finditer(line):
@@ -202,6 +238,8 @@ def check_page(root, rel, gen, bad):
                     continue
             where = "%s:%d" % (rel, ln)
             bad.checked += 1
+            if note and not fpath and frag in gen.pages:
+                continue
             if generated_form(frag) and frag not in (ids_of(tpath) or ()):
                 if in_kfs and not fpath:
                     why = gen.why_not(frag)
@@ -291,6 +329,8 @@ def main():
             for f in sorted(fn):
                 if f.endswith(".md"):
                     pages.append(os.path.relpath(os.path.join(dp, f), root))
+    if "docs/kfs" in [b.rstrip("/") for b in a.book] or not (a.book or a.files):
+        pages += notes(root)
     tops = [] if a.book or a.files else \
         [t for t in ("README.md", "CLAUDE.md") if os.path.isfile(os.path.join(root, t))]
     pages += tops

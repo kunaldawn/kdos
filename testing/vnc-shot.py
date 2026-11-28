@@ -425,13 +425,13 @@ def rfb_shot(host, port, out):
     s, w, h, pf = rfb_handshake(host, port)
 
     def recv_exact(n):
-        out_b = b""
+        out_b = bytearray()
         while len(out_b) < n:
             chunk = s.recv(n - len(out_b))
             if not chunk:
                 raise RuntimeError("VNC closed mid-read")
             out_b += chunk
-        return out_b
+        return bytes(out_b)
 
     bpp, depth, big_endian, true_colour = pf[0], pf[1], pf[2], pf[3]
     rmax, gmax, bmax = struct.unpack(">HHH", pf[4:10])
@@ -439,6 +439,17 @@ def rfb_shot(host, port, out):
     if bpp not in (8, 16, 32) or not true_colour:
         raise RuntimeError("unhandled pixel format bpp=%d true=%d"
                            % (bpp, true_colour))
+    # THE WHOLE-BYTE FORMAT IS COPIED BY SLICES, every other one pixel by
+    # pixel. QEMU's server answers in 32 bits with 8-bit channels on byte
+    # boundaries, so each channel is every fourth byte at a fixed offset; a
+    # per-pixel loop over a 1920x1080 frame costs over two seconds, four
+    # times the gap of a --burst, and the slices cost a few hundredths. The
+    # pixels written are the same either way.
+    whole = (bpp == 32 and rmax == gmax == bmax == 255
+             and rsh % 8 == 0 and gsh % 8 == 0 and bsh % 8 == 0)
+    if whole:
+        ro, go, bo = ((3 - sh // 8) if big_endian else sh // 8
+                      for sh in (rsh, gsh, bsh))
 
     # FramebufferUpdateRequest: type, incremental, x, y, w, h
     s.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, w, h))
@@ -466,6 +477,16 @@ def rfb_shot(host, port, out):
                 raise RuntimeError("server used encoding %d, not Raw" % enc)
             data = recv_exact(rw * rh * (bpp // 8))
             step = bpp // 8
+            if whole:
+                j0, j1 = rx * 3, (rx + rw) * 3
+                for yy in range(rh):
+                    seg = data[yy * rw * 4:(yy + 1) * rw * 4]
+                    row = rows[ry + yy]
+                    row[j0:j1:3] = seg[ro::4]
+                    row[j0 + 1:j1:3] = seg[go::4]
+                    row[j0 + 2:j1:3] = seg[bo::4]
+                got += rw * rh
+                continue
             for yy in range(rh):
                 base = yy * rw * step
                 row = rows[ry + yy]
@@ -763,6 +784,11 @@ def main():
                          "for; ignored once one is")
     ap.add_argument("--shot", action=Step,
                     help="photograph the screen now, into this path")
+    ap.add_argument("--burst", action=Step,
+                    help="N,GAP,PREFIX — photograph the screen N times, one "
+                         "every GAP seconds (or as fast as a frame can be "
+                         "read, when that is slower), into PREFIX-001.ppm "
+                         "onwards: the frames of an animation")
     ap.add_argument("--sleep", action=Step, type=float,
                     help="wait this many seconds before the next step")
     ap.add_argument("--keys", action=Step,
@@ -1370,6 +1396,34 @@ def main():
                 w, h = rfb_shot("127.0.0.1", args.vnc_port, value)
                 print("wrote %s (%dx%d)" % (value, w, h), flush=True)
                 shots += 1
+            elif kind == "burst":
+                # THE GAP IS FROM THE START OF ONE FRAME TO THE START OF THE
+                # NEXT, so the frames are evenly spaced in the guest's time
+                # whatever one costs to read. Without --gl the monitor's
+                # `screendump` writes the frame, about 0.4 s for 1920x1080
+                # against RFB's half second; under --gl `screendump` has no
+                # surface and RFB is the only reader, about a second a frame.
+                # The serial console is pumped between frames, as in a
+                # --sleep.
+                n, gap, prefix = value.split(",", 2)
+                n, gap = int(n), float(gap)
+                frames = ["%s-%03d.ppm" % (prefix, i + 1) for i in range(n)]
+                t0 = time.time()
+                for i, frame in enumerate(frames):
+                    due = t0 + i * gap
+                    while time.time() < due:
+                        time.sleep(min(0.05, max(0.0, due - time.time())))
+                    if args.gl:
+                        rfb_shot("127.0.0.1", args.vnc_port, frame)
+                    else:
+                        mon.cmd("screendump " + frame, deadline=10.0)
+                    ser.pump()
+                    ser.buf = ser.buf[-8000:]
+                took = time.time() - t0
+                got = sum(os.path.exists(f) for f in frames)
+                print("wrote %d of %d frames %s-001.ppm onwards in %.1fs"
+                      % (got, n, prefix, took), flush=True)
+                shots += got
 
         # A soak is the only way to ask "what does this cost over time".
         # A monitor's own CPU share is meaningless over four seconds: the

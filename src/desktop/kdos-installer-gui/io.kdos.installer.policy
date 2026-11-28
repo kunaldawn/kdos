@@ -14,7 +14,7 @@
 
 <policyconfig>
 	<vendor>KDOS</vendor>
-	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+	<vendor_url>https://kdos.dev/</vendor_url>
 	<icon_name>system-software-install</icon_name>
 
 	<action id="io.kdos.installer.run">

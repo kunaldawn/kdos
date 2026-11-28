@@ -28,6 +28,17 @@
  * A client uses a prebuilt package when all three equal its own, and builds
  * from source otherwise. There is no BUILD_ID counter and no "close enough".
  *
+ *   I:  the bytes the package takes once installed: the larger of its tar's
+ *       unpacked size, read from the .xz file's own index with nothing
+ *       decompressed, and, when this machine holds that version and release
+ *       with a file record, the disk its installed files take here. The
+ *       tar's size alone undercounts a package of many small files, each of
+ *       which takes a whole block on disk; the measure alone undercounts on
+ *       a filesystem that compresses. Absent when neither could be read.
+ *       `kdos update install` refuses before the first download an install
+ *       whose packages would not fit on the root; a stanza without I: is
+ *       not counted.
+ *
  *   N:  the build-only ports (the `--buildonly` list, ports/buildonly) the
  *       package needs at run time, space-separated: its recorded run-time
  *       needs (`<db>/.needs/<name>`, kpkg.h) resolved to the installed
@@ -54,6 +65,8 @@
  * ---------------------------------
  */
 
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -212,6 +225,152 @@ static char **buildonly_read(const char *path)
 	return v;
 }
 
+/* An xz varint: seven bits a byte, low first, at most nine bytes. */
+static int xz_varint(const uint8_t **p, const uint8_t *end, uint64_t *out)
+{
+	uint64_t v = 0;
+
+	for (int i = 0; i < 9 && *p < end; i++) {
+		uint8_t b = *(*p)++;
+
+		v |= (uint64_t)(b & 0x7f) << (7 * i);
+		if (!(b & 0x80)) {
+			*out = v;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+static uint32_t le32(const uint8_t *b)
+{
+	return (uint32_t)b[0] | (uint32_t)b[1] << 8 | (uint32_t)b[2] << 16 |
+	       (uint32_t)b[3] << 24;
+}
+
+/*
+ * The bytes an .xz file holds uncompressed, summed from the index each of
+ * its streams ends with: the stream footer gives the index's size, each
+ * index record a block's compressed and uncompressed sizes, and the blocks'
+ * compressed sizes lead back to the stream's header and the stream before
+ * it. Nothing is decompressed, so a binhost of gigabytes is measured in the
+ * time its files take to open. -1 for a file that is not a whole sequence
+ * of xz streams.
+ */
+#define XZ_INDEX_CAP (16u << 20)
+
+static long long xz_unpacked(const char *path)
+{
+	static const uint8_t head[6] = { 0xfd, '7', 'z', 'X', 'Z', 0 };
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	struct stat st;
+	long long total = 0;
+	off_t end;
+	int streams = 0;
+
+	if (fd < 0)
+		return -1;
+	if (fstat(fd, &st) != 0) {
+		close(fd);
+		return -1;
+	}
+	end = st.st_size;
+	while (end > 0) {
+		uint8_t f[12], *ib;
+		const uint8_t *p, *pe;
+		uint64_t nrec, blocks = 0, isz;
+
+		if (end < 24 || pread(fd, f, 12, end - 12) != 12)
+			goto bad;
+		if (!f[8] && !f[9] && !f[10] && !f[11]) {
+			end -= 4;	/* stream padding */
+			continue;
+		}
+		if (f[10] != 'Y' || f[11] != 'Z')
+			goto bad;
+		isz = ((uint64_t)le32(f + 4) + 1) * 4;
+		if (isz > XZ_INDEX_CAP || (uint64_t)end < 24 + isz)
+			goto bad;
+		ib = malloc((size_t)isz);
+		if (!ib || pread(fd, ib, (size_t)isz, end - 12 - (off_t)isz) !=
+				   (ssize_t)isz) {
+			free(ib);
+			goto bad;
+		}
+		p = ib;
+		pe = ib + isz;
+		if (*p++ != 0 || xz_varint(&p, pe, &nrec) != 0) {
+			free(ib);
+			goto bad;
+		}
+		for (uint64_t r = 0; r < nrec; r++) {
+			uint64_t unp, unc;
+
+			if (xz_varint(&p, pe, &unp) != 0 ||
+			    xz_varint(&p, pe, &unc) != 0) {
+				free(ib);
+				goto bad;
+			}
+			blocks += (unp + 3) & ~(uint64_t)3;
+			total += (long long)unc;
+		}
+		free(ib);
+		end -= 12 + (off_t)isz;
+		if ((uint64_t)end < blocks + 12)
+			goto bad;
+		end -= (off_t)blocks + 12;
+		if (pread(fd, f, 6, end) != 6 || memcmp(f, head, 6))
+			goto bad;
+		streams++;
+	}
+	close(fd);
+	return streams ? total : -1;
+bad:
+	close(fd);
+	return -1;
+}
+
+/* The disk the installed files of `name` take under this machine's root,
+ * from its file record, when the version and release installed are `ver`
+ * and `rel`; -1 otherwise. Each regular file the record names is counted by
+ * its allocated blocks. */
+static long long installed_disk(const KpConf *c, const char *name,
+				const char *ver, const char *rel)
+{
+	char iv[64], ir[32];
+	size_t len = 0;
+	long long sum = 0;
+	char *rec;
+
+	if (kp_installed_version(c, name, iv, sizeof(iv), ir, sizeof(ir)) != 0 ||
+	    strcmp(iv, ver) || strcmp(ir, rel))
+		return -1;
+	rec = kp_installed_files(c, name, &len);
+	if (!rec)
+		return -1;
+	for (char *l = rec, *nl; l && *l; l = nl) {
+		char *path, full[4096];
+		struct stat st;
+
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl++ = 0;
+		/* `<sha256> <mode> <path>`, the path last and kept whole. */
+		path = strchr(l, ' ');
+		path = path ? strchr(path + 1, ' ') : NULL;
+		if (!path)
+			continue;
+		path++;
+		if (!strncmp(path, "./", 2))
+			path += 2;
+		snprintf(full, sizeof(full), "%s/%s", c->root, path);
+		if (lstat(full, &st) == 0 && S_ISREG(st.st_mode))
+			sum += (long long)st.st_blocks * 512;
+	}
+	free(rec);
+	return sum;
+}
+
 /*
  * The `N:` line of the package file `name`-`ver`-`rel`: the ports of `bo`
  * that provide one of its recorded run-time needs, in `bo`'s order, into
@@ -311,7 +470,7 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 	KbBuf b = {0};
 	kb_buf_printf(&b, "K:kdos-index-1\nA:%s\nB:%s\n\n", arch, bhash);
 
-	int n = 0, nd = 0, nm = 0;
+	int n = 0, nd = 0, nm = 0, ni = 0;
 	for (int i = 0; i < nf; i++) {
 		size_t fl = strlen(files[i]);
 
@@ -406,6 +565,16 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 			      "B:%s\nE:%s\nT:%s\n",
 			      name, ver, rel, arch, files[i],
 			      (long long)st.st_size, sha, bhash, ehash, desc);
+		{
+			long long un = xz_unpacked(path);
+			long long here = installed_disk(c, name, ver, rel);
+			long long isz = un > here ? un : here;
+
+			if (isz >= 0) {
+				kb_buf_printf(&b, "I:%lld\n", isz);
+				ni++;
+			}
+		}
 		if (bo) {
 			KbBuf nb = {0};
 			if (needs_buildonly(c, name, ver, rel, bo, &owned,
@@ -433,6 +602,9 @@ int kp_cmd_index(const KpConf *c, int argc, char **argv)
 		return 1;
 	}
 	kp_msg("Indexed %d package(s) and %d delta(s) into %s", n, nd, out);
+	if (ni < n)
+		kp_msg("%d of %d package(s) carry no installed size (I:)",
+		       n - ni, n);
 	if (bofile)
 		kp_msg("%d of %d package(s) carry their measured run-time needs "
 		       "(N:)", nm, n);

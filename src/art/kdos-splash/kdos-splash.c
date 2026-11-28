@@ -1438,30 +1438,77 @@ static void console_release(void)
 	ttyfd = -1;
 }
 
+static void fb_close(void)
+{
+	if (fbmem)
+		munmap(fbmem, fbsize);
+	fbmem = NULL;
+	if (fbfd >= 0)
+		close(fbfd);
+	fbfd = -1;
+}
+
+/*
+ * fb0 is opened through devfd once it is open, because after switch_root
+ * this process resolves no path and a framebuffer can still arrive then
+ * (fb_alive). The canvas follows the framebuffer's size. On any failure
+ * nothing is left mapped and fbmem is NULL, which every draw checks.
+ */
 static int fb_open(void)
 {
-	fbfd = open("/dev/fb0", O_RDWR);
+	fbfd = devfd >= 0 ? openat(devfd, "fb0", O_RDWR | O_CLOEXEC)
+			  : open("/dev/fb0", O_RDWR | O_CLOEXEC);
 	if (fbfd < 0)
 		return -1;
 	if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vi) < 0 ||
 	    ioctl(fbfd, FBIOGET_FSCREENINFO, &fi) < 0)
-		return -1;
+		goto fail;
 
 	fbw = vi.xres;
 	fbh = vi.yres;
 	fbbypp = vi.bits_per_pixel / 8;
 	if (fbbypp < 2 || fbbypp > 4 || fbw <= 0 || fbh <= 0)
-		return -1;
+		goto fail;
 
 	fbsize = (size_t)fi.line_length * fbh;
 	fbmem = mmap(NULL, fbsize, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
 	if (fbmem == MAP_FAILED) {
 		fbmem = NULL;
-		return -1;
+		goto fail;
 	}
 
+	free(canvas);
 	canvas = malloc(sizeof(uint32_t) * (size_t)fbw * fbh);
-	return canvas ? 0 : -1;
+	if (canvas)
+		return 0;
+fail:
+	fb_close();
+	return -1;
+}
+
+/*
+ * THE FRAMEBUFFER CAN BE REPLACED UNDER THE SPLASH. A GPU driver built as a
+ * module (vmwgfx, i915, amdgpu, nouveau) is loaded by rcS's udev, after
+ * switch_root, and takes the display from the firmware framebuffer the
+ * splash opened: that fb0 is unregistered, every ioctl on the descriptor
+ * held fails with ENODEV, and the mapping is memory nobody scans out, so a
+ * splash that kept drawing into it would leave the screen black until the
+ * compositor. The descriptor is asked once a frame; when it is dead it is
+ * closed, and fb0 is opened again on every frame until the driver's own
+ * fbdev registers, whose first pan sets its mode. The picture is then laid
+ * out for that framebuffer's size and drawn in its current state.
+ */
+static int fb_alive(void)
+{
+	struct fb_var_screeninfo cur;
+
+	if (fbfd >= 0 && ioctl(fbfd, FBIOGET_VSCREENINFO, &cur) == 0)
+		return 1;
+	fb_close();
+	if (fb_open() < 0)
+		return 0;
+	layout();
+	return 1;
 }
 
 /*
@@ -1719,9 +1766,11 @@ static int hold_vt_mode(int *vt)
 
 static void hold_frame(int fifo)
 {
-	compose(0);
-	present(1.0, 1.0, 0.0, 1.0, -1e6);
-	fb_flush();
+	if (fb_alive()) {
+		compose(0);
+		present(1.0, 1.0, 0.0, 1.0, -1e6);
+		fb_flush();
+	}
 	close(fifo);
 	unlink(FIFO_PATH);
 	console_release();
@@ -1772,11 +1821,11 @@ static void hold_frame(int fifo)
 		}
 		usleep(HOLD_POLL_US);
 	}
-	if (blank) {
+	if (blank && fbmem) {
 		memset(fbmem, 0, fbsize);
 		fb_flush();
 	}
-	munmap(fbmem, fbsize);
+	fb_close();
 	if (vt >= 0)
 		close(vt);
 	if (scan.fd >= 0)
@@ -1786,6 +1835,7 @@ static void hold_frame(int fifo)
 
 static int run(void)
 {
+	devfd = open("/dev", O_PATH | O_DIRECTORY | O_CLOEXEC);
 	if (fb_open() < 0)
 		return 0;   /* fail open: no framebuffer, no splash, no fuss */
 
@@ -1818,7 +1868,6 @@ static int run(void)
 	signal(SIGINT, on_signal);
 	signal(SIGPIPE, SIG_IGN);
 
-	devfd = open("/dev", O_PATH | O_DIRECTORY | O_CLOEXEC);
 	kmsgfd = open("/dev/kmsg", O_WRONLY | O_NOCTTY | O_CLOEXEC);
 	console_claim();
 
@@ -1841,9 +1890,11 @@ static int run(void)
 			hum = fmod(t * fbh * 0.12, fbh * 1.3) - fbh * 0.15;
 		}
 
-		compose(tick);
-		present(vopen, 1.0, flash, gain, hum);
-		fb_flush();
+		if (fb_alive()) {
+			compose(tick);
+			present(vopen, 1.0, flash, gain, hum);
+			fb_flush();
+		}
 
 		if (quit)
 			break;
@@ -1883,7 +1934,7 @@ static int run(void)
 	 * the text console that takes it next starts from black.
 	 */
 	double q0 = now_s();
-	for (;;) {
+	while (fb_alive()) {
 		double p = (now_s() - q0) / OUTRO_S;
 		if (p >= 1.0)
 			break;
@@ -1896,9 +1947,11 @@ static int run(void)
 		usleep(16000);
 	}
 
-	memset(fbmem, 0, fbsize);
-	fb_flush();
-	munmap(fbmem, fbsize);
+	if (fbmem) {
+		memset(fbmem, 0, fbsize);
+		fb_flush();
+	}
+	fb_close();
 	console_release();
 	/*
 	 * Best effort only: after switch_root this path resolves inside the old

@@ -11,7 +11,7 @@
         "Id": "org.kdos.desk.kdos",
         "License": "MIT",
         "Name": "KDOS",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "NoDisplay": true,
     "X-Plasma-ContainmentCategories": [

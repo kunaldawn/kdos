@@ -14,7 +14,7 @@
         "Id": "kdos_quit",
         "License": "MIT",
         "Name": "KDOS Power-Down",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-KDE-Ordering": 40,
     "X-KWin-Internal": "true",

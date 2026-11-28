@@ -509,7 +509,7 @@ void kp_forget_needs(const KpConf *c, const char *name);
 
 /* Bump whenever build.c, prune.c or lint.c changes what a package contains
  * or how it is packed for the same inputs: every stored entry then misses. */
-#define KP_STORE_FORMAT 5
+#define KP_STORE_FORMAT 6
 
 /* The environment names the key ignores: job counts, launchers, the store's
  * own knobs, kpkg's run options and the terminal. 1 when `name` is one. */

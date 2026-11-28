@@ -149,4 +149,14 @@ struct SlotState {
 
 SlotState kdosParseSlotState(const QByteArray &json);
 
+/* The live medium, by kdos-bootctl's test: `/` is an overlay in this mount
+ * table (/proc/mounts' shape). It has no boot state and no slots, and is not
+ * a one-root install, whose remedy, updating in place, a RAM overlay would
+ * lose at the next start. */
+bool kdosRootIsLive(const QByteArray &mounts);
+
+/* VERSION_ID of an os-release file, unquoted; empty when absent or when it
+ * holds anything but a release word ([A-Za-z0-9._+-]). */
+QString kdosOsVersion(const QByteArray &osRelease);
+
 } // namespace Kdos

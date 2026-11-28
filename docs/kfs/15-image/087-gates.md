@@ -13,7 +13,7 @@ the packages that install no licence text.
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/087_gates.sh lines=58-148 pin=c35f262b453f -->
+<!-- kfs:include script/phases/70_image/087_gates.sh lines=56-136 pin=9987c6568b16 -->
 
 The first three checks are Python programs in `testing/`, which `script/chroot/exec.sh` binds
 read-only at `/kdos/testing` in the chroot; the fourth is `script/lib/imageset.py`, the script
@@ -30,8 +30,9 @@ failed build prints every problem the tree has, not just the first.
   file is removed by no package removal and replaced by no update: it was written outside a
   package's staging tree, by a tool run against the live root, or lost from a manifest. Mount
   points, scratch, homes, kpkg's state, kpkg and kinstall themselves, and what is generated over
-  every package (the shared indexes, the launcher table, the source offer, KDOS's licence text
-  and the `LICENSE` links to it, the initramfs and its module list) are subtracted. The report covers the whole tree, and a finding stops the phase
+  every package (the shared indexes, the launcher table, the source offer, KDOS's licence text,
+  the initramfs and its module list) are subtracted; a `LICENSE` link to that text belongs to the
+  package kpkg built it into, and one no package owns is reported. The report covers the whole tree, and a finding stops the phase
   only under `usr/share/locale`, `usr/share/man`, `usr/share/doc` or `usr/share/info`, the four
   `--fail-under` directories, where it prints a `FAIL unowned` line for each path.
   [020_cleanup.sh](020-cleanup.md) has already removed every unowned file there that kpkg's
@@ -77,13 +78,12 @@ The binhost's `N:` lines
 
 The licence texts
 : A report, never a failure. Every installed package that owns a file and has no
-  `/usr/share/licenses/<name>` is listed, less the packages of our own whose licence is `MIT`
-  alone, which [105_ports.sh](105-ports.md#kdoss-licence-text) links to KDOS's text after this
-  step; one of ours under `MIT AND` another licence is listed until its `build.sh` installs the
-  other text. The ports in `LICENCE_TEXTLESS` (`sqlite`, `snooze`, `iana-etc`, `debian-dep11`,
-  `fwupd-snapshot` and `librfnm`, whose sources hold no text: public-domain and CC0 code and data,
-  data published under terms no file carries, and code published with no licence) are
-  printed apart, on a line `no text in the source, as expected:`. Any other name, on the line
+  `/usr/share/licenses/<name>` is listed. A package of our own whose licence names `MIT` carries a
+  link to KDOS's text from kpkg, so it is listed only when it is of another licence alone and its
+  `build.sh` installs no text. The ports in `LICENCE_TEXTLESS` (`sqlite`, `snooze`, `iana-etc`,
+  `debian-dep11` and `fwupd-snapshot`, whose sources hold no text: public-domain and CC0 code and
+  data, and data published under terms no file carries) are printed apart, on a line
+  `no text in the source, as expected:`. Any other name, on the line
   `<n> package(s) install no /usr/share/licenses/<name>:`, is a port whose source keeps its text
   where kpkg does not look, and its `build.sh` should install it (see
   [What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
@@ -133,8 +133,8 @@ as root; see
 After the trim, the orphan sweep and every index, so it checks exactly what the image carries, and before
 `090_initramfs.sh` and `110_iso.sh`, so a tree that fails is never written into an image. The files
 those later steps write into the root, the initramfs and its module list, and the source offer
-and KDOS's licence text and its links from `105_ports.sh`, are generated, and `unowned.py`
-subtracts them.
+from `105_ports.sh`, are generated, and `unowned.py` subtracts them, as it does KDOS's licence
+text from `000_file_system.sh`.
 
 ## What it leaves
 

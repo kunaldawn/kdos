@@ -226,7 +226,7 @@ recipe helper (see [Recipe helpers](#recipe-helpers)).
 | `sha256` | | yes | `<64 hex>  <filename>`, one per declared file: every `source`, plus a vendor bundle or anything else beside the recipe the build opens |
 | `description` | preflight | | One line. `kpkg info` prints it and the binary-package index carries it; it is not a comment. It reads exactly as the port's row in [the ports catalogue](../06-reference/ports-catalogue.md) |
 | `homepage` | preflight | | Upstream's home page. The version checker reads it |
-| `license` | preflight | | Upstream's licence as an SPDX expression: `MIT`, `GPL-2.0-or-later`, `MIT OR Apache-2.0`, `GPL-2.0-only WITH Linux-syscall-note`. `kpkg info` prints it. `kpkg` copies the texts at the top of the source into the package (see [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)); a text kept anywhere else, `doc/COPYING`, a README section or a header's opening comment, is installed by `build.sh` as `install -Dm644 <file> "$PKG/usr/share/licenses/$name/<file>"`; a licence the source only names is copied the same way from a package already in the tree that ships its text (`vpnc-script` takes iproute2's GPL-2.0, `tessdata-eng` OpenSSL's Apache-2.0), and a public-domain or CC0 source, which holds none, installs none. A port of our own under `MIT` alone needs nothing: the image links its `LICENSE` to `/usr/share/licenses/kdos/LICENSE`; one under `MIT AND` another licence installs that other text |
+| `license` | preflight | | Upstream's licence as an SPDX expression: `MIT`, `GPL-2.0-or-later`, `MIT OR Apache-2.0`, `GPL-2.0-only WITH Linux-syscall-note`. `kpkg info` prints it. `kpkg` copies the texts at the top of the source into the package (see [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)); a text kept anywhere else, `doc/COPYING`, a README section or a header's opening comment, is installed by `build.sh` as `install -Dm644 <file> "$PKG/usr/share/licenses/$name/<file>"`; a licence the source only names is copied the same way from a package already in the tree that ships its text (`vpnc-script` takes iproute2's GPL-2.0, `tessdata-eng` OpenSSL's Apache-2.0), and a public-domain or CC0 source, which holds none, installs none. A port of our own under `MIT` needs nothing for that part: kpkg links its `LICENSE` to `/usr/share/licenses/kdos/LICENSE`; one under `MIT AND` another licence installs that other text |
 | `depends` | | | One line of space-separated port names, at most 128. The solver, which decides build order, reads the first `depends` line and ignores any other |
 | `replaces` | | | One line of space-separated package names whose paths this package may take. `kpkgadd` refuses to install a path another package owns unless its owner is named here, and then moves the path from the owner's manifest to this package's; see [Who owns a file](../03-architecture/packaging.md#who-owns-a-file). Name a package only when this one is meant to supersede some of its files, and name it in `depends` too: the named package installing after this one, a reinstall included, is refused while this one holds the paths. A path claimed by accident is fixed in the build, by not installing it |
 | `facet_dev` | | | One line of whitespace-separated globs, each matched against the package's own paths without the `./` (`*` crosses `/`): a file that matches is in the development [facet](../03-architecture/packaging.md#facets), left out on a `FACETS=run` machine, even where the rules call it run time. It only adds to `dev`. Read verbatim by `kpkgadd` and `kpkg facets --strip`, never expanded and never passed to `build.sh`; it is part of the recipe hash. `gcc` names its compiler with it |
@@ -479,8 +479,15 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    and nothing is copied when `usr/share/licenses/<name>` or a parent of it is a symlink. A
    licence that lives elsewhere in the source, under `doc/`, in a README or in a header's opening
    comment, is installed by `build.sh`; so is the text of a tarball whose paths begin with `./`,
-   which leaves the real top one directory down (`appstream`, `hdf5`). The image gates list every
-   package that ends with no `usr/share/licenses/<name>`.
+   which leaves the real top one directory down (`appstream`, `hdf5`). A recipe with no `source`
+   whose `license =` names `MIT` as one identifier is KDOS's own work (every recipe under `src/`,
+   and `ports/core` ones such as `containers-common`): when `$PKG` holds at least one file and
+   `usr/share/licenses/<name>/LICENSE` is not there already, kpkg makes it a link to
+   `../kdos/LICENSE`, the repository's text that every KDOS root carries unowned from
+   [10_bootstrap](../../kfs/03-bootstrap/000-file-system.md#kdoss-licence-text) on, so the package
+   carries its licence from the binhost as on the image. `MIT-0` and a meta package get no link,
+   and a recipe under `MIT AND` another licence installs the other text itself. The image gates
+   list every package that ends with no `usr/share/licenses/<name>`.
 10. Apply the [size and language policy](#size-and-language-policy): remove HTML and PDF manuals and
    every non-English catalog, handbook and manual page, and the symbol table of an executable or
    shared object over 32 MiB.
@@ -1720,7 +1727,7 @@ heading of any level but `##`; a `## ` line inside a fenced block is code and st
 A link is written relative to `kfs.md` itself, so it works on GitHub: the
 renderer turns a link to a page of `docs/kfs` into that page's anchor in the book and any other
 into the file's GitHub URL, except that `kfsgen.py --kdos-book PREFIX`, which the installed book's
-port passes, sends a link to a page of `docs/kdos` to PREFIX plus its installed `.html`. It
+port and kdos.dev's render pass, sends a link to a page of `docs/kdos` to PREFIX plus its `.html`. It
 leaves a `#port-<name>` link, or a link to a page's own anchor in the rendered book, as it is. Links are mapped a paragraph at a time, in a note and in a
 hand-written page of `docs/kfs` alike, so a link whose text wraps onto the next line is mapped like
 any other; a link inside a fenced block is code and stays as written.

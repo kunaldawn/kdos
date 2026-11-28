@@ -44,7 +44,7 @@ to. [Principles](../01-philosophy/principles.md) gives the reasons.
 Applications, the programs a person opens to do work unrelated to the operating system, come from
 either of two places. A natively ported application is a core-ring recipe like any other: Firefox
 ESR, Thunderbird, LibreOffice, GIMP, Inkscape, Krita, KiCad, FreeCAD and VLC are among them, beside
-all of KDE Gear. The toolkits and the applications build in two phases of their own: `43_toolkits`
+KDE Gear, all but five of its modules. The toolkits and the applications build in two phases of their own: `43_toolkits`
 builds GTK 3 and 4, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and Motif with every library over
 them that something else links (VLC is one, since other programs depend on it, and so are the
 Plasma libraries the Gear applications link), and `44_apps` builds the applications nothing

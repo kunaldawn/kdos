@@ -2,9 +2,9 @@
 [keyring]{.idx} gives Python programs one API, and a `keyring` command, for storing and
 reading secrets in the system's password store. On Linux its backend is the freedesktop Secret
 Service, reached through SecretStorage over jeepney's pure-Python D-Bus client: it stores into
-whichever program owns `org.freedesktop.secrets` on the session bus. On KDOS that is
-[keepassxc](#port-keepassxc), when it is running with its Secret Service integration turned on;
-see [A saved login needs KeePassXC running](../../../../docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running).
+whichever program owns `org.freedesktop.secrets` on the session bus. In a Plasma session that is
+`ksecretd`, from [kwallet](#port-kwallet); see
+[A login that typed no password leaves the wallet locked](../../../../docs/kdos/06-reference/known-gaps.md#a-login-that-typed-no-password-leaves-the-wallet-locked).
 [cura](#port-cura) and [spyder](#port-spyder) depend on it.
 
 ## Notes

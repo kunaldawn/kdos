@@ -8,8 +8,8 @@
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
 #   script/hooks/pre-push — refuse a push that breaks the ports layout,
-#   carries a patch with no Subject:, fails the book checks, or names a
-#   source the archive lacks
+#   carries a patch with no Subject:, fails the book checks or the README
+#   check, or names a source the archive lacks
 # ---------------------------------
 #
 # Enabled per clone with
@@ -52,10 +52,12 @@
 # THE BOOKS come next, and are the one check here that reads the WORKING COPY
 # rather than the pushed commit, so push from a checkout of what is pushed:
 # testing/docscheck.sh (both books' links, prose and page contract, and the
-# port counts) and testing/kfscheck.py (KDOS from Scratch's sidecars, notes,
-# patches, recipe stamp, includes and a full render). A stale recipe stamp
-# fails here until `make book-stamp` (no built tree needed) or `make
-# book-data` is run. KDOS_SKIP_BOOK_CHECK=1 bypasses them.
+# port counts), testing/kfscheck.py (KDOS from Scratch's sidecars, notes,
+# patches, recipe stamp, includes and a full render) and
+# script/site/mksite.py --check (README.md is what site/home.md, the source
+# of kdos.dev's homepage, makes). A stale recipe stamp fails here until `make
+# book-stamp` (no built tree needed) or `make book-data` is run, and a stale
+# README until `make site`. KDOS_SKIP_BOOK_CHECK=1 bypasses them.
 #
 # A recipe's `sha256 =` is a promise that ports/fetch can find those bytes. A
 # commit whose recipe names a hash the archive does not hold builds on the
@@ -199,10 +201,11 @@ if [ "${KDOS_SKIP_BOOK_CHECK:-}" != 1 ]; then
     if ! (cd "$ROOT" || exit 1
           bash testing/docscheck.sh; d=$?
           python3 testing/kfscheck.py; k=$?
-          [ "$d" = 0 ] && [ "$k" = 0 ]) > "$BOOKLOG" 2>&1; then
+          python3 script/site/mksite.py --check; r=$?
+          [ "$d" = 0 ] && [ "$k" = 0 ] && [ "$r" = 0 ]) > "$BOOKLOG" 2>&1; then
         cat "$BOOKLOG" >&2
         rm -f "$BOOKLOG"
-        echo "pre-push: the books do not match the tree (testing/docscheck.sh, testing/kfscheck.py)" >&2
+        echo "pre-push: the books or README.md do not match the tree (testing/docscheck.sh, testing/kfscheck.py, script/site/mksite.py --check)" >&2
         echo "pre-push: (KDOS_SKIP_BOOK_CHECK=1 git push … skips this check)" >&2
         exit 1
     fi

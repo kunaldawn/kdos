@@ -35,6 +35,16 @@
 #define KTH_MONO_FONT	"JetBrains Mono"
 #define KTH_TERM_PT	11
 
+/* A new window's terminal, in cells. Thirty-one rows hold the 30-line
+ * fastfetch the skeleton ships and the prompt under it, where Konsole's own
+ * 28 scroll the logo's top away; 120 columns hold a long DMI `Host` line
+ * without a wrap. At KTH_TERM_PT a row is 20 px and a column 9, so the
+ * window with its title bar and toolbar is about 1110x700 and still fits
+ * the work area of a 1366x768 screen under the KDOS panel; a row more would
+ * not. */
+#define KTH_TERM_COLS	120
+#define KTH_TERM_ROWS	31
+
 /* How far a faint (SGR 2) colour sits towards the background. Faint is
  * DECREASED INTENSITY by definition, so it is the one tone here that is not
  * held to a text floor. */
@@ -90,7 +100,8 @@ static void scheme(const KcolScheme *sc, const char *outdir)
 /*
  * A block cursor in the accent with deep under it; a VISUAL bell, because a
  * terminal is where a bell rings forty times while a build fails and a
- * notification per ring is noise; ten thousand lines of scrollback.
+ * notification per ring is noise; ten thousand lines of scrollback; a
+ * window of KTH_TERM_COLS by KTH_TERM_ROWS.
  * BoldIntense draws bold in the bright half, which is what the bright ramp is
  * derived for.
  *
@@ -125,6 +136,8 @@ static void profile(const KcolScheme *sc, const char *outdir)
 		      "[General]\n"
 		      "Name=KDOS %s\n"
 		      "Parent=FALLBACK/\n"
+		      "TerminalColumns=%d\n"
+		      "TerminalRows=%d\n"
 		      "\n"
 		      "[Scrolling]\n"
 		      "HistoryMode=1\n"
@@ -132,7 +145,7 @@ static void profile(const KcolScheme *sc, const char *outdir)
 		      "\n"
 		      "[Terminal Features]\n"
 		      "BellMode=2\n",
-		      kth_title(sc));
+		      kth_title(sc), KTH_TERM_COLS, KTH_TERM_ROWS);
 
 	snprintf(file, sizeof(file), "%s.profile", sc->theme_name);
 	kth_emit(outdir, file, &b);

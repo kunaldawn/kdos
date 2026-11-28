@@ -10,8 +10,9 @@ container for an encrypted install, and `script/phases/70_image/090_initramfs.sh
 `cryptsetup` and its libraries into the initramfs, where the boot unlocks an encrypted root
 before it looks for a filesystem; see
 [Unlocking an encrypted root](../../../../docs/kdos/03-architecture/boot-and-init.md#unlocking-an-encrypted-root).
-The mount daemon runs `/usr/sbin/cryptsetup` to unlock an encrypted volume for the desktop; see
-[Encrypted volumes](../../../../docs/kdos/04-programs/daemons.md#encrypted-volumes).
+The desktop unlocks an encrypted stick or disk through [udisks2](#port-udisks2), whose
+[libblockdev](#port-libblockdev) crypto plugin links `libcryptsetup`; see
+[Removable media and devices](../../../../docs/kdos/02-user-guide/desktop.md#removable-media-and-devices).
 [libblockdev](#port-libblockdev), [volume_key](#port-volume_key) and [gparted](#port-gparted)
 depend on it.
 

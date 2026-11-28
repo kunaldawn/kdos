@@ -16,6 +16,8 @@ table { border-collapse: collapse; display: block; overflow-x: auto; }
 th, td { border: 1px solid var(--rule); padding: .3em .6em; vertical-align: top; text-align: left; }
 img { max-width: 100%; }
 blockquote { border-left: 3px solid var(--dim); margin-left: 0; padding-left: 1em; color: var(--dim); }
+/* The published book's line back to kdos.dev, above each page (mkbook.py --site). */
+.site-line { font-size: .875rem; color: var(--dim); padding-bottom: .5rem; border-bottom: 1px solid var(--rule); }
 
 /* In the Help Center. KHelpCenter adds KDE's handbook stylesheet to every
  * page it shows, as a <style id="default"> appended to the head, and its

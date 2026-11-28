@@ -313,9 +313,10 @@ clean: ## wipe build/ except keys and binhost-key
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys ! -name binhost-key -exec rm -rf {} + || true
 
-# The checks that stand in for a build. check runs the twelve that need no built
-# tree (atspi-selftest is the AT-SPI gate on its fixtures, no ISO; aboutcheck
-# is the About-page check's proof, since the check itself reads a booted tree);
+# The checks that stand in for a build. check runs the thirteen that need no
+# built tree (atspi-selftest is the AT-SPI gate on its fixtures, no ISO;
+# aboutcheck is the About-page check's proof, since the check itself reads a
+# booted tree; sitecheck is README.md against site/home.md);
 # depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,
 # which is root's, so they are run from a container or as root. SELFTEST_CC is
 # the compiler selftest-asan uses. docscheck, anchorcheck and booknav cover
@@ -333,7 +334,7 @@ SELFTEST_CC ?= cc -fsanitize=address,undefined -g
 PLASMATEST_ARGS ?=
 KFSCHECK_ARGS ?=
 
-check: preflight selftest docscheck anchorcheck booknav kfscheck phaseclosure defaultscheck xdgcheck lnfcheck aboutcheck atspi-selftest ## preflight + selftest + docscheck + anchorcheck + booknav + kfscheck + phaseclosure + defaultscheck + xdgcheck + lnfcheck + aboutcheck + atspi-selftest
+check: preflight selftest docscheck anchorcheck booknav kfscheck sitecheck phaseclosure defaultscheck xdgcheck lnfcheck aboutcheck atspi-selftest ## preflight + selftest + docscheck + anchorcheck + booknav + kfscheck + sitecheck + phaseclosure + defaultscheck + xdgcheck + lnfcheck + aboutcheck + atspi-selftest
 
 preflight: ## the build's wiring, minus the build (~2.5 min)
 	testing/preflight.sh
@@ -406,21 +407,41 @@ entrycheck: ## dangling links, dead Exec=/Icon=, missing udev programs in build/
 # own binaries; KFS_PANDOC and KFS_TYPST replace them with any command, e.g.
 #   make book BUILDFS=../kdos/build/fs
 #   make book KFS_PANDOC=pandoc KFS_TYPST=typst
+# KFSGEN_ARGS goes to kfsgen.py: kdos.dev's render passes
+# `--kdos-book https://kdos.dev/book/`, so its links into the KDOS book land
+# on the site's own copy rather than on GitHub. KFSRENDER_ARGS goes to
+# kfsrender.py: kdos.dev's render passes `--home https://kdos.dev/`, a link
+# to the homepage in every page's top bar.
 BUILDFS ?= build/fs
 KFS_LOADER = $(BUILDFS)/usr/lib/libc.so --library-path $(BUILDFS)/usr/lib
 KFS_PANDOC ?= $(KFS_LOADER) $(BUILDFS)/usr/bin/pandoc
 KFS_TYPST ?= $(KFS_LOADER) $(BUILDFS)/usr/bin/typst
 
 book: ## render KDOS from Scratch: build/kfs/html, kfs.pdf, kfs-html.tar.zst
-	python3 script/book/kfsgen.py --out build/kfs/src
+	python3 script/book/kfsgen.py --out build/kfs/src $(KFSGEN_ARGS)
 	python3 script/book/kfsrender.py --pandoc "$(KFS_PANDOC)" --typst "$(KFS_TYPST)" \
-		--src build/kfs/src --out build/kfs --buildfs "$(BUILDFS)"
+		--src build/kfs/src --out build/kfs --buildfs "$(BUILDFS)" $(KFSRENDER_ARGS)
 
 book-data: ## rewrite docs/kfs/data from BUILDFS's package database and timings
 	python3 script/book/make_data.py --buildfs "$(BUILDFS)"
 
 book-stamp: ## rewrite docs/kfs/data/recipes.stamp alone, from the checkout; no built tree
 	python3 script/book/make_data.py --stamp-only
+
+# kdos.dev's homepage and README.md, one source: site/home.md, dressed by
+# site/template.html, site/style.css and site/site.js, with the pictures in
+# site/assets. `site` writes README.md and the homepage into SITE_OUT;
+# `sitecheck` writes nothing and exits 1, printing the difference, when
+# README.md is not what `site` would write. Both need only Python 3. The
+# deployed site adds the two books beside the homepage: see
+# .github/workflows/books.yml.
+SITE_OUT ?= build/site
+
+site: ## write README.md and kdos.dev's homepage (SITE_OUT, build/site) from site/home.md
+	python3 script/site/mksite.py --out "$(SITE_OUT)"
+
+sitecheck: ## README.md is what site/home.md makes
+	python3 script/site/mksite.py --check
 
 # The fast loop and the images it and the rig run in. QUICK names the ports
 # (comma-separated); QUICK_ARGS goes to the rig after `--`, e.g.
@@ -468,4 +489,4 @@ rig-image: ## build the rig container kdos-qemu-py:latest (networked, once)
 devdeps-image: ## build kdos-devdeps:latest and run selftest in it (testing/devdeps-image.sh plasmatest runs the Qt suite)
 	testing/devdeps-image.sh
 
-.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan plasmatest docscheck anchorcheck booknav booknav-write kfscheck phaseclosure defaultscheck xdgcheck lnfcheck aboutcheck depdrift debuginfo unowned linkcheck entrycheck book book-data book-stamp quick session-probe shots atspi atspi-selftest rig-image devdeps-image
+.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan plasmatest docscheck anchorcheck booknav booknav-write kfscheck phaseclosure defaultscheck xdgcheck lnfcheck aboutcheck depdrift debuginfo unowned linkcheck entrycheck book book-data book-stamp site sitecheck quick session-probe shots atspi atspi-selftest rig-image devdeps-image

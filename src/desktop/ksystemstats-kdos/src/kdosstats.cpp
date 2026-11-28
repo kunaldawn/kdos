@@ -479,4 +479,36 @@ SlotState kdosParseSlotState(const QByteArray &json)
     return s;
 }
 
+bool kdosRootIsLive(const QByteArray &mounts)
+{
+    for (const QByteArray &line : mounts.split('\n')) {
+        const QList<QByteArray> f = line.simplified().split(' ');
+        if (f.size() >= 3 && f.at(1) == "/" && f.at(2) == "overlay") {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString kdosOsVersion(const QByteArray &osRelease)
+{
+    for (const QByteArray &line : osRelease.split('\n')) {
+        if (!line.startsWith("VERSION_ID=")) {
+            continue;
+        }
+        QByteArray v = line.mid(11).trimmed();
+        if (v.size() >= 2 && (v.front() == '"' || v.front() == '\'') && v.back() == v.front()) {
+            v = v.mid(1, v.size() - 2);
+        }
+        for (const char c : std::as_const(v)) {
+            const bool word = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '+' || c == '-';
+            if (!word) {
+                return QString();
+            }
+        }
+        return QString::fromLatin1(v);
+    }
+    return QString();
+}
+
 } // namespace Kdos

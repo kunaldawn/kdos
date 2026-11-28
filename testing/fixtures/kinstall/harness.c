@@ -23,6 +23,9 @@
  *       ki_answers_check's verdict: `ok`, or the refusal
  *   harness rootcmd <answers> <cmd>
  *       how the Packs and Firmware warnings name <cmd> to the account
+ *   harness walk <root>
+ *       slot B's walk of an installed tree: `kb=<KiB> links=<bytes>
+ *       ok=<profile made>`, or exit 1 when <root> could not be walked
  *   harness target <disk-MiB> <payload-KiB> <answers>
  *       ki_target_check's verdict for the answers on a disk of that size,
  *       which the answers' `disk =` is pointed at: `ok`, or the refusal
@@ -505,6 +508,15 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		printf("ok\n");
+		return 0;
+	}
+	if (argc == 3 && !strcmp(argv[1], "walk")) {
+		unsigned long long kb, links;
+		KiCopyProfile prof;
+
+		if (probe_payload_at(argv[2], &kb, &links, &prof) != 0)
+			return 1;
+		printf("kb=%llu links=%llu ok=%d\n", kb, links, prof.ok);
 		return 0;
 	}
 	if (argc == 4 && !strcmp(argv[1], "rootcmd")) {

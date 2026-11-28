@@ -142,6 +142,14 @@ int kp_pkg_lint(const char *pkg, const char *name);
  * .symtab/.strtab from ELF executables and shared objects over 32 MiB. */
 void kp_src_refresh_config(const char *src_root);
 void kp_pkg_licences(const char *pkg, const char *name, const char *src);
+/* After kp_pkg_licences(), for a recipe with no `source =` and a `license =`
+ * that names MIT: usr/share/licenses/<name>/LICENSE as a link to
+ * KP_KDOS_LICENCE_LINK, unless $PKG holds no file or already has that entry.
+ * The link resolves on any KDOS root, which carries the text unowned at
+ * usr/share/licenses/kdos/LICENSE; testing/unowned.py knows the same path. */
+#define KP_KDOS_LICENCE_LINK "../kdos/LICENSE"
+void kp_pkg_kdos_licence(const char *pkg, const char *name,
+			 const char *license);
 void kp_pkg_prune(const char *pkg);
 void kp_pkg_symtab(const char *pkg);
 /* `kpkg check` (check.c): the root against each package's manifest and file

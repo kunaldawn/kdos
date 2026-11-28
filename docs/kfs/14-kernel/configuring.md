@@ -159,7 +159,7 @@ In this table, *DRM* stands for Device Drivers → Graphics support → *Direct 
 | `CONFIG_BLK_DEV_NVME` | Device Drivers → NVME Support → *NVM Express block device* | `y` | NVMe disks |
 | `CONFIG_VMD` | Device Drivers → PCI support → PCI controller drivers → *Intel Volume Management Device Driver* | `m` | NVMe disks behind Intel VMD (RST). The initramfs carries it, or the installed root on such a disk is never found |
 | `CONFIG_ATA` | Device Drivers → *Serial ATA and Parallel ATA drivers (libata)* | `y` | SATA disks and optical drives |
-| `CONFIG_SATA_AHCI` | Device Drivers → Serial ATA and Parallel ATA drivers (libata) → *AHCI SATA support* | `y` | The SATA controller of nearly every PC |
+| `CONFIG_SATA_AHCI` | Device Drivers → Serial ATA and Parallel ATA drivers (libata) → *AHCI SATA support* | `m` | The SATA controller of nearly every PC. A module in the initramfs, so a slow probe of empty ports runs under the boot splash and not on a black screen before `/init` |
 | `CONFIG_BLK_DEV_SD` | Device Drivers → SCSI device support → *SCSI disk support* | `y` | `/dev/sd*`: SATA and USB disks |
 | `CONFIG_VIRTIO_BLK` | Device Drivers → Block devices → *Virtio block driver* | `y` | A [virtual machine]{.idx}'s disks |
 | `CONFIG_USB_XHCI_HCD` | Device Drivers → USB support → *xHCI HCD (USB 3.0) support* | `y` | USB 3 controllers, and with them the USB stick the medium usually boots from |

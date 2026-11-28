@@ -8,7 +8,8 @@
  *   kdosplugintest — the sensor tree the plugin publishes
  *
  * The plugin is built into the test, pointed at an empty cgroup root, no
- * bootstate and no energy daemon, so what it publishes is its shape alone.
+ * bootstate and no energy daemon, so what it publishes is its shape alone,
+ * and the one-root or live-medium reading of the slots.
  */
 
 #include "plugin.h"
@@ -16,6 +17,7 @@
 #include <formatter/Formatter.h>
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -31,6 +33,19 @@ private:
     KdosPlugin *m_plugin = nullptr;
     KSysGuard::SensorContainer *m_kdos = nullptr;
 
+    void writeFile(const QString &name, const QByteArray &body)
+    {
+        QFile f(m_dir.filePath(name));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+
+    static QString value(const KSysGuard::SensorObject *o, const char *sensor)
+    {
+        const KSysGuard::SensorProperty *p = o->sensor(QString::fromLatin1(sensor));
+        return p ? p->value().toString() : QStringLiteral("<no sensor>");
+    }
+
 private Q_SLOTS:
     void initTestCase()
     {
@@ -39,6 +54,11 @@ private Q_SLOTS:
         qputenv("KDOS_CGROUP_ROOT", m_dir.filePath(QStringLiteral("cgroup")).toUtf8());
         qputenv("KDOS_ENERGYD_SOCKET", m_dir.filePath(QStringLiteral("no-energyd.sock")).toUtf8());
         qputenv("KDOS_BOOTSTATE_PUB", m_dir.filePath(QStringLiteral("no-bootstate.json")).toUtf8());
+        writeFile(QStringLiteral("mounts"), "/dev/vda2 / ext4 rw,relatime 0 0\nproc /proc proc rw 0 0\n");
+        writeFile(QStringLiteral("mounts-live"), "overlay / overlay rw,lowerdir=/run/kdos/lower 0 0\n");
+        writeFile(QStringLiteral("os-release"), "NAME=\"KDOS\"\nVERSION_ID=\"0.2\"\n");
+        qputenv("KDOS_MOUNTS", m_dir.filePath(QStringLiteral("mounts")).toUtf8());
+        qputenv("KDOS_OS_RELEASE", m_dir.filePath(QStringLiteral("os-release")).toUtf8());
         m_plugin = new KdosPlugin(this, {});
         /* An object joins its container from the event loop. */
         QCoreApplication::processEvents();
@@ -76,6 +96,7 @@ private Q_SLOTS:
         for (const char *s : {"status", "running", "runningVersion", "runningState", "other", "otherVersion", "otherState", "next"}) {
             QTest::newRow(s) << QStringLiteral("slot") << QString::fromLatin1(s);
         }
+        QTest::newRow("phosphorState") << QStringLiteral("look") << QStringLiteral("phosphorState");
         QTest::newRow("energy status") << QStringLiteral("energy/all") << QStringLiteral("status");
         QTest::newRow("energy domains") << QStringLiteral("energy/all") << QStringLiteral("domains");
     }
@@ -103,6 +124,35 @@ private Q_SLOTS:
         QVERIFY(!shown.isEmpty());
         QVERIFY(shown != QLatin1String("0"));
         QCOMPARE(shown, p->value().toString());
+        QCOMPARE(shown, QStringLiteral("This machine boots one system; it has no A/B slots"));
+        QCOMPARE(value(slot, "running"), QStringLiteral("One root"));
+        QCOMPARE(value(slot, "runningVersion"), QStringLiteral("0.2"));
+        QVERIFY(value(slot, "otherVersion").isEmpty());
+    }
+
+    /* The live medium has no boot state either, and says so as itself. */
+    void slotStatusOnTheLiveMedium()
+    {
+        qputenv("KDOS_MOUNTS", m_dir.filePath(QStringLiteral("mounts-live")).toUtf8());
+        auto *live = new KdosPlugin(this, {});
+        QCoreApplication::processEvents();
+        const KSysGuard::SensorObject *slot = live->containers().first()->object(QStringLiteral("slot"));
+        QVERIFY(slot);
+        QCOMPARE(value(slot, "status"), QStringLiteral("This is the live medium; it has no A/B slots"));
+        QCOMPARE(value(slot, "running"), QStringLiteral("Live medium"));
+        QCOMPARE(value(slot, "runningVersion"), QStringLiteral("0.2"));
+        delete live;
+        qputenv("KDOS_MOUNTS", m_dir.filePath(QStringLiteral("mounts")).toUtf8());
+    }
+
+    /* The System card reads Phosphor mode in a word; the 0/1 flag stays for
+     * the face's scanline test. */
+    void phosphorSaidInAWord()
+    {
+        const KSysGuard::SensorObject *look = m_kdos->object(QStringLiteral("look"));
+        QVERIFY(look);
+        QCOMPARE(value(look, "phosphorState"), QStringLiteral("Off"));
+        QCOMPARE(look->sensor(QStringLiteral("phosphor"))->value().toInt(), 0);
     }
 
     /* Counts keep a numeric unit, which the formatter shows as a number. */

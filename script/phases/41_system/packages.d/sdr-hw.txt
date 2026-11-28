@@ -47,6 +47,5 @@ libiio
 libad9361
 libmirisdr
 libperseus-sdr
-librfnm
 limesuite
 uhd

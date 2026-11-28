@@ -39,7 +39,7 @@ in [Applications](applications.md#where-applications-come-from):
 
 | Way | What it is |
 |---|---|
-| Native, prebuilt | Any other of the about 2,400 ports, compiled for the release and downloaded from its signed package host, the *binhost*: all of KDE Gear, LibreOffice, GIMP, Blender, Thunderbird, Wine and the rest, one at a time or in groups |
+| Native, prebuilt | Any other of the about 2,400 ports, compiled for the release and downloaded from its signed package host, the *binhost*: KDE Gear (all but five modules that cannot run here), LibreOffice, GIMP, Blender, Thunderbird, Wine and the rest, one at a time or in groups |
 | Native, built on this computer | The same port compiled on the machine from its recipe |
 | Boxed | A Debian application from KDOS's catalogue, built on demand into a rootless container of its own (a *box*) |
 
@@ -61,7 +61,7 @@ of `kunaldawn/kdos`, marked **Latest**. It carries:
 | `kdos-ports.tar.xz`, `kdos-ports.tar.xz.sig` | The release's recipe tree and its signature: what `kdos update fetch` installs as `/ports` |
 | `kdos-update.idx`, `kdos-update.idx.sig` | The signed index of where the release's prebuilt packages and update image are |
 | `sources.sha256` | Every upstream source file the release's recipes name, by hash |
-| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built, attached once the release is published. The v0.2 release does not carry them |
+| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built, attached by the books workflow a few minutes after the release is published |
 
 The release's prebuilt packages and its update image sit in pre-releases beside it
 (`binhost-<tag>-NN` and `image-<tag>`). They are not downloaded by hand: a KDOS machine finds them
@@ -114,8 +114,9 @@ What you need to use it:
 
 ## Try it in a virtual machine first
 
-Any x86-64 virtual machine with UEFI firmware and 4 GB of memory boots the ISO. With QEMU and the
-OVMF firmware, at the path Debian and Ubuntu install it to:
+KDOS is developed and tested in QEMU with KVM, which virt-manager and GNOME Boxes drive as well:
+give the machine 4 GB of memory and UEFI or BIOS firmware. With QEMU and the OVMF firmware, at
+the path Debian and Ubuntu install it to:
 
 ```sh
 qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
@@ -142,7 +143,27 @@ that way from a clone. See [Phosphor mode](theming.md#phosphor-mode).
 In a virtual machine the screen never dims, blanks or locks by itself, and the guest never goes to
 sleep: KDOS puts a set of virtual-machine defaults in front of its usual ones when the session finds
 it is a guest (see
-[Locking, idle and power](desktop.md#locking-idle-and-power)).
+[Locking, idle and power](desktop.md#locking-idle-and-power)). On QEMU's `virtio-vga` the Sleep
+action is not offered at all, because the kernel's virtio-gpu driver does not survive a resume and
+leaves the console and a restart hanging after one.
+
+On VirtualBox 7, choose the type by hand in the New VM wizard: **Linux**, version **Other Linux
+(64-bit)**. VirtualBox cannot identify the ISO and guesses from the machine's name, and a name
+containing `DOS`, such as `KDOS`, picks its DOS type, a 32 MB machine with no 64-bit mode. Give
+it **4096 MB** of memory, keep the **VMSVGA** graphics controller (VBoxVGA and VBoxSVGA leave the
+desktop frozen on the session splash or black), and give a SATA controller no more ports than it
+has devices: one made with `VBoxManage storagectl --add sata` has 30, and probing the empty ones
+adds about 25 seconds to the boot. EFI is optional. Turn on 3D acceleration for Phosphor mode.
+KDOS ships no VirtualBox guest additions, so the screen does not follow the window and there is no
+shared clipboard; set the resolution in System Settings → Display Configuration. More is in
+[Virtual machines](../../kfs/16-wiki/virtual-machines.md#running-kdos-on-virtualbox).
+
+A machine with too little memory stops right after the boot menu with the boot loader's
+`PANIC: High memory allocator: Out of memory` or `PANIC: linux: Failed to allocate memory for
+kernel` and a stack trace; QEMU's default of 128 MiB does, which is why the command above passes
+`-m 4G`. One with enough to boot but clearly less than the 4 GB the table asks for shows a failed
+`MEMORY` stage on the boot splash, naming how much it has, and boots on; the desktop may come up
+with the memory guard closing applications to keep it up, or stall before it draws.
 
 ## Write the medium
 
@@ -157,8 +178,8 @@ On Windows or macOS, any tool that writes a raw disk image does the same (Rufus 
 balenaEtcher). Turn Secure Boot off in the firmware before booting the stick. A Ventoy stick boots
 the ISO copied onto its data partition: choose **Boot in normal mode** in Ventoy's menu. A stick
 that holds copies of the ISO's files, as Rufus's ISO mode or a copy onto a FAT stick makes, does
-not boot: Limine and the kernel start, and the boot stops at "Failed to find KDOS installation
-media." with a line saying to write the whole ISO.
+not boot: Limine and the kernel start, and the boot stops at "Failed to find the KDOS live
+medium." with a line saying to write the whole ISO.
 
 The stick must be at least as large as the ISO. The same image boots four ways: BIOS and UEFI, from
 an optical drive and from a stick. It carries two El Torito
@@ -233,6 +254,7 @@ rest the service scripts'. If a boot stops, the last stage named tells you where
 | `SYSTEM IMAGE` | The system image on the medium would not mount |
 | `MOUNTING ROOT`, `OVERLAY ROOT` | The installed root filesystem, or the live overlay, would not mount |
 | `SWITCHING ROOT` | The handover to the real root failed |
+| `MEMORY` | Shown only on a machine with less than 2.75 GiB of memory, marked `FAIL` with the size in the stage's name, such as `MEMORY 442 MIB, NEEDS 4 GB`. A 4 GB machine reports 2.9 to 3.8 GiB, depending on what its firmware and graphics keep back, and passes. The boot carries on, and the desktop may stall before it appears |
 | `MOUNTING FILESYSTEMS` onward | The boot is in the service scripts, and the failing service names itself: its stage is marked `FAIL`, and the last lines of its output appear under `WHY:`. Both stay on the splash for the rest of the boot, so you can photograph them |
 
 ![The boot splash during the service scripts, with the progress bar and the current stage](../../screenshots/boot-splash.png)

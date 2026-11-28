@@ -2,9 +2,9 @@
 
 GTK 4 is the current GTK widget toolkit, and the one [libadwaita](#port-libadwaita) is built on.
 It installs beside [gtk3](#port-gtk3). It draws with OpenGL or Vulkan through its GSK renderers
-and plays video through GStreamer. Like every toolkit in the tree it is for applications only, and
-no part of the KDOS desktop links it (see
-[Toolkits are for applications](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
+and plays video through GStreamer. It is for applications: the KDOS desktop is Qt 6 and KDE
+Frameworks, and no part of it links GTK (see
+[Applications bring their own toolkit](../../../../docs/kdos/01-philosophy/principles.md#applications-bring-their-own-toolkit)).
 
 ## Flags
 

@@ -54,7 +54,7 @@ a boot are explained in
 `rcS` is the `sysinit` entry. After mounting the filesystems it runs every numbered service script,
 and this is the loop that does it:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=173-213 pin=5e326058e8e1 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=192-232 pin=5e326058e8e1 -->
 
 The mark each stage gets on the splash comes from `stage_verdict`, defined near the top of `rcS`:
 `fail` for a non-zero exit, `skip` for a script that printed a `[SKIP]` line and started no

@@ -43,6 +43,16 @@ from `fs/etc/elogind/sleep.conf.d/50-kdos.conf`:
 
 <!-- kfs:include fs/etc/elogind/sleep.conf.d/50-kdos.conf lines=14-22 pin=9a46f7ee6d90 -->
 
+A machine whose display is virtio-gpu, the usual one in QEMU, virt-manager and GNOME Boxes, is
+offered no suspend at all. The kernel's virtio-gpu driver has no freeze or restore hook, so after a
+resume the device has been reset and its queues are never rebuilt: the screen stays dark, the next
+console mode set (a switch to a text console, or a session ending) blocks holding the console lock,
+and a reboot or power-off then waits on that lock until the machine is reset. `40_elogind.sh`
+writes `AllowSuspend=no` to `/run/elogind/sleep.conf.d/60-kdos-virtio-gpu.conf` before elogind
+starts when a virtio-gpu device is bound, and elogind reads that directory beside
+`/etc/elogind/sleep.conf.d`, so `CanSuspend` answers `no` and Plasma, the login screen and
+PowerDevil's idle and lid actions offer no Sleep.
+
 ### What runs around a suspend
 
 Before the machine sleeps, elogind sends `PrepareForSleep`, on which the screen locker locks and

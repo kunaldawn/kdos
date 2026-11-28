@@ -3,9 +3,9 @@
 GTK 3 is the widget toolkit that many of the tree's GTK applications are written for, among
 them [gimp](#port-gimp), [inkscape](#port-inkscape), [firefox-esr](#port-firefox-esr),
 [libreoffice](#port-libreoffice) and [virt-manager](#port-virt-manager). It installs beside
-[gtk4](#port-gtk4); each has its own library, its own series and its own bindings. Like every
-toolkit in the tree it is for applications only, and no part of the KDOS desktop links it (see
-[Toolkits are for applications](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
+[gtk4](#port-gtk4); each has its own library, its own series and its own bindings. It is for
+applications: the KDOS desktop is Qt 6 and KDE Frameworks, and no part of it links GTK (see
+[Applications bring their own toolkit](../../../../docs/kdos/01-philosophy/principles.md#applications-bring-their-own-toolkit)).
 
 ## Flags
 

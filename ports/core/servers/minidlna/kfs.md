@@ -25,7 +25,7 @@ and [firewall](../../../../docs/kdos/04-programs/daemons.md#firewall).
   owned by the account; upstream's default is `/var/log`, which the account cannot write. The start
   script's `-S` keeps `minidlnad` in the foreground and sends its log to standard output for the
   supervisor, so the directory is written only when the daemon is started by hand without `-S`.
-- `--with-os-name=KDOS`, `--with-os-url=https://github.com/kunaldawn/kdos` — The model description
+- `--with-os-name=KDOS`, `--with-os-url=https://kdos.dev/` — The model description
   (`MiniDLNA on KDOS`) and model URL the server publishes in its UPnP device description.
   Upstream takes the name from `uname -s` and uses Netgear's web site as the URL.
 - `--disable-tivo`, `--disable-netgear`, `--disable-readynas` — TiVo support, and the Netgear and

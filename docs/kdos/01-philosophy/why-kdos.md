@@ -192,9 +192,9 @@ make build        # no network
 
 A recipe's `sha256 =` line is what verifies a source file, wherever the file came from; [How KDOS
 is built](../05-developer/how-kdos-is-built.md#fetching-the-only-step-that-uses-the-network) says
-where `make fetch` looks for each one. The `ports/core` recipes name 2,572 distinct files. The 44
+where `make fetch` looks for each one. The `ports/core` recipes name 2,877 distinct files. The 46
 small ones that git carries itself, such as bash's upstream patches, stay in the repository. The
-other 2,528, about 39.3 GiB, are held in the KDOS source archive: four numbered GitHub releases,
+other 2,831, about 40.2 GiB, are held in the KDOS source archive: four numbered GitHub releases,
 `sources-1` to `sources-4`, each holding the shelves `ports/shelves` assigns to it, with every file
 located through the committed index `ports/sources.idx`. A file the index does not name comes from
 its upstream URL until `ports/publish` adds it. Nothing in the archive is replaced, so a recipe
@@ -210,7 +210,7 @@ release's binhost and installs with one download, one port at a time or as one o
 `ports/groups`, or is built on the machine from its recipe. These are ordinary recipes under
 `ports/core`, filed on shelves named for what they are for, such as `browsers`, `mail`, `office`,
 `graphics`, `education` and `cad`, and built in the last two userland phases, `43_toolkits` and
-`44_apps`; all of KDE Gear is among them. GTK, Qt, KDE Frameworks, WebKitGTK, QtWebEngine,
+`44_apps`; KDE Gear is among them, all but five modules that cannot run here. GTK, Qt, KDE Frameworks, WebKitGTK, QtWebEngine,
 wxWidgets, FLTK and Tk are built for them, each with its Wayland backend as the default and its X11
 backend for the applications that need Xwayland. Qt and KDE Frameworks carry the desktop as well;
 see [Principles](principles.md#the-desktop-is-kde-plasma). [The ports
@@ -307,7 +307,7 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 | Upstream recipes that no phase list or dependency reaches, and so are not built | none; `ports/unbuilt` names the ones kept on purpose and lists none, and `testing/bookcounts.py` refuses any recipe nothing builds that it does not name |
 | C libraries written for this system, under `src/libs` | 9 |
 | Plasma's own modules left out | 13, each because it needs systemd, KDE Frameworks 5, Flatpak, GRUB, Plymouth or another firewall, or is a shell for phones and televisions |
-| KDE Gear modules left out | 4: kjournald, kmag, kmousetool and plasma-settings |
+| KDE Gear modules left out | 5: colord-kde, kjournald, kmag, kmousetool and plasma-settings |
 | Kernel | Linux 7.2.11 |
 | Applications in the catalogue | 69 |
 | Shared runtimes beneath them | 7 |
@@ -315,7 +315,7 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 | Catalogue data sets | 2 |
 | Catalogue groups offered by the installer and the store | 7 |
 | Boxed commands with no graphical launcher | 24 rows across 15 applications |
-| Distinct source files the recipes name | 2,572 (44 carried in git; 2,528, about 39.3 GiB, fetched from the source archive or upstream) |
+| Distinct source files the recipes name | 2,877 (46 carried in git; 2,831, about 40.2 GiB, fetched from the source archive or upstream) |
 
 ## What is not built from source
 

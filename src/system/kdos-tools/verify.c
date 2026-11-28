@@ -32,11 +32,19 @@
  * alone: nothing here can check it, and saying "bad" would be a lie.
  *
  * EXIT STATUS, the worst over every file: 1 a check failed (a hash that does
- * not match, a signature no trusted key verifies, a pack whose bytes do not
- * hash to its own digest); 2 a file that could not be read, or a usage error;
- * 3 nothing vouches for a file (no checksum, an unsigned pack, a signature
- * this machine holds no key for); 0 every file passed at least one check and
- * failed none. Unverifiable is not verified, so 3 is never 0.
+ * not match, a signature none of the ring's keys verifies, a pack whose bytes
+ * do not hash to its own digest); 2 a file that could not be read, or a usage
+ * error; 3 nothing vouches for a file (no checksum, an unsigned pack, a
+ * signature checked against a ring that holds no key at all); 0 every file
+ * passed at least one check and failed none. Unverifiable is not verified, so
+ * 3 is never 0.
+ *
+ * A signature that a non-empty ring does not verify FAILS whatever key id its
+ * line names: the id is the signer's own claim, so an unknown signer and a
+ * forgery are the same thing to this machine. The message names the claimed
+ * id and whether the ring holds it (unverified_phrase), so a person can tell
+ * a signer they never trusted from a signature by a trusted key that does not
+ * check.
  * ---------------------------------
  */
 
@@ -243,6 +251,76 @@ static int is_kdos_sig(const char *sig)
 	return !strncmp(line, "kdos-sig-1 ", 11);
 }
 
+/* The key ids a signature block's `kdos-sig-1` lines claim, ", "-joined:
+ * those `ring` holds into `held`, the others into `foreign`; "" when there
+ * are none. Informational only: the ring decides. */
+typedef struct {
+	char held[64], foreign[64];
+} ClaimedIds;
+
+static void id_append(char *out, size_t cap, const char *id)
+{
+	size_t at = strlen(out);
+
+	if (at + 16 + 3 >= cap)
+		return;
+	if (at)
+		out[at++] = ',', out[at++] = ' ';
+	memcpy(out + at, id, 16);
+	out[at + 16] = '\0';
+}
+
+static void claimed_ids(const char *text, size_t n, const KsigRing *ring,
+			ClaimedIds *out)
+{
+	out->held[0] = out->foreign[0] = '\0';
+	for (size_t off = 0; off < n;) {
+		size_t end = off;
+
+		while (end < n && text[end] != '\n')
+			end++;
+		if (end - off >= 11 + 16 && !memcmp(text + off, "kdos-sig-1 ", 11) &&
+		    is_hex(text + off + 11, 16)) {
+			const char *id = text + off + 11;
+			int in = 0;
+
+			for (int k = 0; k < ring->n && !in; k++)
+				in = !strncasecmp(ring->key[k].id, id, 16);
+			if (in)
+				id_append(out->held, sizeof(out->held), id);
+			else
+				id_append(out->foreign, sizeof(out->foreign), id);
+		}
+		off = end + 1;
+	}
+}
+
+/*
+ * What a signature the ring does not verify claims, into `out`. A held id is
+ * a key the ring trusts whose signature does not check, so the bytes or the
+ * line were changed: "a signature by key <id> that does not verify against
+ * that key in <ring>". A foreign id is a signer the ring has never trusted:
+ * "a signature by key <id>, which <ring> does not hold". Both, joined with
+ * ", and", when the block claims both; "a signature no key in <ring>
+ * verifies" when it claims none.
+ */
+static void unverified_phrase(char *out, size_t cap, const ClaimedIds *ids,
+			      const char *ring)
+{
+	if (ids->held[0] && ids->foreign[0])
+		snprintf(out, cap, "a signature by key %s that does not verify "
+			 "against that key in %s, and by key %s, which %s "
+			 "does not hold", ids->held, ring, ids->foreign, ring);
+	else if (ids->held[0])
+		snprintf(out, cap, "a signature by key %s that does not verify "
+			 "against that key in %s", ids->held, ring);
+	else if (ids->foreign[0])
+		snprintf(out, cap, "a signature by key %s, which %s does not "
+			 "hold", ids->foreign, ring);
+	else
+		snprintf(out, cap, "a signature no key in %s verifies", ring);
+}
+
 /* `<path>.sig` against kpkg's ring; `what` names the thing signed. */
 static void check_sidecar_sig(Report *r, const char *path, const char *what)
 {
@@ -268,9 +346,16 @@ static void check_sidecar_sig(Report *r, const char *path, const char *what)
 		r->pass++;
 		say(r, "%s is signed by key %s", what, who);
 	} else {
+		ClaimedIds ids;
+		char phrase[512];
+		size_t len = 0;
+		char *text = kb_read_whole(sig, &len);
+
+		claimed_ids(text ? text : "", text ? len : 0, &ring, &ids);
+		free(text);
+		unverified_phrase(phrase, sizeof(phrase), &ids, pkg_ring());
 		r->fail++;
-		say(r, "%s carries a signature no key in %s verifies", what,
-		    pkg_ring());
+		say(r, "%s carries %s", what, phrase);
 	}
 }
 
@@ -363,6 +448,31 @@ static int ends_with(const char *s, const char *suf)
 	return a >= b && !strcasecmp(s + a - b, suf);
 }
 
+/* The key ids a pack's embedded signature block claims. `p` is open, so
+ * kpk_open has already bounded sig_len (KPK_SIG_MAX): the read below is no
+ * larger than the one kpk_verify made. */
+static void pack_claimed_ids(const KpkPack *p, const KsigRing *ring,
+			     ClaimedIds *out)
+{
+	char *text;
+	ssize_t got;
+	int fd;
+
+	out->held[0] = out->foreign[0] = '\0';
+	if (!p->foot.sig_len)
+		return;
+	fd = open(p->path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return;
+	text = malloc((size_t)p->foot.sig_len);
+	got = text ? pread(fd, text, (size_t)p->foot.sig_len,
+			   (off_t)p->foot.sig_off) : -1;
+	close(fd);
+	if (got > 0)
+		claimed_ids(text, (size_t)got, ring, out);
+	free(text);
+}
+
 static void check_pack(Report *r, const char *path)
 {
 	KpkPack p;
@@ -392,11 +502,16 @@ static void check_pack(Report *r, const char *path)
 		r->fail++;
 		say(r, "pack %s does NOT hash to its own digest", p.meta.id);
 		break;
-	default:
+	default: {
+		ClaimedIds ids;
+		char phrase[512];
+
+		pack_claimed_ids(&p, &ring, &ids);
+		unverified_phrase(phrase, sizeof(phrase), &ids, pack_ring());
 		r->fail++;
-		say(r, "pack %s carries a signature no key in %s verifies",
-		    p.meta.id, pack_ring());
+		say(r, "pack %s carries %s", p.meta.id, phrase);
 		break;
+	}
 	}
 }
 

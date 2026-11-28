@@ -68,6 +68,14 @@ Ice, whose `pdark` is 3.56:1 and 4.42:1). The walk aims at 4.52 because the spla
 the WCAG formula in floating point and libkcolor's `kcol_contrast`, which the self-test judges
 with, rounds each channel through a table. The WHY detail lines are in the scheme's text colour.
 
+A GPU driver loaded after `switch_root` (`vmwgfx`, `i915`, `amdgpu` and `nouveau` are modules
+the initramfs does not carry) replaces the firmware framebuffer under the running splash, and
+every call on the old `fb0` descriptor then fails. The splash checks the descriptor once a frame,
+and when it has gone it opens `fb0` again through its descriptor on the devtmpfs `/dev` until the
+driver's framebuffer registers, lays the picture out for that size and draws on, so the boot is
+not black from the device manager to the greeter. The self-test replaces `fb0` with a larger one
+under a running splash through the same stand-in for `/dev`.
+
 The motion comes from the kernel command line because the power-on runs in the initramfs, before
 any root filesystem with a setting in it is mounted. `KDOS_SPLASH_CMDLINE` names a file read in
 its place, and `kdos-splash preview` takes the motion and then an accent as optional last

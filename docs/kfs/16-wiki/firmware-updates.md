@@ -37,7 +37,7 @@ is mounted:
 [`/boot/efi`]{.idx} is where the installer mounts the ESP of an installed system, in the `fstab` it writes
 (`src/system/kinstall-core/install.c`):
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2898-2903 pin=d44ca257584d -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2946-2951 pin=d44ca257584d -->
 
 fwupd asks udisks for the ESP. When udisks names none, the recipe's patch describes the FAT
 filesystem mounted at `EspLocation` itself, from sysfs and the udev database; a path that is not a
@@ -74,7 +74,7 @@ the local network, and the peer-to-peer policy is `none`:
 
 `fwupd-efi` builds the capsule loader with a KDOS SBAT entry:
 
-<!-- kfs:include ports/core/boot/fwupd-efi/build.sh lines=12-18 pin=aaf697f075bc -->
+<!-- kfs:include ports/core/boot/fwupd-efi/build.sh lines=12-18 pin=dc9fe0ba556e -->
 
 It is unsigned. KDOS requires [Secure Boot]{.idx} to be off in any case; see
 [Known gaps](#known-gaps).
@@ -85,16 +85,19 @@ A capsule update is armed through a UEFI variable, and fwupd reads the firmware'
 (the ESRT) through [`/sys/firmware/efi`]{.idx}. `rcS` mounts `efivarfs` on every UEFI boot
 (`fs/etc/init.d/rcS`):
 
-<!-- kfs:include fs/etc/init.d/rcS lines=112-120 pin=66ff50c97107 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=131-139 pin=66ff50c97107 -->
 
 ## Usage
 
 Reading needs no privilege: `fwupdmgr get-devices`, `get-remotes`, `get-updates`, `get-history`
 and `security` answer any account. polkit answers everything that changes something from the
-caller's elogind session: fwupd's own rule lets a member of `wheel` do it, and
-`/etc/polkit-1/rules.d/50-kdos.rules` holds the system firmware flash,
+caller's elogind session, by fwupd's policy defaults and `/etc/polkit-1/rules.d/50-kdos.rules`.
+That rule sorts before fwupd's own and holds the unsigned system firmware flash,
 `org.freedesktop.fwupd.update-internal`, at an administrator's password even at the machine.
-Plasma's authentication agent asks for it, in Discover and for `fwupdmgr` in Konsole alike. A
+Signed firmware, the system's (`update-internal-trusted`) or a device's (`update-hotplug-trusted`),
+keeps fwupd's own answer: anybody at the machine installs it with no password, which is how
+Discover installs what the LVFS lists. Downgrading signed firmware still asks. Plasma's
+authentication agent asks for a password where one is needed, in Discover and for `fwupdmgr` in Konsole alike. A
 command from an SSH login or another account with no session at the machine runs with `sudo`. See
 [sudo, PAM and polkit](sudo-pam-polkit.md). Listing needs no network; installing an update fetches
 its file from the LVFS.

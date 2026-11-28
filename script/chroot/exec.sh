@@ -151,14 +151,12 @@ if [ -d "$REPO_ROOT/testing" ]; then
         || log_mount "warning: testing bound read-write: no read-only remount"
     mount --bind "$REPO_ROOT/ports" "$CHROOT_DIR/kdos/ports"
 fi
-# The Makefile, the Dockerfile and LICENSE read-only: kdos-kfs renders Part I
-# of KDOS from Scratch from /kdos, and that part shows lines of the first two;
-# 110_iso.sh copies both onto a medium that carries the sources; 105_ports.sh
-# installs LICENSE as /usr/share/licenses/kdos/LICENSE and stops the image
-# without it. Without the binds each is the container's empty mount point, and
-# the book prints "not in this tree" where the listing goes. A file the
-# container lacks is skipped.
-for _f in Makefile Dockerfile LICENSE; do
+# The Makefile and the Dockerfile read-only: kdos-kfs renders Part I of KDOS
+# from Scratch from /kdos, and that part shows lines of both; 110_iso.sh
+# copies both onto a medium that carries the sources. Without the binds each
+# is the container's empty mount point, and the book prints "not in this tree"
+# where the listing goes. A file the container lacks is skipped.
+for _f in Makefile Dockerfile; do
     [ -f "$REPO_ROOT/$_f" ] && [ -e "$CHROOT_DIR/kdos/$_f" ] || continue
     mount --bind "$REPO_ROOT/$_f" "$CHROOT_DIR/kdos/$_f"
     mount -o remount,bind,ro "$CHROOT_DIR/kdos/$_f" \

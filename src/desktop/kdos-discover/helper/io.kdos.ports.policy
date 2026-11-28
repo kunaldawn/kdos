@@ -16,7 +16,7 @@
 -->
 <policyconfig>
   <vendor>KDOS</vendor>
-  <vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+  <vendor_url>https://kdos.dev/</vendor_url>
 
   <action id="io.kdos.ports.install">
     <description>Install host software from the signed binary host</description>

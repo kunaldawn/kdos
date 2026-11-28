@@ -17,7 +17,11 @@
  *
  * A DESK REPLACES EVERY PANEL. When `kdos desk status --json` reports the
  * panels were changed since they were laid out, the page says so before it
- * applies anything, and offers the undo after.
+ * applies anything, and offers the undo after. Undo is a button beside Use,
+ * not the laid-out message's action: Kirigami's InlineMessage keeps an
+ * inline action over the end of a label that wraps once the window
+ * narrows, and the message names the backup folder, which wraps at any
+ * width short of a full screen.
  *
  * THE CARDS ARE A RADIO GROUP. Each is checkable and checked where its
  * desk is the one chosen, so the accessibility layer reports the checked
@@ -122,6 +126,18 @@ Welcome.ScrollablePage {
         });
     }
 
+    function undo(): void {
+        run.run(["kdos", "desk", "undo"], (code, text) => {
+            if (code !== 0) {
+                page.failure = text;
+            }
+            page.applied = "";
+            page.backup = "";
+            page.chosen = "";
+            page.refresh();
+        });
+    }
+
     function requestApply(): void {
         if (page.edited) {
             page.confirming = true;
@@ -171,21 +187,6 @@ Welcome.ScrollablePage {
             text: page.backup.startsWith("/")
                 ? i18ndc("kdos-welcome", "@info %1 is a desk name, %2 a folder", "The %1 desk is laid out. Your previous panels are kept in %2, and Undo puts them back.", page.titleOf(page.applied), page.backup)
                 : i18ndc("kdos-welcome", "@info %1 is a desk name", "The %1 desk is laid out. Undo puts your previous panels back.", page.titleOf(page.applied))
-            actions: [
-                Kirigami.Action {
-                    text: i18ndc("kdos-welcome", "@action:button", "Undo")
-                    icon.name: "edit-undo"
-                    onTriggered: run.run(["kdos", "desk", "undo"], (code, text) => {
-                        if (code !== 0) {
-                            page.failure = text;
-                        }
-                        page.applied = "";
-                        page.backup = "";
-                        page.chosen = "";
-                        page.refresh();
-                    })
-                }
-            ]
         }
 
         RowLayout {
@@ -319,6 +320,16 @@ Welcome.ScrollablePage {
 
             Item {
                 Layout.fillWidth: true
+            }
+
+            QQC2.Button {
+                visible: page.applied.length > 0
+                text: i18ndc("kdos-welcome", "@action:button", "Undo")
+                icon.name: "edit-undo"
+                enabled: !run.busy
+                onClicked: page.undo()
+                Accessible.name: text
+                Accessible.description: i18ndc("kdos-welcome", "@info", "Put back the panels the last desk replaced")
             }
 
             QQC2.Button {

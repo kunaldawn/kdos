@@ -192,7 +192,7 @@ docker run --rm -v "$PWD/build:/b" os-dev rm -rf /b/fs /b/mark /b/cross
 make build BUILD_ARGS=--fresh
 ```
 
-The snapshots, caches and keys are left alone. Budget most of a day for the build that follows; see
+The snapshots, caches and keys are left alone. Budget a day or more for the build that follows; see
 [Building from scratch](../../kdos/05-developer/developing.md#building-from-scratch).
 
 ## See also

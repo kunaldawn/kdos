@@ -14,7 +14,7 @@
         "Id": "kdos_login",
         "License": "MIT",
         "Name": "KDOS Power-On",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-KDE-Ordering": 40,
     "X-Plasma-API": "javascript"

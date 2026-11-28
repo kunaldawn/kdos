@@ -9,8 +9,9 @@
     template.html — one page of the HTML book
 
   kfsrender.py fills it with string.Template, once per unit: $title (the
-  whole <title>, the book's name included), $kind,
-  $edition, $crumbs, $nav and $body. A literal dollar sign is written $$.
+  whole <title>, the book's name included), $kind, $home (a link to the
+  site's homepage with --home, else nothing), $edition, $crumbs, $nav and
+  $body. A literal dollar sign is written $$.
   This comment is cut before the template is used, so no page carries it.
   ---------------------------------
 -->
@@ -25,7 +26,7 @@
 </head>
 <body class="kfs-$kind">
 <header class="kfs-top">
-<a class="kfs-brand" href="index.html">KDOS from Scratch</a>
+$home<a class="kfs-brand" href="index.html">KDOS from Scratch</a>
 <span class="kfs-edition">$edition</span>
 <a class="kfs-toplink" href="contents.html">Contents</a>
 <a class="kfs-toplink" href="genindex.html">Index</a>

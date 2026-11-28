@@ -763,6 +763,11 @@ static int build_here(char *pkgout, size_t cap)
 	/* The licences first: the prune never touches usr/share/licenses, and
 	 * a licence the source names NOTICE.html must not meet it either. */
 	kp_pkg_licences(pkg, r.name, src_dir);
+	if (!r.source[0]) {
+		char lic[1024];
+		kp_recipe_key(portdir, "license", lic, sizeof(lic));
+		kp_pkg_kdos_licence(pkg, r.name, lic);
+	}
 	kp_pkg_prune(pkg);
 	kp_pkg_symtab(pkg);
 	kp_pkg_python(pkg);

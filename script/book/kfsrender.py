@@ -9,7 +9,7 @@
 #   kfsrender — kfsgen.py's Markdown as chunked HTML, one PDF and a tarball
 #
 #     kfsrender.py --pandoc CMD --typst CMD [--src DIR] [--out DIR]
-#                  [--buildfs DIR] [--no-html] [--no-pdf]
+#                  [--buildfs DIR] [--home URL] [--no-html] [--no-pdf]
 #
 #   --pandoc, --typst  each a command line, split on spaces, so a binary run
 #                      through another root's loader is one argument
@@ -19,6 +19,9 @@
 #   --buildfs a built root whose kpkg database supplies every package's
 #             full file list, into the HTML only; without a database the
 #             pages carry contents.tsv's summary alone
+#   --home    the homepage of the site the HTML is published on, linked
+#             first in every page's top bar by its host name, so a reader
+#             who arrived at a page has a way to the site
 #
 # PANDOC RUNS ONCE PER FORMAT over the whole book, never once per page: one
 # HTML run whose output is cut at kfsgen's unit markers, and one typst run
@@ -107,7 +110,7 @@ def file_list(buildfs, name):
             if ln.strip() and not ln.endswith("/")]
 
 
-def write_html(src, out, body_path, buildfs, units, edition):
+def write_html(src, out, body_path, buildfs, units, edition, home=None):
     with open(os.path.join(HERE, "template.html"), encoding="utf-8") as f:
         tpl = f.read()
     tpl = string.Template(re.sub(r"^<!--.*?-->\s*", "", tpl, flags=re.S))
@@ -161,6 +164,10 @@ def write_html(src, out, body_path, buildfs, units, edition):
     os.makedirs(hdir)
     shutil.copy(os.path.join(HERE, "kfs.css"), os.path.join(hdir, "kfs.css"))
     ed = "KDOS %s · %s · %s" % (edition["version"], edition["commit"], edition["date"])
+    home_link = ""
+    if home:
+        home_link = '<a class="kfs-toplink" href="%s">%s</a>\n' % (
+            html.escape(home), html.escape(re.sub(r"^https?://|/$", "", home)))
 
     def title_of(uid):
         return meta.get(uid, {}).get("title", uid)
@@ -198,7 +205,7 @@ def write_html(src, out, body_path, buildfs, units, edition):
         page = tpl.substitute(title=html.escape(t if t == BOOK_TITLE else t + " — " + BOOK_TITLE),
                               kind=meta.get(uid, {}).get("kind", "page"),
                               edition=html.escape(ed), crumbs=crumbs(uid), nav="\n".join(nav),
-                              body=text)
+                              body=text, home=home_link)
         with open(os.path.join(hdir, fname[uid]), "w", encoding="utf-8") as f:
             f.write(page)
 
@@ -225,7 +232,7 @@ def write_html(src, out, body_path, buildfs, units, edition):
     toc.append("</ul></div>")
     page = tpl.substitute(title="Contents — " + BOOK_TITLE, kind="contents", edition=html.escape(ed),
                           crumbs='<a href="index.html">KDOS from Scratch</a>', nav="",
-                          body="<h1>Contents</h1>\n" + "\n".join(toc))
+                          body="<h1>Contents</h1>\n" + "\n".join(toc), home=home_link)
     with open(os.path.join(hdir, "contents.html"), "w", encoding="utf-8") as f:
         f.write(page)
 
@@ -266,7 +273,7 @@ def write_html(src, out, body_path, buildfs, units, edition):
     ix.append("</div>")
     page = tpl.substitute(title="Index — " + BOOK_TITLE, kind="genindex", edition=html.escape(ed),
                           crumbs='<a href="index.html">KDOS from Scratch</a>', nav="",
-                          body="<h1>Index</h1>\n" + "\n".join(ix))
+                          body="<h1>Index</h1>\n" + "\n".join(ix), home=home_link)
     with open(os.path.join(hdir, "genindex.html"), "w", encoding="utf-8") as f:
         f.write(page)
     return len(order) + 2, lists
@@ -309,6 +316,7 @@ def main():
     ap.add_argument("--src", default="build/kfs/src")
     ap.add_argument("--out", default="build/kfs")
     ap.add_argument("--buildfs")
+    ap.add_argument("--home", help="the site's homepage, linked from every page's top bar")
     ap.add_argument("--no-html", action="store_true")
     ap.add_argument("--no-pdf", action="store_true")
     a = ap.parse_args()
@@ -359,7 +367,7 @@ def main():
         th[-1].start()
     if not a.no_html:
         tt = time.time()
-        n, lists = write_html(src, out, body, a.buildfs, meta["units"], meta["edition"])
+        n, lists = write_html(src, out, body, a.buildfs, meta["units"], meta["edition"], a.home)
         tar = tarball(out, epoch)
         times["html split"] = (time.time() - tt, 0)
         print("kfsrender: %d HTML pages, %d with full file lists, %s (%d bytes)"
