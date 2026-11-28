@@ -18,7 +18,7 @@ export CFLAGS="$CFLAGS -fcommon"
 	ac_cv_lib_avahi_client_avahi_threaded_poll_new=no \
 	--with-db-path=/var/lib/minidlna \
 	--with-log-path=/var/log/minidlna \
-	--with-os-name=KDOS --with-os-url=https://github.com/kunaldawn/kdos \
+	--with-os-name=KDOS --with-os-url=https://kdos.dev/ \
 	--disable-nls --disable-tivo --disable-netgear --disable-readynas
 make
 make DESTDIR=$PKG install

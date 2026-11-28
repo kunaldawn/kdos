@@ -447,7 +447,13 @@ transport the installer installs to has to be reachable here too**, for the same
 the installer can see but this initramfs has no driver for takes an install and then never finds
 its root. NVMe behind Intel VMD (RST), eMMC and SD cards (which the installer classifies as `mmc`),
 Hyper-V, Xen and VMware guests' disks, and MegaRAID and mpt3sas controllers are modules on this
-kernel, and each brings its dependencies (`mmc_core`, `hv_vmbus` and the rest).
+kernel, and each brings its dependencies (`mmc_core`, `hv_vmbus` and the rest). AHCI
+(`CONFIG_SATA_AHCI=m`) is a module too, so that its probe runs under the splash's
+`DEVICE MANAGER` stage and not before `/init`. A controller that advertises staggered spin-up
+probes its ports one at a time, and VirtualBox's answers each empty port's link-down after most
+of a second: a built-in driver holds `/init`, and with it any splash, for about 25 seconds on the
+30-port controller `VBoxManage storagectl --add sata` makes, while as a module the same probe is
+waited out by `udevadm settle` with the splash drawing.
 
 - **LUKS ciphers.** These are the ones a LUKS2 default header uses. They are carried
   unconditionally because they are small, and on a kernel that has them built in the copy is a
@@ -604,15 +610,15 @@ gives three more tries ([Unlocking an encrypted root](#unlocking-an-encrypted-ro
 
 `kdos-splash` draws a power-on animation directly to `/dev/fb0`, with glyphs scaled up from its
 own font (`/usr/share/kdos/splash.psf`), then lists the boot stages under a progress bar. It is a
-static binary of about 1,800 lines of C, and every failure path exits without drawing: a boot
+static binary of about 2,300 lines of C, and every failure path exits without drawing: a boot
 animation must never be able to stop a boot. The initramfs starts it before the device manager,
 and it runs until `rcS` hands the screen to the display manager. It runs only on a quiet boot: on
 a command line without `quiet` (the verbose and single-user entries) `kdos-splash run` draws
 nothing and exits, every later command finds no splash and does nothing, and the boot's text is
 what the screen shows.
 
-Under the mark it names the release: `Kool Desktop Operating System 0.2.1`, or
-`0.2.1+<BUILD_ID>` on any build but a release one, the one form the boot menu, the installer, the
+Under the mark it names the release: `Kool Desktop Operating System 0.2`, or
+`0.2+<BUILD_ID>` on any build but a release one, the one form the boot menu, the installer, the
 greeter, `kdos version` and What's New give: a root's `/etc/kdos-release` `VERSION`, or
 `VERSION_ID` and `BUILD_ID` from its `/etc/os-release` when there is no record. Until a root is
 mounted it shows the initramfs's copy, which the initramfs build takes from the image, where
@@ -689,6 +695,19 @@ display manager.
 Memory-mapped writes need an explicit flush. They reach the display only when the deferred I/O
 worker gets round to it, so each frame ends with a pan-display call to the offset it is already
 at.
+
+The framebuffer can be replaced while the splash draws. A GPU driver built as a module and not
+carried in the initramfs (`vmwgfx` on VirtualBox's VMSVGA and VMware, `i915`, `amdgpu`,
+`nouveau`) is loaded by `rcS`'s device manager and takes the display from the firmware
+framebuffer the splash opened: that `fb0` is unregistered, every call on the descriptor the splash
+holds fails, and its mapping is memory nothing scans out. The splash asks the descriptor once a
+frame; when it has gone it lets it go and opens `fb0` again on every frame, through its
+descriptor on `/dev`, until the driver's own framebuffer registers. It then lays the picture out
+for that framebuffer's size (VirtualBox moves from 1024x768 to 1280x800) and draws it in its
+current state, and that first pan sets the new framebuffer's mode. The screen is black between
+the driver's take-over and its framebuffer's registration. The reopen is proved by the
+`selftest.sh` fixture, which replaces `fb0` under a running splash; it has not been photographed
+on VMSVGA or on a native GPU driver.
 
 The process survives `switch_root` with a ghost root. It is never `chroot`ed, so afterwards its
 `/` is the deleted initramfs root. Open file descriptors keep working, which is how one process
@@ -1022,9 +1041,9 @@ differs:
 | `/KDOS <version>`, `/KDOS <version> (verbose)`, `/KDOS <version> (single user)` | The slot an unattended boot must reach: the active slot, except during a menu-led trial, where it is the candidate while it has attempts left |
 | `/KDOS <version> (slot <X>)` | The other slot, when it has a root and a kernel and is not marked `unfilled` |
 
-The three are titled with the release that slot holds (`KDOS 0.2.1`, `KDOS 0.2.1 (verbose)`,
-`KDOS 0.2.1 (single user)`), and the first entry's comment says which slot and names the release:
-`Start this computer (slot A, KDOS 0.2.1)`, or `Try the update (slot B, KDOS 0.2.1)` during a
+The three are titled with the release that slot holds (`KDOS 0.2`, `KDOS 0.2 (verbose)`,
+`KDOS 0.2 (single user)`), and the first entry's comment says which slot and names the release:
+`Start this computer (slot A, KDOS 0.2)`, or `Try the update (slot B, KDOS 0.2)` during a
 menu-led trial. The other slot's entry is titled with its release, `KDOS 0.2 (slot A)`, the name
 System Versions gives it, and its comment reads
 `The confirmed version: picking it sets the update aside` during a menu-led trial,
@@ -1418,7 +1437,7 @@ sets `UDISKS_IGNORE` on every block device whose node has the device number of t
 mounted there (the EFI partition, a store on the stick), which takes them out of Dolphin's Places,
 the file dialogs and the Device Notifier. The number, not the path, is what names a Ventoy medium:
 it is mounted as `/dev/mapper/ventoy`, and the stick partition whose node Ventoy points at the same
-mapping would otherwise be listed as a second `KDOS_0_2_1` volume. It matches the mount, not the
+mapping would otherwise be listed as a second `KDOS_0_2` volume. It matches the mount, not the
 medium's label, so a KDOS stick plugged into an installed machine is listed like any other. Solid lists an overlay mounted on `/` as a
 nameless device unless the mount carries `x-gvfs-hide`, which it reads through libmount;
 `/etc/init.d/04_live-root.sh` records that option for `/` in `/run/mount/utab` when the root is an
@@ -1514,7 +1533,13 @@ field is free of shell metacharacters, so init executes each one directly rather
    `MOUNTING FILESYSTEMS` and `STARTING SESSION`.
 3. Reads `/etc/kdos/accent`, when it exists, and tells the splash to repaint in that accent. The
    writers end the name with no newline, so the read keeps a value that reaches the end of the
-   file without one.
+   file without one. Then, on a machine whose `MemTotal` is under 2.75 GiB (a 4 GB machine reports
+   2.9 to 3.8 GiB, by what its firmware and an integrated GPU keep back), it adds a stage named
+   with the size, such as `MEMORY 442 MIB, NEEDS 4 GB`, and fails it, and writes
+   `442 MiB of memory: KDOS needs 4 GB, and may stall` to the console; the boot carries on. The
+   size is in the stage's name rather than a detail line, because detail lines are kept across
+   stages and would head the `WHY:` panel of a service that fails later. Such a session may stall
+   before its first frame, and without this stage nothing on screen would say why.
 4. Checks every non-root `fstab` filesystem with a pass number whose device exists yet (one on a
    logical volume the initramfs did not activate is left to `03_lvm`; see [Checking the
    root](#checking-the-root)), then mounts everything in `fstab`, then remounts `/` when `fstab`
@@ -2027,7 +2052,7 @@ no X server: KWin is run without `--xwayland`. `GreeterEnvironment` puts KDOS's 
 `QT_QPA_PLATFORMTHEME=kde`, the session's platform theme, and sets
 `QSG_DISTANCEFIELD_ANTIALIASING=gray`, so its Qt Quick text is greyscale like the session's, and
 `QML_XHR_ALLOW_FILE_READ=1`, so the theme's footer can read the release from `/etc/kdos-release`
-and show `KDOS 0.2.1 · Plasma by KDE`. SDDM
+and show `KDOS 0.2 · Plasma by KDE`. SDDM
 puts the variables in the environment of the helper that starts the greeter's KWin, and KWin starts
 the on-screen keyboard, `plasma-keyboard`, with its own start-up environment, so the keyboard
 inherits them: with the `kde` platform theme it picks the `org.kde.breeze` or `org.kde.desktop` Qt

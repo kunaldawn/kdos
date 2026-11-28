@@ -69,6 +69,7 @@ private Q_SLOTS:
     void packsAndBoxes();
     void debianLane();
     void hostPorts();
+    void liveMediumPortNotes();
     void hostCatalogueListing();
     void unmarkedSuiteListing();
     void pendingAndCategories();
@@ -317,6 +318,14 @@ esac)sh");
     qputenv("KDOS_SWCATALOG", (m_fixtures + u"/swcatalog"_s).toUtf8());
     qputenv("KDOS_BINHOST_CACHE", (m_fixtures + u"/binhost"_s).toUtf8());
     qputenv("KDOS_DEBIAN_EXCLUDE", (m_fixtures + u"/debian-exclude"_s).toUtf8());
+    // An installed system's mount table: the test's own `/` may be the
+    // container's overlay, which the backend takes for the live medium.
+    {
+        QFile mounts(m_dir.filePath(u"mounts"_s));
+        QVERIFY(mounts.open(QIODevice::WriteOnly));
+        mounts.write("/dev/vda2 / ext4 rw,relatime 0 0\nproc /proc proc rw 0 0\n");
+    }
+    qputenv("KDOS_MOUNTS", m_dir.filePath(u"mounts"_s).toUtf8());
     qputenv("HOME", m_dir.filePath(u"home"_s).toUtf8());
     qputenv("XDG_CACHE_HOME", m_dir.filePath(u"home/.cache"_s).toUtf8());
     qputenv("XDG_DATA_HOME", m_dir.filePath(u"home/.local/share"_s).toUtf8());
@@ -791,6 +800,43 @@ static const char ListingCatalogue[] = R"(<?xml version="1.0" encoding="utf-8"?>
   </component>
 </components>
 )";
+
+void BackendTest::liveMediumPortNotes()
+{
+    // On the live medium an install lands in the RAM overlay: the notes say
+    // it lasts until the machine restarts, never that an update keeps it.
+    KdosResource *addons = resource(u"port"_s, u"kdos-addons"_s);
+    QVERIFY(addons);
+    QVERIFY(addons->kdosNotice().contains(u"next system update"_s));
+    QVERIFY(!m_backend->planContext().live);
+
+    const QString mounts = m_dir.filePath(u"mounts-live"_s);
+    {
+        QFile f(mounts);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("overlay / overlay rw,lowerdir=/run/kdos/lower,upperdir=/run/kdos/upper/data 0 0\n");
+    }
+    const QByteArray had = qgetenv("KDOS_MOUNTS");
+    qputenv("KDOS_MOUNTS", mounts.toUtf8());
+    KdosBackend *shared = std::exchange(m_backend, new KdosBackend(this));
+    m_backend->setName(u"kdos-backend"_s);
+    QVERIFY(m_backend->planContext().live);
+    QTRY_VERIFY_WITH_TIMEOUT(resource(u"port"_s, u"kdos-addons"_s), 30000);
+    KdosResource *live = resource(u"port"_s, u"kdos-addons"_s);
+    QVERIFY(live->kdosNotice().contains(u"live session"_s));
+    QVERIFY(live->kdosNotice().contains(u"restarts"_s));
+    QVERIFY(!live->kdosNotice().contains(u"next system update"_s));
+    KdosResource *liveBuilt = resource(u"port-source"_s, u"kdos-addons"_s);
+    QVERIFY(liveBuilt);
+    QVERIFY(liveBuilt->kdosNotice().contains(u"live session"_s));
+    QVERIFY(!liveBuilt->kdosNotice().contains(u"next system update"_s));
+    // Installed, a port's note says what it is either way.
+    KdosResource *kate = resource(u"port"_s, u"kate"_s);
+    QVERIFY(kate);
+    QVERIFY(!kate->kdosNotice().contains(u"live session"_s));
+    delete std::exchange(m_backend, shared);
+    qputenv("KDOS_MOUNTS", had);
+}
 
 void BackendTest::hostCatalogueListing()
 {

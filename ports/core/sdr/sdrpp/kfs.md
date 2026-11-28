@@ -24,11 +24,13 @@ by one.
   radio or network protocol. The hardware ones link [airspy](#port-airspy),
   [airspyhf](#port-airspyhf), [bladerf](#port-bladerf), [hackrf](#port-hackrf),
   [limesuite](#port-limesuite), [libperseus-sdr](#port-libperseus-sdr), [libiio](#port-libiio) with
-  [libad9361](#port-libad9361) for the PlutoSDR, [librfnm](#port-librfnm), [rtl-sdr](#port-rtl-sdr),
+  [libad9361](#port-libad9361) for the PlutoSDR, [rtl-sdr](#port-rtl-sdr),
   [soapysdr](#port-soapysdr) and [uhd](#port-uhd); the audio source uses [rtaudio](#port-rtaudio).
   The file, Hermes, network, RFspace, RTL-TCP, SDR++ server, Spectran HTTP and SpyServer sources
-  need no library. Upstream's defaults leave the bladeRF, LimeSDR, Perseus, RFNM, SoapySDR and
-  USRP modules off.
+  need no library. Upstream's defaults leave the bladeRF, LimeSDR, Perseus, SoapySDR and USRP
+  modules off.
+- `-DOPT_BUILD_RFNM_SOURCE=OFF` — no RFNM source module. It links librfnm, whose source carries
+  no licence, so the library cannot be redistributed and is not a port.
 - `-DOPT_BUILD_DRAGONLABS_SOURCE=OFF` — and the Harogic, HydraSDR, KCSDR, SDRplay and Spectran
   sources: each needs a vendor library (`libdlcr`, `htra_api`, `libhydrasdr`, `libkcsdr`,
   SDRplay's API, Aaronia's RTSA suite) that is not a port.

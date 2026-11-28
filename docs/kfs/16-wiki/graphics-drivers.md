@@ -214,7 +214,8 @@ fault from a fault in the program.
    `sudo kdos firmware sync` installs it.
 
 **`kdos doctor` warns that nouveau is bound and `/lib/firmware/nvidia` is absent.** `nouveau`
-needs NVIDIA's GSP firmware to initialise a Turing or later GPU, and that firmware is the
+needs NVIDIA's signed firmware to accelerate a GPU from second-generation Maxwell (the GeForce
+GTX 950) on, and its GSP firmware to initialise a Turing or later GPU at all; both are the
 `firmware-nvidia` package, which the installation medium does not carry. Install it with
 `sudo kdos firmware sync`, which finds it from the GPU, or `sudo kdos update install
 firmware-nvidia`, then restart.

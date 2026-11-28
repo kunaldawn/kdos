@@ -49,9 +49,10 @@ and [Which one to run](#which-one-to-run), then read the section for the harness
 | AT-SPI goldens | That a KDOS surface's accessibility tree has not changed, and that every visible control in it has a name a screen reader can say | That it is laid out well | One boot for the gate; a minute per surface headless |
 | `testing/quick.sh` | That a changed component behaves in a booted session, without repacking the ISO | Anything about the shipped image | A few minutes |
 | `testing/docscheck.sh` | That both books' links resolve, that they avoid the common historical phrasings, that each page keeps its book's contract, and that the port counts and catalogue rows match the tree | Anything a reader has to judge | A few seconds |
-| `testing/anchorcheck.py` | That every `#fragment` link in both books, `README.md` and `CLAUDE.md` lands on a heading, and that every help address a KDOS settings page names is a section that exists | That the heading says what the link promises | Under a second |
+| `testing/anchorcheck.py` | That every `#fragment` link in both books, every port's `kfs.md`, `README.md` and `CLAUDE.md` lands on a heading, and that every help address a KDOS settings page names is a section that exists | That the heading says what the link promises | Under a second |
 | `testing/booknav.py` | That every chapter footer, and the contents of *KDOS from Scratch*, follow the reading order | Whether the order is a good one | A few seconds |
 | `testing/kfscheck.py` | That *KDOS from Scratch*'s notes, includes, kernel option table and recipe stamp match the tree, that every port renders, and that a new or changed patch carries a `Subject:` line | That a note is still true | A few seconds |
+| `script/site/mksite.py --check` | That `README.md` is what `site/home.md` makes, that every fact the homepage states is read from the tree, and that every link and picture it names exists | That the page says something true about what the facts mean | About a second |
 | `make fetch-check` | That every source a recipe names is on disk and matches its hash | That the sources build | About a minute, offline |
 | `testing/packlane.sh` | The pack lane (installing boxed applications from packs; see [Packs and boxes](../03-architecture/packs-and-boxes.md#two-lanes-one-box)) end to end on a booted machine | Anything without application packs to install | Minutes |
 | `testing/install-to-disk.sh` | That the installer installs, and what it wrote | That the installed system boots, which is the second half of the run | Minutes, and host space for the whole payload |
@@ -75,6 +76,7 @@ tested by building the distribution with them.
 | Something only a running session shows | `testing/quick.sh`, then the rig on a real ISO |
 | The session itself: login, startup, a session daemon | `make session-probe` on a real ISO |
 | A page of either book | `bash testing/docscheck.sh`, `python3 testing/anchorcheck.py` and `python3 testing/booknav.py` |
+| The homepage or `README.md`: anything under `site/` or `script/site/` | `make site`, then `make sitecheck`; and a heading of the book the homepage links, the facts it reads (an os-release, a recipe's version, `ports/RELEASE`, `KCOL_SCHEMES`) or a screenshot, since each can stale `README.md` |
 | A chapter added, removed or reordered | `python3 testing/booknav.py --write`, after editing `docs/kdos/README.md`'s contents for this book |
 | A recipe, a patch, a `kfs.md`, a phase list, `kdos.config` or a script a page of *KDOS from Scratch* includes | `python3 testing/kfscheck.py`, then `make book-stamp` when it reports the stamp stale and `kfscheck.py --repin` when it reports an include range moved |
 | Nothing, but a build finished and a phase is about to be built with `--port-jobs` | `python3 testing/depdrift.py` in the development image |
@@ -82,7 +84,7 @@ tested by building the distribution with them.
 | A recipe's flags, `depends` or installed files, once its port is built | `make debuginfo`, `make linkcheck` and `make entrycheck`, from a container or as root; `70_image` runs the last two and stops on them |
 
 Each offline check has a make target of its own name: `make preflight`, `make selftest`,
-`make docscheck`, `make anchorcheck`, `make booknav`, `make kfscheck`, `make phaseclosure`,
+`make docscheck`, `make anchorcheck`, `make booknav`, `make kfscheck`, `make sitecheck`, `make phaseclosure`,
 `make defaultscheck`, `make xdgcheck`, `make lnfcheck`, `make aboutcheck` and `make atspi-selftest`. `make selftest-asan` runs the
 self-test under the sanitizers, with the compiler in `SELFTEST_CC`. `make check` runs all of them
 but the sanitized self-test, in that order, in one command. `make plasmatest` is not part of it,
@@ -742,6 +744,7 @@ What the loop cannot carry:
 | Flag | Does |
 |---|---|
 | `--shot <file>` | Photograph the screen now, into this path |
+| `--burst N,GAP,PREFIX` | Photograph the screen `N` times, one frame every `GAP` seconds, into `PREFIX-001.ppm` onwards: the frames of an animation. Without `--gl` the monitor's `screendump` writes each frame, about two a second at 1920×1080; under `--gl` they are read over VNC, about one a second, and a `GAP` shorter than that is stretched to it |
 | `--out <file>` | Where the final shot goes when no `--shot` was given (default `/tmp/kdos-shot.ppm`) |
 | `--keys <keys>` | A monitor `sendkey`, e.g. `meta_l` |
 | `--chord <keys>` | Hold the modifiers and tap the key over VNC, e.g. `meta+shift+t` or `ctrl+alt+f2`. Use it for anything with two modifiers: `sendkey` presses and releases the whole combination at once, and such a chord never arrives |
@@ -844,11 +847,10 @@ the window properties KDOS's KWin patch adds.
 ### The login flows
 
 `testing/flows/` holds seven scripts, each one boot of the rig driving one login path and
-asserting every state it reaches. Flows 01 and 04 to 07 have run on the rig against the live
-ISO: 01, 04, 06 and 07 pass, and 05 fails its lit-screen check because the screen does not come
-back after resume (see
-[Known gaps](../06-reference/known-gaps.md#the-suspend-flow-finds-no-screen-after-resume)). Flows
-02 and 03 need an installed disk and have not run. Every flow is syntax-checked (`bash -n` in
+asserting every state it reaches. Flows 01, 04, 05, 06 and 07 have run on the rig against the
+live ISO and pass; flow 05 asserts that the rig's virtio-gpu display is refused suspend (see
+[Known gaps](../06-reference/known-gaps.md#a-virtio-gpu-machine-is-offered-no-suspend)). Flows 02 and 03 need an installed disk and have not
+run. Every flow is syntax-checked (`bash -n` in
 preflight, and ShellCheck).
 
 ```sh
@@ -863,7 +865,7 @@ testing/flows/04-lock-unlock.sh      # one flow
 | `02-greeter-password.sh` | the installed disk | the password typed at the greeter | the greeter is the active session with no session of the account; then a session opened by the `sddm` PAM service, and `plasma-probe.sh` passes |
 | `03-logout-greeter.sh` | the installed disk | a password login, then `org.kde.Shutdown logout` | plasmashell exits and the greeter is the active session again |
 | `04-lock-unlock.sh` | the ISO | Meta+L, then Shift and the password | `org.freedesktop.ScreenSaver` `GetActive`, logind's `LockedHint` and `kscreenlocker_greet` agree the screen is locked, then that it is not |
-| `05-suspend-resume.sh` | the ISO | `loginctl suspend` with the RTC armed to wake the machine, then a pointer move | the kernel's `suspend_stats/success` moved, the session came back locked, the password unlocks it, `plasma-probe.sh` passes, and `flow_lit` finds both shots lit |
+| `05-suspend-resume.sh` | the ISO | `loginctl suspend` on the rig's virtio-vga, where `40_elogind.sh` turns suspend off | a virtio-gpu device is bound, logind's `CanSuspend` answers `no`, `loginctl suspend` leaves `suspend_stats/success` unchanged, the session is still up and unlocked, `plasma-probe.sh` passes, and `flow_lit` finds the shot lit |
 | `06-vt-switch.sh` | the ISO | Ctrl+Alt+F2, then Ctrl+Alt+F1 | tty2 is in front with its getty and the session inactive; then the session's VT is in front and the session Active |
 | `07-no-tty-leak.sh` | the ISO | `touch /root/kdos-flow-leak` and Return, typed with no window focused | the file does not exist, the session VT's keyboard is in `K_OFF` mode and its tty holds no unread input |
 
@@ -871,13 +873,14 @@ Each flow is one `vnc-shot.py` run whose steps alternate input with `--root-scri
 testing/flows/probe.sh CHECK`, so a check sees the state the step before it left. The probe asks
 logind (which session is active, its class, the PAM service that opened it, its VT, its lock hint),
 the account's session bus (the shell's name, the screen saver) and the kernel (the foreground VT,
-the VT keyboard mode through `KDGKBMODE`, the unread bytes through `FIONREAD`, the suspend counter).
+the VT keyboard mode through `KDGKBMODE`, the unread bytes through `FIONREAD`, the suspend counter,
+and for `no-suspend` whether a virtio-gpu device is bound).
 All three report a healthy session while QEMU's scanout is inactive, so a flow that sets `FLOW_LIT`
 also has those shots read by `flow_lit` in `testing/flows/lib.sh` once every probe has passed: a
 frame whose 64 by 36 sample grid holds fewer than 16 colours, or one colour on more than 98% of
 its points, is unlit, and the flow fails with status 4 naming it. QEMU's *Display output is not
 active* frame and a black screen are unlit; the lock screen and the desktop hold about a hundred
-colours. Only flow 05 sets it, after moving the pointer to wake the output; a text console is unlit
+colours. Only flow 05 sets it, on the shot taken after the refused suspend; a text console is unlit
 by this measure. The other shots, in `build/shots/flows/<flow>/` with the serial log, are for the
 person reading a failure.
 
@@ -914,13 +917,85 @@ mapping it, so a library shared by fifty processes is counted once.
 The numbers for each release are recorded here once they are measured on a release image. No release's
 numbers are recorded.
 
+### The site's screenshots
+
+`testing/siteshots.sh` takes every picture in kdos.dev's gallery from `build/iso-build/kdos.iso`,
+and is run again for each release so that the gallery shows the release the site offers. It runs on
+the host and starts the rig container itself, once per boot, as the invoking user so that every
+file it leaves under `build/` is the user's. It needs the rig image, `/dev/kvm`, `/dev/dri` for
+the runs that use `--gl`, and python3 with Pillow built with WebP for the conversion.
+
+```sh
+testing/siteshots.sh                    # every run, then convert
+testing/siteshots.sh accents console    # take those runs again; the others' frames are kept
+testing/siteshots.sh --convert          # convert what build/siteshots already holds
+```
+
+A run is one boot at 1920×1080:
+
+| Run | Boots | Photographs |
+|---|---|---|
+| `boot` | The ISO, with QEMU driven directly | The Limine menu 5 seconds after power-on, and the boot splash 7 seconds after the kernel's mode switch |
+| `desktop` | The ISO, `--gl` | Welcome Center, the desktop, the Start menu, Konsole with fastfetch, the `kdos` command, Dolphin, Kate, the Overview, KRunner, Okular, KDOS Look in System Settings, and Discover's home and one application's page |
+| `accents` | The ISO, `--gl` | The desktop in every accent of `libkcolor`'s table but the default, Phosphor mode's retro preset, the dock and tiling desks, and the lock screen |
+| `installer` | The ISO, `--gl`, a blank disk | The graphical installer's Welcome, Disk and Look pages. No step presses Install, and nothing is written to the disk |
+| `console` | The ISO | The login banner on `tty2`, and kdos-bb full screen in Konsole: a burst for the animation, and stills |
+| `installed` | An overlay of an installed disk, `--gl` | The SDDM greeter |
+
+The `boot` run does not use `vnc-shot.py`'s steps, because the menu has gone before the kernel
+takes the serial console, which is when `vnc-shot.py` starts. It starts QEMU itself, with
+`vnc-shot.py`'s `Monitor`, and photographs by time from power-on with `screendump`. Nothing is
+written to the serial line, because Limine reads it as input and a byte there stops the countdown.
+The firmware and Limine draw at the firmware's 1280×800; the menu sits at the top of that frame,
+and the conversion cuts the empty rows below it so that the picture is 1280×720, the 16:9 the
+gallery frames every picture in.
+
+Every window is placed by a KWin script the run installs as `/run/kdos-rig/site-place`, so a
+picture frames the same way from one release to the next, and kdos-bb's Konsole is put full screen
+with its toolbars hidden through Konsole's own calls on the session bus. Konsole itself is opened
+with Meta+Return, as a person opens it: a program `--cmd` starts belongs to the login session `su`
+opens, and `kdos version` in a terminal started that way names that `tty` session instead of the
+desktop's. Apart from that, the runs put on the machine only what a user would have: the accent
+wallpapers copied into `~/Pictures`, and `kdos-doc(1)` printed to `~/Documents/kdos-doc.pdf`
+through `mandoc -T ps` and `ps2pdf`. The page is one with no bulleted list and no table: mandoc's
+PostScript draws a bullet as an `o` struck over a `+`, and a table's rules in characters that do
+not line up in a proportional font. The accents are read from `KCOL_SCHEMES` in
+`src/libs/libkcolor/kcolor.h`, so a new accent is photographed without the script changing.
+
+The conversion writes `site/assets/shots/`: `<name>.webp` at full size and quality 80,
+`<name>-640.webp` 640 pixels wide, `kdos-bb.webp` animated from the burst with
+`kdos-bb-still.webp`, its title frame at the animation's size, which the lightbox shows until Play
+is pressed, and `shots.tsv`, one
+row per picture with the columns `file`, `thumb`, `title`, `caption` and `alt`; the gallery in
+`site/home.md` sets the order the page shows them in. The titles, captions and alt texts are in the script beside each picture's name. A picture
+that is missing, or that has fewer than three colours or one colour on more than 99.5% of its
+pixels (a black frame, or QEMU's *Display output is not active*), is named and the script exits 1:
+the others are still written, but `shots.tsv` is left as it was. Only a conversion with every
+picture rewrites `shots.tsv` and removes any other WebP in the directory. The raw frames
+stay in `build/siteshots/<run>/`, with each boot's serial log. A run that passes can still have
+photographed a half-drawn window, a dialog over its subject or an error message, so look at every
+picture, cropped and enlarged, before it is published. kdos-bb's frames are taken by time, so a
+slow host can move a scene by a frame or two: check that the animation's frames and the two stills
+still show the titles and a portrait.
+
+| Variable | Does |
+|---|---|
+| `KDOS_SITESHOTS_DISK` | The installed disk the `installed` run boots a throwaway qcow2 overlay of (default `build/kdos-target.qcow2`). Make it with `testing/install-to-disk.sh` from the ISO being photographed, because the greeter names the release it runs in its corner. That script's answers name the account KDOS Test and choose the Phosphor accent, which the greeter wears |
+| `KDOS_RIG_IMAGE` | The rig image (default `kdos-qemu-py:latest`) |
+| `KDOS_SITESHOTS_DOCKER_ARGS` | More arguments for every `docker run`, such as `--gpus all` for NVIDIA's own EGL |
+
 ### Phosphor mode in the rig
 
 A plain virtual display puts KWin on llvmpipe, which it treats as software rendering, and
 Phosphor mode's CRT effect refuses software rendering, so `kdos phosphor on` is refused there and
-nothing of the effect is in a photograph. Use `--gl`, with the GPU passed into the container
-(`--gpus all --device /dev/dri`, as `session-cost.sh --gl` passes them), or the accelerated image.
-The rig image carries QEMU's OpenGL module and `virglrenderer` for it.
+nothing of the effect is in a photograph. Use `--gl`, or the accelerated image. The rig image
+carries QEMU's OpenGL module, `virglrenderer` and Mesa for it, and `--gl` needs a render node in the
+container: `--device /dev/dri`. Mesa renders the guest's GL on the host's GPU when it has a driver
+for it, and on the host's llvmpipe when it has none, as on an NVIDIA card; either way the guest's
+KWin sees a virgl GPU (`virgl (LLVMPIPE …)` in its support information on the second), so the
+effect loads. NVIDIA's own EGL comes in only with `--gpus all`, as `session-cost.sh --gl` passes
+it, which needs the NVIDIA container toolkit and a driver whose kernel module matches its
+libraries.
 
 ### Vulkan in the rig
 
@@ -945,9 +1020,12 @@ session, so `Monitor.type()` is enough to start a program.
 
 ### How the rig reads the screen
 
-A monitor `screendump` answers "no surface" under accelerated graphics, so the framebuffer is read
-over VNC instead. VNC's encoding negotiation has an exact field layout, and one extra padding field
-desynchronises the stream so every later read blocks forever.
+A monitor `screendump` answers "no surface" under accelerated graphics, so `--shot` reads the
+framebuffer over VNC instead, in the raw encoding. VNC's encoding negotiation has an exact field
+layout, and one extra padding field desynchronises the stream so every later read blocks forever.
+QEMU's server takes about half a second to send a raw 1920×1080 frame, and a second under `--gl`,
+where it reads the frame back from the GPU first. Without `--gl`, `--burst` uses `screendump`,
+which writes a frame in about 0.4 seconds.
 
 ### A real capture device, with no emulator flag
 
@@ -1036,10 +1114,11 @@ The following behaviours of the rig and the guest cause false results.
 - A static screen produces no frames, so anything about dropped frames needs something animating
   first.
 - A step costs seconds, so anything with a timeout must be photographed with no sleep before it.
-  Typing goes one character at a time and a `--shot` is a full framebuffer over VNC: four shots take
-  about a minute. With a five-second notification, a pulse or a tooltip's own delay, a `--sleep`
-  before the shot photographs the desktop after the thing has gone, and the picture looks exactly
-  like the feature being broken.
+  Every input step waits after itself (`--cmd` 4 seconds, `--keys` and `--chord` 3, `--click` 2.5,
+  `--type` 2), typing goes one character per monitor round trip, about a fifth of a second each, and
+  a `--shot` reads a whole frame over VNC, up to a second at 1920×1080. With a five-second
+  notification, a pulse or a tooltip's own delay, a `--sleep` before the shot photographs the
+  desktop after the thing has gone, and the picture looks exactly like the feature being broken.
 - A `--root-cmd` or `--root-script` round trip outlasts a five-second notification. It runs over the
   serial console and waits for the command to finish, which takes longer than the notification it
   raised stays on screen. Raise one with `--type` or a chord, which go over the keyboard and are
@@ -1185,8 +1264,9 @@ catch a paragraph that narrates history in its own words.
 
 ## anchorcheck.py
 
-`python3 testing/anchorcheck.py` checks the part of a link after `#`, in every page of both books
-and in `README.md` and `CLAUDE.md` (`--book DIR` narrows it, a path checks one page). The fragment must be an id
+`python3 testing/anchorcheck.py` checks the part of a link after `#`, in every page of both books,
+in every port's `kfs.md` and in `README.md` and `CLAUDE.md` (`--book DIR` narrows it, and
+`--book docs/kfs` keeps the `kfs.md` notes; a path checks one page). The fragment must be an id
 the target page has as GitHub assigns it: the heading's rendered text lowercased, every character
 other than a letter, digit, `_`, `-` or space dropped, each space turned into `-`, and a repeated id
 suffixed `-1`, `-2` in page order. An `<a id="…">` counts too; a heading inside a code fence does
@@ -1206,7 +1286,10 @@ The package pages of *KDOS from Scratch* are generated and never committed, so a
 checked against the tree instead: on a `docs/kfs` page, a bare `#port-<name>` must name a recipe
 (`+` spelled `x`), `#phase-<name>` a directory under `script/phases`, and
 `#shelf-<phase>-<shelf>` a phase and a shelf. The same anchor after a page name, or on a
-`docs/kdos` page, is refused, because neither the renderer nor GitHub can resolve it.
+`docs/kdos` page, is refused, because neither the renderer nor GitHub can resolve it. A port's
+`kfs.md` becomes its package page, so its links are read as a `docs/kfs` page's are, and a bare
+`#<page id>` in one, kfsgen's id for a `docs/kfs` page (`index`, a part's directory, or
+`<part>-<stem>`), is a link to that page.
 
 ## booknav.py
 
@@ -1250,8 +1333,33 @@ commits are read oldest first and a move carries the state to its new path. `--b
 remote-tracking ref and no base, or outside a checkout, the two gated checks print how many ports
 and patches they would refuse and pass. `testing/preflight.sh` runs `--only patches`, and
 `script/hooks/pre-push` applies the same `Subject:` rule to the commits it pushes and then runs
-`docscheck.sh` and `kfscheck.py` over the working copy; `KDOS_SKIP_PATCH_CHECK=1` and
-`KDOS_SKIP_BOOK_CHECK=1` skip those two parts of the hook.
+`docscheck.sh`, `kfscheck.py` and `mksite.py --check` over the working copy;
+`KDOS_SKIP_PATCH_CHECK=1` and `KDOS_SKIP_BOOK_CHECK=1` skip those two parts of the hook.
+
+## sitecheck
+
+`make sitecheck` runs `python3 script/site/mksite.py --check`, which holds `README.md` and kdos.dev's
+homepage to their one source, `site/home.md` (see
+[Developing](developing.md#rebuilding-one-thing)). It builds the README in memory and exits 1,
+printing a unified diff, when the committed `README.md` differs; `make site` writes it. It also
+fails, naming the cause, on anything that would make either output wrong:
+
+| Fails when | Because |
+|---|---|
+| `home.md` or `site/template.html` names a `{{NAME}}` the script does not know | Every number on the page is read from the tree, never typed |
+| A fact cannot be found: `VERSION_ID` in `fs/etc/os-release`, a recipe's `version`, the catalogue's `app` rows, `KCOL_SCHEMES` and `KCOL_DEFAULT_ID`, `KDOS_ISO_MAX` in the `Makefile`, the disk sizes in `ports/RELEASE`, the release key's id in Getting started, the book's parts in its README, the sources' and a complete build's disk in Developing, the accents `kdos phosphor on` trades for phosphor in `phosphor.c` | The file stopped saying it the way the script reads it, and the page would state a number nothing checks |
+| A `book:` link names a page `docs/kdos` does not have, or a `#fragment` none of that page's headings has; a `repo:` or `asset:` link names a missing file; a `#fragment` of the page itself names none of its headings | Both outputs would carry the dead link |
+| A screenshot in `site/assets/shots/shots.tsv` is shown by neither the gallery nor the accent picker, or one they name is not in it | The gallery and its manifest drift apart |
+| An accent's text, links or quieter text on its ground, its cards or the alternate sections falls below WCAG AA contrast | The page is set in each accent's own colours |
+| An input of the artwork, the `KCOL_SCHEMES` rows, `logo.txt`, `penguin.h`, `kdos.png` or a `kdos-icons` mark, hashes to other than the SHA-256 `site/assets/art/inputs.tsv` records for it | The committed pictures would keep the old colours or shapes beside a page that reads the new ones; `site/art/genart.py` redraws them and the record |
+| The homepage it writes loads a script, stylesheet, font or picture from another host | The site makes no third-party request |
+
+`--check --out DIR` also writes the homepage into `DIR`, as the Pages workflow does; without
+`--out` it writes nothing. With both books in `DIR`, as the workflow puts them, it also fails when a
+link of the KDOS book into *KDOS from Scratch* names a page or a heading id the rendered book does
+not have: `mkbook.py --site` names those pages by `kfsgen.py`'s rule, and the two scripts can
+drift apart. `selftest.sh` holds the same rule without a render, naming every `docs/kfs` page both
+ways and failing where they differ.
 
 ## Measuring frame rate
 
@@ -1419,6 +1527,7 @@ names, and the script reports the target's world set, its package count and its
 | `bootcheck/` | On the host | Plumbing for scripted boots with no display: `boot.sh [soft\|gl]` starts QEMU detached, `guest.py` runs a command on the serial console, `type.py` types into the focused window, `sock.py` owns one QEMU socket. `bootcheck/README.md` describes them |
 | `quick.sh`, `quickpatch.sh` | Host, then guest | [The fast loop](#the-fast-loop) |
 | `plasma-probe.sh`, `session-cost.sh` | Guest; host, then guest | [Checking the session](#checking-the-session), [Time to the panel, and memory at idle](#time-to-the-panel-and-memory-at-idle) |
+| `siteshots.sh` | On the host | [The site's screenshots](#the-sites-screenshots) |
 | `atspi/` | Host, then guest; or the development image | [Goldens](#goldens) |
 | `qemu-audio.sh` | Sourced by the run targets and the rig | Picks a working audio backend rather than hard-coding one, because QEMU aborts at start-up on a backend its build lacks, and sets the mixer's rate, because QEMU's default is 44100 and the guest drives the codec at 48000 |
 | `qemu-hw/` | On the host, needs Docker and the NVIDIA container toolkit | The containerised QEMU with accelerated (virgl) graphics behind `make run-hw` and `make rundisk-hw` (`run.sh iso` and `run.sh disk`, built from its `Dockerfile`). Beside them, `probe.py` boots the ISO with blob resources and prints what the guest's kernel reports about the virtio GPU (its command line, the `virtio_gpu` and DRM messages, the blob and host-visible features), to tell a blob-capable QEMU from plain virgl. |

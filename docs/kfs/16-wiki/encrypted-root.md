@@ -50,7 +50,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3696-3714 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=3766-3784 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -62,7 +62,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3997-4009 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=4067-4079 pin=d5c38affc180 -->
 
 On the A/B layout both root slots are volumes of one LVM group inside the one container, so
 `crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The

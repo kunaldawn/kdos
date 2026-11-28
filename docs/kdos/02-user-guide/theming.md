@@ -3,11 +3,11 @@
 This chapter covers how KDOS looks and how to change it. The look is *KDOS Modern*: Plasma in KDOS
 colours, with square, opaque panels and frames, Noto Sans for reading and JetBrains Mono for
 everything fixed-width. It comes in eight colour schemes called *accents*, and *Phosphor mode*
-turns it into a CRT, with a phosphor glow, optional scanlines and windows that unfold like a
-picture tube warming up. The chapter describes the accents and how to switch them, what an accent
-switch reaches and when, Konsole and the terminal programs, the boot menu, splash, login screen and
-consoles, Phosphor mode, the wallpaper, sounds, fonts, and how applications on the host and in boxes
-take the colours. The last sections describe the generators that write the theme files, for anyone
+turns it into a CRT, with a phosphor glow, optional scanlines, windows that unfold from a line and
+a desktop that warms up like a picture tube after the login. The chapter describes the accents
+and how to switch them, what an accent switch reaches and when, Konsole and the terminal programs,
+the boot menu, splash, login screen and consoles, Phosphor mode, the wallpaper, sounds, fonts, and
+how applications on the host and in boxes take the colours. The last sections describe the generators that write the theme files, for anyone
 who wants to audit or rebuild them. [The design language](../03-architecture/design-language.md#colour)
 explains the colour model underneath it.
 
@@ -125,8 +125,8 @@ With no accent ever chosen, the accent in force is the one Plasma's colour schem
 a KDOS scheme, and otherwise `bone`.
 
 Outside a Plasma session, at a text console or over SSH, `kdos theme` records the global theme for
-the next login and says `Plasma takes it at the next login`; the terminal programs' files and the
-machine's half are written at once.
+the next login and says `Plasma takes it at the next login`; the terminal programs' files, the lock
+screen's wallpaper and the machine's half are written at once.
 
 **Light and dark.** `paper` is the one light accent. Quick Settings' light and dark switch, and the
 Global Theme page's automatic switching, move between the dark accent in force and `paper`; KDOS
@@ -147,7 +147,8 @@ a switch chooses between files that exist. `kdos theme <accent>` runs eight step
    the icons, the cursor, the window decoration, the splash and the fonts, without touching your
    panels; and keeps the light-and-dark pairing on this accent.
 3. Sets the wallpaper and the lock screen's wallpaper to the accent's, but only where the picture
-   in force is a KDOS one; a picture you chose stays.
+   in force is a KDOS one; a picture you chose stays. The lock screen's is set outside a session
+   too, so a machine installed in an accent locks onto that accent's picture from the first login.
 4. Moves Konsole's default profile, and every open Konsole tab on a KDOS profile, to the accent's,
    and QMLKonsole's colour scheme with them.
 5. Writes the terminal programs' colour files, and tells a running tmux to read its configuration

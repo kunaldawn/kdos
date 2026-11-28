@@ -71,9 +71,9 @@ polkit.addRule(function (action, subject) {
 
     /*
      * HELD AT A PASSWORD FOR EVERYONE AT THE MACHINE, whatever comes after
-     * this file: flashing system firmware, letting a Thunderbolt device onto
-     * the PCIe bus, and gvfs's admin:// writes as root. Away from the machine
-     * the defaults apply, and each of them is stricter there.
+     * this file: flashing unsigned system firmware, letting a Thunderbolt
+     * device onto the PCIe bus, and gvfs's admin:// writes as root. Away from
+     * the machine the defaults apply, and each of them is stricter there.
      */
     case "org.freedesktop.fwupd.update-internal":
     case "org.freedesktop.bolt.enroll":

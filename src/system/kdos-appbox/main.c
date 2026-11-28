@@ -371,6 +371,42 @@ static int session_gtk_theme(char *out, size_t n)
 	return 1;
 }
 
+/*
+ * The host's zone name, from where /etc/localtime ($KDOS_LOCALTIME) points:
+ * the part after `zoneinfo/`. A box's own /etc/localtime is its image's, which
+ * for Debian is Etc/UTC, so without TZ every boxed program shows file times
+ * and clocks in UTC. Read per launch, so a zone changed in Settings reaches
+ * the next launch. 0, and nothing in `out`, when the link is absent, is a
+ * plain file, or names something that is not a zone path: glibc reads TZ as
+ * a path under the box's zoneinfo, so a value with `..` or a leading `/`
+ * would point it at some other file, and the box keeps UTC instead.
+ */
+static int box_tz(char *out, size_t n)
+{
+	const char *lt = getenv("KDOS_LOCALTIME");
+	char link[512];
+	const char *zone;
+	ssize_t len;
+
+	len = readlink(lt && *lt ? lt : "/etc/localtime", link,
+		       sizeof(link) - 1);
+	if (len <= 0)
+		return 0;
+	link[len] = '\0';
+	zone = strstr(link, "zoneinfo/");
+	if (!zone)
+		return 0;
+	zone += 9;
+	if (!*zone || *zone == '/' || strlen(zone) >= n ||
+	    strspn(zone, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+			 "0123456789/_+-") != strlen(zone) ||
+	    strstr(zone, "..") || strstr(zone, "//") ||
+	    zone[strlen(zone) - 1] == '/')
+		return 0;
+	kb_strlcpy(out, zone, n);
+	return 1;
+}
+
 static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 		    const Launch *l)
 {
@@ -432,6 +468,12 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 		kb_argv_addf(a, "LOGNAME=%s", who);
 	}
 	kb_argv_add(a, "LANG=C.UTF-8");
+	{
+		char tz[128];
+
+		if (box_tz(tz, sizeof(tz)))
+			kb_argv_addf(a, "TZ=%s", tz);
+	}
 
 	/* The box's own /etc/xdg first, then KDOS's defaults, bound in at
 	 * create (pack_box_create): the order the host session has. A box

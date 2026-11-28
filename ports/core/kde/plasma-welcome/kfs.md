@@ -77,6 +77,14 @@ Plasma update page would leave no way back to it. And a run of one page with no 
 indicator, so Finish is its one exit, where upstream offers Skip beside Finish and a single dot.
 It is to be offered upstream.
 
+`mock-wallpaper.patch` draws the mock desktops of Simple by Default, Powerful When Needed and the
+post-update page on the wallpaper of the global theme in use, where upstream hard-codes Plasma's
+`Next`, so the KDOS tour would show a desktop KDOS does not have. A new `App.defaultWallpaper`
+reads `LookAndFeelPackage` from `kdeglobals`, that package's `defaults` (`[Wallpaper] Image`, which
+each KDOS accent's global theme sets to its own `KDOS-<Accent>` package), and picks the package's
+largest landscape image, from `images_dark` under a dark colour scheme as Plasma's image wallpaper
+does; a theme that names no installed wallpaper keeps `Next`. It is to be offered upstream.
+
 The post-update page offers to download a preview of the Plasma release announcement from
 kde.org. It does so only when the person asks, because `AutomaticUpdatePreview` defaults to
 false; every other link on the pages opens in the web browser.

@@ -704,8 +704,7 @@ The phases from `20_selfhost` on run inside the target root filesystem, `build/f
    read-only at `/kdos/testing` and `ports/` again at `/kdos/ports` for `70_image`'s
    `087_gates.sh`, whose checks run from `/kdos` and read the recipes under it. The `Makefile` and
    the `Dockerfile` are bound read-only over their own paths under `/kdos`, for the listings
-   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium, and
-   `LICENSE` beside them for the MIT text `105_ports.sh` installs. The
+   `kdos-kfs` renders of them and for the sources `110_iso.sh` copies onto a developer medium. The
    repository bind mount does not carry the container's own mounts beneath it, so each directory
    and file a step needs is mounted explicitly. For a `70_image` step from `017_stage.sh` on under
    `KDOS_IMAGE=base`, all of this is mounted in the image stage instead of `build/fs` (see
@@ -1503,10 +1502,13 @@ met:
 | A tag, and changes in the checkout | `the checkout has changes: /ports/TREE does not name release <tag>` |
 | No tag on `HEAD` | `HEAD carries no tag: /ports/TREE names no release, and prebuilt installs need binhost = in update.conf` |
 
-The binhost the same build writes is not named by the tag: `70_image/010_binhost.sh` stamps its
-index `version` with the commit cut to 12 characters, and `kdos update` refuses an index whose
-version is not the tree's, so a machine running a named image cannot take `build/binhost` as its
-`binhost =`. The release's own index is written by `ports/publish --release`, under the tag; see
+The binhost the same build writes is named the same way: `70_image/010_binhost.sh` stamps its
+index `version` with the tag on a clean tagged checkout (`KDOS_GIT_RELEASE`, the value
+`/ports/TREE` gets) and with the commit cut to 12 characters otherwise. `kdos update` refuses an
+index whose version is not the release a tagged tree names, and an untagged tree names none to
+compare, so the image a build writes takes that build's `build/binhost`, or a sources stick's
+copy of it, as its `binhost =`, tagged or not. The release's
+own index is written by `ports/publish --release`, under the tag; see
 [Cutting a release](developing.md#cutting-a-release).
 
 ### How the program is organised

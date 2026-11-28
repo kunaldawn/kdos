@@ -260,37 +260,3 @@ if [ "$unarchived" -gt 0 ]; then
     echo "           ports/publish has not run for them" >&2
 fi
 
-# ── The licence texts of our own ports ──────────────────────────────────
-#
-# /usr/share/licenses/kdos/LICENSE is the repository's MIT text. A package
-# that is KDOS's own work, whose recipe is under src/ or is a ports/core
-# recipe with no source, and whose recipe's `license =` names MIT, gets
-# /usr/share/licenses/<name>/LICENSE as a link to it: no such port carries a
-# copy of the text, and kpkg copies only what a source holds. A meta package
-# owns no file and gets none. An entry the package installs itself is left as
-# it is. The text and the links belong to no package, so testing/unowned.py
-# subtracts exactly these, `kpkg check --all` lists them as unowned, and a
-# later package that installs its own LICENSE there adopts the path.
-LICENCES=/usr/share/licenses
-echo "Installing $LICENCES/kdos/LICENSE..."
-[ -f /kdos/LICENSE ] || { echo "FATAL: /kdos/LICENSE is missing" >&2; exit 1; }
-install -Dm644 /kdos/LICENSE "$LICENCES/kdos/LICENSE"
-nlinks=0
-for p in /var/lib/kpkg/db/*; do
-    [ -f "$p" ] || continue
-    n=${p##*/}
-    r=$(recipe_of "$n") || continue
-    case "$r" in
-        /kdos/src/*) ;;
-        *) ! grep -qE '^source[[:space:]]*=[[:space:]]*[^[:space:]]' "$r" || continue ;;
-    esac
-    awk '$1 == "license" { sub(/^[^=]*=/, ""); print }' "$r" | grep -qw MIT || continue
-    awk 'NR > 1 && /[^\/]$/ { found = 1; exit } END { exit !found }' "$p" || continue
-    if [ -e "$LICENCES/$n/LICENSE" ] || [ -L "$LICENCES/$n/LICENSE" ]; then
-        continue
-    fi
-    install -d -m 0755 "$LICENCES/$n"
-    ln -s ../kdos/LICENSE "$LICENCES/$n/LICENSE"
-    nlinks=$((nlinks + 1))
-done
-echo "  $LICENCES/<name>/LICENSE links the MIT text for $nlinks package(s) of our own"

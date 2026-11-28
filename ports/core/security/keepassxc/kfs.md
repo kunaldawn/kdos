@@ -25,8 +25,10 @@ and `keepassxc-proxy`, the browser extension's native-messaging helper.
   database report, and the update checker's code. This is upstream's default. Everything KeePassXC
   does is then local; browser integration is a local socket to `keepassxc-proxy`.
 - `-D WITH_XC_FDOSECRETS=ON` — implement the freedesktop.org Secret Service on the session bus.
-  Off by default upstream. The integration still has to be turned on in KeePassXC's own settings (see
-  [A saved login needs KeePassXC running](../../../../docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running)).
+  Off by default upstream. The integration still has to be turned on in KeePassXC's own settings,
+  and the bus name is one program's at a time: in a Plasma session `ksecretd`, from
+  [kwallet](#port-kwallet), already serves it (see
+  [A login that typed no password leaves the wallet locked](../../../../docs/kdos/06-reference/known-gaps.md#a-login-that-typed-no-password-leaves-the-wallet-locked)).
 - `-D WITH_XC_AUTOTYPE=ON` — Auto-Type, which types a username and password into another window.
   On Linux it is an X11 plugin, `keepassxc-autotype-xcb`, that needs libXi, libXtst and Qt 5's
   X11 extras, all in `depends`. KeePassXC loads the plugin named after Qt's platform, and there is

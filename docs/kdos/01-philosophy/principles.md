@@ -99,7 +99,7 @@ profile limits are unenforced on KDOS: `kdos-oomd`'s budget check is the only li
 controllers at the root, so the delegated subtree has them to hand on.
 [`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) stays as the second line: it watches memory
 pressure through `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at
-most a tenth of `MemTotal` ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the
+most a tenth of `MemTotal`, or a quarter with swap exhausted ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the
 largest process that is neither the desktop nor its plumbing. A box over the `memory` budget its
 profile declares is chosen first, so the profile key still means something where the limit itself
 could not be applied. Otherwise the largest boxed process is preferred to a host one whenever it

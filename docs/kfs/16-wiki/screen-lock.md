@@ -26,7 +26,7 @@ lock alike, except that neither the live medium nor a virtual machine locks on a
 
 KDOS's defaults, from `fs/usr/share/kdos/xdg/kscreenlockerrc`:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/kscreenlockerrc lines=21-32 pin=6e2969d877d3 -->
+<!-- kfs:include fs/usr/share/kdos/xdg/kscreenlockerrc lines=23-34 pin=6e2969d877d3 -->
 
 So the screen locks after 10 minutes without input, a key or a move within 5 seconds of the lock
 unlocks with no password, and the machine always resumes locked. The screen itself dims at 5

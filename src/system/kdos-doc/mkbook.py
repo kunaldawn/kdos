@@ -9,7 +9,7 @@
 #   mkbook — the KDOS book on the image, and a manual page per KDOS command
 #
 #     mkbook.py DOCS DEST SRC
-#     mkbook.py --html DOCS DEST
+#     mkbook.py --html DOCS DEST [--site URL]
 #
 #   DOCS  a directory holding the book in kdos/ and its pictures in
 #         screenshots/, and nothing else is read from it: the port's own
@@ -19,6 +19,13 @@
 #         README.html lands in
 #   SRC   the repository's src/, read for the manual pages programs ship
 #         themselves
+#   URL   the site the HTML book is published on, DEST being its book/: every
+#         page gets a line linking the site's homepage and the book's
+#         contents, and its canonical address under URL book/; a link into
+#         docs/kfs goes to KDOS from Scratch at URL kfs/, the page kfsgen.py
+#         renders it as, and a link to the repository's README.md to URL,
+#         the homepage written from the same source, instead of the
+#         Markdown on GitHub
 #
 # THREE OUTPUTS, ONE SOURCE. The book is rendered to HTML under
 # /usr/share/doc/kdos with the tree's own layout and kdos.css from beside
@@ -30,7 +37,7 @@
 # command that opens that page. A manual page written by hand beside
 # the book would be a second description going stale; this one is the book's
 # own words. --html writes the first output alone, straight into DEST, which
-# is how the published site is made.
+# is how the published site is made. Every page is <html lang="en">.
 #
 # DOCS IS TWO LINKS IN THE PORT, NOT ONE TO docs/: the recipe hash follows
 # every link in a port's directory, so a link to the whole of docs/ would
@@ -142,17 +149,49 @@ def title_of(path):
 
 # ── the HTML book ─────────────────────────────────────────────────────────
 
-def rewrite_target(value, src_rel, docs):
+def kfs_slug(s):
+    """kfsgen.py's slug()."""
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", s).strip("-")
+
+
+def kfs_url(site, rel, frag):
+    """A docs/kfs page, REL under docs/kfs, as KDOS from Scratch is published
+    at SITE kfs/: the file kfsgen.py's page id names (its Page: a README is
+    `index`, a part's intro.md the part, any other page `<part>-<stem>`), and
+    a heading's id within it, `<page id>--<GitHub's id>`. mksite.py checks
+    every such link against the rendered book before the site is deployed."""
+    d, f = os.path.split(rel)
+    stem = f[:-3]
+    if not d:
+        pid = "index" if stem == "README" else kfs_slug(stem)
+    elif stem == "intro":
+        pid = kfs_slug(d)
+    else:
+        pid = kfs_slug(d + "-" + stem)
+    out = site + "kfs/" + ("" if pid == "index" else pid + ".html")
+    return out + (f"#{pid}--{frag}" if frag else "")
+
+
+def rewrite_target(value, src_rel, docs, site=None):
     """A link as the installed book needs it. `src_rel` is the page's path
     under DOCS (`kdos/04-programs/x.md`); the answer is relative to the
     installed page. A chapter link becomes its .html, a picture moves to
     screenshots/ under the book, and anything else in the repository becomes
-    a link to the repository, since it is not on the image."""
+    a link to the repository, since it is not on the image; with SITE, a
+    page of docs/kfs becomes its page of the site's KDOS from Scratch, and
+    the repository's README.md the site's homepage, which is written from
+    the same source."""
     if not value or value.startswith("#") or value.startswith("/") \
             or SCHEME_RE.match(value):
         return value
     path, _, frag = value.partition("#")
     target = os.path.normpath(os.path.join(os.path.dirname(src_rel), path))
+    if site and target == os.path.join(os.pardir, "README.md"):
+        return site + (("#" + frag) if frag else "")
+    if site and target == "kfs":
+        return kfs_url(site, "README.md", frag)
+    if site and target.startswith("kfs/") and target.endswith(".md"):
+        return kfs_url(site, target[4:], frag)
     if target == "kdos" or target.startswith("kdos/"):
         out = target[5:] if target != "kdos" else ""
         if os.path.isdir(os.path.join(docs, target)):
@@ -197,7 +236,27 @@ def copy_file(src, dst):
         f.write(data)
 
 
-def render_book(docs, root):
+HTML_RE = re.compile(r"<html[^>]*>")
+BODY_RE = re.compile(r"<body[^>]*>")
+
+
+def site_head(site, out_rel):
+    """The canonical address of a page of the book at SITE book/; README.html
+    is the book's index, so its address is the directory."""
+    page = "" if out_rel == "README.html" else out_rel
+    return f'<link rel="canonical" href="{site}book/{page}">\n'
+
+
+def site_line(out_rel):
+    """The line above a page of the published book: the site's homepage, one
+    level above the book, and the book's contents."""
+    up = "../" * out_rel.count("/")
+    return (f'<nav class="site-line" aria-label="kdos.dev">'
+            f'<a href="{up}../">kdos.dev</a> · '
+            f'<a href="{up}README.html">The KDOS book</a></nav>\n')
+
+
+def render_book(docs, root, site=None):
     book = os.path.join(docs, "kdos")
     if not os.path.isfile(os.path.join(book, "README.md")):
         sys.exit(f"mkbook: {docs} holds no kdos/README.md")
@@ -224,14 +283,22 @@ def render_book(docs, root):
             html = lowdown(["-s", "-thtml", "--html-no-skiphtml",
                             "--html-no-escapehtml",
                             "-M", "title=" + title], text)
-            if "</head>" not in html:
-                sys.exit(f"mkbook: {rel}: lowdown wrote no </head>")
-            html = html.replace("</head>", style + "</head>", 1)
+            if "</head>" not in html or not HTML_RE.search(html) \
+                    or not BODY_RE.search(html):
+                sys.exit(f"mkbook: {rel}: lowdown wrote no <html>, </head> or <body>")
+            # The language is set here, not by lowdown's metadata, which
+            # not every lowdown the published site is made with reads.
+            html = HTML_RE.sub('<html lang="en">', html, 1)
+            head = style + (site_head(site, out_rel) if site else "")
+            html = html.replace("</head>", head + "</head>", 1)
             html = github_ids(html, text, rel)
             html = ATTR_RE.sub(
                 lambda m: '%s="%s"' % (m.group(1),
-                                       rewrite_target(m.group(2), rel, docs)),
+                                       rewrite_target(m.group(2), rel, docs, site)),
                 html)
+            if site:
+                b = BODY_RE.search(html)
+                html = html[:b.end()] + "\n" + site_line(out_rel) + html[b.end():]
             out = os.path.join(root, out_rel)
             os.makedirs(os.path.dirname(out), exist_ok=True)
             with open(out, "w", encoding="utf-8") as f:
@@ -427,9 +494,14 @@ def write(path, text):
 
 
 def main():
-    usage = "usage: mkbook.py DOCS DEST SRC | mkbook.py --html DOCS DEST"
-    if len(sys.argv) == 4 and sys.argv[1] == "--html":
-        chapters = render_book(sys.argv[2], sys.argv[3])
+    usage = "usage: mkbook.py DOCS DEST SRC | mkbook.py --html DOCS DEST [--site URL]"
+    if len(sys.argv) in (4, 6) and sys.argv[1] == "--html":
+        site = None
+        if len(sys.argv) == 6:
+            if sys.argv[4] != "--site" or not re.match(r"^https?://.*/$", sys.argv[5]):
+                sys.exit(usage + "\n  --site takes an http(s) URL ending in /")
+            site = sys.argv[5]
+        chapters = render_book(sys.argv[2], sys.argv[3], site)
         print(f"mkbook: {len(chapters)} chapters")
         return
     if len(sys.argv) != 4 or sys.argv[1].startswith("-"):

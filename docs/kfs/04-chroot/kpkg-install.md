@@ -235,6 +235,8 @@ the same tidying, so that no recipe has to:
 - It copies the licence files from the top of the source tree (`LICENSE`, `COPYING`, `NOTICE` and
   the like) into `usr/share/licenses/<name>/`. `pv` keeps its `COPYING` under `docs/`, not at the
   top, so it gets no such directory; its own `make install` puts the file in `usr/share/doc/pv/`.
+  A recipe with no source whose licence names MIT is KDOS's own, and its package gets
+  `usr/share/licenses/<name>/LICENSE` as a link to KDOS's text, `../kdos/LICENSE`.
 - It removes HTML and PDF manuals and every non-English message catalogue, handbook and manual page;
   see [Size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy).
 - It strips the symbol table from any executable or shared library over 32 MiB, and compiles the

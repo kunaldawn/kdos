@@ -3,10 +3,10 @@
 libsecret is the client library of the freedesktop Secret Service: a program stores and looks up
 passwords with it, and libsecret sends those requests over the session bus to whichever program
 owns `org.freedesktop.secrets`. The package also carries `secret-tool`, the same operations from a
-shell. It holds no Secret Service itself; in KDOS the provider is [keepassxc](#port-keepassxc)
-with its Secret Service integration turned on, and while it is not running every lookup fails and
-the program asks again (see
-[A saved login needs KeePassXC running](../../../../docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running)).
+shell. It holds no Secret Service itself; in a Plasma session the provider is `ksecretd`, from
+[kwallet](#port-kwallet), and where nothing provides one, as in a live session, every lookup
+fails (see
+[A login that typed no password leaves the wallet locked](../../../../docs/kdos/06-reference/known-gaps.md#a-login-that-typed-no-password-leaves-the-wallet-locked)).
 [chromium](#port-chromium), [webkitgtk](#port-webkitgtk), [qtkeychain](#port-qtkeychain),
 [kwallet](#port-kwallet), [gvfs](#port-gvfs), [remmina](#port-remmina) and many other programs
 link it.

@@ -75,6 +75,25 @@ if [ -r /etc/kdos/accent ]; then
     unset _accent
 fi
 
+# A MACHINE UNDER THE DOCUMENTED MINIMUM SAYS SO, AND BOOTS ON. KDOS needs
+# 4 GB. A 4 GB machine reports between about 2.9 and 3.8 GiB of MemTotal once
+# the firmware, an integrated GPU's carve-out and the kernel have taken
+# theirs, so the line is 2.75 GiB, over every 2 GB machine and under every
+# 4 GB one. Under it the splash gets a failed stage that names the size, the
+# console gets the same line, and nothing is stopped: a session may still
+# come up, or stall before its first frame, and without this the only sign of
+# the second is a black screen. The size goes in the stage's own name, not a
+# detail line: detail lines are kept across stages, and one sent here would
+# head the WHY: panel of any service that fails later.
+_kb=$(sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\).*/\1/p' /proc/meminfo 2>/dev/null)
+if [ -n "$_kb" ] && [ "$_kb" -lt 2883584 ]; then
+    echo "[KDOS] $((_kb / 1024)) MiB of memory: KDOS needs 4 GB, and may stall"
+    splash total 1
+    splash step "MEMORY $((_kb / 1024)) MIB, NEEDS 4 GB"
+    splash fail
+fi
+unset _kb
+
 # Mount all filesystems in fstab
 splash step "MOUNTING FILESYSTEMS"
 # Check every fstab filesystem with a pass number before anything mounts it.

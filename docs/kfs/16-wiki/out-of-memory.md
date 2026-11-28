@@ -29,15 +29,18 @@ the image carries.
 The daemon has no configuration file. What it watches for and what it never kills are compiled
 into `src/daemons/kdos-oomd/main.c`. `KO_TRIGGER` is written into `/proc/pressure/memory` as a
 stall amount in microseconds and the window it is measured over, `KO_COOLDOWN` is the shortest
-time between two scans, and `KO_AVAIL_PCT` is the share of `MemTotal` that `MemAvailable` in
-`/proc/meminfo` must be at or under before a stall kills anything:
+time between two scans, `KO_AVAIL_PCT` is the share of `MemTotal` that `MemAvailable` in
+`/proc/meminfo` must be at or under before a stall kills anything, `KO_SWAP_PCT` the share of
+`SwapTotal` that `SwapFree` at or under counts as exhausted, and `KO_SWAP_AVAIL_PCT` the higher
+share of `MemTotal` that applies instead while swap is exhausted, because a full zram swap leaves
+reclaim only the program files it reads straight back:
 
-<!-- kfs:include src/daemons/kdos-oomd/main.c lines=67-73 pin=80fc432106d5 -->
+<!-- kfs:include src/daemons/kdos-oomd/main.c lines=67-76 pin=18a4dba9fdb1 -->
 
 The programs it never chooses, matched by process name; every process whose name starts with
 `pipewire` is spared as well:
 
-<!-- kfs:include src/daemons/kdos-oomd/main.c lines=255-271 pin=5aab71029e8c -->
+<!-- kfs:include src/daemons/kdos-oomd/main.c lines=280-296 pin=5aab71029e8c -->
 
 **`/etc/init.d/57_oomd.sh`**, from `fs/etc/init.d/57_oomd.sh`:
 
@@ -115,10 +118,11 @@ cat /proc/pressure/memory
 
 The `full` line is the share of time every runnable task was stalled on memory, averaged over 10,
 60 and 300 seconds. The daemon acts when the `full` stall within one window of `KO_TRIGGER`
-reaches its amount and `MemAvailable` is at most `KO_AVAIL_PCT` percent of `MemTotal`:
+reaches its amount and `MemAvailable` is at most `KO_AVAIL_PCT` percent of `MemTotal`, or at most
+`KO_SWAP_AVAIL_PCT` percent while `SwapFree` is at most `KO_SWAP_PCT` percent of `SwapTotal`:
 
 ```bash
-grep -E 'MemTotal|MemAvailable' /proc/meminfo
+grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
 ```
 
 A single busy program, such as a large copy that recycles the page cache, can stall every task that
@@ -201,7 +205,8 @@ the seat, as over SSH. Run it with `sudo`; `kdos-oomd --explain <user>` says whi
 
 **The desktop froze and no kill was logged.** Check the count with the `status` query above, then
 the pressure: a machine whose `full` stall stays under `KO_TRIGGER` does not fire it, and one whose
-`MemAvailable` stays above `KO_AVAIL_PCT` percent of `MemTotal` kills nothing when it does. Read
+`MemAvailable` stays above `KO_AVAIL_PCT` percent of `MemTotal` (`KO_SWAP_AVAIL_PCT` percent with
+swap exhausted) kills nothing when it does. Read
 `dmesg` for a kill by the kernel. If a protected program is the one using the memory, the daemon
 finds nothing to kill; `ps -eo rss,comm --sort=-rss | head` shows the largest.
 
@@ -214,7 +219,8 @@ several large processes the daemon picks is tested only against recorded process
 gigabytes, streams through the page cache and can stall the machine long enough to fire
 `KO_TRIGGER`, most of all with little swap: the installer's Prepare step turns off every swap area
 on a disk and leaves only [zram](zram-and-swap.md). The page cache counts as available memory, so
-`MemAvailable` stays high and the daemon kills nothing; the `status` query's count stays where it
+`MemAvailable` stays above a quarter of `MemTotal` and the daemon kills nothing, even with the zram
+swap full; the `status` query's count stays where it
 was. The installer's copy is out of reach even when memory does run
 short: `kinstall` sets its own score to -900 when an install starts, and `rsync` and every other
 program the install runs inherit it (`cat /proc/$(pgrep -x rsync | head -1)/oom_score_adj` during

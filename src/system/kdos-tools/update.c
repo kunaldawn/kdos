@@ -1055,6 +1055,9 @@ typedef struct {
 	char needs_bo[512];
 	int measured;
 	long long size;
+	/* `I:`, the bytes the package takes once installed; -1 when the
+	 * stanza carries none, which an index written before the line did. */
+	long long isize;
 } BhStanza;
 
 typedef struct {
@@ -1086,6 +1089,7 @@ static int bh_parse(const char *data, BhIndex *ix)
 	int have = 0, cap = 0;
 
 	memset(&cur, 0, sizeof(cur));
+	cur.isize = -1;
 	for (const char *line = data;; ) {
 		const char *nl = line ? strchr(line, '\n') : NULL;
 		size_t len = !line ? 0 : nl ? (size_t)(nl - line) : strlen(line);
@@ -1109,6 +1113,7 @@ static int bh_parse(const char *data, BhIndex *ix)
 				ix->st[ix->n++] = cur;
 			}
 			memset(&cur, 0, sizeof(cur));
+			cur.isize = -1;
 			have = 0;
 			if (!line || !*line || !nl)
 				break;
@@ -1126,6 +1131,7 @@ static int bh_parse(const char *data, BhIndex *ix)
 		case 'A': kb_strlcpy(cur.arch, v, sizeof(cur.arch)); break;
 		case 'F': kb_strlcpy(cur.file, v, sizeof(cur.file)); break;
 		case 'S': cur.size = atoll(v); break;
+		case 'I': cur.isize = *v >= '0' && *v <= '9' ? atoll(v) : -1; break;
 		case 'C': kb_strlcpy(cur.sha, v, sizeof(cur.sha)); break;
 		case 'B': kb_strlcpy(cur.bhash, v, sizeof(cur.bhash)); break;
 		case 'E': kb_strlcpy(cur.ehash, v, sizeof(cur.ehash)); break;
@@ -7321,6 +7327,69 @@ static int cache_room(long long need, char *why, size_t cap)
 	return -1;
 }
 
+/*
+ * 0 when the root an install writes (`root`, or /) has room for `inst` bytes
+ * of installed packages, and for the `dl` bytes of their downloads too when
+ * the cache is on the same filesystem, with ROOT_KEEP left over; -1 with the
+ * reason in `why` when it has not. `inst` is the packages' `I:` sizes, the
+ * build tools a run that builds installs first among them; a development
+ * facet restored to an installed package is counted by its download alone,
+ * since its stanza's size is the whole package's. A
+ * package whose stanza carries none is not counted, so an index without the
+ * line is checked for its downloads alone (cache_room). Measured before the
+ * first download, because an install that fills the root ends with every
+ * package in and a root no program can write to, and the next install is
+ * the first thing to say so. Free space is what an ordinary user may use:
+ * the blocks reserved for root keep the system running, and a desktop
+ * session is not root.
+ */
+#define ROOT_KEEP (128LL << 20)
+
+static int nearest_stat(const char *path, struct stat *st, struct statvfs *sv)
+{
+	char d[1024];
+	kb_strlcpy(d, path, sizeof(d));
+	while (stat(d, st) != 0 || (sv && statvfs(d, sv) != 0)) {
+		char *sl = strrchr(d, '/');
+		if (!sl || sl == d)
+			return stat("/", st) == 0 && (!sv || statvfs("/", sv) == 0)
+				       ? 0 : -1;
+		*sl = 0;
+	}
+	return 0;
+}
+
+static int root_room(const char *root, long long inst, long long dl,
+		     char *why, size_t cap)
+{
+	const char *r = root && *root ? root : "/";
+	struct stat rs, cs;
+	struct statvfs sv;
+	int shared;
+
+	if (inst <= 0 || nearest_stat(r, &rs, &sv) != 0)
+		return 0;
+	shared = nearest_stat(cache_dir(), &cs, NULL) == 0 &&
+		 cs.st_dev == rs.st_dev && dl > 0;
+	unsigned long long avail = (unsigned long long)sv.f_bavail * sv.f_frsize;
+	unsigned long long need = (unsigned long long)inst + ROOT_KEEP +
+				  (shared ? (unsigned long long)dl : 0);
+	if (need <= avail)
+		return 0;
+	char a[32], b[32], f[32];
+	kb_strlcpy(a, kb_human_size((unsigned long long)inst), sizeof(a));
+	kb_strlcpy(b, kb_human_size((unsigned long long)dl), sizeof(b));
+	kb_strlcpy(f, kb_human_size(avail), sizeof(f));
+	if (shared)
+		snprintf(why, cap, "the packages take %s once installed and "
+			 "their downloads %s more in %s, and %s has %s free",
+			 a, b, cache_dir(), r, f);
+	else
+		snprintf(why, cap, "the packages take %s once installed and %s "
+			 "has %s free", a, r, f);
+	return -1;
+}
+
 /* The words of <tree>/<file>, NULL-terminated (kb_strv_free); an empty list
  * when the tree carries none. '#' starts a comment. */
 static char **words_load(const KpConf *c, const char *file)
@@ -7692,6 +7761,46 @@ static void install_index_advice(const KpConf *c, int refused,
 				"signed index\n");
 }
 
+/*
+ * A GROUP IS MEASURED WHOLE BEFORE ITS FIRST MEMBER: each member checks the
+ * root for itself, and members that each fit can still fill it between
+ * them, leaving the group half in and the root full. The members' run-time
+ * closure, as order_runtime routes each one, less what is installed and
+ * what the index does not hold, against root_room(). 0 when it fits or
+ * nothing is sized, -1 with the reason in `why`.
+ */
+static int group_room(const KpConf *c, const BhIndex *ix, const Group *gr,
+		      const char *root, char *why, size_t cap)
+{
+	KpOrder *ord = kb_calloc(1, sizeof(*ord));
+	long long inst = 0, dl = 0;
+	int r;
+
+	kp_resolve(c, gr->ports, gr->n, ord);
+	order_runtime_set(c, ix, gr->ports, gr->n, 0, ord);
+	for (int i = 0; i < ord->n; i++) {
+		char w[96];
+		char *pd;
+		int m;
+
+		if (kp_installed(c, ord->order[i]))
+			continue;
+		pd = kp_port_dir(c, ord->order[i]);
+		if (!pd)
+			continue;
+		free(pd);
+		m = bh_match(c, ix, ord->order[i], w, sizeof(w));
+		if (m < 0)
+			continue;
+		if (ix->st[m].isize > 0)
+			inst += ix->st[m].isize;
+		dl += bh_to_fetch(&ix->st[m]);
+	}
+	free(ord);
+	r = root_room(root, inst, dl, why, cap);
+	return r;
+}
+
 static int cmd_install(const KpConf *c, int argc, char **argv)
 {
 	int dry = 0, mode = -1, deps = -1, pending = 0, dev = 0, ndev = 0;
@@ -7807,9 +7916,22 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			}
 			int have = install_index(c, dry, &gix, gwhy,
 						 sizeof(gwhy), &grefused);
-			if (have)
+			int full = 0;
+			if (have) {
+				char rwhy[384];
+				if (group_room(c, &gix, gr,
+					       root ? root : c->root, rwhy,
+					       sizeof(rwhy)) != 0) {
+					fprintf(stderr, dry
+						? "kdos update: %s; %s does "
+						  "not fit\n"
+						: "kdos update: %s; nothing in "
+						  "%s was downloaded\n",
+						rwhy, gr->id);
+					full = 1;
+				}
 				bh_free(&gix);
-			else {
+			} else {
 				fprintf(stderr, "kdos update: %s; nothing in "
 						"%s was installed\n", gwhy,
 					gr->id);
@@ -7817,7 +7939,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			}
 			if (glock >= 0)
 				close(glock);
-			if (!have) {
+			if (!have || full) {
 				groups_free(g, ng);
 				return 1;
 			}
@@ -8032,8 +8154,18 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		}
 		need += dp.n;
 	}
-	char room[256] = "";
+	char room[256] = "", rroom[384] = "";
 	int roomy = cache_room(bytes + dp.bytes, room, sizeof(room)) == 0;
+	long long inst = 0;
+	for (int i = 0; i < ord->n; i++)
+		if (route[i] == ROUTE_PREBUILT && ix.st[st[i]].isize > 0)
+			inst += ix.st[st[i]].isize;
+	for (int i = 0; i < dp.n; i++)
+		if (dp.it[i].kind == DEV_TOOL &&
+		    ix.st[dp.it[i].stanza].isize > 0)
+			inst += ix.st[dp.it[i].stanza].isize;
+	int rooty = root_room(root ? root : c->root, inst, bytes + dp.bytes,
+			      rroom, sizeof(rroom)) == 0;
 	const char **srcv = kb_calloc((size_t)ord->n + 1, sizeof(*srcv));
 	int nsrcv = 0;
 	for (int i = 0; i < ord->n; i++)
@@ -8065,11 +8197,16 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 			}
 		}
 		printf("total %d %lld %d\n", npre, bytes, nsrc);
+		printf("installed %lld\n", inst);
 		if (!need)
 			printf("%s is already installed\n", name);
 		rc = 0;
 		if (!roomy) {
 			fprintf(stderr, "kdos update: %s\n", room);
+			rc = 1;
+		}
+		if (need && !rooty) {
+			fprintf(stderr, "kdos update: %s\n", rroom);
 			rc = 1;
 		}
 		if (build_check(c, built, nbuilt, 1, "") != 0)
@@ -8079,6 +8216,11 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	if (need && !roomy) {
 		fprintf(stderr, "kdos update: %s; nothing was downloaded\n",
 			room);
+		goto out;
+	}
+	if (need && !rooty) {
+		fprintf(stderr, "kdos update: %s; nothing was downloaded\n",
+			rroom);
 		goto out;
 	}
 	if (build_check(c, built, nbuilt, 0, "; nothing was downloaded") != 0)

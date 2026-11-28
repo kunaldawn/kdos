@@ -13,7 +13,7 @@
         "Id": "kdos_runraise",
         "License": "MIT",
         "Name": "KDOS Run or Raise",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-Plasma-API": "declarativescript"
 }

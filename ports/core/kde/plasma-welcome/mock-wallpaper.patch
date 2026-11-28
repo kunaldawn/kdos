@@ -1,0 +1,150 @@
+Subject: Mocks: draw the global theme's wallpaper instead of Next
+
+The mock desktops of Simple by Default, Powerful When Needed and the
+update page draw /usr/share/wallpapers/Next whatever the session uses,
+so a distribution whose global theme names its own wallpaper shows a
+tour of a desktop it does not ship. App gains defaultWallpaper: the
+image the global theme in use names in its defaults ([Wallpaper] Image),
+its images_dark variant under a dark colour scheme as the image
+wallpaper chooses, the largest landscape size; Next when the theme
+names none that is installed.
+
+diff --git a/src/app.cpp b/src/app.cpp
+index bd1d353..b129891 100644
+--- a/src/app.cpp
++++ b/src/app.cpp
+@@ -7,8 +7,14 @@
+  */
+ 
+ #include <QDir>
++#include <QGuiApplication>
++#include <QImageReader>
++#include <QPalette>
++#include <QStandardPaths>
+ 
+ #include <KAuthorized>
++#include <KConfig>
++#include <KConfigGroup>
+ #include <KDesktopFile>
+ #include <KOSRelease>
+ #include <KPluginMetaData>
+@@ -52,6 +58,57 @@ QString App::installPrefix() const
+     return QString::fromLatin1(PLASMA_WELCOME_INSTALL_DIR);
+ }
+ 
++QString App::defaultWallpaper() const
++{
++    const QString fallback = QStringLiteral("file:") + installPrefix() + QStringLiteral("/share/wallpapers/Next/contents/images/5120x2880.png");
++
++    const KConfig globals(QStringLiteral("kdeglobals"));
++    const QString lookAndFeel = globals.group(QStringLiteral("KDE")).readEntry("LookAndFeelPackage", QStringLiteral("org.kde.breeze.desktop"));
++    const QString defaults =
++        QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("plasma/look-and-feel/") + lookAndFeel + QStringLiteral("/contents/defaults"));
++    if (defaults.isEmpty()) {
++        return fallback;
++    }
++    const QString image = KConfig(defaults, KConfig::SimpleConfig).group(QStringLiteral("Wallpaper")).readEntry("Image", QString());
++    if (image.isEmpty()) {
++        return fallback;
++    }
++    const QString package = QDir::isAbsolutePath(image)
++        ? image
++        : QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("wallpapers/") + image, QStandardPaths::LocateDirectory);
++    if (package.isEmpty()) {
++        return fallback;
++    }
++
++    // As Plasma's image wallpaper: images_dark under a dark colour scheme
++    // when the package has it, and of the landscape sizes the largest.
++    const bool dark = qGuiApp && qGuiApp->palette().color(QPalette::Window).lightness() < 128;
++    QStringList dirs{package + QStringLiteral("/contents/images")};
++    if (dark) {
++        dirs.prepend(package + QStringLiteral("/contents/images_dark"));
++    }
++    for (const QString &dirname : std::as_const(dirs)) {
++        QString best;
++        qint64 bestArea = 0;
++        const QFileInfoList files = QDir(dirname).entryInfoList(QDir::Files | QDir::Readable, QDir::Name);
++        for (const QFileInfo &file : files) {
++            const QSize size = QImageReader(file.absoluteFilePath()).size();
++            if (size.width() < size.height()) {
++                continue;
++            }
++            const qint64 area = qint64(size.width()) * size.height();
++            if (area > bestArea) {
++                bestArea = area;
++                best = file.absoluteFilePath();
++            }
++        }
++        if (!best.isEmpty()) {
++            return QStringLiteral("file:") + best;
++        }
++    }
++    return fallback;
++}
++
+ QString App::distroPagesDir() const
+ {
+     return QString::fromLatin1(DISTRO_CUSTOM_PAGE_FOLDER);
+diff --git a/src/app.h b/src/app.h
+index 3ef7407..3aeff0a 100644
+--- a/src/app.h
++++ b/src/app.h
+@@ -31,6 +31,7 @@ public:
+     Q_ENUM(Mode)
+ 
+     QString installPrefix() const;
++    QString defaultWallpaper() const;
+     QString distroPagesDir() const;
+     QStringList distroPages() const;
+     bool isDistroSnapOnly() const;
+@@ -38,6 +39,10 @@ public:
+     Q_PROPERTY(Mode mode MEMBER m_mode CONSTANT)
+     Q_PROPERTY(QStringList pages MEMBER m_pages CONSTANT)
+     Q_PROPERTY(QString installPrefix READ installPrefix CONSTANT)
++    // The image the mocks draw as the desktop: the wallpaper the global
++    // theme in use names, the dark variant under a dark colour scheme,
++    // or Next when the theme names none that is installed.
++    Q_PROPERTY(QString defaultWallpaper READ defaultWallpaper CONSTANT)
+     Q_PROPERTY(QString distroPagesDir READ distroPagesDir CONSTANT)
+     Q_PROPERTY(QStringList distroPages READ distroPages CONSTANT)
+     Q_PROPERTY(bool isDistroSnapOnly READ isDistroSnapOnly CONSTANT)
+diff --git a/src/qml/mock/MockActivities.qml b/src/qml/mock/MockActivities.qml
+index 0db5cfd..c5b80fb 100644
+--- a/src/qml/mock/MockActivities.qml
++++ b/src/qml/mock/MockActivities.qml
+@@ -107,7 +107,7 @@ Item {
+                     // We're intentionally ignoring our 16:10 desktop wallpaper (MockDesktop) - whilst that fits the square
+                     // window, we want to maximise what we can fit in our limited height and be more representative of what
+                     // a user will see - most use a 16:9 display.
+-                    source: "file:" + Private.App.installPrefix + "/share/wallpapers/Next/contents/images/5120x2880.png"
++                    source: Private.App.defaultWallpaper
+                     mipmap: true
+                 }
+ 
+diff --git a/src/qml/mock/MockCard.qml b/src/qml/mock/MockCard.qml
+index 04e98a9..33ade1b 100644
+--- a/src/qml/mock/MockCard.qml
++++ b/src/qml/mock/MockCard.qml
+@@ -22,7 +22,7 @@ Kirigami.AbstractCard {
+     property double backgroundScale: 1
+     property int blurRadius: 32
+ 
+-    readonly property string wallpaper: "file:" + Private.App.installPrefix + "/share/wallpapers/Next/contents/images/5120x2880.png"
++    readonly property string wallpaper: Private.App.defaultWallpaper
+     readonly property int desktopWidth: 1024 * backgroundScale
+     readonly property int desktopHeight: 576 * backgroundScale
+ 
+diff --git a/src/qml/mock/MockOverview.qml b/src/qml/mock/MockOverview.qml
+index 1571a47..840d040 100644
+--- a/src/qml/mock/MockOverview.qml
++++ b/src/qml/mock/MockOverview.qml
+@@ -19,7 +19,7 @@ Item {
+ 
+     // We're intentionally ignoring our 16:10 desktop wallpaper (MockDesktop) - whilst that fits the square
+     // window, we want to be more representative of what a user will see - most use a 16:9 display.
+-    readonly property string wallpaper: "file:" + Private.App.installPrefix + "/share/wallpapers/Next/contents/images/5120x2880.png"
++    readonly property string wallpaper: Private.App.defaultWallpaper
+     readonly property double scale: layout.scale
+ 
+     // Underlay

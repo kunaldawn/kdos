@@ -7,7 +7,7 @@
  * ---------------------------------
  *   the tree policy: one rule in kpkg instead of one loop per recipe
  *
- * Four steps the build runs on every port (build.c), so no recipe carries
+ * Five steps the build runs on every port (build.c), so no recipe carries
  * them:
  *
  *   kp_src_refresh_config  before build.sh: every config.guess and
@@ -16,14 +16,19 @@
  *                          inside a vendored Rust crate
  *   kp_pkg_licences        the source root's top-level licence files into
  *                          usr/share/licenses/<name>/
+ *   kp_pkg_kdos_licence    for a recipe with no source whose licence names
+ *                          MIT (KDOS's own work), usr/share/licenses/<name>/
+ *                          LICENSE as a link to ../kdos/LICENSE, the text
+ *                          10_bootstrap/000_file_system.sh installs
  *   kp_pkg_prune           HTML and PDF manuals, every non-English
  *                          message catalog, handbook and man page, and
  *                          the section-8 pages of systemd units
  *   kp_pkg_symtab          .symtab/.strtab out of ELF executables and
  *                          shared objects over 32 MiB
  *
- * The three package steps run on $PKG before the manifest exists, so a path
- * they remove is never in the package and never owned in the database.
+ * The four package steps run on $PKG before the manifest exists, so a path
+ * they remove is never in the package or the database, and a path they add
+ * is in both.
  * Changing what any of them removes or adds changes what a package contains,
  * and moves KP_STORE_FORMAT (kpkg.h) with it.
  *
@@ -32,6 +37,7 @@
  * ---------------------------------
  */
 
+#include <ctype.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <fnmatch.h>
@@ -485,6 +491,51 @@ void kp_pkg_licences(const char *pkg, const char *name, const char *src)
 	free(srcreal);
 	if (n)
 		kp_msg("Added %d licence file(s) to /%s", n, rel);
+}
+
+/* `MIT` as one identifier of the SPDX expression: `MIT-0` and a
+ * `LicenseRef-` naming MIT are other licences. */
+static int names_mit(const char *expr)
+{
+	const char *s = expr;
+	while (*s) {
+		while (*s && !(isalnum((unsigned char)*s) || strchr(".+-", *s)))
+			s++;
+		const char *b = s;
+		while (*s && (isalnum((unsigned char)*s) || strchr(".+-", *s)))
+			s++;
+		if (s - b == 3 && !strncmp(b, "MIT", 3))
+			return 1;
+	}
+	return 0;
+}
+
+static int not_dir(const char *p, const struct stat *st, int type,
+		   struct FTW *f)
+{
+	(void)p;
+	(void)st;
+	(void)f;
+	return type != FTW_D && type != FTW_DP;
+}
+
+void kp_pkg_kdos_licence(const char *pkg, const char *name,
+			 const char *license)
+{
+	if (!names_mit(license) || nftw(pkg, not_dir, 16, FTW_PHYS) != 1)
+		return;
+	char rel[512];
+	snprintf(rel, sizeof(rel), "usr/share/licenses/%s", name);
+	if (!real_dirs(pkg, rel))
+		return;
+	char *dir = kb_path_join(pkg, rel);
+	char *to = kb_path_join(dir, "LICENSE");
+	struct stat st;
+	if (lstat(to, &st) != 0 && kb_mkdir_p(dir) == 0 &&
+	    symlink(KP_KDOS_LICENCE_LINK, to) == 0)
+		kp_msg("Linked /%s/LICENSE to KDOS's text", rel);
+	free(to);
+	free(dir);
 }
 
 /* ── kp_pkg_symtab ───────────────────────────────────────────────────── */

@@ -73,13 +73,13 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,403 | Upstream software, filed on 102 shelves |
+| `/ports/core` | `ports/core/` | 2,402 | Upstream software, filed on 102 shelves |
 | `/kdos/src/system` | `src/system/` | 8 | KDOS's own `kdos` command and tools, the packer, the box runtime, its init and its Wayland socket holder, the installer, and the two books: `kdos-doc`, the KDOS book on the image, and `kdos-kfs`, *KDOS from Scratch*, which is not on the image and installs with `sudo kdos update install kdos-kfs` |
 | `/kdos/src/art` | `src/art/` | 8 | KDOS's own theme generator, icon themes, wallpapers, sounds, login screen, boot splash, offline add-ons and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 21 | KDOS's own Plasma code and data: the global themes and Plasma style, the settings pages, widgets, KWin effects and scripts, the KRunner runner, the Discover backend, the welcome pages, the kded module and the graphical installer |
 | `/kdos/src/daemons` | `src/daemons/` | 7 | KDOS's own root daemons, and `kdos-mdnsd` |
 
-That is 2,447 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,446 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -185,7 +185,7 @@ as one list. A phase has one or the other, never both.
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
 | `40_lang` | `packages.d/`, 13 files | 186 | 186 |
-| `41_system` | `packages.d/`, 98 files | 1,048 | 1,048 |
+| `41_system` | `packages.d/`, 98 files | 1,047 | 1,047 |
 | `42_graphics` | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | `packages.d/`, 61 files | 422 | 422 |
@@ -193,8 +193,8 @@ as one list. A phase has one or the other, never both.
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,443 distinct ports and install 2,447:
-2,403 of the 2,403 in `ports/core`, and every recipe under `src/`. `ports/unbuilt` is where a
+that no earlier phase did. Between them the lists name 2,442 distinct ports and install 2,446:
+2,402 of the 2,402 in `ports/core`, and every recipe under `src/`. `ports/unbuilt` is where a
 recipe kept for `kpkg install` and built by no phase would be named, removed from the image by the
 orphan sweep if an earlier build left it installed; it names none. Any other recipe no list
 reaches would never be built, so `testing/bookcounts.py`, run by `testing/docscheck.sh`, refuses
@@ -498,9 +498,9 @@ now sits on and deletes the old copy only after the new one is verified and the 
 `ports/publish --orphans --prune=yes-delete`, which deletes files no current recipe, no recipe at
 any `v*` tag and no freeze list names. A checkout years old therefore finds the exact bytes it was
 written against even after the upstream host has gone, fetched with the newest index through
-`ports/fetch --tree`. The current `ports/core` recipes name 2,572 distinct hashed files over 102
-shelves, the largest shelf, `python-libs`, naming 82. 44 of them are small files git tracks beside
-their recipes, and the other 2,528, about 39.3 GiB, are archived in four volumes. Stored by hash, a
+`ports/fetch --tree`. The current `ports/core` recipes name 2,877 distinct hashed files over 102
+shelves, the largest shelf, `python-libs`, naming 87. 46 of them are small files git tracks beside
+their recipes, and the other 2,831, about 40.2 GiB, are archived in four volumes. Stored by hash, a
 file several ports use is one asset, in the volume of the first shelf that names it; the LLVM monorepo tarball, for example, is shared by eight ports.
 
 The commands and settings:
@@ -1189,9 +1189,11 @@ never written through. A text the source keeps anywhere else (`doc/COPYING`, a R
 comment in a header) is installed by `build.sh`, which copies a licence the source only names
 from a package already in the tree, and a public-domain or CC0 source, which holds none, installs
 none; 70_image's `087_gates.sh` reports every package left with no
-`usr/share/licenses/<name>`. The ports of our own carry no copy of KDOS's MIT text: 70_image's
-`105_ports.sh` installs the repository's `LICENSE` as `/usr/share/licenses/kdos/LICENSE` and links
-each such package's `LICENSE` to it. The recipe's `license =` key states the SPDX expression the texts belong to, and
+`usr/share/licenses/<name>`. The ports of our own carry no copy of KDOS's MIT text: 10_bootstrap's
+`000_file_system.sh` installs the repository's `LICENSE` as `/usr/share/licenses/kdos/LICENSE`,
+which no package owns, and for a recipe with no `source` whose `license =` names `MIT` kpkg makes
+the package's `usr/share/licenses/<name>/LICENSE` a link to it, so a package of ours carries the
+link from the binhost as on the image. The recipe's `license =` key states the SPDX expression the texts belong to, and
 `kpkg info` prints it. It then applies the
 [size and language policy](../05-developer/writing-ports.md#size-and-language-policy): HTML and PDF
 manuals under `usr/share/doc` and `usr/share/texmf-dist/doc` (except the HTML a program opens
@@ -1575,6 +1577,7 @@ opens the file. Each package stanza carries:
 | `A:` | Architecture |
 | `F:` | The package file name |
 | `S:` `C:` | Its size and SHA-256 |
+| `I:` | The bytes the package takes once installed: the larger of its tar's unpacked size, read from the `.xz` file's own stream index with nothing decompressed, and the disk its installed files take on the indexing machine when that machine holds the same version and release with a file record. The tar's size alone undercounts a package of many small files, each taking a whole block on disk, and the measure alone undercounts on a filesystem that compresses. Absent when neither can be read; `kpkg index` says how many packages carry none. `kdos update install` sums it to refuse an install that would not fit on the root ([`kdos update install`](../04-programs/kdos-command.md#install-routes-and-groups)), and reads a stanza without it as unsized |
 | `B:` | The build-config hash of the machine that wrote the index |
 | `E:` | The recipe hash, taken from the ports tree on that machine; empty for a package whose port that tree does not have, or for a file whose version and release are not the ones its recipe there declares |
 | `T:` | The recipe's description |
@@ -1993,10 +1996,10 @@ An image is newer when its release time is later than the running root's (`TREE_
 either side the versions decide, so a signed manifest of an older release is never offered.
 
 The `VERSION` a filled slot's `/etc/kdos-release` records has one form, the image build's and
-`kdos update`'s alike: a release gives its number without its tag's `v` (`0.2.1`), anything else
+`kdos update`'s alike: a release gives its number without its tag's `v` (`0.2`), anything else
 `os-release`'s `VERSION_ID`, `+` and the commit as the tree's `TREE` file records it, twelve
-characters (`0.2.1+4dc1f7f826a3`: the image build's short hash, with `-dirty` from an image built from
-a tree git had not recorded). The tree's `version` line keeps its tag (`v0.2.1`), the
+characters (`0.2+4dc1f7f826a3`: the image build's short hash, with `-dirty` from an image built from
+a tree git had not recorded). The tree's `version` line keeps its tag (`v0.2`), the
 name the binhost index is found by.
 
 **An update keeps the route each package arrived by.** `/var/lib/kdos/origin` holds one

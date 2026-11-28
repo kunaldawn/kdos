@@ -5,8 +5,7 @@ machine updates by building from that tree, and kpkg fetches each source over th
 port is built, so none of the fetched tarballs has to be on the medium.
 `script/phases/70_image/105_ports.sh` stages the tree, stamps it with the commit it came from,
 installs the key a newer tree must be signed with, writes [`/usr/share/kdos/SOURCES`]{.idx}, the
-image's [source offer]{.idx}: where the source of everything on the image can be had, and installs
-KDOS's own licence text.
+image's [source offer]{.idx}: where the source of everything on the image can be had.
 
 ## Staging the tree
 
@@ -132,27 +131,17 @@ recipe names. If no installed package's source is in the index at all, the phase
 
 ## KDOS's licence text
 
-The repository's `LICENSE`, the MIT text of everything KDOS wrote, is installed as
-[`/usr/share/licenses/kdos/LICENSE`]{.idx}; a tree without it stops the phase. No port of our own
-carries a copy, and kpkg copies only what a source holds, so the step then gives each installed
-package of our own its `/usr/share/licenses/<name>/LICENSE` as a link to `../kdos/LICENSE`. A
-package is of our own when its recipe is under `src/`, or is a `ports/core` recipe with no
-`source` (`containers-common`, `musl-ldd`). It gets the link only when its recipe's `license =`
-names `MIT`, so `kdos-bb` (GPL-2.0) and `kdos-sddm-theme` (LGPL-2.0) keep only the texts their
-`build.sh` installs; when it owns at least one file, so a meta package such as `kde-plasma` gets
-none; and when no `LICENSE` is there already. The text and the links belong to no package:
-`testing/unowned.py` subtracts exactly these, a link there pointing anywhere else is reported, and
-`kpkg check --all` lists them as unowned. A package of ours installed later from the binhost gets
-no link; `/usr/share/licenses/kdos/LICENSE` is its text. A recipe under `MIT AND` another licence
-gets the link for its MIT part, and its `build.sh` installs the other text: `kdos-icons` the
-LGPL-3.0 and GPL-3.0 texts it copies from gcc's licence directory, `kdos-splash` terminus-font's,
-and `kdos-tools`, `kdos-pack` and `kdos-packd`, which link the vendored Monocypher, its
-`LICENCE.md` as `monocypher-LICENCE.md`.
+This step writes no licence. The repository's `LICENSE`, the MIT text of everything KDOS wrote, is
+on the tree from [000_file_system.sh](../03-bootstrap/000-file-system.md#kdoss-licence-text) on as
+`/usr/share/licenses/kdos/LICENSE`, and kpkg builds each package of our own with its
+`/usr/share/licenses/<name>/LICENSE` as a link to `../kdos/LICENSE`, owned by that package, so a
+package of ours installed later from the binhost carries the link as the image's copy does; see
+[What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh).
 
 ## What it leaves
 
 On the image, `/etc/kdos/keys/tree/` with the release key or empty, `/etc/kdos/keys/` with the release and binhost keys the build has, and
-`/usr/share/kdos/SOURCES`, `/usr/share/licenses/kdos/LICENSE` and the `LICENSE` links to it. On your machine, `build/image-ports/ports/`, which becomes `/ports` on
+`/usr/share/kdos/SOURCES`. On your machine, `build/image-ports/ports/`, which becomes `/ports` on
 the image when `110_iso.sh` appends it to `system.sfs`:
 
 ```text

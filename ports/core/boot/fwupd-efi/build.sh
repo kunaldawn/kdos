@@ -15,6 +15,6 @@ meson setup build --prefix=/usr --libdir=lib --buildtype=release \
 	-Defi_sbat_distro_summary=KDOS \
 	-Defi_sbat_distro_pkgname=$name \
 	-Defi_sbat_distro_version=$version-$release \
-	-Defi_sbat_distro_url=https://github.com/kunaldawn/kdos
+	-Defi_sbat_distro_url=https://kdos.dev/
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

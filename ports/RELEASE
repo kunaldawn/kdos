@@ -1,7 +1,8 @@
 KDOS 0.2 is a KDE Plasma desktop on a small, signed base system. The image
 carries the base; applications, games, language packs and firmware install
-prebuilt from this release's packages, by name or as a group, in Discover, in
-the installer or with `kdos update install`.
+prebuilt from this release's packages: one at a time in Discover, as a group
+in the installer or on Welcome Center's Make It Yours page, or by name or
+group with `sudo kdos update install`.
 
 ## What it needs
 
@@ -11,7 +12,7 @@ the installer or with `kdos update install`.
   memory.
 - For an install, about 24.5 GiB of disk for the two system slots updates
   switch between, with the default 4 GiB swap (20.5 GiB with none). A smaller
-  disk gets one slot and no rollback.
+  disk gets one slot and no rollback, down to about 8 GiB with no swap.
 - The medium carries Intel, AMD, MediaTek and Realtek firmware. Other Wi-Fi
   cards and GPUs (Qualcomm, Atheros, Broadcom, NVIDIA) need a network first,
   over Ethernet or a supported card, then `sudo kdos firmware sync`.

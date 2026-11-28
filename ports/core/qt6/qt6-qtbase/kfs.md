@@ -3,9 +3,10 @@
 are written in. `qt6-qtbase` is its first module: QtCore, QtGui, QtWidgets,
 QtNetwork, QtSql, QtDBus, QtOpenGL, QtPrintSupport and QtConcurrent, the build tools (`moc`,
 `rcc`, `uic`, `qmake6`), and the platform plugins that put a window on a screen. Every other
-`qt6-*` port builds on it and inherits its install layout. The desktop itself links no toolkit;
-Qt is for applications (see
-[Toolkits are for applications, not the desktop](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
+`qt6-*` port builds on it and inherits its install layout. It is the desktop's toolkit as well:
+Plasma, KDE Frameworks and KDOS's own desktop code are Qt 6, while KDOS's system programs, its
+root daemons and the `libk*` libraries link no toolkit (see
+[The desktop is KDE Plasma](../../../../docs/kdos/01-philosophy/principles.md#the-desktop-is-kde-plasma)).
 
 What this recipe decides for the whole Qt 6 set, and why, is in
 [How Qt 6 is built](../../../../docs/kdos/05-developer/writing-ports.md#how-qt-6-is-built); the

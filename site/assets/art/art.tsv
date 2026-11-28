@@ -1,0 +1,50 @@
+file	purpose	alt
+banner-phosphor.png	852x348: the KDOS block wordmark with a phosphor glow in the PHOSPHOR accent, transparent; the hero swaps it with the accent	KDOS
+banner-amber.png	852x348: the KDOS block wordmark with a phosphor glow in the AMBER accent, transparent; the hero swaps it with the accent	KDOS
+banner-ice.png	852x348: the KDOS block wordmark with a phosphor glow in the ICE accent, transparent; the hero swaps it with the accent	KDOS
+banner-bone.png	852x348: the KDOS block wordmark with a phosphor glow in the BONE accent, transparent; the hero swaps it with the accent	KDOS
+banner-norton.png	852x348: the KDOS block wordmark with a phosphor glow in the NORTON accent, transparent; the hero swaps it with the accent	KDOS
+banner-borland.png	852x348: the KDOS block wordmark with a phosphor glow in the BORLAND accent, transparent; the hero swaps it with the accent	KDOS
+banner-perfect.png	852x348: the KDOS block wordmark with a phosphor glow in the PERFECT accent, transparent; the hero swaps it with the accent	KDOS
+banner-paper.png	852x348: the KDOS block wordmark with a phosphor glow in the PAPER accent, transparent; the hero swaps it with the accent	KDOS
+penguin-phosphor.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the PHOSPHOR accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-amber.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the AMBER accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-ice.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the ICE accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-bone.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the BONE accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-norton.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the NORTON accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-borland.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the BORLAND accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-perfect.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the PERFECT accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+penguin-paper.png	546x576: the boot splash penguin, 182x192 at 3x nearest-neighbour, its rim, belly and beak in the PAPER accent as the splash draws them, transparent	The KDOS penguin, a muscular Tux flexing both arms
+social-card.png	1200x630: OpenGraph and Twitter card, opaque: the wordmark, the penguin, the name, the stack and the address, in the Phosphor accent	KDOS, Kool Desktop Operating System: a Linux distribution compiled from source; musl, GNU, sysvinit, KDE Plasma. A green phosphor wordmark beside the KDOS penguin.
+readme-hero.png	1280x420: the README's banner, rounded corners on transparency so it sits on a light or a dark page: the wordmark, the penguin, the name and the stack, in the Phosphor accent	KDOS, Kool Desktop Operating System: musl, GNU, sysvinit, KDE Plasma
+accent-phosphor.png	400x236: swatch card for the PHOSPHOR accent (KDOS-Phosphor): name, the three accents, the grounds and fills, its text on its ground	The Phosphor accent: swatches of its colours
+accent-amber.png	400x236: swatch card for the AMBER accent (KDOS-Amber): name, the three accents, the grounds and fills, its text on its ground	The Amber accent: swatches of its colours
+accent-ice.png	400x236: swatch card for the ICE accent (KDOS-Ice): name, the three accents, the grounds and fills, its text on its ground	The Ice accent: swatches of its colours
+accent-bone.png	400x236: swatch card for the BONE accent (KDOS-Bone), the default: name, the three accents, the grounds and fills, its text on its ground	The Bone accent, the default: swatches of its colours
+accent-norton.png	400x236: swatch card for the NORTON accent (KDOS-Norton): name, the three accents, the grounds and fills, its text on its ground	The Norton accent: swatches of its colours
+accent-borland.png	400x236: swatch card for the BORLAND accent (KDOS-Borland): name, the three accents, the grounds and fills, its text on its ground	The Borland accent: swatches of its colours
+accent-perfect.png	400x236: swatch card for the PERFECT accent (KDOS-Perfect): name, the three accents, the grounds and fills, its text on its ground	The Perfect accent: swatches of its colours
+accent-paper.png	400x236: swatch card for the PAPER accent (KDOS-Paper): name, the three accents, the grounds and fills, its text on its ground	The Paper accent: swatches of its colours
+badge-from-source.png	88x31: web button in the PAPER accent; show it at 1x or 2x with image-rendering: pixelated	Built from source
+badge-no-systemd.png	88x31: web button in the AMBER accent; show it at 1x or 2x with image-rendering: pixelated	No systemd init: sysvinit
+badge-musl-inside.png	88x31: web button in the ICE accent; show it at 1x or 2x with image-rendering: pixelated	musl inside
+badge-plasma.png	88x31: web button in the BONE accent; show it at 1x or 2x with image-rendering: pixelated	KDE Plasma 6
+badge-wayland.png	88x31: web button in the NORTON accent; show it at 1x or 2x with image-rendering: pixelated	Wayland session
+badge-ab-updates.png	88x31: web button in the BORLAND accent; show it at 1x or 2x with image-rendering: pixelated	A/B updates
+badge-kpkg.png	88x31: web button in the PERFECT accent; show it at 1x or 2x with image-rendering: pixelated	Powered by kpkg
+badge-phosphor.png	88x31: web button in the PHOSPHOR accent; show it at 1x or 2x with image-rendering: pixelated	Best viewed in Phosphor
+crt-bezel.png	1280x824: a beige CRT monitor face with a transparent 16:9 screen at x=96 y=72 w=1088 h=612 (in % of the image: left 7.5000 top 8.7379 width 85.0000 height 74.2718); lay a 1920x1080 screenshot under it	
+rule-dither.png	480x8: section rule: a two-pixel line that dithers out at both ends, white on transparent	
+bullet.png	16x16: list bullet: a text-mode right-pointing triangle, white on transparent	
+pixel-floppy.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: a 3.5-inch floppy disk; for saving or downloading; tint with CSS mask-image	
+pixel-book.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: an open book; for the documentation; tint with CSS mask-image	
+pixel-terminal.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: a terminal window with a prompt; for the command line; tint with CSS mask-image	
+pixel-package.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: a taped cardboard box; for packages; tint with CSS mask-image	
+pixel-slots.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: two slots, A and B, with an arrow between them; for A/B updates; tint with CSS mask-image	
+pixel-window.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: a desktop window with a title bar; for the desktop; tint with CSS mask-image	
+pixel-shield.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: a shield with a keyhole; for security; tint with CSS mask-image	
+pixel-code.png	64x64: pixel icon, drawn at 16x16 and shipped at 4x, white on transparent: angle brackets round a slash, as in source code; for building from source; tint with CSS mask-image	
+favicon.ico	48x48: favicon: the tux marks of kdos-icons at 16, 32 and 48	
+favicon-32.png	32x32: favicon as PNG: the tux mark	
+icon-192.png	192x192: web app icon: the penguin on a rounded tile of the default accent's ground	
+apple-touch-icon.png	180x180: apple-touch-icon, square and opaque: the penguin on the default accent's ground	

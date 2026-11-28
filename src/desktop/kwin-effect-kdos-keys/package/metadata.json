@@ -14,7 +14,7 @@
         "Id": "kdos_keys",
         "License": "MIT",
         "Name": "KDOS Key Card",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-KDE-Ordering": 60,
     "X-Plasma-API": "declarativescript"

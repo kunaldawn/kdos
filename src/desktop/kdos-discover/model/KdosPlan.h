@@ -78,6 +78,9 @@ struct PlanContext {
     QString mediumPacks = QStringLiteral("/mnt/iso/packs");
     QString portsHelper = QStringLiteral("/usr/libexec/kdos-discover/kdos-ports-helper");
     QString portsBuilder = QStringLiteral("/usr/libexec/kdos-discover/kdos-ports-builder");
+    // The live medium: what installs here goes into a RAM overlay the next
+    // start discards, and no system update ever reaches it.
+    bool live = false;
 };
 
 struct Plan {

@@ -44,10 +44,12 @@ to use Docker is equivalent to root on that machine, since a container can mount
 And `build/fs`, the target root filesystem, is owned by root, so reading or deleting it takes root
 or a container; see [Where the build puts things](#where-the-build-puts-things).
 
-**Disk.** The upstream sources for the current tree take about 42.2 GB (39.3 GiB): the 2,528
+**Disk.** The upstream sources for the current tree take about 43.1 GB (40.2 GiB): the 2,831
 distinct files the recipes fetch, which is what `ports/.srccache/` holds after a complete
 `make fetch`. Each distinct file is held once in the cache and hard-linked into every port directory
-that names it. Budget tens of gigabytes more for `build/`, and more again for phase snapshots: the
+that names it. A complete build adds about 70 GB under `build/`, about 52 GB of it the target tree
+and about 11 GB the compiler cache, which is capped at 20 GB; writing a binary host as well
+(`KDOS_MAKE_BINHOST=1`) takes about 18 GB more. Phase snapshots take more again: the
 first of the eleven phases from `00_cross` to `50_desktop` archives the target tree compressed, each
 later one a layer of what it added, changed or rewrote, and `60_kernel` and `70_image` take none.
 On a synthetic ten-phase tree the layers came to 23% of what full copies take; a complete set from
@@ -200,12 +202,12 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore`, `keys` and `binhost-key`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys` and `binhost-key`, and except what only root can remove | |
 | `help` | List every target that carries a one-line description; `check-iso-free` and `check-hw` carry none | |
-| `check` | Run `preflight`, `selftest`, `docscheck`, `anchorcheck`, `booknav`, `kfscheck`, `phaseclosure`, `defaultscheck`, `xdgcheck`, `lnfcheck`, `aboutcheck` and `atspi-selftest` in turn | |
+| `check` | Run `preflight`, `selftest`, `docscheck`, `anchorcheck`, `booknav`, `kfscheck`, `sitecheck`, `phaseclosure`, `defaultscheck`, `xdgcheck`, `lnfcheck`, `aboutcheck` and `atspi-selftest` in turn | |
 | `preflight`, `selftest`, `docscheck`, `phaseclosure` | Run that check alone; see [Working without a build at all](#working-without-a-build-at-all) | A C compiler for `preflight` and `selftest`; Python 3 for `preflight`, `docscheck` and `phaseclosure` |
 | `defaultscheck`, `xdgcheck` | Read every KDOS default for a KDE program back through the XDG configuration cascade against `testing/fixtures/defaultscheck/defaults.tsv`; check that KDOS's defaults stay in `/usr/share/kdos/xdg` and out of `/etc/xdg`. See [Testing](testing.md#the-desktops-defaults) | Python 3; bash |
 | `lnfcheck`, `aboutcheck` | Hold the KDOS global themes and desks to what Plasma reads, and prove each of that check's verdicts can fail; prove each verdict of the About-page check can fail, the check itself needing a booted tree. See [Testing](testing.md#the-desktops-defaults) | Python 3; bash |
 | `plasmatest` | The Qt half of the checks: build every KDOS Qt port with its QtTest suites, load its plugins, install its Plasma packages into a scratch root and lint its QML (`PLASMATEST_ARGS` reaches it, e.g. `--selftest`). Not part of `check`; it refuses on a host without the tools. See [Testing](testing.md#plasmatestsh) | The development image: `testing/devdeps-image.sh plasmatest` |
-| `anchorcheck`, `booknav`, `kfscheck` | Check every `#fragment` link in both books; every chapter footer and *KDOS from Scratch*'s contents; that book's port notes, includes, patch headers, kernel option table and recipe stamp against the tree, and that its whole source generates without a warning (`KFSCHECK_ARGS` reaches it, e.g. `--strict`). See [Testing](testing.md#kfscheckpy) | Python 3 |
+| `anchorcheck`, `booknav`, `kfscheck` | Check every `#fragment` link in both books and the port notes; every chapter footer and *KDOS from Scratch*'s contents; that book's port notes, includes, patch headers, kernel option table and recipe stamp against the tree, and that its whole source generates without a warning (`KFSCHECK_ARGS` reaches it, e.g. `--strict`). See [Testing](testing.md#kfscheckpy) | Python 3 |
 | `booknav-write` | Rewrite every chapter footer of both books, and *KDOS from Scratch*'s contents | Python 3 |
 | `selftest-asan` | `selftest` compiled with `SELFTEST_CC`, by default AddressSanitizer and UBSan | A compiler with the sanitizers |
 | `depdrift` | Read `build/fs` for undeclared same-phase link dependencies; advisory | Read access to `build/fs`: a container or root; Python 3 |
@@ -215,6 +217,8 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `book` | Render *KDOS from Scratch* into `build/kfs`: the HTML book under `html/`, `kfs.pdf` and `kfs-html.tar.zst`. Every package page is generated from its recipe on each run. About two minutes | Python 3; pandoc and typst, by default the ones in `BUILDFS` |
 | `book-data` | Rewrite the book's committed snapshot, `docs/kfs/data`, from `BUILDFS`'s package database and `build/snapshots/timings.json`, with the recipe stamp beside it | Python 3; read access to a built tree's `var/lib/kpkg/db` |
 | `book-stamp` | Rewrite the book's recipe stamp, `docs/kfs/data/recipes.stamp`, alone, from the checkout | Python 3 |
+| `site` | Write `README.md` and kdos.dev's homepage, into `SITE_OUT` (`build/site`), from `site/home.md`; see [Rebuilding one thing](#rebuilding-one-thing) | Python 3 |
+| `sitecheck` | Fail, printing the difference, when `README.md` is not what `site` would write. See [Testing](testing.md#sitecheck) | Python 3 |
 | `quick` | The fast loop: rebuild the ports named by `QUICK` and patch them into a booted ISO; `QUICK_ARGS` reaches the rig | Docker, `/dev/kvm`, the rig image, a finished ISO |
 | `session-probe` | Boot the ISO on the rig, measure the time to the Plasma panel and the idle memory (`testing/session-cost.sh`, given `SESSION_ARGS`), then check the session is whole (`testing/plasma-probe.sh`, given `PROBE_ARGS`) | Docker, `/dev/kvm`, the rig image, a finished ISO |
 | `shots` | Boot the ISO and photograph the desktop, Kickoff, KRunner and the Overview into `build/shots` | The same |
@@ -255,11 +259,16 @@ reads its package database; `book` reads the same database for the full file lis
 installed package, and by default renders with the pandoc and typst that tree carries, run through
 its own loader (`$(BUILDFS)/usr/lib/libc.so --library-path $(BUILDFS)/usr/lib`), so the book is
 made by KDOS's own binaries on any Linux host. `KFS_PANDOC` and `KFS_TYPST` replace either with
-any command, such as a host's own:
+any command, such as a host's own. `KFSGEN_ARGS` is passed to `kfsgen.py`: kdos.dev's render gives
+it `--kdos-book https://kdos.dev/book/`, which sends the book's links into the KDOS book to the
+site's copy instead of GitHub. `KFSRENDER_ARGS` is passed to `kfsrender.py`, and kdos.dev's render
+gives it `--home https://kdos.dev/`, a link to the homepage in every page's top bar:
 
 ```sh
 make book BUILDFS=../kdos/build/fs
 make book KFS_PANDOC=pandoc KFS_TYPST=typst
+make book KFSGEN_ARGS="--kdos-book https://kdos.dev/book/" \
+    KFSRENDER_ARGS="--home https://kdos.dev/"
 make book-data                     # after a build
 make book-stamp                    # after any change that stales the stamp; no built tree
 ```
@@ -594,10 +603,11 @@ remote holds adds or changes must carry a `Subject:` line in its mail header, be
 A `[PATCH]` tag alone is not a subject. A patch moved without a change is not new. Set
 `KDOS_SKIP_PATCH_CHECK=1` to skip it.
 
-**The books.** `testing/docscheck.sh` and `testing/kfscheck.py` run over the working copy, not the
-pushed commit, so push from a checkout of what you are pushing. A stale recipe stamp fails here
-until `make book-stamp` has run; see [Make targets](#make-targets). Set `KDOS_SKIP_BOOK_CHECK=1` to
-skip it.
+**The books.** `testing/docscheck.sh`, `testing/kfscheck.py` and `script/site/mksite.py --check`
+run over the working copy, not the pushed commit, so push from a checkout of what you are pushing.
+A stale recipe stamp fails here until `make book-stamp` has run, and a `README.md` that is not what
+`site/home.md` makes until `make site` has; see [Make targets](#make-targets). Set
+`KDOS_SKIP_BOOK_CHECK=1` to skip it.
 
 **The archive.** The hook then enforces the archive's side of fetching. For each ref pushed, it
 takes the hashes the pushed commit's recipes name and the remote's current commit does not, and
@@ -623,6 +633,7 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 | A Plasma module, or a KDOS desktop component (`src/desktop`, `src/daemons`, or `src/art`'s login theme and add-ons) | `make build BUILD_ARGS="--phases 50_desktop,70_image --rebuild <port>"`; leave `70_image` out to look at it with `testing/quick.sh` instead |
 | A KDE Frameworks, Plasma or Gear release | Every recipe of that family in one change, then `make build BUILD_ARGS="--continue-from 41_system"`; see below |
 | The book under `docs/` | `make build BUILD_ARGS="--phases 41_system,70_image"`; see below |
+| The homepage or `README.md` (`site/`) | `make site`; no build. See below |
 | A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,43_toolkits,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
 | The installer (`src/system/kdos-installer`, `src/system/kinstall-core`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 41_system,70_image --rebuild kdos-installer"`; see below |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
@@ -706,7 +717,11 @@ The build container mounts `docs/` read-only, and `script/chroot/exec.sh` binds 
 `/kdos/docs`. The generator, `mkbook.py`, fails the build when a row of the index links a section
 the book does not have, and leaves out a command whose own port ships its manual page
 (`kdos-bb.1`). `mkbook.py --html DOCS DEST` writes the HTML book alone, into `DEST`, from any
-directory holding `kdos/` and `screenshots/`; the published site is made that way from `docs/`.
+directory holding `kdos/` and `screenshots/`; the published site is made that way from `docs/`,
+with `--site https://kdos.dev/`, which puts a line linking the homepage above each page, gives each
+page its canonical address, sends a link into `docs/kfs` to that page of the site's *KDOS from
+Scratch*, and sends a link to the repository's `README.md` to the homepage, which is written from
+the same source.
 
 *KDOS from Scratch* is a port the same way. `src/system/kdos-kfs`, also in `41_system`, renders
 `docs/kfs` with pandoc and typst and installs the HTML under `/usr/share/doc/kfs` with `kfs.pdf`
@@ -720,14 +735,76 @@ once `make book-stamp` or `make book-data` has rewritten it. The port renders fr
 checkout as the chroot sees it, and reads the recipes at `/kdos/ports`; it takes about two minutes. The full file list on each package page comes from the
 chroot's package database, so it names only what is installed before `kdos-kfs` builds.
 
-**Both books are also published.** `.github/workflows/books.yml` renders them on every push to
-`main` and deploys one GitHub Pages site: the KDOS book at its root, *KDOS from Scratch* under
-`kfs/`, and `kfs/kfs.pdf`. It renders `docs/kdos` with `mkbook.py --html` and Ubuntu's lowdown, and
-`docs/kfs` with `make book` and upstream's pandoc and typst release binaries at the ports' versions,
-each checked against a sha256 written in the workflow; a version bump in either recipe is a bump
-there too. When a `v*` release is published the workflow renders the book from its tag and attaches
-`kfs.pdf` and `kfs-html.tar.zst` to it. The repository's Pages source must be *GitHub Actions*: the
-tree carries no Jekyll configuration, and a branch-built site would try to render all of it.
+**Both books are also published, at kdos.dev.** `.github/workflows/books.yml` builds the site on
+every push to `main` and deploys it to GitHub Pages: the homepage at the root, the KDOS book under
+`book/`, *KDOS from Scratch* under `kfs/` with `kfs/kfs.pdf`, and, at the root, a stub for every
+page of the KDOS book that sends the reader on to the same page under `book/`, `#fragment` and all.
+It renders `docs/kdos` with `mkbook.py --html` and Ubuntu's lowdown, and `docs/kfs` with `make book`
+and upstream's pandoc and typst release binaries at the ports' versions, each checked against a
+sha256 written in the workflow; a version bump in either recipe is a bump there too. The homepage
+comes last, from `script/site/mksite.py --check`, which writes the stubs and `sitemap.xml` from the
+two rendered books and stops the run before anything is deployed when `README.md` is stale or a
+link from the KDOS book into *KDOS from Scratch* lands on no page or heading of it. When a
+`v*` release is published the workflow renders the book from its tag and attaches `kfs.pdf` and
+`kfs-html.tar.zst` to it. The repository's Pages source must be *GitHub Actions*: the tree carries
+no Jekyll configuration, and a branch-built site would try to render all of it. The custom domain,
+kdos.dev, is set in the repository's Pages settings.
+
+**The homepage and `README.md` are one source.** `site/home.md` holds the words of both; `make site`
+runs `script/site/mksite.py`, which writes `README.md` at the root of the checkout as
+GitHub-flavoured Markdown and writes the homepage into `build/site` (`SITE_OUT` names another
+directory): `index.html` from `site/template.html`, dressed by `site/style.css` and `site/site.js`,
+with `404.html`, `robots.txt`, `sitemap.xml`, the favicon and the pictures and fonts of
+`site/assets`. Edit `site/home.md` and run `make site`; an edit to `README.md` alone is undone by the
+next run, and [`make sitecheck`](testing.md#sitecheck) fails until the two agree. `home.md` is a
+small subset of Markdown, with a few block directives (`::: hero`, `::: facts`, `::: gallery`,
+`::: accents`, `::: cards`, `::: steps` and the rest), each described at the top of `mksite.py`.
+Every number on the page is a `{{NAME}}` the script reads from the tree: the release from
+`fs/etc/os-release`, the port count from `ports/core` and KDOS's own recipes under `src/`, the
+boxed applications from the catalogue, the Plasma, Frameworks, Gear, kernel and musl versions from
+their recipes, the accents from `KCOL_SCHEMES`, the licences of KDOS's own packages from their
+recipes and of `kpkg` from the bootstrap step that compiles it, the developer from `LICENSE`, the
+disk two system
+slots need from kinstall-core's own sizes, which `ports/RELEASE` must state as well, and the
+smallest disk one slot takes from `ports/RELEASE`, the release key's id from
+[Getting started](../02-user-guide/getting-started.md#download), the book's parts from its contents,
+and the disk a first build needs from [What a development machine
+needs](#what-a-development-machine-needs); a name it does not know, or a fact
+it cannot find, stops it. So does a link into the book whose page or heading is missing, a
+screenshot `shots.tsv` lists that the page does not show, an accent whose colours would set text
+below WCAG AA contrast, and artwork drawn from inputs that have changed since. The page's colours
+are custom properties written from `KCOL_SCHEMES`, one rule per accent, and its scripts and
+stylesheets request nothing from another host, which the script checks in what it writes. It needs only Python 3's standard library.
+
+To look at the page, serve `build/site` (`python3 -m http.server -d build/site`) and open it;
+`?accent=amber` picks an accent and `?phosphor=1` turns Phosphor mode on for one visit, without
+remembering either. The deployed site adds the two books: `mksite.py --out DIR` writes the stubs and
+lists the books in `sitemap.xml` when it finds them in `DIR/book` and `DIR/kfs`, as the workflow
+puts them.
+
+**The homepage's pictures and fonts are generated, and committed.** `site/art/genart.py` draws
+everything under `site/assets/art/`: the block wordmark and the boot splash's penguin in each of
+the eight accents, a swatch card per accent, the 88x31 buttons, a CRT bezel to lay a screenshot
+under, the social card, the README's banner, pixel icons, rules, scanline textures and the
+favicons. Beside them it writes `art.tsv`, one line per file with its size, its purpose and its alt
+text, empty for a decorative one, and `inputs.tsv`, the SHA-256 of each input below but the fonts,
+which `mksite.py` recomputes on every run and stops on when one differs. It reads the accents from
+`KCOL_SCHEMES` in `src/libs/libkcolor/kcolor.h`, the wordmark from `fs/usr/share/kdos/logo.txt`,
+the penguin from `src/art/kdos-splash/penguin.h`, `kdos.png` and the `kdos-icons` marks, and sets
+its captions in the Terminus and misc-fixed bitmap strikes of a built tree's
+`build/fs/usr/share/fonts` (`--fontdir` names another), so a change to any of them is a re-run, never an edit of a picture.
+Any Python 3 with Pillow runs it from the checkout, `python3 site/art/genart.py`; `--check` draws
+in memory instead and exits 1 when a committed picture's pixels differ from what the inputs give,
+or when `site/assets/art/` holds a file it does not draw. `--fonts` also writes the page's web
+fonts to `site/assets/fonts/` with their licences: Terminus as a whole WOFF2, since its licence
+reserves the name for an unmodified font, and JetBrains Mono subset to Latin, box drawing and
+blocks, without hinting or ligatures. That needs fontTools and brotli, which the built tree's own
+Python carries:
+
+```sh
+PYTHONHOME=$PWD/build/fs/usr build/fs/usr/lib/libc.so --library-path build/fs/usr/lib \
+    build/fs/usr/bin/python3 -I site/art/genart.py --fonts
+```
 
 Three programs link the libraries outside any recipe. The orchestrator is recompiled at the start of
 every build. The package manager `kpkg` and the installer `kinstall` are compiled by the
@@ -782,7 +859,7 @@ docker run --rm -v "$PWD/build:/b" os-dev rm -rf /b/fs /b/mark /b/cross
 make build BUILD_ARGS=--fresh
 ```
 
-Budget most of a day for the build that follows. It writes no snapshots unless given `--snapshot`
+Budget a day or more for the build that follows. It writes no snapshots unless given `--snapshot`
 (`make build BUILD_ARGS="--fresh --snapshot"`) or `S` in the picker; with them, budget the disk as
 well: `00_cross` archives `build/cross`, `build/fs` and `build/mark` compressed, and each later
 phase to `50_desktop` a layer of what it changed. A complete set has not been measured; see

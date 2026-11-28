@@ -87,4 +87,7 @@ The sixteen terminal colours of the Konsole schemes are libkcolor's `kcol_ansi()
 derivation `kdos theme` writes into tmux, btop and the other terminal programs, so a terminal
 program's status line and the terminal under it agree about blue. The profiles set `WordModeCoding=false`: Konsole otherwise draws the characters
 programming ligatures are made of as one run, and JetBrains Mono joins `!=` or `->` into a single
-glyph, where a terminal has to show what was typed.
+glyph, where a terminal has to show what was typed. They open a new window at 120 columns by 31
+rows (`TerminalColumns`, `TerminalRows`): the skeleton's 30-line fastfetch and the prompt under it
+fit whole, which Konsole's own 110 by 28 scrolls the logo's top out of, and the window, about
+1110 by 700 pixels at the profiles' 11-point face, still fits a 1366x768 screen above the panel.

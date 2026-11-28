@@ -657,12 +657,20 @@ modest machine.
   stuck on memory for 15% of the last second) and sleeps until the kernel signals it. A sampling
   loop would itself compete for processor time with the stall it is trying to notice.
 - A stall kills only when memory is short. When the trigger fires the daemon reads
-  `/proc/meminfo` and kills nothing unless `MemAvailable` is at most 10% of `MemTotal`. A single
+  `/proc/meminfo` and kills nothing unless `MemAvailable` is at most 10% of `MemTotal`, or at most
+  25% with swap exhausted. A single
   busy process stalls every task that wants to run when it waits on reclaim itself: a copy
   streaming gigabytes through the page cache, such as the installer's `rsync`, fires the trigger
   with most of memory available and nothing else asking for any, and killing it would free
   nothing anyone was short of. A process pushing the working set out is the case that also takes
-  `MemAvailable` down. A `/proc/meminfo` that cannot be read leaves the stall as the only test.
+  `MemAvailable` down. With `SwapFree` at most 2% of a non-zero `SwapTotal` the line is 25%
+  instead. Once the zram swap is full no anonymous page can leave memory, reclaim drops the live
+  system's own program files and reads them straight back from the squashfs, and `MemAvailable`,
+  which counts those files as reclaimable, stays near a fifth of `MemTotal` while every task
+  stalls. The line is raised, not dropped: pages swapped out once stay in zram after memory frees
+  up, and a copy on a machine whose swap filled earlier, with most of memory available, is still
+  the busy-process case. A machine with no swap keeps the 10% line alone. A
+  `/proc/meminfo` that cannot be read leaves the stall as the only test.
 - A process can be protected by its `oom_score_adj`. A process whose
   `/proc/<pid>/oom_score_adj` is -500 or lower is never a victim; -1000 is the kernel's "never
   kill" and -500 is the threshold other user-space killers honour. Only root can lower the value,
@@ -743,8 +751,8 @@ processes have been killed since boot.
 `kdos-oomd --fixture <dir>` reads a recorded `/proc` tree, prints the process it would kill as
 `would kill <name> … (pid <pid>, <size> kB)` with the recorded pressure, and signals nobody. It
 exits 0 when there is a candidate and 1 (printing `no candidate`) when there is none. A tree with a
-`meminfo` whose `MemAvailable` is above 10% of `MemTotal` prints
-`no kill: <avail> of <total> kB available` and exits 1, the answer the daemon gives a trigger
+`meminfo` whose `MemAvailable` is above 10% of `MemTotal` with swap absent or more than 2% free,
+or above 25% with swap exhausted, prints `no kill: <avail> of <total> kB available` and exits 1, the answer the daemon gives a trigger
 there; a tree without one is judged on the stall alone.
 
 `kdos-oomd --protected` prints the protected names one a line, the prefix rule last, which is what

@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,403 recipes under `ports/core` and the
-44 recipes KDOS writes itself under `src/`, 2,447 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,402 recipes under `ports/core` and the
+44 recipes KDOS writes itself under `src/`, 2,446 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -110,17 +110,17 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 13 files | 186 | 186 |
-| `41_system` | System | `packages.d/`, 98 files | 1,048 | 1,048 |
+| `41_system` | System | `packages.d/`, 98 files | 1,047 | 1,047 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 189 | 189 |
 | `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | Applications | `packages.d/`, 61 files | 422 | 422 |
 | `50_desktop` | Desktop | `packages.txt` | 92 | 92 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,452 | 2,447 |
+| Total | | | 2,451 | 2,446 |
 
-The lists hold 2,452 lines naming 2,443 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,447 ports, every recipe in the tree.
+The lists hold 2,451 lines naming 2,442 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,446 ports, every recipe in the tree.
 `ports/unbuilt` names the recipes kept for `kpkg install` that no phase builds, each to be
 marked `not built` in their tables; it lists 0. `testing/bookcounts.py` fails on any other recipe
 no phase builds.
@@ -259,7 +259,7 @@ Every recipe, counted by where it lives.
 | [`gis`](#gis) | 27 |
 | [`eda`](#eda) | 29 |
 | [`embedded`](#embedded) | 30 |
-| [`sdr-hw`](#sdr-hw) | 19 |
+| [`sdr-hw`](#sdr-hw) | 18 |
 | [`sdr`](#sdr) | 24 |
 | [`hamradio`](#hamradio) | 26 |
 | [`ai`](#ai) | 7 |
@@ -275,7 +275,7 @@ Every recipe, counted by where it lives.
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
 | [`src/daemons`](#srcdaemons) | 7 |
-| Total | 2,447 |
+| Total | 2,446 |
 
 ## The shelves
 
@@ -441,7 +441,7 @@ tooling. 24 ports, under `ports/core/boot/`.
 | `firmware-map` | 20260916 | Which firmware port ships each file of linux-firmware — what kdos firmware sync reads | `41_system` |
 | `firmware-mediatek` | 20260916 | MediaTek and Ralink device firmware from linux-firmware — mt76 Wi-Fi and Bluetooth, the Wi-Fi of most AMD laptops | `41_system` |
 | `firmware-misc` | 20260916 | Device firmware from linux-firmware no vendor port takes — sound amplifiers, server networking, TV tuners, older Wi-Fi | `41_system` |
-| `firmware-nvidia` | 20260916 | NVIDIA GPU firmware from linux-firmware — the GSP and signed blobs nouveau needs on Turing and later | `41_system` |
+| `firmware-nvidia` | 20260916 | NVIDIA GPU firmware from linux-firmware — the signed and GSP blobs nouveau needs from second-generation Maxwell on | `41_system` |
 | `firmware-qualcomm` | 20260916 | Qualcomm and Atheros device firmware from linux-firmware — ath9k to ath12k Wi-Fi, Bluetooth, and the Qualcomm accelerators | `41_system` |
 | `firmware-realtek` | 20260916 | Realtek device firmware from linux-firmware — rtw88 and rtw89 Wi-Fi, Bluetooth, and r8169 Ethernet | `41_system` |
 | `fwupd` | 2.1.7 | Daemon and client for updating device firmware | `42_graphics` |
@@ -4988,7 +4988,7 @@ Notes:
 
 ### sdr-hw
 
-SDR hardware drivers and the SoapySDR device layer. 19 ports, under `ports/core/sdr-hw/`.
+SDR hardware drivers and the SoapySDR device layer. 18 ports, under `ports/core/sdr-hw/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -5001,7 +5001,6 @@ SDR hardware drivers and the SoapySDR device layer. 19 ports, under `ports/core/
 | `libiio` | 0.26 | Linux Industrial I/O client library — ADALM-Pluto and other ADI SDRs over USB and the network, for gr-iio and SDRangel | `41_system` |
 | `libmirisdr` | 2.0.0 | Driver library and the miri_sdr and miri_fm tools for Mirics MSi2500/MSi001 receivers (libmirisdr-4) | `41_system` |
 | `libperseus-sdr` | 0.8.2 | Driver library and perseustest for the Microtelecom Perseus HF receiver | `41_system` |
-| `librfnm` | 0.2.0.git20240716 | Host library and rfnm_info for RFNM software-defined radio boards | `41_system` |
 | `limesuite` | 23.11.0.git20260603 | Driver library, LimeUtil and the SoapySDR module for LimeSDR boards | `41_system` |
 | `limesuite-gui` | 23.11.0.git20260603 | The wxWidgets control panel for LimeSDR boards: LMS7002M registers, calibration and FFT viewer | `44_apps` |
 | `rtl-sdr` | 2.0.3 | RTL2832U SDR driver library and the rtl_* tools | `41_system` |
@@ -5025,8 +5024,6 @@ Notes:
   them.
 - `libperseus-sdr`: `AM_CFLAGS` is given on make's command line, because configure writes
   `-march=native`, `-ffast-math` and `-fopenmp` into it.
-- `librfnm`: the source is pinned to the last revision with the class API SDR++'s RFNM source is
-  written against.
 - `limesuite`: `ENABLE_SIMD_FLAGS=none`: the default tunes to the build machine.
   `CMAKE_INSTALL_LIBDIR=lib` places the SoapySDR module, whose directory comes from SoapySDR's
   GNUInstallDirs, not from `LIB_SUFFIX`.

@@ -10,7 +10,7 @@
 
 name        = musl-ldd
 version     = 1.2.5
-release     = 1
+release     = 2
 description = LDD script for Musl
 homepage    = https://musl.libc.org/
 license     = MIT

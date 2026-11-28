@@ -55,15 +55,15 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=3939-3971 pin=d3c3c16c8cf7 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=4009-4041 pin=d3c3c16c8cf7 -->
 
 `KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
 no text cursor is drawn between the splash and the login screen.
 The `%s` at the head of each entry's title becomes `KDOS <version>` from the target's
-`/etc/kdos-release` (`KDOS 0.2.1`, `KDOS 0.2.1 (verbose)`, `KDOS 0.2.1 (single user)`), or plain
+`/etc/kdos-release` (`KDOS 0.2`, `KDOS 0.2 (verbose)`, `KDOS 0.2 (single user)`), or plain
 `KDOS` when the target has no record, and the `%s` in the first entry's comment becomes
-`, KDOS <version>` (`Start this computer (slot A, KDOS 0.2.1)`) or nothing; the slot B entry's
-title names its release the same way (`KDOS 0.2.1 (slot B)`).
+`, KDOS <version>` (`Start this computer (slot A, KDOS 0.2)`) or nothing; the slot B entry's
+title names its release the same way (`KDOS 0.2 (slot B)`).
 The next-to-last `%s` is that `/KDOS <version> (slot B)` entry, written only on the A/B layout, which boots the
 second root once with nothing confirmed; the last is the memory test entry.
 

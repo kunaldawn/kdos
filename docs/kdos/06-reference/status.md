@@ -22,7 +22,7 @@ KDOS is at **v0.2**. The book states the version only here and in the
 (`VERSION="0.2"`), and a release build and `ports/publish --release` refuse a tag that is not
 its `VERSION_ID` with a `v` before it.
 
-The v0.2 line is a desktop built on KDE Plasma 6.8, KDE Frameworks and all of KDE Gear, with KDOS's
+The v0.2 line is a desktop built on KDE Plasma 6.8, KDE Frameworks and KDE Gear (all but five modules that cannot run here), with KDOS's
 own packaging, boxes, updates, daemons and identity around it, and its interfaces are stable enough
 to describe, which is what this book does. It comes with no support commitment, no migration
 guarantee between lines and no tested hardware matrix: whoever runs it is the integrator. See
@@ -53,7 +53,7 @@ The verdicts, from most to least mature:
 
 The host (the ports tree, the package manager, the build system and reproducibility) is the most
 mature part of KDOS and the most thoroughly checked, because every other part of the system is
-produced by it. Its least exercised piece is the source archive: its index names 2,614 archived
+produced by it. Its least exercised piece is the source archive: its index names 3,069 archived
 files, and its scripts and index are checked for soundness, but no harness publishes to it or
 fetches from it end to end.
 
@@ -63,19 +63,21 @@ pages, widgets, KWin effects and scripts, the Discover backend, the runner, the 
 and the root daemons behind them, each carry a test suite run in the development image. The ISO
 built from this tree boots under QEMU, with UEFI and software rendering, to the live account's
 Plasma session, where the shell, KWin, Dolphin, Konsole, Discover and System Settings with the
-KDOS Look and Boxes pages start and draw. The password login through the greeter, an installed
-disk, Phosphor mode and the update tray are described from their code and their tests, not from a
-running machine. The rows below say which.
+KDOS Look and Boxes pages start and draw. On the rig's GL display, which gives the guest a virgl
+GPU, Phosphor mode runs and an installed disk boots to the greeter; `testing/siteshots.sh`
+photographs both for kdos.dev. The password login through the greeter and the update tray are
+described from their code and their tests, not from a running machine. The rows below say which.
 
 The [pack lane](glossary.md#lane), from an installed pack to a composed box, works
 end to end on a booted machine that holds packs, exercised by a harness that reports each skip with
 its reason rather than passing silently.
 
 The natively ported applications are mostly unproved. The lists of the userland phases,
-`40_lang` to `44_apps`, name 2,189 recipes for the languages, the system, the graphical stacks,
+`40_lang` to `44_apps`, name 2,188 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed. On the live ISO under QEMU,
-Dolphin, Konsole, Discover and System Settings start and draw; no other application has been
-started on an image, and none has been installed from a published binhost under a harness. A package in the build tree is current when its recipe's `kp_recipe_hash`
+Dolphin, Konsole, Kate, Okular, Discover, System Settings, KRunner, Welcome Center and the
+graphical installer start and draw, each photographed for kdos.dev; no other graphical application
+has been started on an image, and none has been installed from a published binhost under a harness. A package in the build tree is current when its recipe's `kp_recipe_hash`
 equals the one recorded under `/var/lib/kpkg/db/.recipe/`, and the next build rebuilds every package
 that is not. See [Applications and boxes](#applications-and-boxes) below. KDOS builds for x86_64
 only.
@@ -88,12 +90,12 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,447 recipes, 2,403 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,446 recipes, 2,402 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted, and a staged tree that breaks a packaging rule is refused with that rule's message |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry of a failed phase, the jobserver and the merge of `build/snapshots/timings.json`, with the machine each figure is filed under. The KDE ports of `43_toolkits`, `44_apps` and `50_desktop` have not been through a full build |
 | Snapshots and plans | Beta | Used by every incremental build, and by the synthetic-tree run above. Layered snapshots have been through synthetic trees only: the self-test's three-phase fixture, and a ten-phase tree emulating the distribution's phases with package installs, in which every phase's restore, including after a restore into fresh inodes and after a retaken phase, matched the tree it came from entry by entry. No real build has written a layered set yet |
-| Upstream sources | In progress | `ports/sources.idx` names 2,614 files archived in the `sources-<N>` releases: every recipe-hashed source git does not carry in a port directory, and files whose hash no recipe names. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
+| Upstream sources | In progress | `ports/sources.idx` names 3,069 files archived in the `sources-<N>` releases: every recipe-hashed source git does not carry in a port directory, and files whose hash no recipe names. Preflight checks the scripts and the index; no harness publishes to or fetches from the archive |
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
 | The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port, and `kdos update` installing only what a signed index covers is asserted against a fixture binhost. `make build KDOS_MAKE_BINHOST=1` writes a signed one to `build/binhost/` with its release index, and `ports/publish --release` publishes it sharded across releases of at most 1,000 assets, the v0.2 binhost among them. The self-test asserts `kdos update install` against a fixture binhost: a port prebuilt, a port planned as a build here, a group by its members, an install into another root (prebuilt only), the installer's pending record, and a package whose origin is `source` counted as a build rather than looked for in the index. No machine has installed a port from the published binhost under a harness |
 | Updates | In progress | The self-test signs a slot image, rebuilds it from a seed root and its delta, refuses a tampered one, carries a machine's configuration into an armed slot, writes a newer image into the inactive slot, and arms only a slot an acquire filled. The release index is asserted to split 2,001 files 1,000, 1,000 and 1 in path order, to find a slot image through its sharded, signed form, and to be refused unsigned, signed by an untrusted key, edited, for another release, with no `releases` root, or naming a file of other bytes; a binhost index or manifest it does not name is never offered. `kdos-sysupdated` is driven over fixture slots the way Discover calls it, its API diffed against Discover's own. `kpkg fetch`'s archive-then-upstream order and its refusal of a copy with the wrong hash are asserted. The self-test also asserts that a slot image carries the base alone, and that a port installed on purpose which the release's binhost does not hold refuses the image lane before the slot is written unless it was built here. v0.2 is the first release to publish a binhost and a slot image, so there is no later release for an installed machine to update to, and no update has been applied on one. See [Known gaps](known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree) |
@@ -101,12 +103,12 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,447 recipes, 0 are absent from the build tree's package
+- **The ports tree.** Of the 2,446 recipes, 0 are absent from the build tree's package
   database once a build has run every phase, and the database holds no name that no recipe gives.
   Every port is installed by a package phase, as a name on its list or as a dependency of one
   that no earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
   list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 186 by `40_lang`,
-  1,048 by `41_system`, 189 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 92 by
+  1,047 by `41_system`, 189 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 92 by
   `50_desktop` and 2 by `60_kernel`; `python3 testing/phaseclosure.py` prints these figures, and
   `testing/bookcounts.py` fails on a recipe that no phase installs unless `ports/unbuilt` names it.
   On a built tree, the absent names are what `comm -23` prints when it compares the names of the
@@ -171,7 +173,7 @@ See [The session](../03-architecture/session.md) and the chapters of
 | The Plasma integration | In progress | `kded-kdos`, the KDOS runner, `kdos-notice`, the library worker, the System Monitor plugin, the privacy and checklist widgets, Transcribe, the key card and the KWin scripts each have their tests: QtTest where they are Qt, the self-test where they are C (`kdos-runner` and `kdos-notice` are). `testing/defaultscheck.py` and `testing/xdgcheck.sh` read every KDOS default for a KDE program back, `testing/lnfcheck.py` holds the global themes and desks to what Plasma reads, and `testing/chordcheck.py` finds a chord bound twice |
 | Discover and system updates | In progress | `kdos-discover`'s backend and notifier have QtTest suites over fixture catalogues and a fake `io.kdos.Slots1`. `kdos-sysupdated` answers a stock Discover's calls over fixture slots in the self-test. Discover starts on the live image and shows the catalogue, and opens with an "Update Issue" dialog there. No update has reached Discover on a booted image |
 | Phosphor mode | Experimental | `kdos phosphor` is asserted to put back every key it changed. The KDOS motion effects have run in a headless KWin on software rendering with animations forced, which shows the motion and says nothing about its cost on a GPU; the CRT pass refuses software rendering and has not been seen. See [Known gaps](known-gaps.md#phosphor-mode-needs-hardware-opengl) |
-| The `kdos` command | In progress | The self-test compiles `kdos-tools` and runs most of the 42 subcommands against fixtures or a fake session bus: `app`, `appid`, `backup`, `checklist`, `clone`, `cve`, `desk`, `doctor`, `help`, `hey`, `hostname`, `keymap`, `locale`, `march`, `menu`, `notify`, `panel`, `persist`, `phosphor`, `places`, `privacy`, `rebuild`, `remind`, `share`, `speech`, `theme`, `thumb`, `tiling`, `timezone`, `toggle` and `update` among them. See [The kdos command](../04-programs/kdos-command.md) |
+| The `kdos` command | In progress | The self-test compiles `kdos-tools` and runs most of the 44 subcommands against fixtures or a fake session bus: `app`, `appid`, `backup`, `checklist`, `clone`, `cve`, `desk`, `doctor`, `help`, `hey`, `hostname`, `keymap`, `locale`, `march`, `menu`, `notify`, `panel`, `persist`, `phosphor`, `places`, `privacy`, `rebuild`, `remind`, `share`, `speech`, `theme`, `thumb`, `tiling`, `timezone`, `toggle` and `update` among them. See [The kdos command](../04-programs/kdos-command.md) |
 | The theme system | Stable | `kdos-theme` generates every accent's colour scheme, editor theme, Konsole profile, qt5ct palette, wallpaper and greeter look at build time and fails the build on a scheme below its contrast floor. `kdos theme --audit` re-runs the terminal programs' generators and compares, and the self-test requires an edited, a deleted and a stray file each to be caught and repaired, and an accent change in a session to move only what is KDOS's |
 | Accessibility | Experimental | `testing/atspi/` dumps each KDOS surface's AT-SPI tree and compares it with a committed golden on a booted image; `make atspi-selftest` checks the dump format on fixtures, and no golden has been taken from an image yet. Orca has not been heard on one |
 
@@ -223,15 +225,15 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,447 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,403 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,446 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,402 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/system` | 8 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 8 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 21 | `find src/desktop -name kpkgbuild \| wc -l` |
 | — in `src/daemons` | 7 | `find src/daemons -name kpkgbuild \| wc -l` |
 | Shelves | 102 | `grep -cvE '^(#\|$)' ports/shelves` |
-| Archived source files | 2,614 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
-| Native groups | 15 | `grep -c '^group ' ports/groups` |
+| Archived source files | 3,069 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
+| Native groups | 22 | `grep -c '^group ' ports/groups` |
 | Catalogue applications | 69 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
 | Catalogue datasets | 2 | `grep -c '^data ' src/system/kdos-appbox/catalogue` |
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/system/kdos-appbox/catalogue` |
@@ -240,17 +242,17 @@ a clean checkout and you should get the same number.
 | Catalogue groups | 7 | `awk '$1=="group"{print $2}' src/system/kdos-appbox/catalogue \| sort -u \| wc -l` |
 | Kernel | 7.2.11 | `grep '^version' ports/core/*/linux/kpkgbuild` |
 | C libraries written here | 9 | `ls -d src/libs/*/ \| wc -l` |
-| `kdos` subcommands | 42 | the dispatch in `kdos_main()`, `src/system/kdos-tools/kdos.c`, counting `help` |
+| `kdos` subcommands | 44 | the dispatch in `kdos_main()`, `src/system/kdos-tools/kdos.c`, counting `help` |
 | Names `kdos-tools` answers to | 12 | the `TOOLS[]` table in `src/system/kdos-tools/main.c` |
 | Names `kpkg` answers to | 5 | the `TOOLS[]` table in `src/system/kdos-kpkg/main.c` |
 | KDOS settings pages | 5 | `ls -d src/desktop/kcm-kdos-*/ \| wc -l` |
-| Qt test suites | 18 | `ls -d src/desktop/*/tests/ \| wc -l` |
+| Qt test suites | 19 | `ls -d src/desktop/*/tests/ \| wc -l` |
 | Accents | 8 | the `KCOL_SCHEMES` macro in `src/libs/libkcolor/kcolor.h` |
 | Build phases | 13 | `ls -d script/phases/*/ \| wc -l` |
-| Preflight checks | 74 | `grep -c '==>' testing/preflight.sh`, less the one that builds `kpkg` |
-| Self-test blocks | 92 | `grep -c '^echo "==>' testing/selftest.sh` |
-| Recorded fixture sets | 30 | `ls -d testing/fixtures/*/ \| wc -l` |
-| Distinct `KDOS_*` variables read | 159 | the command below |
+| Preflight checks | 76 | `grep -c '==>' testing/preflight.sh`, less the one that builds `kpkg` |
+| Self-test blocks | 134 | `grep -c '^echo "==>' testing/selftest.sh` |
+| Recorded fixture sets | 33 | `ls -d testing/fixtures/*/ \| wc -l` |
+| Distinct `KDOS_*` variables read | 209 | the command below |
 
 The variable count is the union of `getenv("KDOS_*")` calls under `src/` and `$KDOS_*` references in
 the build scripts, the sources, the root filesystem, the harnesses, the source-archive scripts and

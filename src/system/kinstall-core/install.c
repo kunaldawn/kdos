@@ -2650,6 +2650,42 @@ static int fetch_index(void)
  * until the daemon had run once — which reads as the feature not working.
  */
 /*
+ * THE PACKS STEP'S NOTE AND FRACTION, from what `kdos update install` prints
+ * for a group: `==> <group>: <port> (<k> of <n>)` as each member starts,
+ * `==> downloading <file> (<size>)` and `==> installing <pkg> (…)` within it.
+ * Without them the step sits on an empty note and a still bar for the whole
+ * download, which on a slow network reads as a hang. The fraction is the
+ * groups done plus the members done of the one going in; every line still
+ * goes to the log.
+ */
+static int native_at, native_of;
+static char native_id[64];
+
+static void native_parse(const char *line)
+{
+	char grp[64], port[128], what[256];
+	int k, m;
+
+	logf_("%s", line);
+	if (strncmp(line, "==> ", 4))
+		return;
+	line += 4;
+	if (sscanf(line, "%63[^:]: %127s (%d of %d)", grp, port, &k, &m) == 4 &&
+	    !strcmp(grp, native_id) && k >= 1 && m >= k) {
+		emit('N', "%s: %s (%d of %d)", native_id, port, k, m);
+		if (native_of > 0)
+			emit('P', "%.4f", ((double)native_at +
+					   (double)(k - 1) / m) / native_of);
+		return;
+	}
+	if (!strncmp(line, "downloading ", 12) ||
+	    !strncmp(line, "installing ", 11)) {
+		kb_strlcpy(what, line, sizeof(what));
+		emit('N', "%s: %s", native_id, what);
+	}
+}
+
+/*
  * THE NATIVE GROUPS GO IN NOW, when the network answers. The live system
  * takes its own release's binhost index (`kdos update fetch --binhost-only`:
  * a newer release's packages are built against a newer base than the one
@@ -2666,8 +2702,9 @@ static void do_native(void)
 {
 	KbBuf b = {0};
 	char path[512];
-	int n = ki_groups_chosen(), pend = 0, online;
+	int n = ki_groups_chosen(), pend = 0, online, rc;
 
+	native_at = 0;
 	if (!n) {
 		emit('L', "no native groups chosen");
 		return;
@@ -2687,10 +2724,21 @@ static void do_native(void)
 			char *inst[] = { "kdos", "update", "install", "--prebuilt",
 					 "--root", TARGET, ki_native[i].id,
 					 NULL };
+			static const int ok[] = { 0 };
+
 			emit('L', "%s group %s (%s)",
 			     cfg.dry_run ? "would install" : "installing",
 			     ki_native[i].id, ki_native[i].title);
-			if (run(inst) == 0)
+			kb_strlcpy(native_id, ki_native[i].id,
+				   sizeof(native_id));
+			native_of = n;
+			emit('N', "%s (%d of %d)", ki_native[i].title,
+			     native_at + 1, n);
+			emit('P', "%.4f", (double)native_at / n);
+			rc = run_full(inst, NULL, native_parse, NULL, ok, 1);
+			native_at++;
+			emit('P', "%.4f", (double)native_at / n);
+			if (rc == 0)
 				continue;
 			emit('W', "group %s did not install; it is recorded for "
 				  "%s", ki_native[i].id,
@@ -3297,17 +3345,39 @@ static void do_slotb(void)
 			 "--info=progress2", "--no-inc-recursive",
 			 TARGET "/", TARGET_B "/", NULL };
 	static const int ok[] = { 0 };
+	/*
+	 * SLOT B'S COPY IS MEASURED ON SLOT A AS IT NOW STANDS. The Packs and
+	 * Firmware steps installed into slot A after the live walk, so the live
+	 * figures leave out every native group: the bytes copied would pass the
+	 * total and the time left would stall near zero while gigabytes remain.
+	 * The tree was just written, so the walk runs from the page cache. A
+	 * dry run, or a walk that finds nothing, keeps the live figures.
+	 */
+	static KiCopyProfile slot_prof;
+	unsigned long long slot_kb = 0, slot_links = 0;
+
+	emit('N', "measuring slot A");
+	if (!cfg.dry_run &&
+	    probe_payload_at(TARGET, &slot_kb, &slot_links, &slot_prof) == 0) {
+		rsync_total_bytes = slot_kb * 1024;
+		rsync_link_bytes = slot_links;
+		rsync_prof = &slot_prof;
+		logf_("slot A holds %llu MiB to copy into slot B",
+		      slot_kb / 1024);
+	} else {
+		rsync_total_bytes = (ki_sys.payload_kb > ki_sys.appbox_kb
+					     ? ki_sys.payload_kb -
+						       ki_sys.appbox_kb
+					     : 0) * 1024;
+		rsync_link_bytes = ki_sys.link_extra_bytes -
+				   ki_sys.link_extra_appbox_bytes;
+		rsync_prof = &ki_sys.copy_prof_sys;
+	}
 	emit('N', "copying slot A into slot B");
 	emit('P', "0");
 	rsync_total_pct = 0;
 	memset(&rsync_files, 0, sizeof(rsync_files));
 	rsync_t0 = kb_now_s();
-	rsync_total_bytes = (ki_sys.payload_kb > ki_sys.appbox_kb
-				     ? ki_sys.payload_kb - ki_sys.appbox_kb
-				     : 0) * 1024;
-	rsync_link_bytes = ki_sys.link_extra_bytes -
-			   ki_sys.link_extra_appbox_bytes;
-	rsync_prof = &ki_sys.copy_prof_sys;
 	copy_trace_start("slot-b");
 	if (run_full(argv, NULL, rsync_parse, rsync_tick, ok, 1))
 		fail("rsync into slot B failed");

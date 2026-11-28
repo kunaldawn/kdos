@@ -14,8 +14,10 @@
 # timed lock off.
 #
 # The lock screen's layout is the Plasma shell's own; only its wallpaper
-# and its clock come from here. `kdos theme` moves the wallpaper to the chosen
-# accent's package, and only while it still names a KDOS-* package.
+# and its clock come from here. No global theme carries the wallpaper:
+# `kdos theme`, in a session or out of one (the installer seeds each new home
+# with it), writes the chosen accent's package into ~/.config/kscreenlockerrc,
+# and only while the value in force still names a KDOS-* package.
 # ---------------------------------
 
 [Daemon]

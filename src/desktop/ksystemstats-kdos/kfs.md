@@ -12,8 +12,9 @@ The plugin publishes one container, `kdos`:
 | `kdos/box/<box>/{name,icon,cpu,memory,memoryLimit,ioRead,ioWrite,processes,energy}` | Each running box's cgroup scope, `app-kdos-<box>-<n>.scope`, in a login's `delegated` subtree or under `user@<uid>.service/app.slice`, or, for a box with none, its processes: the session's uid's, in a mount namespace other than the plugin's, with `KDOS_BOX=<box>` in their environment; the name and icon of the launcher whose `X-KDOS-Box` names the box |
 | `kdos/box/all/{boxes,cpu,memory,ioRead,ioWrite,processes}` | The same, summed over every box |
 | `kdos/energy/<app>[@<box>]/{name,app,box,impact,cpuTime,gpu}` and `kdos/energy/all/…` | kdos-energyd's `report-json` on `/run/kdos-energyd.sock` |
-| `kdos/slot/{status,running,runningVersion,runningState,other,otherVersion,otherState,next,trial,attempts}` | `/run/kdos/bootstate.json`, the copy of `kdos-bootctl status --json` every user may read |
+| `kdos/slot/{status,running,runningVersion,runningState,other,otherVersion,otherState,next,trial,attempts}` | `/run/kdos/bootstate.json`, the copy of `kdos-bootctl status --json` every user may read; with none, the live medium (`/` an overlay in `/proc/mounts`) or one root, said as which, and `/etc/os-release`'s `VERSION_ID` as the running version |
 | `kdos/look/phosphor` | kwinrc `[Plugins] kdos_crtEnabled`, 1 while Phosphor mode is on |
+| `kdos/look/phosphorState` | The same as "On" or "Off", for the KDOS page's System card |
 
 KDOS Meters draws one row per sensor: its name, a sparkline in the accent and its figure in the
 monospace face, over a faint scanline ground while `kdos/look/phosphor` reads 1. A text sensor has

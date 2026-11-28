@@ -873,6 +873,7 @@ sets for the programs it starts itself, so every variable below is set explicitl
 | `XDG_SESSION_TYPE` | `wayland` |
 | `HOME`, `USER`, `LOGNAME` | Yours |
 | `LANG` | `C.UTF-8`, whatever yours is: the one UTF-8 locale a Debian userland has without generating one |
+| `TZ` | Your time zone, the name `/etc/localtime` points to under `zoneinfo/` (`Europe/Berlin`), read at every launch; unset when the link is missing or does not name a zone path, and the box then keeps its image's UTC |
 | `XDG_CONFIG_DIRS` | `/etc/xdg:/usr/share/kdos/xdg`: the box's own defaults first, then KDOS's, the order the host session has |
 | `GSETTINGS_BACKEND` | `keyfile`, because no dconf service is reachable over the filtered bus |
 | `NO_AT_BRIDGE`, `GTK_A11Y` | `1` and `none`, unless you opt in to accessibility (below) |
@@ -1744,6 +1745,7 @@ container first.
 | `KDOS_A11Y` | `1` opts one launch in to accessibility, `0` out |
 | `KDOS_BOX_NOTERM` | Set to any value (even `0`): make `kdos-box enter` run in the current terminal |
 | `KDOS_BOXSOCK` | Run this program in place of `kdos-boxsock`, which is how the test suite drives the launch path without a compositor |
+| `KDOS_LOCALTIME` | Read the time zone from this link instead of `/etc/localtime` |
 | `KDOS_PACK_EXTRACT` | Build time only: where `030_launchers.sh` looks for extracted packs |
 
 ## See also

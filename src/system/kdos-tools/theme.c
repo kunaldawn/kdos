@@ -1569,18 +1569,54 @@ int kdt_theme_konsole_follow(KdtBus *b)
 /* ── Plasma ────────────────────────────────────────────────────────────── */
 
 /*
- * STEP 3, THE WALLPAPER, which a global theme does not change on a running
- * desktop: the image plugin reads its default once, so a switch with no
- * explicit step leaves the old accent's picture until plasmashell restarts.
- * Only a desktop showing a KDOS wallpaper, or the theme's default (an empty
- * Image), is moved.
+ * STEP 3, THE LOCK SCREEN'S HALF, in and out of a session alike: no global
+ * theme carries the lock screen's wallpaper (KLookAndFeelManager writes no
+ * kscreenlockerrc key), so the one written here, or the shipped
+ * /usr/share/kdos/xdg/kscreenlockerrc's KDOS-Bone, is the picture it shows.
+ * It needs no bus, so the installer's --account run into a new home writes it
+ * too; without it a home seeded in another accent locks onto Bone, and the
+ * first login never repairs it, since kded-kdos finds the accent already in
+ * step. Only a KDOS wallpaper, or none, is replaced; outside a session "none"
+ * is left alone. A cascade with no value there is one without
+ * /usr/share/kdos/xdg on it (the image build's run into /etc/skel), which
+ * cannot tell what a login would show, and a write would give every new home
+ * a copy of the key that shadows the shipped file. The change notice goes
+ * out only in a session: outside one no bus carries it.
+ */
+static int theme_lock_wallpaper(const KcolScheme *sc, int in_session)
+{
+	char want[128];
+	char *cur;
+	int rc = 0;
+
+	snprintf(want, sizeof(want), "file:///usr/share/wallpapers/%s/",
+		 sc->theme_name);
+	cur = kdt_kcfg_cascade("kscreenlockerrc",
+			       "Greeter][Wallpaper][org.kde.image][General",
+			       "Image");
+	if (kdos_wallpaper(cur) && (cur || in_session) &&
+	    (!cur || strcmp(cur, want)) &&
+	    kdt_kcfg_set("kscreenlockerrc",
+			 "Greeter][Wallpaper][org.kde.image][General", "Image",
+			 want, in_session) != 0)
+		rc = -1;
+	free(cur);
+	return rc;
+}
+
+/*
+ * STEP 3, THE DESKTOP'S HALF, which a global theme does not change on a
+ * running desktop: the image plugin reads its default once, so a switch with
+ * no explicit step leaves the old accent's picture until plasmashell
+ * restarts. Only a desktop showing a KDOS wallpaper, or the theme's default
+ * (an empty Image), is moved.
  */
 static int theme_wallpaper(KdtBus *b, const KcolScheme *sc, char *err,
 			   size_t errn)
 {
 	KbBuf js = { 0 };
 	char want[128];
-	char *cur, *out;
+	char *out;
 
 	snprintf(want, sizeof(want), "file:///usr/share/wallpapers/%s/",
 		 sc->theme_name);
@@ -1603,20 +1639,6 @@ static int theme_wallpaper(KdtBus *b, const KcolScheme *sc, char *err,
 		return -1;
 	}
 	free(out);
-
-	cur = kdt_kcfg_cascade("kscreenlockerrc",
-			       "Greeter][Wallpaper][org.kde.image][General",
-			       "Image");
-	if (kdos_wallpaper(cur) && (!cur || strcmp(cur, want)) &&
-	    kdt_kcfg_set("kscreenlockerrc",
-			 "Greeter][Wallpaper][org.kde.image][General", "Image",
-			 want, 1) != 0) {
-		free(cur);
-		snprintf(err, errn, "kwriteconfig6 could not write "
-				    "kscreenlockerrc");
-		return -1;
-	}
-	free(cur);
 	return 0;
 }
 
@@ -1758,7 +1780,7 @@ int kdt_theme_set(const KcolScheme *sc, int flags)
 						     "write kdeglobals");
 
 		b = kdt_bus_open(0);
-		/* 3. The wallpaper and the lock screen's. */
+		/* 3. The wallpaper; the lock screen's follows the branches. */
 		err[0] = '\0';
 		if (!b) {
 			if (!*fail)
@@ -1782,6 +1804,10 @@ int kdt_theme_set(const KcolScheme *sc, int flags)
 			snprintf(fail, sizeof(fail), "kwriteconfig6 could not "
 						     "write kdeglobals");
 	}
+	/* 3. The lock screen's wallpaper, in a session or not. */
+	if (theme_lock_wallpaper(sc, in_session) != 0 && !*fail)
+		snprintf(fail, sizeof(fail), "kwriteconfig6 could not write "
+					     "kscreenlockerrc");
 
 	/* 4. Konsole. */
 	if (theme_konsole(b, sc, in_session && b) != 0 && !*fail)

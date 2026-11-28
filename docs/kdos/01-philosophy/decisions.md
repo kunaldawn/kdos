@@ -74,9 +74,10 @@ rather than patches to the programs that read them.
 All of Gear is ported rather than a selection, because a machine with no network has only what its
 medium carries ([Principles](principles.md#offline-by-construction)), and Gear's applications are
 written against the same frameworks, so they share the look, the file dialogs, the shortcuts and the
-settings without integration work per application. Four Gear modules are left out because they
+settings without integration work per application. Five Gear modules are left out because they
 cannot work here: kjournald needs libsystemd, kmag reads the screen in a way Wayland does not
-allow, kmousetool needs X11, and plasma-settings is Plasma Mobile's settings shell. Thirteen of
+allow, kmousetool needs X11, plasma-settings is Plasma Mobile's settings shell, and colord-kde
+lists only the devices colord knows, which under Wayland are never the displays. Thirteen of
 Plasma's own modules are left out for the same kind of reason: the GRUB and Plymouth themes and the
 Plymouth settings page (KDOS boots with Limine and its own splash), DrKonqi (it needs
 `systemd-coredump`), the Flatpak settings page (there is no Flatpak), the KDE Frameworks 5
@@ -195,11 +196,12 @@ KWin's scripting interface, pinned to a release and tested again at every Plasma
 The installation medium carries the *base*: the ports [`ports/base`](../../../ports/base) names and
 their dependency closure, which `script/lib/imageset.py` computes over each recipe's `depends =`
 line without following it into a compiler `ports/buildonly` lists. That is the Plasma session, the
-core KDE applications, Firefox ESR, networking, printing and scanning, the box stack, the
-self-hosting toolchain and every program of KDOS's own, about 900 of the about 2,440 packages a
+core KDE applications, Firefox ESR, networking, printing and scanning, the box stack and every
+program of KDOS's own, with no compiler (the toolchain is the `build-tools` group, installed
+prebuilt before a build on the machine), about 900 of the about 2,440 packages a
 build makes. The build compiles every port all the same, and the release publishes every package
 it made on its signed [binhost](../06-reference/glossary.md#binhost), so the rest of the native
-ports (all of KDE Gear, LibreOffice, GIMP, Blender, Wine and the other applications
+ports (KDE Gear but five modules that cannot run here, LibreOffice, GIMP, Blender, Wine and the other applications
 [The ports catalogue](../06-reference/ports-catalogue.md) lists by shelf) are one download away:
 `kdos update install` takes a port or one of the groups `ports/groups` names, and Discover
 offers each port under *KDOS system*. Any port can instead be built on the machine from its recipe
@@ -219,7 +221,7 @@ kinstall offers it by group — seven of them, from one application each in `ess
 rather than six. kinstall offers the native groups on the same page, and installs them into the new
 system from the binhost while it installs.
 
-Carrying every native port on the medium was rejected: a whole-tree ISO is about 20 GB, five times
+Carrying every native port on the medium was rejected: a whole-tree ISO is about 20 GB, eleven times
 the base's, and most of it is software a given machine never runs. Building every port on the
 machine that wants it was rejected as the default for the reason [the updates
 decision](#updates-are-signed-slot-images-with-a-binhost-on-the-way) gives: a browser or an office
@@ -452,10 +454,10 @@ https://github.com/kunaldawn/kdos/releases/download/sources-1/archiver--zstd-1.5
 ```
 
 The committed file `ports/sources.idx` records the release and the asset for each hash. The
-current recipes name 2,572 distinct files, 39.3 GiB in total: 44 that git carries, and 2,528 that
-belong in the archive, spread over 102 shelves. The four volumes hold 596 to 695 assets each, a
-split file's parts counted, under GitHub's 1,000 assets per release. Sixty-one of the archived
-files exceed the 100 MiB a push to github.com refuses; they appear 76 times across the port
+current recipes name 2,877 distinct files, 40.2 GiB in total: 46 that git carries, and 2,831 that
+belong in the archive, spread over 102 shelves. The four volumes hold 695 to 933 assets each, a
+split file's parts counted, under GitHub's 1,000 assets per release. Sixty-two of the archived
+files exceed the 100 MiB a push to github.com refuses; they appear 85 times across the port
 directories, because a file such as the LLVM source tarball serves several ports. The largest,
 `texlive`'s texmf tree, is 4.96 GB, over GitHub's 2 GiB limit per asset, so any file larger than
 1,900 MiB is stored as `<asset>.part01` onwards and joined by `ports/fetch`; the texmf tree and the
@@ -526,7 +528,7 @@ whose recipes name a hash the archive cannot be shown to hold. See
 
 Git LFS would make a clone the whole input to a build, and it is not used because the sources do not
 fit in it. A free account has 10 GiB of LFS storage and 10 GiB of monthly bandwidth, shared across
-every repository the account owns. The current sources take 39.3 GiB, nearly four times that
+every repository the account owns. The current sources take 40.2 GiB, about four times that
 storage, on their own, before any older version the history names, and a single clone uses most of a
 month's bandwidth. Past the allowance LFS reads are blocked outright, not slowed, so a repository
 that depends on LFS stops checking out. Release assets carry no total-size or bandwidth limit and

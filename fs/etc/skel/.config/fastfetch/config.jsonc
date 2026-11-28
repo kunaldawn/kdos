@@ -56,7 +56,7 @@
     { "type": "custom", "format": "\u001b[0;32m══════════════════════════════════════════════\u001b[0m" },
 
     { "type": "custom", "format": "\u001b[1;32m█\u001b[0;32m SYSTEM\u001b[0m" },
-    { "type": "os", "key": "OS        ", "format": "{pretty-name}" },
+    { "type": "os", "key": "OS        ", "format": "{pretty-name} {version}" },
     { "type": "kernel", "key": "Kernel    " },
     { "type": "host", "key": "Host      " },
     { "type": "uptime", "key": "Uptime    " },

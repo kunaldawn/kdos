@@ -36,8 +36,10 @@ directories pointed into `/etc/skel`, so it writes into the template exactly wha
 into a home, outside a session: no Plasma call is made, and the global theme is left for the first
 login to apply. KConfig writes no key whose value `/etc/xdg/kdeglobals` already gives, so the home's
 `kdeglobals` stays without `LookAndFeelPackage` here, and the accent the installer writes to that
-file reaches a new account. The seeded files are therefore the same, byte for byte, as those of a
-`kdos theme` to the same accent.
+file reaches a new account. `XDG_CONFIG_DIRS` is unset, so the cascade holds no lock-screen
+picture, and `kdos theme` writes none: the template carries no `kscreenlockerrc`, and a new home
+takes its lock screen from the shipped `/usr/share/kdos/xdg/kscreenlockerrc`. The seeded files are
+therefore the same, byte for byte, as those of a `kdos theme` to the same accent.
 
 ## The files it checks
 

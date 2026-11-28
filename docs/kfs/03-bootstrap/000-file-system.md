@@ -95,9 +95,19 @@ next built from empty. That allowance covers the whole `cp`, so on such a tree a
 failure passes too. On a tree where `usr/lib64` is already the link, any copy failure stops the
 build.
 
+### KDOS's licence text
+
+After the copy the repository's `LICENSE`, the MIT text of everything KDOS wrote, is installed as
+[`/usr/share/licenses/kdos/LICENSE`]{.idx}. kpkg builds every package of our own with
+`/usr/share/licenses/<name>/LICENSE` as a link to `../kdos/LICENSE` (see
+[What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)),
+so the text has to be on the tree before the first such package and on every image built from it;
+without it each of those links dangles and the image's `087_gates.sh` stops on them. No package
+owns the text, and `testing/unowned.py` subtracts it.
+
 ### Modes follow fs/
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=127-135 pin=c16a1118216e -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=135-143 pin=c16a1118216e -->
 
 `cp` keeps the mode of a file that already exists at the destination, so without this loop a file
 made executable in `fs/` would stay non-executable in a tree synced before. That breaks things
@@ -107,7 +117,7 @@ what `cp` gives a new file under this build's umask, so a first copy and a later
 
 ### Modes and owners git cannot carry
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=170-192 pin=ad17f2fc6f55 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=178-200 pin=ad17f2fc6f55 -->
 
 git records whether a file is executable and nothing else: no narrower mode and no owner. The loop
 above therefore gives every non-executable file 644, and a file in the tree belongs to whoever ran
@@ -128,7 +138,7 @@ A path in the list that the tree does not have is reported rather than skipped s
 
 ### The manifest and the accounts are written
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=194-210 pin=e4300e9cfca0 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=202-218 pin=e4300e9cfca0 -->
 
 The manifest lists every file and link in `fs/`, sorted. It is built with POSIX `find` and `sed`
 because the step runs on the container's userland, not the tree's. The saved account lines are

@@ -19,7 +19,7 @@
 
 <policyconfig>
 	<vendor>KDOS</vendor>
-	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+	<vendor_url>https://kdos.dev/</vendor_url>
 
 	<action id="org.freedesktop.sysupdate1.check">
 		<description>Check for system updates</description>

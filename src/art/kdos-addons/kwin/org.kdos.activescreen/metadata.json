@@ -14,7 +14,7 @@
         "License": "MIT",
         "Name": "Open on the Pointer's Screen",
         "Version": "1.0",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-Plasma-API": "javascript",
     "X-Plasma-MainScript": "code/main.js"

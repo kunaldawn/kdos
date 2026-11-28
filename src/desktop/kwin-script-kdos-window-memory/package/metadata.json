@@ -13,7 +13,7 @@
         "Id": "kdos_window_memory",
         "License": "MIT",
         "Name": "KDOS Window Memory",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "X-Plasma-API": "declarativescript"
 }

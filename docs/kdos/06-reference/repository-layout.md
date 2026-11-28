@@ -20,28 +20,36 @@ The top-level directories divide by role. `src/` holds KDOS's own source: the C 
 parts of the Plasma desktop, the daemons and the other programs written for KDOS. `ports/` holds the recipes for upstream software
 and the tools that fetch its sources. `fs/` holds the files copied as they are into the target's
 root filesystem. `script/` is the build, phase by phase; `testing/` is the tests and the test rig;
-`build/` is where the build writes, and git ignores it. Five directories beneath `ports/` and
+`site/` is kdos.dev's homepage, which `README.md` is written from too; `build/` is where the build
+writes, and git ignores it. Five directories beneath `ports/` and
 `src/` hold recipes; [The port repositories](#the-port-repositories) explains which, and how they
 map onto the three rings of the running system.
 
 ```
 kdos/
-├── README.md              the front door
+├── README.md              the front door, written by script/site/mksite.py from site/home.md
 ├── CLAUDE.md              the contributor briefing read by coding assistants
 ├── Makefile               every build and run target
 ├── Dockerfile             the build container
 ├── .dockerignore          what the build container's context leaves out
 ├── LICENSE
 ├── kdos.png, kdos.xcf     the mascot, from which the splash, logos and marks derive
-├── .github/workflows/books.yml   renders both books, deploys them to GitHub Pages, and attaches
-│                                 KDOS from Scratch to each release
+├── .github/workflows/books.yml   builds kdos.dev (the homepage and both books), deploys it to
+│                                 GitHub Pages, and attaches KDOS from Scratch to each release
 │
 ├── docs/
 │   ├── kdos/              this book
 │   ├── kfs/               KDOS from Scratch, the build book: hand-written parts in
 │   │   │                  numbered directories; package pages are generated, not kept
 │   │   └── data/          the committed build-state snapshot `make book-data` writes
-│   └── screenshots/       the pictures the documentation and the README show
+│   └── screenshots/       the pictures the KDOS book shows
+│
+├── site/                  kdos.dev's homepage and README.md, from one source
+│   ├── home.md            the page's text, and the one source of README.md
+│   ├── template.html, style.css, site.js   the homepage's frame, look and behaviour
+│   ├── art/genart.py      draws assets/art/ and writes assets/fonts/; host-only, run by hand
+│   └── assets/            committed: art/ (artwork, art.tsv), fonts/ (with their licences),
+│                          shots/ (the gallery and shots.tsv, from testing/siteshots.sh)
 │
 ├── ports/
 │   ├── core/<shelf>/<name>/   one directory per upstream port, on one of 102 shelves
@@ -170,13 +178,14 @@ kdos/
 │   │                        the image ledger 088_ledger.sh writes
 │   ├── chroot/              exec.sh runs a step in the chroot; enter.sh opens a shell there
 │   ├── book/                the renderer of KDOS from Scratch (`make book`); kdos-kfs links it
+│   ├── site/mksite.py       writes README.md and kdos.dev's homepage from site/ (`make site`)
 │   ├── kdosbuild.sh         compiles and runs the orchestrator
 │   ├── release-image.sh     a release's signed whole-slot image and its deltas
 │   ├── migrate-phase-names.sh  renames the snapshots, logs and marks of a build/ tree
 │   │                        made under other phase directory names to the current ones
 │   └── hooks/pre-push       refuses a push that breaks the ports layout, adds a patch with
-│                            no Subject:, fails the book checks or names an unarchived
-│                            source (opt-in)
+│                            no Subject:, fails the book or README checks or names an
+│                            unarchived source (opt-in)
 │
 ├── testing/
 │   ├── preflight.sh          compiles kpkg, then checks the tree's wiring (packages resolve,
@@ -210,6 +219,7 @@ kdos/
 │   ├── atspi/                AT-SPI dumps of KDOS's surfaces and their goldens
 │   ├── fixtures/             recorded system state, 30 directories
 │   ├── vnc-shot.py           drive and photograph a real session
+│   ├── siteshots.sh          kdos.dev's screenshot gallery, taken from the release ISO
 │   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
 │   ├── quick.sh, quickpatch.sh   one port, patched into a booted ISO's RAM overlay
 │   ├── qemu-audio.sh         the emulator's audio flags, shared by make run and the rig
@@ -492,7 +502,7 @@ Six files in the tree make this work:
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
 | `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--history` adds the files older commits' recipes name; `--plan` gives a new shelf its volume in `ports/shelves`; `--describe` rewrites each release's title and notes from the index; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list; `--release <tag>` puts up a KDOS release: the ISO, the recipe tree, checksums and their signatures, and its updates, the binhost in releases of at most 1,000 assets and the slot image, with the signed release index that finds them. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) and [Publishing a release](../03-architecture/packaging.md#publishing-a-release) |
 | `ports/releaselib.sh` | Writes the release index `kdos-update.idx`, makes a path's flat asset name and cuts a lane into releases of at most `$KDOS_RELEASE_CAP` assets; sourced by `ports/publish`, `70_image/010_binhost.sh` and `testing/selftest.sh` |
-| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, adds or changes a patch with no `Subject:` line, fails the book checks, or whose recipes name a hash the archive does not hold, every part of a split file included |
+| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, adds or changes a patch with no `Subject:` line, fails the book checks or the README check, or whose recipes name a hash the archive does not hold, every part of a split file included |
 
 The hook runs only in a clone that has opted in:
 
@@ -547,21 +557,21 @@ delete them from inside a container rather than with `sudo`.
 
 | File | Is |
 |---|---|
-| `README.md` | The front door: what KDOS is, and how to build and run it |
+| `README.md` | The front door: what KDOS is, how to get, install and use it, and where the books are. It is written by `script/site/mksite.py` from `site/home.md`, the same source as kdos.dev's homepage, so it is edited there; see [Developing](../05-developer/developing.md#rebuilding-one-thing) |
 | `CLAUDE.md` | The contributor briefing read by coding assistants: hard rules, conventions and the build loop. It is not a description of how the system works; that is this book |
-| `Makefile` | Every target: building (`all`, the default and the same as `build`; `build`, `snapshots`, `cleanbuild`, `clean`), running (`run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`), sources (`fetch`, `fetch-check`, `updates`, `publish` and the seven `publish-*` targets), releases (`freeze`, `release`, `release-publish`), checks (`check`, and each of its checks alone, with `selftest-asan`, `plasmatest`, `booknav-write` and the built-tree checks `depdrift`, `debuginfo`, `unowned`, `linkcheck` and `entrycheck`), the book (`book`, `book-data`, `book-stamp`) and the rig (`quick`, `session-probe`, `shots`, `atspi`, `rig-image`, `devdeps-image`). `make help` lists them with a line each. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
+| `Makefile` | Every target: building (`all`, the default and the same as `build`; `build`, `snapshots`, `cleanbuild`, `clean`), running (`run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`), sources (`fetch`, `fetch-check`, `updates`, `publish` and the seven `publish-*` targets), releases (`freeze`, `release`, `release-publish`), checks (`check`, and each of its checks alone, with `selftest-asan`, `plasmatest`, `booknav-write` and the built-tree checks `depdrift`, `debuginfo`, `unowned`, `linkcheck` and `entrycheck`), the book (`book`, `book-data`, `book-stamp`), the homepage and README (`site`, `sitecheck`) and the rig (`quick`, `session-probe`, `shots`, `atspi`, `rig-image`, `devdeps-image`). `make help` lists them with a line each. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
 | `Dockerfile` | The build container, `os-dev`: Alpine with the host tools the two host phases (`00_cross`, `10_bootstrap`) need |
 | `.dockerignore` | What the build container's context leaves out: `build/`, `ports-archived/` and `ports/` |
 | `.gitignore` | The ignore rules in the table above |
 | `.gitattributes` | Declares that no path goes through a filter |
-| `.github/workflows/books.yml` | The one CI workflow. On a push to `main` it renders both books and deploys them as one GitHub Pages site, the KDOS book at the root and *KDOS from Scratch* under `kfs/` with `kfs/kfs.pdf`; on a published `v*` release it attaches `kfs.pdf` and `kfs-html.tar.zst`. Pages must deploy from GitHub Actions, since the tree holds no Jekyll configuration. See [Developing](../05-developer/developing.md#rebuilding-one-thing) |
+| `.github/workflows/books.yml` | The one CI workflow. On a push to `main` it builds kdos.dev and deploys it to GitHub Pages: the homepage from `site/` at the root, the KDOS book under `book/`, *KDOS from Scratch* under `kfs/` with `kfs/kfs.pdf`, and at the root a stub for each page of the KDOS book that sends the reader on to it under `book/`; on a published `v*` release it attaches `kfs.pdf` and `kfs-html.tar.zst`. Pages must deploy from GitHub Actions, since the tree holds no Jekyll configuration. See [Developing](../05-developer/developing.md#rebuilding-one-thing) |
 | `LICENSE` | The licence |
 | `kdos.png`, `kdos.xcf` | The mascot; `fs/usr/share/kdos/kdos.png` is a byte-identical copy shipped on the target |
 
 Several pieces of artwork derive from the mascot. None of them is regenerated by the build, which
-reads only committed files; each generator is a host-only Python script whose output is committed,
-and it lives in a port directory rather than beside its output because `fs/` is copied verbatim
-into the target, which carries no Python:
+reads only committed files; each generator is a host-only Python script whose output is committed.
+A generator whose output ships in the image lives in a port directory rather than beside its
+output, because `fs/` is copied verbatim into the target, which carries no Python:
 
 | Artwork | Committed file | Made from `kdos.png` by |
 |---|---|---|
@@ -569,14 +579,16 @@ into the target, which carries no Python:
 | Terminal banner logo | `fs/usr/share/kdos/logo.txt` | `src/art/kdos-splash/genlogo.py`, which decodes `penguin.h` |
 | Icon marks | `src/art/kdos-icons/marks/` | `src/art/kdos-icons/genmarks.py` (needs Pillow) |
 | The mascot in `kdos-bb` | `src/art/kdos-bb/src/kdostux.c` | `src/art/kdos-bb/genimg.py` (needs Pillow and a C compiler) |
+| The homepage's artwork | `site/assets/art/` | `site/art/genart.py` (needs Pillow), from `kdos.png`, `penguin.h`, `logo.txt` and the marks; see [Developing](../05-developer/developing.md#rebuilding-one-thing) |
 
 Two more boot pictures contain the mascot without being generated from `kdos.png`.
 `fs/usr/share/kdos/boot/kdos-banner.png` is committed as a picture; `genbanner.py` in
 `src/art/kdos-splash/` only repaints its two caption lines. `kdos-backdrop.png` beside it, the
 boot menu's backdrop, is drawn from the banner by `genbackdrop.py` in the same directory.
 
-After changing `kdos.png`, regenerate the four in the table on the host (and copy the mascot to
-`fs/usr/share/kdos/kdos.png`) and commit the results, or the artwork and the mascot drift apart.
+After changing `kdos.png`, regenerate every row of the table on the host, in its order, since the
+homepage's artwork reads the files the rows above it write (and copy the mascot to
+`fs/usr/share/kdos/kdos.png`), and commit the results, or the artwork and the mascot drift apart.
 
 ## What must never exist
 

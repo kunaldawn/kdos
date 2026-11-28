@@ -18,9 +18,12 @@
  *                        framebuffer; with $SPLASH_DEV/frame present it
  *                        scans out another from its second read on, as when
  *                        the compositor's first frame replaces fbdev's
+ *   $SPLASH_DEV/fb-big   fb0 is 640x400 rather than 320x200
  *   a tty descriptor whose file is no longer the one its name opens (the test
  *   renames it and creates a new one) is hung up: every ioctl on it is EIO,
- *   as on a VT whose session start hung it up.
+ *   as on a VT whose session start hung it up. An fb0 descriptor in that
+ *   state answers ENODEV, as a firmware framebuffer does once a GPU driver
+ *   has replaced it.
  *
  * $SPLASH_TIMESCALE runs CLOCK_MONOTONIC that many times faster and divides
  * every usleep by it, so a hold of a minute ends in seconds.
@@ -43,8 +46,8 @@
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
 
-#define FB_W 320
-#define FB_H 200
+#define FB_W (devfile("fb-big") ? 640 : 320)
+#define FB_H (devfile("fb-big") ? 400 : 200)
 
 static int busy_answered, crtc_reads;
 
@@ -209,6 +212,10 @@ int ioctl(int fd, unsigned long req, ...)
 	unsigned int r = (unsigned int)req;
 
 	if (!strcmp(k, "fb0")) {
+		if (hungup) {
+			errno = ENODEV;
+			return -1;
+		}
 		if (r == FBIOGET_VSCREENINFO) {
 			struct fb_var_screeninfo *v = arg;
 			memset(v, 0, sizeof(*v));

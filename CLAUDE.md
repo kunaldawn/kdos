@@ -46,6 +46,7 @@ Read the map below before touching anything.
 | *KDOS from Scratch* — the second book, phase by phase and port by port, rendered by `script/book/` | [`docs/kfs/README.md`](docs/kfs/README.md); its renderer, data snapshot and targets in [`developing.md`](docs/kdos/05-developer/developing.md#make-targets) |
 | **Writing a port's `kfs.md`**, or a patch's `Subject:` header | [`05-developer/writing-ports.md`](docs/kdos/05-developer/writing-ports.md#the-ports-note-kfsmd) |
 | The book checks: `docscheck --book`, `anchorcheck`, `booknav`, `kfscheck`, the patch gate | [`05-developer/testing.md`](docs/kdos/05-developer/testing.md#kfscheckpy) |
+| **kdos.dev's homepage or `README.md`** — one source, `site/home.md`; `make site` writes both, `make sitecheck` fails while `README.md` differs | [`05-developer/developing.md`](docs/kdos/05-developer/developing.md#rebuilding-one-thing), [`05-developer/testing.md`](docs/kdos/05-developer/testing.md#sitecheck) |
 
 `docs/kdos/` stays the authority on mechanism and rationale. `docs/kfs/` owns
 build steps, per-package pages and task procedures, and links to `docs/kdos`

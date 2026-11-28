@@ -786,6 +786,7 @@ environment and not the caller's. So `kdos-appbox` states every variable a launc
 | `PATH` | `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games`. Without `/usr/games`, Debian's games are all "not found" |
 | `HOME`, `USER`, `LOGNAME` | The user's own. Some toolkits crash with no user name |
 | `LANG` | `C.UTF-8`, whatever the host's: it is the one UTF-8 locale every Debian has without generating one, and GTK and others refuse a non-UTF-8 locale |
+| `TZ` | The host's zone name, from where `/etc/localtime` points, read at every launch. A box's own `/etc/localtime` is its image's, which for Debian is UTC, so without it every boxed program shows clocks and file times in UTC |
 | `XDG_RUNTIME_DIR` | `/run/user/<uid>`, which in a pack box or a store box is the box's private directory |
 | `XDG_SESSION_TYPE` | `wayland` |
 | `WAYLAND_DISPLAY` | The launcher's own tagged socket from `kdos-boxsock`, by its absolute path inside the box. Empty when the profile says `wayland = no`, so a toolkit that would guess `wayland-0` finds no display to guess at |

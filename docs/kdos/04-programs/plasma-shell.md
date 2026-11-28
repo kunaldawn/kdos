@@ -578,8 +578,9 @@ The plugin publishes one container, `kdos`:
 | `kdos/box/<box>/{name,icon,cpu,memory,memoryLimit,ioRead,ioWrite,processes,energy}` | Each running box's cgroup scope, `app-kdos-<box>-<n>.scope`, or, for a box with none, its processes: those of the session's user, in a mount namespace other than the plugin's, whose environment carries `KDOS_BOX=<box>`; the name and icon of the launcher whose `X-KDOS-Box` names the box |
 | `kdos/box/all/{boxes,cpu,memory,ioRead,ioWrite,processes}` | The same, summed over every box |
 | `kdos/energy/<app>[@<box>]/{name,app,box,impact,cpuTime,gpu}` and `kdos/energy/all/…` | `report-json` on `/run/kdos-energyd.sock`, from [kdos-energyd](daemons.md#kdos-energyd) |
-| `kdos/slot/{status,running,runningVersion,runningState,other,otherVersion,otherState,next,trial,attempts}` | `/run/kdos/bootstate.json`, the copy of `kdos-bootctl status --json` every user may read |
-| `kdos/look/phosphor` | `kwinrc [Plugins] kdos_crtEnabled`: 1 while Phosphor mode is on |
+| `kdos/slot/{status,running,runningVersion,runningState,other,otherVersion,otherState,next,trial,attempts}` | `/run/kdos/bootstate.json`, the copy of `kdos-bootctl status --json` every user may read. With no boot state the machine is the live medium (`/` an overlay in `/proc/mounts`, `kdos-bootctl`'s test) or one root, and `status` and `running` say which ("This is the live medium; it has no A/B slots", "Live medium"; "This machine boots one system; it has no A/B slots", "One root"), with `runningVersion` the `VERSION_ID` of `/etc/os-release` |
+| `kdos/look/phosphor` | `kwinrc [Plugins] kdos_crtEnabled`: 1 while Phosphor mode is on, else 0 |
+| `kdos/look/phosphorState` | The same, as the text "On" or "Off": the one the KDOS page's System card shows |
 
 A box's figures are its scope's own `cpu.stat`, `memory.current`, `memory.max`, `io.stat` and
 `pids.current`, which cgroup v2 sums over every descendant, so podman's container and conmon are

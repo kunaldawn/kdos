@@ -330,7 +330,7 @@ int appstream_write(void)
 			   "back to.</p>\n");
 	}
 	kb_buf_str(&b, "  </description>\n"
-		   "  <url type=\"homepage\">https://github.com/kunaldawn/kdos"
+		   "  <url type=\"homepage\">https://kdos.dev/"
 		   "</url>\n");
 	if (offer[0]) {
 		kb_buf_str(&b, "  <releases>\n    <release version=\"");

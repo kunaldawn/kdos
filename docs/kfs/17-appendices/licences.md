@@ -29,8 +29,9 @@ public-domain or CC0 code and data, or data published under terms no file of it 
 [What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh).
 
 KDOS's own MIT text, the repository's `LICENSE`, is `/usr/share/licenses/kdos/LICENSE` on every
-image, and each package of our own whose licence names `MIT` that the image carries has a
-`LICENSE` link to it in its `/usr/share/licenses/<name>/`; see [The recipe tree and the source offer](../15-image/105-ports.md#kdoss-licence-text).
+image, and each package of our own whose licence names `MIT` carries a `LICENSE` link to it in
+its `/usr/share/licenses/<name>/`, on the image and from the binhost alike; see
+[KDOS's licence text](../03-bootstrap/000-file-system.md#kdoss-licence-text).
 `/usr/share/kdos/SOURCES` names the commit the image was built from and the archive releases that
 hold every upstream source.
 

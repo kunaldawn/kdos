@@ -1,0 +1,46 @@
+Subject: Give Print to File a default file name on every platform
+
+The Unix print dialog fills its output field with the home or current
+directory and adds print.pdf, or the document's name with .pdf, only
+when the platform plugin is xcb. On Wayland the field holds a bare
+directory, and pressing Print answers that the path is a directory, so
+every print to file needs a name typed first. With this change every
+platform gets the file name xcb gets.
+
+To be offered upstream against qt/qtbase.
+
+--- a/src/printsupport/dialogs/qprintdialog_unix.cpp
++++ b/src/printsupport/dialogs/qprintdialog_unix.cpp
+@@ -1365,21 +1365,19 @@
+             cur = home;
+         else if (!cur.endsWith(u'/'))
+             cur += u'/';
+-        if (QGuiApplication::platformName() == "xcb"_L1) {
+-            if (printer->docName().isEmpty()) {
+-                cur += "print.pdf"_L1;
+-            } else {
++        if (printer->docName().isEmpty()) {
++            cur += "print.pdf"_L1;
++        } else {
+ #if QT_CONFIG(regularexpression)
+-                const QRegularExpression re(QStringLiteral("(.*)\\.\\S+"));
+-                auto match = re.match(printer->docName());
+-                if (match.hasMatch())
+-                    cur += match.captured(1);
+-                else
++            const QRegularExpression re(QStringLiteral("(.*)\\.\\S+"));
++            auto match = re.match(printer->docName());
++            if (match.hasMatch())
++                cur += match.captured(1);
++            else
+ #endif
+-                    cur += printer->docName();
+-                cur += ".pdf"_L1;
+-            }
+-        } // xcb
++                cur += printer->docName();
++            cur += ".pdf"_L1;
++        }
+ 
+         d->widget.filename->setText(cur);
+     }

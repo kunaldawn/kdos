@@ -17,7 +17,7 @@
 
 <policyconfig>
 	<vendor>KDOS</vendor>
-	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+	<vendor_url>https://kdos.dev/</vendor_url>
 
 	<action id="io.kdos.slots.try">
 		<description>Choose the system version the next start uses</description>

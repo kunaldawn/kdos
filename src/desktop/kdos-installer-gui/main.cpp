@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
                      QStringLiteral(KDOS_INSTALLER_VERSION),
                      i18n("Install KDOS on this computer's disk"),
                      KAboutLicense::MIT);
-    about.setHomepage(QStringLiteral("https://github.com/kunaldawn/kdos"));
+    about.setHomepage(QStringLiteral("https://kdos.dev/"));
     about.setOrganizationDomain(QByteArrayLiteral("kdos.io"));
     about.setDesktopFileName(QStringLiteral("kdos-installer"));
     KAboutData::setApplicationData(about);

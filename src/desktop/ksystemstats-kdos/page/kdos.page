@@ -43,7 +43,7 @@ showTitle=true
 Title=System
 
 [Face-410000000000003][Sensors]
-highPrioritySensorIds=["kdos/slot/status","kdos/slot/runningVersion","kdos/slot/otherVersion","kdos/look/phosphor"]
+highPrioritySensorIds=["kdos/slot/status","kdos/slot/runningVersion","kdos/slot/otherVersion","kdos/look/phosphorState"]
 
 [Face-410000000000003][org.kdos.meters][General]
 showSparklines=false

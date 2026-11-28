@@ -3,7 +3,7 @@
 `kdos-oomd` kills the process that is starving the machine of memory before the desktop freezes.
 It writes a trigger into the kernel's memory-pressure file, `/proc/pressure/memory`, sleeps until
 the kernel reports a stall, and then, when `MemAvailable` is also at most a tenth of `MemTotal`,
-kills one process: the largest in a box over its declared memory budget first, otherwise
+or at most a quarter with swap exhausted (`SwapFree` at most 2% of `SwapTotal`), kills one process: the largest in a box over its declared memory budget first, otherwise
 preferably a boxed one, and never KWin, plasmashell, the login, the audio session or the other
 programs the session is made of. It frees the victim's memory at once
 with `process_mrelease()`. It scans for a victim at most once every ten seconds, counted from a firing that finds memory short. The kernel's own out-of-memory

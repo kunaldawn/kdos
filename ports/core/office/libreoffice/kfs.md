@@ -1,11 +1,11 @@
 ## About
 
 [LibreOffice]{.idx} is the office suite: Writer, Calc, Impress, Draw, Math and Base, sharing one
-runtime under `/usr/lib/libreoffice`. It is an application, so it is one of the programs the
-desktop's no-toolkit rule leaves free to use one, and this build carries two front ends: the GTK 3
-plugin and the Qt 6 plugin. It is built from three sources: its own, a separate help tarball,
-and a vendor bundle of the libraries it builds itself. See
-[Toolkits are for applications](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop).
+runtime under `/usr/lib/libreoffice`. Like every application it is ported with the toolkits it
+is written for, and this build carries two front ends: the GTK 3 plugin and the Qt 6 plugin. It
+is built from three sources: its own, a separate help tarball, and a vendor bundle of the
+libraries it builds itself. See
+[Applications bring their own toolkit](../../../../docs/kdos/01-philosophy/principles.md#applications-bring-their-own-toolkit).
 
 ## Flags
 

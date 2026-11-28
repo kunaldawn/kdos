@@ -65,6 +65,24 @@ static QString mediumPacksDir()
     return env.isEmpty() ? u"/mnt/iso/packs"_s : env;
 }
 
+// The live medium's test, kdt_root_is_live()'s: `/` is an overlay. Its
+// notes say an install lasts until the machine restarts, where an
+// installed system's say the next update keeps it. $KDOS_MOUNTS names
+// another mount table, as for kdos-bootctl.
+static bool rootIsLive()
+{
+    const QString env = qEnvironmentVariable("KDOS_MOUNTS");
+    QFile f(env.isEmpty() ? u"/proc/mounts"_s : env);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+    while (!f.atEnd()) {
+        const QList<QByteArray> fields = f.readLine().simplified().split(' ');
+        if (fields.size() >= 3 && fields.at(1) == "/" && fields.at(2) == "overlay")
+            return true;
+    }
+    return false;
+}
+
 static QString packStoreDir()
 {
     const QString env = qEnvironmentVariable("KDOS_PACK_STORE");
@@ -363,6 +381,7 @@ KdosBackend::KdosBackend(QObject *parent)
     m_catalogueByPackage = catalogueByPackage(m_catalogue);
     m_context.catalogue = &m_catalogue;
     m_context.mediumPacks = mediumPacksDir();
+    m_context.live = rootIsLive();
 
     m_debianExclude = readDebianExclude();
 

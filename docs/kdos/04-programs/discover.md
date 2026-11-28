@@ -341,6 +341,12 @@ two origins:
 | `kdos-ports` | KDOS system | `kdos-ports-helper install <port>`, which runs `kdos update install --prebuilt <port>` | `io.kdos.ports.install`: an administrator's password, kept for a while |
 | `kdos-ports-source` | KDOS, built on this computer | `kdos-ports-builder install <port>`, which runs `kdos update install --source <port>` | `io.kdos.ports.build`: an administrator's password, asked every time |
 
+The page of a port not installed says where the install goes. On an installed system it goes into
+this version of the system and the next system update keeps it, or, built here, builds it again. On
+the live medium, which the backend knows by the test `kdos-bootctl` makes (`/` is an overlay in
+`/proc/mounts`, or in the table `$KDOS_MOUNTS` names), it goes into the live session: "It runs from
+memory and is gone when the machine restarts; install KDOS to keep it."
+
 **What is part of the system is decided by the world set.** `/var/lib/kdos/world` lists the packages
 somebody installed on purpose, and a package of the image has no line there: `kdos update install`
 of a port the image already carries writes none. An installed port is part of the system when it has
@@ -689,9 +695,9 @@ something: never for a `no-network` code, whose sentence says what its words say
 they name the URL the sentence names, so the URL is said once. `no-network` is recorded for a name
 that did not resolve, or for a refused or timed-out connection on a machine with no default route;
 a server that refused the connection or did not answer while a default route exists is a
-`fetch-failed` whose words are "the server at <host:port> did not answer", one that answered and
+`fetch-failed` whose words are "the server at `<host:port>` did not answer", one that answered and
 then sent less than 1024 bytes a second for 60 seconds a `fetch-failed` whose words are "the
-download from <host:port> stalled: less than 1024 bytes a second arrived for 60 seconds", and
+download from `<host:port>` stalled: less than 1024 bytes a second arrived for 60 seconds", and
 the page reads "The release's package index could not be fetched from https://10.0.2.2:18999.
 (the server at 10.0.2.2:18999 did not answer)". Each
 code `kdos update check` reports has its sentence: the fetch's `no-network`, `fetch-failed` and

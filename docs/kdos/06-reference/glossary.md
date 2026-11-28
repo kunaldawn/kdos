@@ -534,8 +534,8 @@ with `phosphor`, one of the eight *accents*. See
 
 KDE Plasma 6.8, the desktop: *KWin*, `plasmashell` (the panels, the desktop and the widgets),
 *KRunner*, System Settings, *Discover* and the session around them, with KDE Frameworks and KDE
-Gear's applications. KDOS builds it unforked and makes it KDOS through settings, artwork and its own
-plugins. See [The Plasma shell](../04-programs/plasma-shell.md) and [The
+Gear's applications. KDOS builds it unforked and makes it KDOS mostly through settings, artwork and its
+own plugins, with a small set of patches, each explained in its port's note. See [The Plasma shell](../04-programs/plasma-shell.md) and [The
 desktop](../02-user-guide/desktop.md).
 
 ### plasmoid
@@ -548,7 +548,7 @@ first-run checklist. See [The Plasma shell](../04-programs/plasma-shell.md#the-s
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-five port repositories in one format, holding 2,431 recipes: the upstream ports in
+five port repositories in one format, holding 2,446 recipes: the upstream ports in
 `ports/core/`, each on a *shelf*, and KDOS's own in four *areas*: `src/system/`, `src/art/`,
 `src/desktop/` and `src/daemons/` ([The ports catalogue](ports-catalogue.md#ports-per-shelf) counts
 them). (`src/system/kdos-kpkg` has no recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique

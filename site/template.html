@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  kdos.dev's page shell. script/site/mksite.py fills every {{slot}}: the
+  page's text from site/home.md, the accent palette from libkcolor, and the
+  release facts from the tree. Edit site/home.md for words, this file for
+  the frame around them.
+-->
+<html lang="en" data-accent="{{default_accent}}" data-choice="{{default_accent}}" data-phosphor="off" data-crt-pairs="{{crt_pairs}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta name="robots" content="{{robots}}">
+<link rel="canonical" href="{{canonical}}">
+<meta name="theme-color" content="{{theme_color}}">
+<meta name="color-scheme" content="dark light">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="KDOS">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{canonical}}">
+<meta property="og:image" content="{{og_image}}">
+<meta property="og:image:width" content="{{og_image_w}}">
+<meta property="og:image:height" content="{{og_image_h}}">
+<meta property="og:image:alt" content="{{og_image_alt}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{title}}">
+<meta name="twitter:description" content="{{description}}">
+<meta name="twitter:image" content="{{og_image}}">
+<meta name="twitter:image:alt" content="{{og_image_alt}}">
+<link rel="icon" href="{{base}}favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="{{base}}assets/art/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="{{base}}assets/art/icon-192.png">
+<link rel="apple-touch-icon" href="{{base}}assets/art/apple-touch-icon.png">
+<link rel="preload" href="{{base}}assets/fonts/terminus-bold.woff2" as="font" type="font/woff2" crossorigin>
+<script>{{head_script}}</script>
+<style>
+{{palette}}
+</style>
+<link rel="stylesheet" href="{{css}}">
+<script src="{{js}}" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="top">
+  <div class="top__inner wrap">
+    <a class="brand" href="{{base}}#main" aria-label="KDOS, to the top of the page">
+      <img src="{{base}}assets/art/favicon-32.png" alt="" width="32" height="32">
+      <span>KDOS</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <ul>
+{{nav}}
+        <li><a href="{{REPO}}" rel="noopener">GitHub</a></li>
+      </ul>
+    </nav>
+    <button type="button" class="crt-toggle js-only" data-phosphor-toggle aria-pressed="false">
+      <span class="crt-toggle__box" aria-hidden="true"></span>Phosphor<span class="crt-toggle__more"> mode</span>
+    </button>
+    <details class="menu">
+      <summary><span class="menu__icon" aria-hidden="true"></span>Menu</summary>
+      <nav class="menu__nav" aria-label="Sections">
+        <ul>
+{{nav}}
+          <li><a href="{{REPO}}" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+    </details>
+  </div>
+</header>
+<main id="main" tabindex="-1">
+{{body}}
+</main>
+<footer class="foot">
+  <div class="foot__inner wrap">
+    <img class="foot__penguin" src="{{base}}assets/art/penguin-{{default_accent}}.png" data-accent-src="{{base}}assets/art/penguin-{accent}.png" alt="" width="91" height="96" loading="lazy" decoding="async">
+    <div class="foot__text">
+      <p><strong>KDOS {{VERSION}}</strong> · Kool Desktop Operating System</p>
+      <p>
+        <a href="{{RELEASE_URL}}" rel="noopener">Download</a> ·
+        <a href="{{base}}book/">The KDOS book</a> ·
+        <a href="{{base}}kfs/">KDOS from Scratch</a> ·
+        <a href="{{REPO}}" rel="noopener">Source</a> ·
+        <a href="{{ISSUES}}" rel="noopener">Issues</a>
+      </p>
+      <p class="foot__small">No cookies, no trackers, nothing loaded from another site. The accent you pick is remembered by your own browser.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

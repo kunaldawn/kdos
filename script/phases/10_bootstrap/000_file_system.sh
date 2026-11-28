@@ -117,6 +117,14 @@ if ! cp -r $WORKSPACE/fs/* $SYSROOT/; then
     [ "$LIB64_DIR" = 1 ] || exit 1
 fi
 
+# KDOS's own licence, the repository's MIT text. kpkg builds every package of
+# our own with usr/share/licenses/<name>/LICENSE as a link to ../kdos/LICENSE
+# (src/system/kdos-kpkg/prune.c), so the text is on every root from this step
+# on, the image's and every machine's installed from it, and those links
+# resolve; without it each one dangles and 087_gates.sh's entrycheck stops the
+# image. No package owns the text, and testing/unowned.py subtracts it.
+install -Dm644 "$WORKSPACE/LICENSE" "$SYSROOT/usr/share/licenses/kdos/LICENSE"
+
 # cp overwrites CONTENT and keeps the DESTINATION's mode, so on its own a
 # permission change in fs/ does not reach a tree that has been synced before.
 # That is not cosmetic: rcS runs `[ -x "$_script" ] || continue`, so an init

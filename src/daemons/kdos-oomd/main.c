@@ -17,8 +17,8 @@
  *
  * So this blocks on a PSI trigger — write the threshold into the pressure
  * file, poll(2) for POLLPRI; the kernel's own trigger API, no sampling loop —
- * and when it fires on a machine whose MemAvailable is also low (memory_short)
- * kills the largest-RSS process that is neither the desktop
+ * and when it fires on a machine whose MemAvailable or swap is also low
+ * (memory_short) kills the largest-RSS process that is neither the desktop
  * nor the plumbing, SIGKILL then process_mrelease(2) so the pages come back
  * NOW rather than whenever the zombie is reaped. Boxed processes are preferred
  * as victims: an alien app is the likely culprit, is supervised by podman, and
@@ -68,9 +68,12 @@
  * for 15% of the last second. A desktop is already visibly hitching there. */
 #define KO_TRIGGER  "full 150000 1000000"
 #define KO_COOLDOWN 10.0	/* seconds between victim scans, at least */
-/* A kill also needs memory to be SHORT: MemAvailable at or under this share
- * of MemTotal. See memory_short(). */
-#define KO_AVAIL_PCT 10
+/* A kill also needs memory to be SHORT: MemAvailable at or under
+ * KO_AVAIL_PCT of MemTotal, or swap at or under KO_SWAP_PCT of SwapTotal
+ * with MemAvailable at or under KO_SWAP_AVAIL_PCT. See memory_short(). */
+#define KO_AVAIL_PCT      10
+#define KO_SWAP_PCT       2
+#define KO_SWAP_AVAIL_PCT 25
 
 #ifndef SYS_pidfd_open
 #define SYS_pidfd_open 434
@@ -145,9 +148,23 @@ static void read_pressure(double *some, double *full)
  * MemTotal; a working set being pushed out by a hog is that and a cache being
  * recycled is not. A meminfo that cannot be read or parsed leaves the stall
  * as the only test, so a recorded tree without one replays as before.
+ *
+ * EXHAUSTED SWAP RAISES THE LINE. Once the zram device (12_zram.sh) is
+ * full, no anonymous page can leave memory, and reclaim takes only file
+ * pages: the live system's own programs, read back from the squashfs as soon
+ * as they are dropped. MemAvailable counts those as reclaimable, so on a
+ * machine under the minimum it stays near a fifth of MemTotal while every
+ * task stalls, and the first test alone never kills. So with swap at or
+ * under KO_SWAP_PCT of SwapTotal the line is KO_SWAP_AVAIL_PCT instead. It
+ * is not dropped: pages swapped out once stay in zram after memory frees up,
+ * and a machine whose swap filled an hour ago and now streams a copy through
+ * the page cache with most of its memory available is the first case again,
+ * which must not kill. A machine with no swap has nothing to exhaust and
+ * keeps the first test only.
  */
 static int memory_short(long long *avail_kb, long long *total_kb)
 {
+	long long swap_total = -1, swap_free = -1;
 	*avail_kb = *total_kb = -1;
 	char *data = slurp("%s/meminfo", g_proc);
 	if (!data)
@@ -159,11 +176,19 @@ static int memory_short(long long *avail_kb, long long *total_kb)
 			*total_kb = atoll(line + 9);
 		else if (!strncmp(line, "MemAvailable:", 13))
 			*avail_kb = atoll(line + 13);
+		else if (!strncmp(line, "SwapTotal:", 10))
+			swap_total = atoll(line + 10);
+		else if (!strncmp(line, "SwapFree:", 9))
+			swap_free = atoll(line + 9);
 	}
 	free(data);
 	if (*avail_kb < 0 || *total_kb <= 0)
 		return 1;
-	return *avail_kb * 100 <= *total_kb * KO_AVAIL_PCT;
+	int pct = KO_AVAIL_PCT;
+	if (swap_total > 0 && swap_free >= 0 &&
+	    swap_free * 100 <= swap_total * KO_SWAP_PCT)
+		pct = KO_SWAP_AVAIL_PCT;
+	return *avail_kb * 100 <= *total_kb * pct;
 }
 
 typedef struct {

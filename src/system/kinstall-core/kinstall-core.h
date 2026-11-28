@@ -228,6 +228,12 @@ void ki_probe_network(void);
  * copy_prof_sys: a walk of the whole root filesystem in rsync's order, the
  * one slow probe, and so called on its own. */
 void probe_payload(void);
+/* The same walk of an installed tree at `root` (slot A, for slot B's copy),
+ * on its own filesystem and with nothing left out: its size, its extra
+ * hard-link names and its copy profile. -1, the figures zero, when `root`
+ * could not be walked. */
+int probe_payload_at(const char *root, unsigned long long *kb,
+		     unsigned long long *link_bytes, KiCopyProfile *prof);
 /* Also activates every volume group, once per process and only as root, then
  * lists the logical volumes into ki_lv. */
 void probe_disks(void);

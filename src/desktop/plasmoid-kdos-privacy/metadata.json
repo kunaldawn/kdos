@@ -11,7 +11,7 @@
         "Icon": "security-high-symbolic",
         "License": "MIT",
         "Name": "Privacy Lamps",
-        "Website": "https://github.com/kunaldawn/kdos"
+        "Website": "https://kdos.dev/"
     },
     "Keywords": "privacy;microphone;camera;screen;capture;recording;box;",
     "X-Plasma-API-Minimum-Version": "6.0",

@@ -150,11 +150,16 @@ patch, a set and non-empty `$LOCATE_PATH` replaces the default instead of follow
 
 Every login on the machine is a PAM login, and the stacks in `/etc/pam.d` are where an account is
 checked, its resource limits are set, and its session is registered. The shared stacks come from
-the `pam` port; each login program's own stack comes from that program's port.
+the `pam` port; each login program's own stack comes from that program's port. `su` is the one
+program here that switches accounts without PAM: shadow is built `--without-libpam`, so its `su`
+checks `/etc/shadow` itself and has no stack in `/etc/pam.d`, and a `su` shell gets nothing of
+`system-session` or `system-login`: no `limits.d` real-time or locked-memory settings, no elogind
+session and no delay after a wrong password. Why shadow is built that way is in [its port's
+note](../../../ports/core/auth/shadow/kfs.md).
 
 | Stack | Used by | What it does |
 |---|---|---|
-| `system-auth`, `system-account`, `system-password`, `system-session` | Everything below, and `sudo`, `su`, polkit's `polkit-1` | `pam_unix` (password hashes in `/etc/shadow`, SHA-512 for a new password; `nullok`, so an account with an empty password logs in with an empty field) and `pam_limits` |
+| `system-auth`, `system-account`, `system-password`, `system-session` | Everything below, and `sudo` and polkit's `polkit-1` | `pam_unix` (password hashes in `/etc/shadow`, SHA-512 for a new password; `nullok`, so an account with an empty password logs in with an empty field) and `pam_limits` |
 | `system-login` | Every login that starts a session | The four above, then `pam_turnstile` and `pam_elogind`, in that order, both optional |
 | `login` | util-linux's `login`, on tty2, the serial line and the fallback prompt on tty1 | `pam_faildelay` (three seconds after a failure) and `pam_nologin` (`/etc/nologin` refuses everyone but root), then `system-login` |
 | `sddm` | A password at the login screen | `system-login`, then `pam_kwallet5` in the auth and session phases |
@@ -181,8 +186,8 @@ kernel: `kernel.sched_rt_runtime_us` equals `kernel.sched_rt_period_us` (1000000
 
 ### How a password is checked
 
-The login screen, `login`, `sudo`, `su`, polkit's agent and the lock screen all check a password
-through `pam_unix`. A program running as root reads `/etc/shadow` itself; one running as the user
+The login screen, `login`, `sudo`, polkit's agent and the lock screen all check a password
+through `pam_unix`; `su` reads `/etc/shadow` itself, as setuid root. A program running as root reads `/etc/shadow` itself; one running as the user
 (the lock screen, which kscreenlocker runs inside the session) has `pam_unix` call the setuid
 `unix_chkpwd`, which checks only the calling user's own password and is the one privileged step.
 Without its setuid bit the lock screen refuses every password, and the session can be left only
@@ -517,7 +522,7 @@ asks.
 | `org.freedesktop.NetworkManager.settings.modify.system` | Yes, for `wheel` at the machine | Editing and deleting a system connection, and reading its passphrase back (see [below](#why-settingsmodifysystem-is-granted)) |
 | `org.freedesktop.udisks2.filesystem-mount-system`, `…filesystem-unmount-others`, `…filesystem-take-ownership`, `…encrypted-unlock-system`, `…encrypted-lock-others`, `…eject-media-system`, `…loop-delete-others`, `…open-device`, `…open-device-system`, `…modify-device-system` | Yes, for `wheel` at the machine | Dolphin and the device notifier mounting a second internal disk and unlocking its container, unmounting what another login mounted, an image writer or GNOME Disks reaching the raw device, formatting and partitioning an internal drive. Their removable twins are `allow_active` already |
 | `org.gnome.gparted`, `org.kde.k3b.updatepermissions`, `org.kde.ktexteditor6.katetextbuffer.savefile`, `org.libvirt.unix.manage`, `net.nokyan.Resources.kill` | An administrator's password, kept, for `wheel` at the machine | GParted, K3b setting the burner's permissions, Kate saving a root-owned file, virt-manager on `qemu:///system`, Resources ending another user's process |
-| `org.freedesktop.fwupd.update-internal`, `org.freedesktop.bolt.enroll`, `…authorize`, `…manage`, `org.gtk.vfs.file-operations`, `…file-operations-helper` | An administrator's password, kept, for anybody at the machine | Flashing system firmware, letting a Thunderbolt device onto the PCIe bus, gvfs's `admin://`. Held at a password whatever a later rules file says; away from the machine the defaults apply, and each is stricter there |
+| `org.freedesktop.fwupd.update-internal`, `org.freedesktop.bolt.enroll`, `…authorize`, `…manage`, `org.gtk.vfs.file-operations`, `…file-operations-helper` | An administrator's password, kept, for anybody at the machine | Flashing unsigned system firmware, letting a Thunderbolt device onto the PCIe bus, gvfs's `admin://`. Held at a password whatever a later rules file says; away from the machine the defaults apply, and each is stricter there |
 | `local.kcron.crontab.save` | No | The system crontab: `crond` is built not to read `/etc/crontab`, so a save there would write a file nothing reads. A user's own crontab needs no polkit |
 | `org.kde.powerdevil.chargethresholdhelper.setthreshold`, `…setconservationmode` | No | Battery charge limits are TLP's, which sets them at boot and each time it applies a profile, so a limit PowerDevil wrote would not last |
 
@@ -526,7 +531,12 @@ keyboard does as a matter of course. An `AUTH_ADMIN_KEEP` written out is a promp
 file sorted after this one cannot turn into a silent yes. A `NO` is something this system does not
 do, refused where the defaults would have asked. Left at the defaults, and so a password: the
 storage layout under a running system (`fstab`, `crypttab`, RAID, LVM, btrfs, swap), the firmware
-erases, NetworkManager's hostname and machine-wide DNS, and `pkexec` of an arbitrary command.
+erases, NetworkManager's hostname and machine-wide DNS, and `pkexec` of an arbitrary command. Left
+at fwupd's defaults, and so a yes with no password for anybody at the machine: installing signed
+firmware, the system's (`org.freedesktop.fwupd.update-internal-trusted`) or a device's
+(`…update-hotplug-trusted`), and setting a device property (`…modify-device`). That is how Discover
+installs the LVFS-signed firmware it lists; downgrading signed firmware and installing unsigned
+firmware still ask.
 `testing/fixtures/polkit` holds the defaults measured from the shipped `.policy` files and the
 table of answers this file must give, and `testing/selftest.sh` evaluates it against both.
 

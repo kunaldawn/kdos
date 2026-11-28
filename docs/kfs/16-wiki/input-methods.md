@@ -83,6 +83,14 @@ replaces the layout the installer, locale1 or System Settings → Keyboard set. 
 With it off, the profile's `keyboard-<layout>` first item is only the inactive state: fcitx5 decodes
 keys with the keymap KWin hands it, whatever layout that is.
 
+### /etc/xdg/fcitx5/conf/classicui.conf
+
+The options of fcitx5's candidate window. Its compiled default is the light `default` theme on
+every desktop; KDOS sets `UseDarkTheme=True` with `DarkTheme=default-dark`, so the window follows
+the portal's colour scheme (dark under the seven dark accents, light under Paper), and
+`UseAccentColor=True`, so its highlight is the portal's accent colour. A copy the Input Method page
+saves in `~/.config/fcitx5/conf/classicui.conf` replaces this one whole.
+
 ### The build
 
 fcitx5 is built for [Wayland]{.idx} only, with no X11 frontend and no autostart entry
@@ -108,7 +116,7 @@ service:
 A boxed application reaches fcitx5 through KWin, never directly. `kdos-appbox` sets one variable
 for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=484-496 pin=afbe7df0b3c1 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=526-538 pin=afbe7df0b3c1 -->
 
 ## Usage
 

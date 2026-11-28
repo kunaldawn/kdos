@@ -1500,6 +1500,9 @@ void probe_disks(void)
 static unsigned long long walk_kb, walk_appbox_kb;
 static unsigned long long walk_link_bytes, walk_link_appbox_bytes;
 static size_t appbox_len;
+/* Whether the walk is of the live tree, whose live account's home is left
+ * on the medium and whose box store is counted apart (walk_entry). */
+static int walk_live;
 
 /* The inodes with more than one name seen so far, by (st_dev, st_ino), in an
  * open-addressed table kept at most half full. */
@@ -1571,10 +1574,10 @@ static void walk_kind_add(unsigned char k)
 static void walk_entry(const char *path, const struct stat *st)
 {
 	unsigned long long kb = (unsigned long long)st->st_blocks / 2;
-	int store = !strncmp(path, appbox_path, appbox_len);
+	int store = walk_live && !strncmp(path, appbox_path, appbox_len);
 	int later = 0;
 
-	if (!store &&
+	if (walk_live && !store &&
 	    !strncmp(path, livehome_path, sizeof(livehome_path) - 1) &&
 	    strncmp(path, batcache_path, sizeof(batcache_path) - 1))
 		return;
@@ -1669,6 +1672,39 @@ static void walk_dir(int fd, char *path, size_t len, dev_t dev)
 	closedir(d);
 }
 
+/* One walk of `root`, kept on its filesystem, into the walk_* figures; the
+ * caller takes them and calls walk_reset(). */
+static void walk_tree(const char *root, int live)
+{
+	char path[PATH_MAX];
+	struct stat st;
+	int fd;
+
+	walk_kb = walk_appbox_kb = 0;
+	walk_link_bytes = walk_link_appbox_bytes = 0;
+	walk_nkind = 0;
+	walk_live = live;
+	appbox_len = sizeof(appbox_path) - 1;
+	kb_strlcpy(path, root, sizeof(path));
+	fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (fd >= 0 && !fstat(fd, &st)) {
+		walk_entry(path, &st);
+		walk_dir(fd, path, strlen(path), st.st_dev);
+	} else if (fd >= 0) {
+		close(fd);
+	}
+	free(walk_inos);
+	walk_inos = NULL;
+	walk_ino_cap = walk_ino_n = 0;
+}
+
+static void walk_reset(void)
+{
+	free(walk_kind);
+	walk_kind = NULL;
+	walk_nkind = walk_kind_cap = 0;
+}
+
 /* One pass over the live tree, once, before the screen is taken over. It is
  * the only honest input to "will this fit" — the squashfs knows its
  * compressed size and nothing on the system knows the expanded one.
@@ -1686,33 +1722,25 @@ static void walk_dir(int fd, char *path, size_t len, dev_t dev)
  * for it only when the answer depends on it. */
 void probe_payload(void)
 {
-	char path[PATH_MAX] = "/";
-	struct stat st;
-	int fd;
-
-	walk_kb = walk_appbox_kb = 0;
-	walk_link_bytes = walk_link_appbox_bytes = 0;
-	walk_nkind = 0;
-	appbox_len = sizeof(appbox_path) - 1;
-	fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-	if (fd >= 0 && !fstat(fd, &st)) {
-		walk_entry(path, &st);
-		walk_dir(fd, path, 1, st.st_dev);
-	} else if (fd >= 0) {
-		close(fd);
-	}
-	free(walk_inos);
-	walk_inos = NULL;
-	walk_ino_cap = walk_ino_n = 0;
+	walk_tree("/", 1);
 	ki_sys.payload_kb = walk_kb;
 	ki_sys.appbox_kb = walk_appbox_kb;
 	ki_sys.link_extra_bytes = walk_link_bytes;
 	ki_sys.link_extra_appbox_bytes = walk_link_appbox_bytes;
 	ki_copy_profile(&ki_sys.copy_prof, walk_kind, walk_nkind, 1);
 	ki_copy_profile(&ki_sys.copy_prof_sys, walk_kind, walk_nkind, 0);
-	free(walk_kind);
-	walk_kind = NULL;
-	walk_nkind = walk_kind_cap = 0;
+	walk_reset();
+}
+
+int probe_payload_at(const char *root, unsigned long long *kb,
+		     unsigned long long *link_bytes, KiCopyProfile *prof)
+{
+	walk_tree(root, 0);
+	*kb = walk_kb;
+	*link_bytes = walk_link_bytes;
+	ki_copy_profile(prof, walk_kind, walk_nkind, 1);
+	walk_reset();
+	return *kb ? 0 : -1;
 }
 
 /* Whether interface `ifc` carries traffic: operstate up (or unknown, which a
